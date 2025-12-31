@@ -8,6 +8,12 @@ A GUI for running AI agents in Docker containers with workspace and GitHub manag
 uv run main.py
 ```
 
+## Supported Agents
+
+- **GitHub Codex** - [PLACEHOLDER]
+- **Claude Code** - [PLACEHOLDER]
+- **GitHub Copilot** - [PLACEHOLDER]
+
 ## Features
 
 - **Docker Integration**: Runs agents in `lunamidori5/pixelarch:emerald` container
@@ -26,8 +32,4 @@ uv run main.py
 
 - **State**: `~/.midoriai/codex-container-gui/state.json`
 - **Environments**: `~/.midoriai/codex-container-gui/environment-*.json`
-- **Codex Home**: `~/.codex` → `/home/midori-ai/.codex` (override: `CODEX_HOST_CODEX_DIR`)
-
-## Contributing
-
-See [AGENTS.md](AGENTS.md) for contributor guidelines.
+- **Agent Config**: `~/.codex`, `~/.claude`, or `~/.copilot` → `/home/midori-ai/.{agent}` (override: `CODEX_HOST_CODEX_DIR`)

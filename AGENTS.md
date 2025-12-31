@@ -24,21 +24,6 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 ---
 
-## Project Structure
-
-- `codex_local_conatinerd/`: Main application code
-  - `app.py`: Main application logic
-  - `style.py`: Qt stylesheet definitions
-  - `widgets.py`: Custom-painted UI widgets
-  - `docker_runner.py`: Docker container management
-  - `gh_management.py`: GitHub repository integration
-  - `environments.py`: Environment configuration
-  - `persistence.py`: State management
-- `main.py`: Entry point
-- `pyproject.toml`: Python dependencies
-
----
-
 ## Contributor Modes
 
 Use these mode guides from `.codex/modes/` when working on specific tasks:
