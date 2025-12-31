@@ -94,10 +94,24 @@ from codex_local_conatinerd.gh_management import is_gh_available
 from codex_local_conatinerd.gh_management import is_git_repo
 from codex_local_conatinerd.gh_management import plan_repo_task
 from codex_local_conatinerd.gh_management import prepare_branch_for_task
+from codex_local_conatinerd.pr_metadata import ensure_pr_metadata_file
+from codex_local_conatinerd.pr_metadata import load_pr_metadata
+from codex_local_conatinerd.pr_metadata import normalize_pr_title
+from codex_local_conatinerd.pr_metadata import pr_metadata_container_path
+from codex_local_conatinerd.pr_metadata import pr_metadata_host_path
+from codex_local_conatinerd.pr_metadata import pr_metadata_prompt_instructions
 
 
 PIXELARCH_EMERALD_IMAGE = "lunamidori5/pixelarch:emerald"
 APP_TITLE = "Midori AI Agents Runner"
+PIXELARCH_AGENT_CONTEXT_SUFFIX = (
+    "\n\n"
+    "Environment context:\n"
+    "- You are running inside PixelArch.\n"
+    "- You have passwordless sudo.\n"
+    "- If you need to install packages, use `yay -Syu`.\n"
+    "- You have full control of the container you are running in.\n"
+)
 
 
 def _app_icon() -> QIcon | None:
@@ -436,6 +450,7 @@ class Task:
     gh_base_branch: str = ""
     gh_branch: str = ""
     gh_pr_url: str = ""
+    gh_pr_metadata_path: str = ""
 
     def last_nonblank_log_line(self) -> str:
         for line in reversed(self.logs):
@@ -1547,6 +1562,14 @@ class EnvironmentsPage(QWidget):
         grid.addWidget(QLabel("Max agents running"), 4, 0)
         grid.addWidget(self._max_agents_running, 4, 1, 1, 2)
 
+        self._gh_pr_metadata_enabled = QCheckBox("Allow agent to set PR title/body (non-interactive only)")
+        self._gh_pr_metadata_enabled.setToolTip(
+            "When enabled and Workspace is a GitHub repo (clone), a per-task JSON file is mounted into the container.\n"
+            "The agent is prompted to update it with a PR title/body, which will be used when opening the PR."
+        )
+        self._gh_pr_metadata_enabled.setEnabled(False)
+        grid.addWidget(self._gh_pr_metadata_enabled, 5, 0, 1, 3)
+
         self._gh_management_mode = QComboBox(general_tab)
         self._gh_management_mode.addItem("Use Settings workdir", GH_MANAGEMENT_NONE)
         self._gh_management_mode.addItem("Lock to local folder", GH_MANAGEMENT_LOCAL)
@@ -1659,6 +1682,8 @@ class EnvironmentsPage(QWidget):
             self._host_codex_dir.setText("")
             self._agent_cli_args.setText("")
             self._max_agents_running.setText("-1")
+            self._gh_pr_metadata_enabled.setChecked(False)
+            self._gh_pr_metadata_enabled.setEnabled(False)
             self._gh_management_mode.setCurrentIndex(0)
             self._gh_management_target.setText("")
             self._gh_use_host_cli.setChecked(bool(is_gh_available()))
@@ -1676,6 +1701,9 @@ class EnvironmentsPage(QWidget):
         self._host_codex_dir.setText(env.host_codex_dir)
         self._agent_cli_args.setText(env.agent_cli_args)
         self._max_agents_running.setText(str(int(getattr(env, "max_agents_running", -1))))
+        is_github_env = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) == GH_MANAGEMENT_GITHUB
+        self._gh_pr_metadata_enabled.setChecked(bool(getattr(env, "gh_pr_metadata_enabled", False)))
+        self._gh_pr_metadata_enabled.setEnabled(is_github_env)
         idx = self._gh_management_mode.findData(normalize_gh_management_mode(env.gh_management_mode))
         if idx >= 0:
             self._gh_management_mode.setCurrentIndex(idx)
@@ -1777,6 +1805,7 @@ class EnvironmentsPage(QWidget):
 
         gh_management_mode = GH_MANAGEMENT_LOCAL
         gh_management_target = ""
+        gh_pr_metadata_enabled = False
         if selected_label == "Lock to GitHub repo (clone)":
             repo, ok = QInputDialog.getText(self, "GitHub repo", "Repo (owner/repo or URL)")
             if not ok:
@@ -1787,6 +1816,17 @@ class EnvironmentsPage(QWidget):
                 return
             gh_management_mode = GH_MANAGEMENT_GITHUB
             gh_management_target = repo
+            gh_pr_metadata_enabled = (
+                QMessageBox.question(
+                    self,
+                    "PR metadata",
+                    "Allow the agent to set the PR title/body via a mounted JSON file?\n\n"
+                    "This is only used for non-interactive runs.",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                == QMessageBox.Yes
+            )
         else:
             folder = QFileDialog.getExistingDirectory(self, "Select workspace folder", os.getcwd())
             if not folder:
@@ -1816,6 +1856,7 @@ class EnvironmentsPage(QWidget):
             gh_management_target=gh_management_target,
             gh_management_locked=True,
             gh_use_host_cli=gh_use_host_cli,
+            gh_pr_metadata_enabled=bool(gh_pr_metadata_enabled),
         )
         save_environment(env)
         self.updated.emit(env_id)
@@ -1862,6 +1903,12 @@ class EnvironmentsPage(QWidget):
         gh_target = str(existing.gh_management_target or "").strip() if existing else ""
         gh_locked = True
         gh_use_host_cli = bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
+        gh_pr_metadata_enabled = bool(getattr(existing, "gh_pr_metadata_enabled", False)) if existing else False
+
+        if existing and gh_mode == GH_MANAGEMENT_GITHUB:
+            gh_pr_metadata_enabled = bool(self._gh_pr_metadata_enabled.isChecked())
+        elif gh_mode != GH_MANAGEMENT_GITHUB:
+            gh_pr_metadata_enabled = False
 
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
@@ -1885,6 +1932,7 @@ class EnvironmentsPage(QWidget):
             gh_management_target=gh_target,
             gh_management_locked=gh_locked,
             gh_use_host_cli=gh_use_host_cli,
+            gh_pr_metadata_enabled=gh_pr_metadata_enabled,
         )
         save_environment(env)
         self.updated.emit(env_id)
@@ -1911,6 +1959,12 @@ class EnvironmentsPage(QWidget):
         gh_target = str(existing.gh_management_target or "").strip() if existing else ""
         gh_locked = True
         gh_use_host_cli = bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
+        gh_pr_metadata_enabled = bool(getattr(existing, "gh_pr_metadata_enabled", False)) if existing else False
+
+        if existing and gh_mode == GH_MANAGEMENT_GITHUB:
+            gh_pr_metadata_enabled = bool(self._gh_pr_metadata_enabled.isChecked())
+        elif gh_mode != GH_MANAGEMENT_GITHUB:
+            gh_pr_metadata_enabled = False
 
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
@@ -1935,6 +1989,7 @@ class EnvironmentsPage(QWidget):
             gh_management_target=gh_target,
             gh_management_locked=gh_locked,
             gh_use_host_cli=gh_use_host_cli,
+            gh_pr_metadata_enabled=gh_pr_metadata_enabled,
         )
 
     def _on_test_preflight(self) -> None:
@@ -2020,6 +2075,11 @@ class SettingsPage(QWidget):
         browse_copilot.clicked.connect(self._pick_copilot_dir)
 
         self._preflight_enabled = QCheckBox("Enable settings preflight bash (runs on all envs, before env preflight)")
+        self._append_pixelarch_context = QCheckBox("Append PixelArch context to prompts (Run Agent only)")
+        self._append_pixelarch_context.setToolTip(
+            "When enabled, appends a short note to the end of the prompt passed to Run Agent.\n"
+            "This never affects Run Interactive."
+        )
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
@@ -2051,6 +2111,7 @@ class SettingsPage(QWidget):
         grid.addWidget(self._host_copilot_dir, 3, 1, 1, 2)
         grid.addWidget(browse_copilot, 3, 3)
         grid.addWidget(self._preflight_enabled, 4, 0, 1, 4)
+        grid.addWidget(self._append_pixelarch_context, 5, 0, 1, 4)
 
         self._agent_config_widgets: dict[str, tuple[QWidget, ...]] = {
             "codex": (codex_label, self._host_codex_dir, browse_codex),
@@ -2104,6 +2165,8 @@ class SettingsPage(QWidget):
         self._preflight_script.setEnabled(enabled)
         self._preflight_script.setPlainText(str(settings.get("preflight_script") or ""))
 
+        self._append_pixelarch_context.setChecked(bool(settings.get("append_pixelarch_context") or False))
+
     def get_settings(self) -> dict:
         return {
             "use": str(self._use.currentData() or "codex"),
@@ -2113,6 +2176,7 @@ class SettingsPage(QWidget):
             "host_copilot_dir": os.path.expanduser(str(self._host_copilot_dir.text() or "").strip()),
             "preflight_enabled": bool(self._preflight_enabled.isChecked()),
             "preflight_script": str(self._preflight_script.toPlainText() or ""),
+            "append_pixelarch_context": bool(self._append_pixelarch_context.isChecked()),
         }
 
     def _pick_codex_dir(self) -> None:
@@ -2198,6 +2262,7 @@ class MainWindow(QMainWindow):
             "window_w": 1280,
             "window_h": 720,
             "max_agents_running": -1,
+            "append_pixelarch_context": False,
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False
@@ -2449,6 +2514,7 @@ class MainWindow(QMainWindow):
         merged["interactive_command"] = str(merged.get("interactive_command") or "--sandbox danger-full-access")
         merged["interactive_command_claude"] = str(merged.get("interactive_command_claude") or "")
         merged["interactive_command_copilot"] = str(merged.get("interactive_command_copilot") or "")
+        merged["append_pixelarch_context"] = bool(merged.get("append_pixelarch_context") or False)
 
         try:
             merged["max_agents_running"] = int(str(merged.get("max_agents_running", -1)).strip())
@@ -2857,6 +2923,31 @@ class MainWindow(QMainWindow):
         elif gh_mode == GH_MANAGEMENT_GITHUB:
             self._on_task_log(task_id, "[gh] not a git repo; skipping branch/PR")
 
+        runner_prompt = prompt
+        if bool(self._settings_data.get("append_pixelarch_context") or False):
+            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
+        env_vars_for_task = dict(env.env_vars) if env else {}
+        extra_mounts_for_task = list(env.extra_mounts) if env else []
+        if (
+            env
+            and gh_mode == GH_MANAGEMENT_GITHUB
+            and bool(getattr(env, "gh_pr_metadata_enabled", False))
+            and task.gh_repo_root
+            and task.gh_branch
+        ):
+            host_path = pr_metadata_host_path(os.path.dirname(self._state_path), task_id)
+            container_path = pr_metadata_container_path(task_id)
+            try:
+                ensure_pr_metadata_file(host_path, task_id=task_id)
+            except Exception as exc:
+                self._on_task_log(task_id, f"[gh] failed to prepare PR metadata file: {exc}")
+            else:
+                task.gh_pr_metadata_path = host_path
+                extra_mounts_for_task.append(f"{host_path}:{container_path}:rw")
+                env_vars_for_task.setdefault("CODEX_PR_METADATA_PATH", container_path)
+                runner_prompt = f"{runner_prompt}{pr_metadata_prompt_instructions(container_path)}"
+                self._on_task_log(task_id, f"[gh] PR metadata enabled; mounted -> {container_path}")
+
         if self._can_start_new_agent_for_env(env_id):
             config = DockerRunnerConfig(
                 task_id=task_id,
@@ -2868,12 +2959,12 @@ class MainWindow(QMainWindow):
                 pull_before_run=True,
                 settings_preflight_script=settings_preflight_script,
                 environment_preflight_script=environment_preflight_script,
-                env_vars=dict(env.env_vars) if env else {},
-                extra_mounts=list(env.extra_mounts) if env else [],
+                env_vars=env_vars_for_task,
+                extra_mounts=extra_mounts_for_task,
                 agent_cli_args=agent_cli_args,
             )
             task._runner_config = config
-            task._runner_prompt = prompt
+            task._runner_prompt = runner_prompt
             self._actually_start_task(task)
         else:
             config = DockerRunnerConfig(
@@ -2886,12 +2977,12 @@ class MainWindow(QMainWindow):
                 pull_before_run=True,
                 settings_preflight_script=settings_preflight_script,
                 environment_preflight_script=environment_preflight_script,
-                env_vars=dict(env.env_vars) if env else {},
-                extra_mounts=list(env.extra_mounts) if env else [],
+                env_vars=env_vars_for_task,
+                extra_mounts=extra_mounts_for_task,
                 agent_cli_args=agent_cli_args,
             )
             task._runner_config = config
-            task._runner_prompt = prompt
+            task._runner_prompt = runner_prompt
             self._on_task_log(task_id, "[queue] Waiting for available slot...")
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
@@ -3424,6 +3515,7 @@ class MainWindow(QMainWindow):
                         str(task.prompt or ""),
                         str(task.task_id or task_id),
                         bool(task.gh_use_host_cli),
+                        None,
                     ),
                     daemon=True,
                 ).start()
@@ -3810,9 +3902,19 @@ class MainWindow(QMainWindow):
             base_branch = str(task.gh_base_branch or "").strip() or "main"
             prompt_text = str(task.prompt or "")
             task_token = str(task.task_id or task_id)
+            pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
             threading.Thread(
                 target=self._finalize_gh_management_worker,
-                args=(task_id, repo_root, branch, base_branch, prompt_text, task_token, bool(task.gh_use_host_cli)),
+                args=(
+                    task_id,
+                    repo_root,
+                    branch,
+                    base_branch,
+                    prompt_text,
+                    task_token,
+                    bool(task.gh_use_host_cli),
+                    pr_metadata_path,
+                ),
                 daemon=True,
             ).start()
 
@@ -3825,20 +3927,31 @@ class MainWindow(QMainWindow):
         prompt_text: str,
         task_token: str,
         use_gh: bool,
+        pr_metadata_path: str | None = None,
     ) -> None:
         if not repo_root or not branch:
             return
 
         prompt_line = (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
-        title = f"codex: {prompt_line or task_id}"
-        if len(title) > 72:
-            title = title[:69].rstrip() + "..."
-        body = (
+        default_title = f"codex: {prompt_line or task_id}"
+        default_title = normalize_pr_title(default_title, fallback=default_title)
+        default_body = (
             f"Automated by {APP_TITLE}.\n\n"
             f"Task: {task_token}\n\n"
             "Prompt:\n"
             f"{(prompt_text or '').strip()}\n"
         )
+        metadata = load_pr_metadata(pr_metadata_path or "") if pr_metadata_path else None
+        if metadata is not None and (metadata.title or metadata.body):
+            self.host_log.emit(task_id, f"[gh] using PR metadata from {pr_metadata_path}")
+        title = (
+            normalize_pr_title(str(metadata.title or ""), fallback=default_title)
+            if metadata is not None
+            else default_title
+        )
+        body = str(metadata.body or "").strip() if metadata is not None else ""
+        if not body:
+            body = default_body
 
         self.host_log.emit(task_id, f"[gh] preparing PR from {branch} -> {base_branch}")
         try:

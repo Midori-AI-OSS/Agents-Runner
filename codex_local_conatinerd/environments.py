@@ -72,6 +72,7 @@ class Environment:
     gh_management_target: str = ""
     gh_management_locked: bool = False
     gh_use_host_cli: bool = True
+    gh_pr_metadata_enabled: bool = False
 
     def normalized_color(self) -> str:
         value = (self.color or "").strip().lower()
@@ -129,6 +130,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     gh_management_target = str(payload.get("gh_management_target") or "").strip()
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
+    gh_pr_metadata_enabled = bool(payload.get("gh_pr_metadata_enabled", False))
     
     return Environment(
         env_id=env_id,
@@ -146,6 +148,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         gh_management_target=gh_management_target,
         gh_management_locked=gh_management_locked,
         gh_use_host_cli=gh_use_host_cli,
+        gh_pr_metadata_enabled=gh_pr_metadata_enabled,
     )
 
 
@@ -170,6 +173,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gh_management_target": str(env.gh_management_target or "").strip(),
         "gh_management_locked": bool(env.gh_management_locked),
         "gh_use_host_cli": bool(env.gh_use_host_cli),
+        "gh_pr_metadata_enabled": bool(env.gh_pr_metadata_enabled),
     }
 
 

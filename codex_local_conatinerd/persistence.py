@@ -102,6 +102,7 @@ def serialize_task(task) -> dict[str, Any]:
         "gh_base_branch": getattr(task, "gh_base_branch", ""),
         "gh_branch": getattr(task, "gh_branch", ""),
         "gh_pr_url": getattr(task, "gh_pr_url", ""),
+        "gh_pr_metadata_path": getattr(task, "gh_pr_metadata_path", ""),
         "logs": list(task.logs[-2000:]),
     }
 
@@ -127,5 +128,6 @@ def deserialize_task(task_cls, data: dict[str, Any]):
         gh_base_branch=str(data.get("gh_base_branch") or ""),
         gh_branch=str(data.get("gh_branch") or ""),
         gh_pr_url=str(data.get("gh_pr_url") or ""),
+        gh_pr_metadata_path=str(data.get("gh_pr_metadata_path") or ""),
         logs=list(data.get("logs") or []),
     )
