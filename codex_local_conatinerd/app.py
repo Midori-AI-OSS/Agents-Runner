@@ -1066,6 +1066,14 @@ class TaskDetailsPage(QWidget):
 
         self._last_task: Task | None = None
 
+    def _logs_is_at_bottom(self, slack: int = 6) -> bool:
+        bar = self._logs.verticalScrollBar()
+        return bar.value() >= (bar.maximum() - slack)
+
+    def _scroll_logs_to_bottom(self) -> None:
+        bar = self._logs.verticalScrollBar()
+        bar.setValue(bar.maximum())
+
     def current_task_id(self) -> str | None:
         return self._current_task_id
 
@@ -1079,13 +1087,17 @@ class TaskDetailsPage(QWidget):
         self._codexdir.setText(task.host_codex_dir)
         self._container.setText(task.container_id or "—")
         self._logs.setPlainText("\n".join(task.logs[-5000:]))
+        QTimer.singleShot(0, self._scroll_logs_to_bottom)
         self._apply_status(task)
         self._tick_uptime()
 
     def append_log(self, task_id: str, line: str) -> None:
         if self._current_task_id != task_id:
             return
+        should_follow = self._logs_is_at_bottom()
         self._logs.appendPlainText(line)
+        if should_follow:
+            QTimer.singleShot(0, self._scroll_logs_to_bottom)
 
     def update_task(self, task: Task) -> None:
         if self._current_task_id != task.task_id:
