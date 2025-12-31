@@ -10,9 +10,9 @@ uv run main.py
 
 ## Supported Agents
 
-- **GitHub Codex** - [PLACEHOLDER]
-- **Claude Code** - [PLACEHOLDER]
-- **GitHub Copilot** - [PLACEHOLDER]
+- **GitHub Codex** - [Install](https://github.com/openai/codex/blob/main/README.md)
+- **Claude Code** - [Install](https://code.claude.com/docs/en/overview) # May not be fully supported, open a issue if you run into bugs
+- **GitHub Copilot** - [Install](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) # May not be fully supported, open a issue if you run into bugs
 
 ## Features
 
