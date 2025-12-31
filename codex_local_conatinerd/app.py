@@ -102,20 +102,14 @@ APP_TITLE = "Midori AI Agents Runner"
 
 def _app_icon() -> QIcon | None:
     icon_path = Path(__file__).resolve().with_name("midoriai-logo.png")
-    if not icon_path.exists():
-        return None
-    return QIcon(str(icon_path))
+    return QIcon(str(icon_path)) if icon_path.exists() else None
 
 
 def _parse_docker_time(value: str | None) -> datetime | None:
     dt = parse_docker_datetime(value)
-    if dt is None:
-        return None
-    # Docker reports Go's "zero time" for fields like FinishedAt while running:
-    # "0001-01-01T00:00:00Z". Treat anything pre-epoch as unset.
-    if dt.year < 1970:
-        return None
-    return dt
+    # Docker reports Go's "zero time" for fields like FinishedAt while running.
+    # Treat anything pre-epoch as unset.
+    return dt if dt and dt.year >= 1970 else None
 
 
 def _format_duration(seconds: float | None) -> str:
@@ -124,56 +118,54 @@ def _format_duration(seconds: float | None) -> str:
     seconds = max(0.0, float(seconds))
     if seconds < 60:
         return f"{int(seconds)}s"
-    minutes = int(seconds // 60)
-    rem = seconds - minutes * 60
+    minutes, rem = divmod(int(seconds), 60)
     if minutes < 60:
         return f"{minutes}m {int(rem)}s"
-    hours = int(minutes // 60)
-    minutes = minutes - hours * 60
+    hours, minutes = divmod(minutes, 60)
     return f"{hours}h {minutes}m"
 
 
+def _safe_str(value: object, default: str = "") -> str:
+    """Convert value to stripped string, returning default if empty."""
+    return str(value or default).strip() or default
+
+
 def _status_color(status: str) -> QColor:
-    key = (status or "").lower()
-    if key in {"pulling"}:
-        return QColor(56, 189, 248, 220)
-    if key in {"done"}:
-        return QColor(16, 185, 129, 230)
-    if key in {"failed"}:
-        return QColor(244, 63, 94, 230)
-    if key in {"created"}:
-        return QColor(148, 163, 184, 220)
-    if key in {"running"}:
-        return QColor(16, 185, 129, 220)
-    if key in {"paused"}:
-        return QColor(245, 158, 11, 220)
-    if key in {"restarting", "removing"}:
-        return QColor(56, 189, 248, 220)
-    if key in {"exited", "dead"}:
-        return QColor(148, 163, 184, 220)
-    if key in {"error"}:
-        return QColor(244, 63, 94, 220)
-    return QColor(148, 163, 184, 220)
+    """Map status string to color."""
+    color_map = {
+        "pulling": (56, 189, 248, 220),
+        "done": (16, 185, 129, 230),
+        "failed": (244, 63, 94, 230),
+        "created": (148, 163, 184, 220),
+        "running": (16, 185, 129, 220),
+        "paused": (245, 158, 11, 220),
+        "restarting": (56, 189, 248, 220),
+        "removing": (56, 189, 248, 220),
+        "exited": (148, 163, 184, 220),
+        "dead": (148, 163, 184, 220),
+        "error": (244, 63, 94, 220),
+    }
+    rgba = color_map.get((status or "").lower(), (148, 163, 184, 220))
+    return QColor(*rgba)
 
 
 def _rgba(color: QColor, alpha: int | None = None) -> str:
-    a = int(color.alpha()) if alpha is None else int(alpha)
-    return f"rgba({color.red()}, {color.green()}, {color.blue()}, {a})"
+    """Convert QColor to CSS rgba() string."""
+    a = color.alpha() if alpha is None else alpha
+    return f"rgba({color.red()}, {color.green()}, {color.blue()}, {int(a)})"
 
 
 def _stain_color(stain: str) -> QColor:
-    key = (stain or "").strip().lower()
-    if key == "cyan":
-        return QColor(56, 189, 248, 220)
-    if key == "emerald":
-        return QColor(16, 185, 129, 220)
-    if key == "violet":
-        return QColor(139, 92, 246, 220)
-    if key == "rose":
-        return QColor(244, 63, 94, 220)
-    if key == "amber":
-        return QColor(245, 158, 11, 220)
-    return QColor(148, 163, 184, 220)
+    """Map stain name to color."""
+    color_map = {
+        "cyan": (56, 189, 248, 220),
+        "emerald": (16, 185, 129, 220),
+        "violet": (139, 92, 246, 220),
+        "rose": (244, 63, 94, 220),
+        "amber": (245, 158, 11, 220),
+    }
+    rgba = color_map.get((stain or "").strip().lower(), (148, 163, 184, 220))
+    return QColor(*rgba)
 
 
 def _blend_rgb(a: QColor, b: QColor, t: float) -> QColor:
@@ -274,32 +266,29 @@ class GlassRoot(QWidget):
     def _ensure_orbs(self) -> None:
         if self._orbs:
             return
-        w = self.width()
-        h = self.height()
+        w, h = self.width(), self.height()
         if w < 80 or h < 80:
             return
 
         colors = self._theme_colors()
-        count = 9
         orbs: list[_BackgroundOrb] = []
-        for idx in range(count):
+        for idx in range(9):
             radius = self._orb_rng.uniform(140.0, 260.0)
             render_r = radius * 1.65
-            x_min = render_r
-            y_min = render_r
-            x_max = max(x_min, w - render_r)
-            y_max = max(y_min, h - render_r)
+            x = self._orb_rng.uniform(render_r, max(render_r, w - render_r))
+            y = self._orb_rng.uniform(render_r, max(render_r, h - render_r))
 
-            x = self._orb_rng.uniform(x_min, x_max)
-            y = self._orb_rng.uniform(y_min, y_max)
+            if self._animate_orbs:
+                angle = self._orb_rng.uniform(0.0, 6.283185307179586)
+                speed = self._orb_rng.uniform(8.0, 22.0)
+                vx = math.cos(angle) * speed
+                vy = math.sin(angle) * speed
+            else:
+                vx = vy = 0.0
 
-            angle = self._orb_rng.uniform(0.0, 6.283185307179586)
-            speed = self._orb_rng.uniform(8.0, 22.0)
-            vx = math.cos(angle) * speed if self._animate_orbs else 0.0
-            vy = math.sin(angle) * speed if self._animate_orbs else 0.0
-
-            color = colors[idx % len(colors)]
-            orbs.append(_BackgroundOrb(x=x, y=y, vx=vx, vy=vy, radius=radius, color=color))
+            orbs.append(_BackgroundOrb(
+                x=x, y=y, vx=vx, vy=vy, radius=radius, color=colors[idx % len(colors)]
+            ))
 
         self._orbs = orbs
         self._constrain_orbs()
@@ -2666,59 +2655,59 @@ class MainWindow(QMainWindow):
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
     def _reload_environments(self, preferred_env_id: str = "") -> None:
-	        envs = load_environments()
-	        if not envs:
-	            active_workdir = str(self._settings_data.get("host_workdir") or os.getcwd())
-	            active_codex = str(self._settings_data.get("host_codex_dir") or os.path.expanduser("~/.codex"))
-	            try:
-	                max_agents_running = int(str(self._settings_data.get("max_agents_running", -1)).strip())
-	            except Exception:
-	                max_agents_running = -1
-	            env = Environment(
-	                env_id="default",
-	                name="Default",
-	                color="emerald",
-	                host_workdir="",
-	                host_codex_dir=active_codex,
-	                max_agents_running=max_agents_running,
-	                preflight_enabled=False,
-	                preflight_script="",
-	                gh_management_mode=GH_MANAGEMENT_LOCAL,
-	                gh_management_target=os.path.expanduser(active_workdir),
-	                gh_management_locked=True,
-	                gh_use_host_cli=bool(is_gh_available()),
-	            )
-	            save_environment(env)
-	            envs = load_environments()
+        envs = load_environments()
+        if not envs:
+            active_workdir = str(self._settings_data.get("host_workdir") or os.getcwd())
+            active_codex = str(self._settings_data.get("host_codex_dir") or os.path.expanduser("~/.codex"))
+            try:
+                max_agents_running = int(str(self._settings_data.get("max_agents_running", -1)).strip())
+            except Exception:
+                max_agents_running = -1
+            env = Environment(
+                env_id="default",
+                name="Default",
+                color="emerald",
+                host_workdir="",
+                host_codex_dir=active_codex,
+                max_agents_running=max_agents_running,
+                preflight_enabled=False,
+                preflight_script="",
+                gh_management_mode=GH_MANAGEMENT_LOCAL,
+                gh_management_target=os.path.expanduser(active_workdir),
+                gh_management_locked=True,
+                gh_use_host_cli=bool(is_gh_available()),
+            )
+            save_environment(env)
+            envs = load_environments()
 
-	        for env in envs.values():
-	            gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE))
-	            if gh_mode != GH_MANAGEMENT_NONE:
-	                continue
-	            legacy_workdir = os.path.expanduser(str(env.host_workdir or "").strip())
-	            if legacy_workdir:
-	                env.gh_management_mode = GH_MANAGEMENT_LOCAL
-	                env.gh_management_target = legacy_workdir
-	                env.gh_management_locked = True
+        for env in envs.values():
+            gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE))
+            if gh_mode != GH_MANAGEMENT_NONE:
+                continue
+            legacy_workdir = os.path.expanduser(str(env.host_workdir or "").strip())
+            if legacy_workdir:
+                env.gh_management_mode = GH_MANAGEMENT_LOCAL
+                env.gh_management_target = legacy_workdir
+                env.gh_management_locked = True
 
-	        self._environments = dict(envs)
-	        active_id = self._active_environment_id()
-	        if active_id not in self._environments:
-	            if "default" in self._environments:
-	                self._settings_data["active_environment_id"] = "default"
-	            else:
-	                ordered = self._environment_list()
-	                if ordered:
-	                    self._settings_data["active_environment_id"] = ordered[0].env_id
-	        for task in self._tasks.values():
-	            if not task.environment_id:
-	                task.environment_id = self._active_environment_id()
-	        if self._envs_page.isVisible():
-	            selected = preferred_env_id or self._envs_page.selected_environment_id() or self._active_environment_id()
-	            self._envs_page.set_environments(self._environments, selected)
-	        self._apply_active_environment_to_new_task()
-	        self._refresh_task_rows()
-	        self._schedule_save()
+        self._environments = dict(envs)
+        active_id = self._active_environment_id()
+        if active_id not in self._environments:
+            if "default" in self._environments:
+                self._settings_data["active_environment_id"] = "default"
+            else:
+                ordered = self._environment_list()
+                if ordered:
+                    self._settings_data["active_environment_id"] = ordered[0].env_id
+        for task in self._tasks.values():
+            if not task.environment_id:
+                task.environment_id = self._active_environment_id()
+        if self._envs_page.isVisible():
+            selected = preferred_env_id or self._envs_page.selected_environment_id() or self._active_environment_id()
+            self._envs_page.set_environments(self._environments, selected)
+        self._apply_active_environment_to_new_task()
+        self._refresh_task_rows()
+        self._schedule_save()
 
     def _clean_old_tasks(self) -> None:
         to_remove: set[str] = set()

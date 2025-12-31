@@ -63,11 +63,10 @@ def _run_docker(args: list[str], timeout_s: float = 30.0, *, env: dict[str, str]
 
 
 def _inspect_state(container_id: str) -> dict[str, Any]:
+    """Get container state from docker inspect."""
     raw = _run_docker(["inspect", container_id], timeout_s=30.0)
     payload = json.loads(raw)
-    if not payload:
-        return {}
-    return payload[0].get("State") or {}
+    return payload[0].get("State", {}) if payload else {}
 
 
 def _has_image(image: str) -> bool:
