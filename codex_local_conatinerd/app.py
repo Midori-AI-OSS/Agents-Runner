@@ -3096,6 +3096,11 @@ class MainWindow(QMainWindow):
 
             container_script = "set -euo pipefail; " f"{preflight_clause}{verify_clause}{target_cmd}"
 
+            forward_gh_token = bool(cmd_parts and cmd_parts[0] == "copilot")
+            docker_env_passthrough: list[str] = []
+            if forward_gh_token:
+                docker_env_passthrough = ["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"]
+
             docker_args = [
                 "docker",
                 "run",
@@ -3109,6 +3114,7 @@ class MainWindow(QMainWindow):
                 *extra_mount_args,
                 *preflight_mounts,
                 *env_args,
+                *docker_env_passthrough,
                 "-w",
                 container_workdir,
                 image,
@@ -3127,8 +3133,17 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-            host_script = " ; ".join(
-                [
+            gh_token_snippet = ""
+            if forward_gh_token:
+                gh_token_snippet = (
+                    'if [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then '
+                    'TOKEN="$(gh auth token -h github.com 2>/dev/null || true)"; '
+                    'TOKEN="$(printf "%s" "$TOKEN" | tr -d "\\r\\n")"; '
+                    'if [ -n "$TOKEN" ]; then export GH_TOKEN="$TOKEN"; export GITHUB_TOKEN="$TOKEN"; fi; '
+                    "fi"
+                )
+
+            host_script_parts = [
                     f'CONTAINER_NAME={shlex.quote(container_name)}',
                     f'TMP_SETTINGS={shlex.quote(settings_tmp_path)}',
                     f'TMP_ENV={shlex.quote(env_tmp_path)}',
@@ -3139,10 +3154,16 @@ class MainWindow(QMainWindow):
                     'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; }',
                     'finish() { STATUS=$?; if [ ! -e "$FINISH_FILE" ]; then write_finish "$STATUS"; fi; cleanup; }',
                     "trap finish EXIT",
+                ]
+            if gh_token_snippet:
+                host_script_parts.append(gh_token_snippet)
+            host_script_parts.extend(
+                [
                     f"docker pull {shlex.quote(image)} || {{ STATUS=$?; echo \"[host] docker pull failed (exit $STATUS)\"; write_finish \"$STATUS\"; read -r -p \"Press Enter to close...\"; exit $STATUS; }}",
                     f"{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then echo \"[host] container command failed (exit $STATUS)\"; fi; write_finish \"$STATUS\"; if [ $STATUS -ne 0 ]; then read -r -p \"Press Enter to close...\"; fi; exit $STATUS",
                 ]
             )
+            host_script = " ; ".join(host_script_parts)
 
             self._settings_data["host_workdir"] = host_workdir
             self._settings_data[self._host_config_dir_key(agent_cli)] = host_codex

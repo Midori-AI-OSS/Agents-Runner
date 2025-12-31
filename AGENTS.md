@@ -10,6 +10,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - **UI styling:** Located in `codex_local_conatinerd/style.py` (Qt stylesheet) and `codex_local_conatinerd/widgets.py` (custom widgets)
 - **Design constraint:** Keep sharp/square corners (avoid `border-radius` and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
+- **Docs:** Do not update the readme unless asked to
 
 ---
 

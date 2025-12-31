@@ -20,6 +20,7 @@ from codex_local_conatinerd.agent_cli import build_noninteractive_cmd
 from codex_local_conatinerd.agent_cli import container_config_dir
 from codex_local_conatinerd.agent_cli import normalize_agent
 from codex_local_conatinerd.agent_cli import verify_cli_clause
+from codex_local_conatinerd.github_token import resolve_github_token
 
 
 @dataclass(frozen=True)
@@ -44,11 +45,12 @@ class DockerRunnerConfig:
     agent_cli_args: list[str] = field(default_factory=list)
 
 
-def _run_docker(args: list[str], timeout_s: float = 30.0) -> str:
+def _run_docker(args: list[str], timeout_s: float = 30.0, *, env: dict[str, str] | None = None) -> str:
     completed = subprocess.run(
         ["docker", *args],
         capture_output=True,
         check=False,
+        env=env,
         text=True,
         timeout=timeout_s,
     )
@@ -116,6 +118,7 @@ class DockerPreflightWorker:
 
     def run(self) -> None:
         preflight_tmp_paths: list[str] = []
+        docker_env: dict[str, str] | None = None
         try:
             os.makedirs(self._config.host_codex_dir, exist_ok=True)
             agent_cli = normalize_agent(self._config.agent_cli)
@@ -217,6 +220,16 @@ class DockerPreflightWorker:
                     continue
                 env_args.extend(["-e", f"{k}={value}"])
 
+            if agent_cli == "copilot":
+                token = resolve_github_token()
+                if token and "GH_TOKEN" not in (self._config.env_vars or {}) and "GITHUB_TOKEN" not in (
+                    self._config.env_vars or {}
+                ):
+                    docker_env = dict(os.environ)
+                    docker_env["GH_TOKEN"] = token
+                    docker_env["GITHUB_TOKEN"] = token
+                    env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
+
             extra_mount_args: list[str] = []
             for mount in (self._config.extra_mounts or []):
                 m = str(mount).strip()
@@ -251,7 +264,7 @@ class DockerPreflightWorker:
                 f"{preflight_clause}"
                 'echo "[preflight] complete"; ',
             ]
-            self._container_id = _run_docker(args, timeout_s=60.0)
+            self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
             try:
                 self._on_state(_inspect_state(self._container_id))
             except Exception:
@@ -362,6 +375,7 @@ class DockerCodexWorker:
 
     def run(self) -> None:
         preflight_tmp_paths: list[str] = []
+        docker_env: dict[str, str] | None = None
         try:
             os.makedirs(self._config.host_codex_dir, exist_ok=True)
             agent_cli = normalize_agent(self._config.agent_cli)
@@ -474,6 +488,17 @@ class DockerCodexWorker:
                     continue
                 env_args.extend(["-e", f"{k}={value}"])
 
+            if agent_cli == "copilot":
+                token = resolve_github_token()
+                if token and "GH_TOKEN" not in (self._config.env_vars or {}) and "GITHUB_TOKEN" not in (
+                    self._config.env_vars or {}
+                ):
+                    self._on_log("[auth] forwarding GitHub token from host -> container")
+                    docker_env = dict(os.environ)
+                    docker_env["GH_TOKEN"] = token
+                    docker_env["GITHUB_TOKEN"] = token
+                    env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
+
             extra_mount_args: list[str] = []
             for mount in (self._config.extra_mounts or []):
                 m = str(mount).strip()
@@ -508,7 +533,7 @@ class DockerCodexWorker:
                 f"{verify_cli_clause(agent_cli)}"
                 f"exec {agent_cmd}",
             ]
-            self._container_id = _run_docker(args, timeout_s=60.0)
+            self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
             try:
                 self._on_state(_inspect_state(self._container_id))
             except Exception:
