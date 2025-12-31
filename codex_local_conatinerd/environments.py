@@ -63,6 +63,7 @@ class Environment:
     host_workdir: str = ""
     host_codex_dir: str = ""
     agent_cli_args: str = ""
+    max_agents_running: int = -1
     preflight_enabled: bool = False
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
@@ -106,6 +107,10 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     host_workdir = str(payload.get("host_workdir") or "").strip()
     host_codex_dir = str(payload.get("host_codex_dir") or "").strip()
     agent_cli_args = str(payload.get("agent_cli_args") or payload.get("codex_extra_args") or "").strip()
+    try:
+        max_agents_running = int(str(payload.get("max_agents_running", -1)).strip())
+    except Exception:
+        max_agents_running = -1
     preflight_enabled = bool(payload.get("preflight_enabled") or False)
     preflight_script = str(payload.get("preflight_script") or "")
     env_vars = payload.get("env_vars") or {}
@@ -125,6 +130,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         host_workdir=host_workdir,
         host_codex_dir=host_codex_dir,
         agent_cli_args=agent_cli_args,
+        max_agents_running=max_agents_running,
         preflight_enabled=preflight_enabled,
         preflight_script=preflight_script,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
@@ -150,6 +156,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         # backwards compatibility with older builds.
         "agent_cli_args": env.agent_cli_args,
         "codex_extra_args": env.agent_cli_args,
+        "max_agents_running": int(env.max_agents_running),
         "preflight_enabled": bool(env.preflight_enabled),
         "preflight_script": env.preflight_script,
         "env_vars": dict(env.env_vars),
@@ -187,15 +194,25 @@ def load_environments(data_dir: str | None = None) -> dict[str, Environment]:
     if not os.path.exists(state_path):
         return {}
     state = load_state(state_path)
+    default_max_agents_running = -1
+    settings = state.get("settings")
+    if isinstance(settings, dict):
+        try:
+            default_max_agents_running = int(str(settings.get("max_agents_running", -1)).strip())
+        except Exception:
+            default_max_agents_running = -1
     raw = state.get("environments")
     envs: dict[str, Environment] = {}
     if isinstance(raw, list):
         for item in raw:
             if not isinstance(item, dict):
                 continue
+            has_max_agents = "max_agents_running" in item
             env = _environment_from_payload(item)
             if env is None:
                 continue
+            if not has_max_agents:
+                env.max_agents_running = default_max_agents_running
             envs[env.env_id] = env
     if envs:
         return envs

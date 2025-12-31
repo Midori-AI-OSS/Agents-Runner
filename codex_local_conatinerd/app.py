@@ -1535,6 +1535,13 @@ class EnvironmentsPage(QWidget):
             "Extra CLI flags appended to the agent command inside the container."
         )
 
+        self._max_agents_running = QLineEdit()
+        self._max_agents_running.setPlaceholderText("-1 (unlimited)")
+        self._max_agents_running.setToolTip(
+            "Maximum agents running at the same time for this environment. Set to -1 for no limit."
+        )
+        self._max_agents_running.setMaximumWidth(150)
+
         browse_codex = QPushButton("Browse…")
         browse_codex.setFixedWidth(100)
         browse_codex.clicked.connect(self._pick_codex_dir)
@@ -1548,6 +1555,8 @@ class EnvironmentsPage(QWidget):
         grid.addWidget(browse_codex, 2, 2)
         grid.addWidget(QLabel("Agent CLI Flags"), 3, 0)
         grid.addWidget(self._agent_cli_args, 3, 1, 1, 2)
+        grid.addWidget(QLabel("Max agents running"), 4, 0)
+        grid.addWidget(self._max_agents_running, 4, 1, 1, 2)
 
         self._gh_management_mode = QComboBox(general_tab)
         self._gh_management_mode.addItem("Use Settings workdir", GH_MANAGEMENT_NONE)
@@ -1660,6 +1669,7 @@ class EnvironmentsPage(QWidget):
             self._name.setText("")
             self._host_codex_dir.setText("")
             self._agent_cli_args.setText("")
+            self._max_agents_running.setText("-1")
             self._gh_management_mode.setCurrentIndex(0)
             self._gh_management_target.setText("")
             self._gh_use_host_cli.setChecked(bool(is_gh_available()))
@@ -1676,6 +1686,7 @@ class EnvironmentsPage(QWidget):
             self._color.setCurrentIndex(idx)
         self._host_codex_dir.setText(env.host_codex_dir)
         self._agent_cli_args.setText(env.agent_cli_args)
+        self._max_agents_running.setText(str(int(getattr(env, "max_agents_running", -1))))
         idx = self._gh_management_mode.findData(normalize_gh_management_mode(env.gh_management_mode))
         if idx >= 0:
             self._gh_management_mode.setCurrentIndex(idx)
@@ -1796,6 +1807,10 @@ class EnvironmentsPage(QWidget):
         gh_use_host_cli = bool(getattr(base, "gh_use_host_cli", True)) if base else True
         if not is_gh_available():
             gh_use_host_cli = False
+        try:
+            max_agents_running = int(str(getattr(base, "max_agents_running", -1) if base else -1).strip())
+        except Exception:
+            max_agents_running = -1
         env = Environment(
             env_id=env_id,
             name=name,
@@ -1803,6 +1818,7 @@ class EnvironmentsPage(QWidget):
             host_workdir="",
             host_codex_dir=base.host_codex_dir if base else "",
             agent_cli_args=base.agent_cli_args if base else "",
+            max_agents_running=max_agents_running,
             preflight_enabled=base.preflight_enabled if base else False,
             preflight_script=base.preflight_script if base else "",
             env_vars=dict(base.env_vars) if base else {},
@@ -1833,17 +1849,25 @@ class EnvironmentsPage(QWidget):
         self.updated.emit("")
 
     def _on_save(self) -> None:
+        self.try_autosave()
+
+    def try_autosave(self) -> bool:
         env_id = self._current_env_id
         if not env_id:
-            return
+            return True
         name = (self._name.text() or "").strip()
         if not name:
             QMessageBox.warning(self, "Missing name", "Enter an environment name first.")
-            return
+            return False
 
         existing = self._environments.get(env_id)
         host_codex_dir = os.path.expanduser((self._host_codex_dir.text() or "").strip())
         agent_cli_args = (self._agent_cli_args.text() or "").strip()
+        max_agents_text = str(self._max_agents_running.text() or "-1").strip()
+        try:
+            max_agents_running = int(max_agents_text)
+        except ValueError:
+            max_agents_running = -1
 
         gh_mode = normalize_gh_management_mode(existing.gh_management_mode if existing else GH_MANAGEMENT_NONE)
         gh_target = str(existing.gh_management_target or "").strip() if existing else ""
@@ -1853,7 +1877,7 @@ class EnvironmentsPage(QWidget):
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
             QMessageBox.warning(self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12]))
-            return
+            return False
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
         env = Environment(
@@ -1863,6 +1887,7 @@ class EnvironmentsPage(QWidget):
             host_workdir="",
             host_codex_dir=host_codex_dir,
             agent_cli_args=agent_cli_args,
+            max_agents_running=max_agents_running,
             preflight_enabled=bool(self._preflight_enabled.isChecked()),
             preflight_script=str(self._preflight_script.toPlainText() or ""),
             env_vars=env_vars,
@@ -1874,6 +1899,7 @@ class EnvironmentsPage(QWidget):
         )
         save_environment(env)
         self.updated.emit(env_id)
+        return True
 
     def selected_environment_id(self) -> str:
         return str(self._env_select.currentData() or "")
@@ -1886,6 +1912,11 @@ class EnvironmentsPage(QWidget):
         existing = self._environments.get(env_id)
         host_codex_dir = os.path.expanduser((self._host_codex_dir.text() or "").strip())
         agent_cli_args = (self._agent_cli_args.text() or "").strip()
+        max_agents_text = str(self._max_agents_running.text() or "-1").strip()
+        try:
+            max_agents_running = int(max_agents_text)
+        except ValueError:
+            max_agents_running = -1
 
         gh_mode = normalize_gh_management_mode(existing.gh_management_mode if existing else GH_MANAGEMENT_NONE)
         gh_target = str(existing.gh_management_target or "").strip() if existing else ""
@@ -1906,6 +1937,7 @@ class EnvironmentsPage(QWidget):
             host_workdir="",
             host_codex_dir=host_codex_dir,
             agent_cli_args=agent_cli_args,
+            max_agents_running=max_agents_running,
             preflight_enabled=bool(self._preflight_enabled.isChecked()),
             preflight_script=str(self._preflight_script.toPlainText() or ""),
             env_vars=env_vars,
@@ -2122,7 +2154,11 @@ class SettingsPage(QWidget):
             self._host_copilot_dir.setText(path)
 
     def _on_save(self) -> None:
+        self.try_autosave()
+
+    def try_autosave(self) -> bool:
         self.saved.emit(self.get_settings())
+        return True
 
     def _on_test_preflight(self) -> None:
         self.test_preflight_requested.emit(self.get_settings())
@@ -2172,6 +2208,7 @@ class MainWindow(QMainWindow):
             "interactive_command_copilot": "--add-dir /home/midori-ai/workspace",
             "window_w": 1280,
             "window_h": 720,
+            "max_agents_running": -1,
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False
@@ -2281,6 +2318,45 @@ class MainWindow(QMainWindow):
         self._reload_environments()
         self._apply_settings_to_pages()
 
+    def _count_running_agents(self, env_id: str | None = None) -> int:
+        count = 0
+        env_id = str(env_id or "").strip() or None
+        for task in self._tasks.values():
+            if env_id and str(getattr(task, "environment_id", "") or "") != env_id:
+                continue
+            if task.status.lower() in {"pulling", "created", "running", "starting"}:
+                count += 1
+        return count
+
+    def _max_agents_running_for_env(self, env_id: str | None) -> int:
+        env_id = str(env_id or "").strip()
+        env = self._environments.get(env_id) if env_id else None
+        if env is not None:
+            try:
+                return int(getattr(env, "max_agents_running", -1))
+            except Exception:
+                return -1
+        try:
+            return int(self._settings_data.get("max_agents_running", -1))
+        except Exception:
+            return -1
+
+    def _can_start_new_agent_for_env(self, env_id: str | None) -> bool:
+        max_agents = self._max_agents_running_for_env(env_id)
+        if max_agents < 0:
+            return True
+        return self._count_running_agents(env_id) < max_agents
+
+    def _try_start_queued_tasks(self) -> None:
+        queued = [t for t in self._tasks.values() if t.status.lower() == "queued"]
+        if not queued:
+            return
+        queued.sort(key=lambda t: t.created_at_s)
+        for task in queued:
+            if not self._can_start_new_agent_for_env(getattr(task, "environment_id", "")):
+                continue
+            self._actually_start_task(task)
+
     def _apply_window_prefs(self) -> None:
         try:
             w = int(self._settings_data.get("window_w") or 1280)
@@ -2299,6 +2375,8 @@ class MainWindow(QMainWindow):
             self._schedule_save()
 
     def _show_dashboard(self) -> None:
+        if not self._try_autosave_before_navigation():
+            return
         self._new_task.hide()
         self._details.hide()
         self._envs_page.hide()
@@ -2306,6 +2384,8 @@ class MainWindow(QMainWindow):
         self._dashboard.show()
 
     def _show_new_task(self) -> None:
+        if not self._try_autosave_before_navigation():
+            return
         self._dashboard.hide()
         self._details.hide()
         self._envs_page.hide()
@@ -2314,6 +2394,8 @@ class MainWindow(QMainWindow):
         self._new_task.show()
 
     def _show_task_details(self) -> None:
+        if not self._try_autosave_before_navigation():
+            return
         self._dashboard.hide()
         self._new_task.hide()
         self._envs_page.hide()
@@ -2321,6 +2403,10 @@ class MainWindow(QMainWindow):
         self._details.show()
 
     def _show_environments(self) -> None:
+        if self._envs_page.isVisible():
+            return
+        if not self._try_autosave_before_navigation():
+            return
         self._dashboard.hide()
         self._new_task.hide()
         self._details.hide()
@@ -2329,12 +2415,23 @@ class MainWindow(QMainWindow):
         self._envs_page.show()
 
     def _show_settings(self) -> None:
+        if self._settings.isVisible():
+            return
+        if not self._try_autosave_before_navigation():
+            return
         self._dashboard.hide()
         self._new_task.hide()
         self._details.hide()
         self._envs_page.hide()
         self._settings.set_settings(self._settings_data)
         self._settings.show()
+
+    def _try_autosave_before_navigation(self) -> bool:
+        if self._envs_page.isVisible() and not self._envs_page.try_autosave():
+            return False
+        if self._settings.isVisible() and not self._settings.try_autosave():
+            return False
+        return True
 
     def _apply_settings_to_pages(self) -> None:
         self._settings.set_settings(self._settings_data)
@@ -2363,6 +2460,11 @@ class MainWindow(QMainWindow):
         merged["interactive_command"] = str(merged.get("interactive_command") or "--sandbox danger-full-access")
         merged["interactive_command_claude"] = str(merged.get("interactive_command_claude") or "")
         merged["interactive_command_copilot"] = str(merged.get("interactive_command_copilot") or "")
+
+        try:
+            merged["max_agents_running"] = int(str(merged.get("max_agents_running", -1)).strip())
+        except Exception:
+            merged["max_agents_running"] = -1
         self._settings_data = merged
         self._apply_settings_to_pages()
         self._schedule_save()
@@ -2564,54 +2666,59 @@ class MainWindow(QMainWindow):
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
     def _reload_environments(self, preferred_env_id: str = "") -> None:
-        envs = load_environments()
-        if not envs:
-            active_workdir = str(self._settings_data.get("host_workdir") or os.getcwd())
-            active_codex = str(self._settings_data.get("host_codex_dir") or os.path.expanduser("~/.codex"))
-            env = Environment(
-                env_id="default",
-                name="Default",
-                color="emerald",
-                host_workdir="",
-                host_codex_dir=active_codex,
-                preflight_enabled=False,
-                preflight_script="",
-                gh_management_mode=GH_MANAGEMENT_LOCAL,
-                gh_management_target=os.path.expanduser(active_workdir),
-                gh_management_locked=True,
-                gh_use_host_cli=bool(is_gh_available()),
-            )
-            save_environment(env)
-            envs = load_environments()
+	        envs = load_environments()
+	        if not envs:
+	            active_workdir = str(self._settings_data.get("host_workdir") or os.getcwd())
+	            active_codex = str(self._settings_data.get("host_codex_dir") or os.path.expanduser("~/.codex"))
+	            try:
+	                max_agents_running = int(str(self._settings_data.get("max_agents_running", -1)).strip())
+	            except Exception:
+	                max_agents_running = -1
+	            env = Environment(
+	                env_id="default",
+	                name="Default",
+	                color="emerald",
+	                host_workdir="",
+	                host_codex_dir=active_codex,
+	                max_agents_running=max_agents_running,
+	                preflight_enabled=False,
+	                preflight_script="",
+	                gh_management_mode=GH_MANAGEMENT_LOCAL,
+	                gh_management_target=os.path.expanduser(active_workdir),
+	                gh_management_locked=True,
+	                gh_use_host_cli=bool(is_gh_available()),
+	            )
+	            save_environment(env)
+	            envs = load_environments()
 
-        for env in envs.values():
-            gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE))
-            if gh_mode != GH_MANAGEMENT_NONE:
-                continue
-            legacy_workdir = os.path.expanduser(str(env.host_workdir or "").strip())
-            if legacy_workdir:
-                env.gh_management_mode = GH_MANAGEMENT_LOCAL
-                env.gh_management_target = legacy_workdir
-                env.gh_management_locked = True
+	        for env in envs.values():
+	            gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE))
+	            if gh_mode != GH_MANAGEMENT_NONE:
+	                continue
+	            legacy_workdir = os.path.expanduser(str(env.host_workdir or "").strip())
+	            if legacy_workdir:
+	                env.gh_management_mode = GH_MANAGEMENT_LOCAL
+	                env.gh_management_target = legacy_workdir
+	                env.gh_management_locked = True
 
-        self._environments = dict(envs)
-        active_id = self._active_environment_id()
-        if active_id not in self._environments:
-            if "default" in self._environments:
-                self._settings_data["active_environment_id"] = "default"
-            else:
-                ordered = self._environment_list()
-                if ordered:
-                    self._settings_data["active_environment_id"] = ordered[0].env_id
-        for task in self._tasks.values():
-            if not task.environment_id:
-                task.environment_id = self._active_environment_id()
-        if self._envs_page.isVisible():
-            selected = preferred_env_id or self._envs_page.selected_environment_id() or self._active_environment_id()
-            self._envs_page.set_environments(self._environments, selected)
-        self._apply_active_environment_to_new_task()
-        self._refresh_task_rows()
-        self._schedule_save()
+	        self._environments = dict(envs)
+	        active_id = self._active_environment_id()
+	        if active_id not in self._environments:
+	            if "default" in self._environments:
+	                self._settings_data["active_environment_id"] = "default"
+	            else:
+	                ordered = self._environment_list()
+	                if ordered:
+	                    self._settings_data["active_environment_id"] = ordered[0].env_id
+	        for task in self._tasks.values():
+	            if not task.environment_id:
+	                task.environment_id = self._active_environment_id()
+	        if self._envs_page.isVisible():
+	            selected = preferred_env_id or self._envs_page.selected_environment_id() or self._active_environment_id()
+	            self._envs_page.set_environments(self._environments, selected)
+	        self._apply_active_environment_to_new_task()
+	        self._refresh_task_rows()
+	        self._schedule_save()
 
     def _clean_old_tasks(self) -> None:
         to_remove: set[str] = set()
@@ -2700,7 +2807,7 @@ class MainWindow(QMainWindow):
             host_codex_dir=host_codex,
             environment_id=env_id,
             created_at_s=time.time(),
-            status="starting",
+            status="queued",
             gh_management_mode=gh_mode,
         )
         self._tasks[task_id] = task
@@ -2761,24 +2868,61 @@ class MainWindow(QMainWindow):
         elif gh_mode == GH_MANAGEMENT_GITHUB:
             self._on_task_log(task_id, "[gh] not a git repo; skipping branch/PR")
 
+        if self._can_start_new_agent_for_env(env_id):
+            config = DockerRunnerConfig(
+                task_id=task_id,
+                image=image,
+                host_codex_dir=host_codex,
+                host_workdir=effective_workdir,
+                agent_cli=agent_cli,
+                auto_remove=True,
+                pull_before_run=True,
+                settings_preflight_script=settings_preflight_script,
+                environment_preflight_script=environment_preflight_script,
+                env_vars=dict(env.env_vars) if env else {},
+                extra_mounts=list(env.extra_mounts) if env else [],
+                agent_cli_args=agent_cli_args,
+            )
+            task._runner_config = config
+            task._runner_prompt = prompt
+            self._actually_start_task(task)
+        else:
+            config = DockerRunnerConfig(
+                task_id=task_id,
+                image=image,
+                host_codex_dir=host_codex,
+                host_workdir=effective_workdir,
+                agent_cli=agent_cli,
+                auto_remove=True,
+                pull_before_run=True,
+                settings_preflight_script=settings_preflight_script,
+                environment_preflight_script=environment_preflight_script,
+                env_vars=dict(env.env_vars) if env else {},
+                extra_mounts=list(env.extra_mounts) if env else [],
+                agent_cli_args=agent_cli_args,
+            )
+            task._runner_config = config
+            task._runner_prompt = prompt
+            self._on_task_log(task_id, "[queue] Waiting for available slot...")
+            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+            self._schedule_save()
+
+        self._show_dashboard()
+        self._new_task.reset_for_new_run()
+
+    def _actually_start_task(self, task: Task) -> None:
+        config = getattr(task, "_runner_config", None)
+        prompt = getattr(task, "_runner_prompt", None)
+        if config is None or prompt is None:
+            return
+
         task.status = "pulling"
+        env = self._environments.get(task.environment_id)
+        stain = env.color if env else None
+        spinner = _stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
-        config = DockerRunnerConfig(
-            task_id=task_id,
-            image=image,
-            host_codex_dir=host_codex,
-            host_workdir=effective_workdir,
-            agent_cli=agent_cli,
-            auto_remove=True,
-            pull_before_run=True,
-            settings_preflight_script=settings_preflight_script,
-            environment_preflight_script=environment_preflight_script,
-            env_vars=dict(env.env_vars) if env else {},
-            extra_mounts=list(env.extra_mounts) if env else [],
-            agent_cli_args=agent_cli_args,
-        )
-        bridge = TaskRunnerBridge(task_id=task_id, config=config, prompt=prompt)
+        bridge = TaskRunnerBridge(task_id=task.task_id, config=config, prompt=prompt)
         thread = QThread(self)
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
@@ -2791,13 +2935,11 @@ class MainWindow(QMainWindow):
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
         thread.finished.connect(thread.deleteLater)
 
-        self._bridges[task_id] = bridge
-        self._threads[task_id] = thread
-        self._run_started_s[task_id] = time.time()
+        self._bridges[task.task_id] = bridge
+        self._threads[task.task_id] = thread
+        self._run_started_s[task.task_id] = time.time()
 
         thread.start()
-        self._show_dashboard()
-        self._new_task.reset_for_new_run()
         self._schedule_save()
 
     def _start_interactive_task_from_ui(
@@ -3271,6 +3413,7 @@ class MainWindow(QMainWindow):
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
+        QApplication.beep()
         self._on_task_log(task_id, f"[interactive] exited with {task.exit_code}")
 
         if (
@@ -3664,6 +3807,9 @@ class MainWindow(QMainWindow):
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
+        QApplication.beep()
+
+        self._try_start_queued_tasks()
 
         if (
             normalize_gh_management_mode(task.gh_management_mode) != GH_MANAGEMENT_NONE
@@ -3756,6 +3902,10 @@ class MainWindow(QMainWindow):
         if isinstance(settings, dict):
             self._settings_data.update(settings)
         self._settings_data["use"] = normalize_agent(str(self._settings_data.get("use") or "codex"))
+        try:
+            self._settings_data["max_agents_running"] = int(str(self._settings_data.get("max_agents_running", -1)).strip())
+        except Exception:
+            self._settings_data["max_agents_running"] = -1
         self._settings_data.setdefault("host_claude_dir", "")
         self._settings_data.setdefault("host_copilot_dir", "")
         self._settings_data.setdefault("interactive_command_claude", "--add-dir /home/midori-ai/workspace")
