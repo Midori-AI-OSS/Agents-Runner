@@ -473,9 +473,17 @@ class Task:
             end_s = float(now_s if now_s is not None else time.time())
         return max(0.0, end_s - created_s)
 
+    def is_interactive_run(self) -> bool:
+        container_id = str(self.container_id or "")
+        return container_id.startswith("codex-gui-it-")
+
     def prompt_one_line(self) -> str:
         line = (self.prompt or "").strip().splitlines()[0] if self.prompt else ""
-        return line or "(empty prompt)"
+        if line:
+            return line
+        if self.is_interactive_run():
+            return "Interactive"
+        return "(empty prompt)"
 
     def info_one_line(self) -> str:
         if self.error:
