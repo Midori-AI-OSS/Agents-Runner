@@ -150,6 +150,14 @@ def _safe_str(value: object, default: str = "") -> str:
     return str(value or default).strip() or default
 
 
+def _looks_like_agent_help_command(command: str) -> bool:
+    value = str(command or "").strip()
+    if not value:
+        return False
+    lowered = value.lower()
+    return "agent-help" in lowered or ".agent-help" in lowered
+
+
 def _status_color(status: str) -> QColor:
     """Map status string to color."""
     color_map = {
@@ -3000,6 +3008,8 @@ class MainWindow(QMainWindow):
         merged["interactive_command"] = str(merged.get("interactive_command") or "--sandbox danger-full-access")
         merged["interactive_command_claude"] = str(merged.get("interactive_command_claude") or "")
         merged["interactive_command_copilot"] = str(merged.get("interactive_command_copilot") or "")
+        for key in ("interactive_command", "interactive_command_claude", "interactive_command_copilot"):
+            merged[key] = self._sanitize_interactive_command_value(key, merged.get(key))
         merged["append_pixelarch_context"] = bool(merged.get("append_pixelarch_context") or False)
 
         try:
@@ -3033,6 +3043,35 @@ class MainWindow(QMainWindow):
         if agent_cli == "copilot":
             return "--add-dir /home/midori-ai/workspace"
         return "--sandbox danger-full-access"
+
+    def _sanitize_interactive_command_value(self, key: str, raw: object) -> str:
+        value = str(raw or "").strip()
+        if not value:
+            return ""
+
+        try:
+            cmd_parts = shlex.split(value)
+        except ValueError:
+            cmd_parts = []
+        if cmd_parts and cmd_parts[0] in {"codex", "claude", "copilot"}:
+            head = cmd_parts.pop(0)
+            if head == "codex" and cmd_parts and cmd_parts[0] == "exec":
+                cmd_parts.pop(0)
+            value = " ".join(shlex.quote(part) for part in cmd_parts)
+
+        if _looks_like_agent_help_command(value):
+            agent_cli = "codex"
+            if str(key or "").endswith("_claude"):
+                agent_cli = "claude"
+            elif str(key or "").endswith("_copilot"):
+                agent_cli = "copilot"
+            return self._default_interactive_command(agent_cli)
+
+        return value
+
+    @staticmethod
+    def _is_agent_help_interactive_launch(prompt: str, command: str) -> bool:
+        return _looks_like_agent_help_command(command)
 
     def _effective_host_config_dir(
         self,
@@ -3919,7 +3958,9 @@ class MainWindow(QMainWindow):
             self._settings_data[self._host_config_dir_key(agent_cli)] = host_codex
             self._settings_data["active_environment_id"] = env_id
             self._settings_data["interactive_terminal_id"] = str(terminal_id or "")
-            self._settings_data[self._interactive_command_key(agent_cli)] = command
+            interactive_key = self._interactive_command_key(agent_cli)
+            if not self._is_agent_help_interactive_launch(prompt=prompt, command=command):
+                self._settings_data[interactive_key] = self._sanitize_interactive_command_value(interactive_key, command)
             self._apply_active_environment_to_new_task()
             self._schedule_save()
 
@@ -4543,15 +4584,7 @@ class MainWindow(QMainWindow):
             raw = str(self._settings_data.get(key) or "").strip()
             if not raw:
                 continue
-            try:
-                cmd_parts = shlex.split(raw)
-            except ValueError:
-                cmd_parts = []
-            if cmd_parts and cmd_parts[0] in {"codex", "claude", "copilot"}:
-                head = cmd_parts.pop(0)
-                if head == "codex" and cmd_parts and cmd_parts[0] == "exec":
-                    cmd_parts.pop(0)
-                self._settings_data[key] = " ".join(shlex.quote(part) for part in cmd_parts)
+            self._settings_data[key] = self._sanitize_interactive_command_value(key, raw)
         items = payload.get("tasks") or []
         loaded: list[Task] = []
         for item in items:
