@@ -1,0 +1,340 @@
+from __future__ import annotations
+
+import os
+
+from PySide6.QtCore import Qt
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QCheckBox
+from PySide6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QFileDialog
+from PySide6.QtWidgets import QGridLayout
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLineEdit
+from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QPlainTextEdit
+from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QToolButton
+from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
+
+from codex_local_conatinerd.environments import managed_repos_dir
+from codex_local_conatinerd.persistence import default_state_path
+from codex_local_conatinerd.agent_cli import normalize_agent
+from codex_local_conatinerd.widgets import GlassCard
+
+
+class SettingsPage(QWidget):
+    back_requested = Signal()
+    saved = Signal(dict)
+    test_preflight_requested = Signal(dict)
+    clean_docker_requested = Signal()
+    clean_git_folders_requested = Signal()
+    clean_all_requested = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(14)
+
+        header = GlassCard()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(18, 16, 18, 16)
+        header_layout.setSpacing(10)
+
+        title = QLabel("Settings")
+        title.setStyleSheet("font-size: 18px; font-weight: 750;")
+        subtitle = QLabel("Saved locally in ~/.midoriai/codex-container-gui/state.json")
+        subtitle.setStyleSheet("color: rgba(237, 239, 245, 160);")
+
+        back = QToolButton()
+        back.setText("Back")
+        back.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        back.clicked.connect(self.back_requested.emit)
+
+        header_layout.addWidget(title)
+        header_layout.addWidget(subtitle, 1)
+        header_layout.addWidget(back, 0, Qt.AlignRight)
+        layout.addWidget(header)
+
+        card = GlassCard()
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(18, 16, 18, 16)
+        card_layout.setSpacing(12)
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(10)
+        grid.setColumnStretch(1, 1)
+
+        self._use = QComboBox()
+        self._use.addItem("Codex", "codex")
+        self._use.addItem("Claude", "claude")
+        self._use.addItem("GitHub Copilot", "copilot")
+
+        self._shell = QComboBox()
+        for label, value in [
+            ("bash", "bash"),
+            ("sh", "sh"),
+            ("zsh", "zsh"),
+            ("fish", "fish"),
+            ("tmux", "tmux"),
+        ]:
+            self._shell.addItem(label, value)
+
+        self._host_codex_dir = QLineEdit()
+        self._host_codex_dir.setPlaceholderText(os.path.expanduser("~/.codex"))
+        browse_codex = QPushButton("Browse…")
+        browse_codex.setFixedWidth(100)
+        browse_codex.clicked.connect(self._pick_codex_dir)
+
+        self._host_claude_dir = QLineEdit()
+        self._host_claude_dir.setPlaceholderText(os.path.expanduser("~/.claude"))
+        browse_claude = QPushButton("Browse…")
+        browse_claude.setFixedWidth(100)
+        browse_claude.clicked.connect(self._pick_claude_dir)
+
+        self._host_copilot_dir = QLineEdit()
+        self._host_copilot_dir.setPlaceholderText(os.path.expanduser("~/.copilot"))
+        browse_copilot = QPushButton("Browse…")
+        browse_copilot.setFixedWidth(100)
+        browse_copilot.clicked.connect(self._pick_copilot_dir)
+
+        self._preflight_enabled = QCheckBox("Enable settings preflight bash (runs on all envs, before env preflight)")
+        self._append_pixelarch_context = QCheckBox("Append PixelArch context")
+        self._append_pixelarch_context.setToolTip(
+            "When enabled, appends a short note to the end of the prompt passed to Run Agent.\n"
+            "This never affects Run Interactive."
+        )
+        self._preflight_script = QPlainTextEdit()
+        self._preflight_script.setPlaceholderText(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "\n"
+            "# Runs inside the container before the agent command.\n"
+            "# Runs on every environment, before environment preflight (if enabled).\n"
+            "# This script is mounted read-only and deleted from the host after the task finishes.\n"
+        )
+        self._preflight_script.setTabChangesFocus(True)
+        self._preflight_enabled.toggled.connect(self._preflight_script.setEnabled)
+        self._preflight_script.setEnabled(False)
+
+        grid.addWidget(QLabel("Agent CLI"), 0, 0)
+        grid.addWidget(self._use, 0, 1)
+        grid.addWidget(QLabel("Shell"), 0, 2)
+        grid.addWidget(self._shell, 0, 3)
+        codex_label = QLabel("Codex Config folder")
+        claude_label = QLabel("Claude Config folder")
+        copilot_label = QLabel("Copilot Config folder")
+
+        grid.addWidget(codex_label, 1, 0)
+        grid.addWidget(self._host_codex_dir, 1, 1, 1, 2)
+        grid.addWidget(browse_codex, 1, 3)
+        grid.addWidget(claude_label, 2, 0)
+        grid.addWidget(self._host_claude_dir, 2, 1, 1, 2)
+        grid.addWidget(browse_claude, 2, 3)
+        grid.addWidget(copilot_label, 3, 0)
+        grid.addWidget(self._host_copilot_dir, 3, 1, 1, 2)
+        grid.addWidget(browse_copilot, 3, 3)
+        grid.addWidget(self._preflight_enabled, 4, 0, 1, 4)
+        grid.addWidget(self._append_pixelarch_context, 5, 0, 1, 4)
+
+        self._agent_config_widgets: dict[str, tuple[QWidget, ...]] = {
+            "codex": (codex_label, self._host_codex_dir, browse_codex),
+            "claude": (claude_label, self._host_claude_dir, browse_claude),
+            "copilot": (copilot_label, self._host_copilot_dir, browse_copilot),
+        }
+        self._use.currentIndexChanged.connect(self._sync_agent_config_widgets)
+        self._sync_agent_config_widgets()
+
+        buttons = QHBoxLayout()
+        buttons.setSpacing(10)
+        self._clean_docker = QToolButton()
+        self._clean_docker.setText("Clean Docker")
+        self._clean_docker.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._clean_docker.setToolTip("Runs `docker system prune -fa` (destructive).")
+        self._clean_docker.clicked.connect(self._on_clean_docker)
+        self._clean_git_folders = QToolButton()
+        self._clean_git_folders.setText("Clean Git Folders")
+        self._clean_git_folders.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._clean_git_folders.setToolTip("Deletes the GUI-managed git repo checkouts (destructive).")
+        self._clean_git_folders.clicked.connect(self._on_clean_git_folders)
+        self._clean_all = QToolButton()
+        self._clean_all.setText("Clean All")
+        self._clean_all.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._clean_all.setToolTip("Runs all cleanup actions (destructive).")
+        self._clean_all.clicked.connect(self._on_clean_all)
+        save = QToolButton()
+        save.setText("Save")
+        save.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        save.clicked.connect(self._on_save)
+        test = QToolButton()
+        test.setText("Test preflights (all envs)")
+        test.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        test.clicked.connect(self._on_test_preflight)
+        buttons.addWidget(self._clean_docker)
+        buttons.addWidget(self._clean_git_folders)
+        buttons.addWidget(self._clean_all)
+        buttons.addWidget(test)
+        buttons.addWidget(save)
+        buttons.addStretch(1)
+
+        card_layout.addLayout(grid)
+        card_layout.addWidget(QLabel("Preflight script"))
+        card_layout.addWidget(self._preflight_script, 1)
+        card_layout.addLayout(buttons)
+        layout.addWidget(card, 1)
+
+    def set_settings(self, settings: dict) -> None:
+        use_value = normalize_agent(str(settings.get("use") or "codex"))
+        self._set_combo_value(self._use, use_value, fallback="codex")
+        self._sync_agent_config_widgets()
+
+        shell_value = str(settings.get("shell") or "bash").strip().lower()
+        self._set_combo_value(self._shell, shell_value, fallback="bash")
+
+        host_codex_dir = os.path.expanduser(str(settings.get("host_codex_dir") or "").strip())
+        if not host_codex_dir:
+            host_codex_dir = os.path.expanduser("~/.codex")
+        self._host_codex_dir.setText(host_codex_dir)
+
+        host_claude_dir = os.path.expanduser(str(settings.get("host_claude_dir") or "").strip())
+        self._host_claude_dir.setText(host_claude_dir)
+
+        host_copilot_dir = os.path.expanduser(str(settings.get("host_copilot_dir") or "").strip())
+        self._host_copilot_dir.setText(host_copilot_dir)
+
+        enabled = bool(settings.get("preflight_enabled") or False)
+        self._preflight_enabled.setChecked(enabled)
+        self._preflight_script.setEnabled(enabled)
+        self._preflight_script.setPlainText(str(settings.get("preflight_script") or ""))
+
+        self._append_pixelarch_context.setChecked(bool(settings.get("append_pixelarch_context") or False))
+
+    def get_settings(self) -> dict:
+        return {
+            "use": str(self._use.currentData() or "codex"),
+            "shell": str(self._shell.currentData() or "bash"),
+            "host_codex_dir": os.path.expanduser(str(self._host_codex_dir.text() or "").strip()),
+            "host_claude_dir": os.path.expanduser(str(self._host_claude_dir.text() or "").strip()),
+            "host_copilot_dir": os.path.expanduser(str(self._host_copilot_dir.text() or "").strip()),
+            "preflight_enabled": bool(self._preflight_enabled.isChecked()),
+            "preflight_script": str(self._preflight_script.toPlainText() or ""),
+            "append_pixelarch_context": bool(self._append_pixelarch_context.isChecked()),
+        }
+
+    def _pick_codex_dir(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Host Config folder",
+            self._host_codex_dir.text() or os.path.expanduser("~/.codex"),
+        )
+        if path:
+            self._host_codex_dir.setText(path)
+
+    def _pick_claude_dir(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Host Claude Config folder",
+            self._host_claude_dir.text() or os.path.expanduser("~/.claude"),
+        )
+        if path:
+            self._host_claude_dir.setText(path)
+
+    def set_clean_state(self, *, docker_busy: bool, git_busy: bool, all_busy: bool) -> None:
+        docker_busy = bool(docker_busy)
+        git_busy = bool(git_busy)
+        all_busy = bool(all_busy)
+        self._clean_docker.setEnabled(not docker_busy and not all_busy)
+        self._clean_docker.setText("Cleaning…" if docker_busy else "Clean Docker")
+        self._clean_git_folders.setEnabled(not git_busy and not all_busy)
+        self._clean_git_folders.setText("Cleaning…" if git_busy else "Clean Git Folders")
+        self._clean_all.setEnabled(not all_busy and not docker_busy and not git_busy)
+        self._clean_all.setText("Cleaning…" if all_busy else "Clean All")
+
+    def _on_clean_docker(self) -> None:
+        btn = QMessageBox.question(
+            self,
+            "Clean Docker",
+            "This will run `docker system prune -fa`.\n\n"
+            "It will remove unused images, containers, networks, and build cache.\n"
+            "This cannot be undone.\n\n"
+            "Are you sure?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if btn != QMessageBox.StandardButton.Yes:
+            return
+        self.clean_docker_requested.emit()
+
+    def _on_clean_git_folders(self) -> None:
+        path = managed_repos_dir(data_dir=os.path.dirname(default_state_path()))
+        btn = QMessageBox.question(
+            self,
+            "Clean Git Folders",
+            "This will delete the GUI-managed git repo folders on disk:\n\n"
+            f"{path}\n\n"
+            "This cannot be undone.\n\n"
+            "Are you sure?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if btn != QMessageBox.StandardButton.Yes:
+            return
+        self.clean_git_folders_requested.emit()
+
+    def _on_clean_all(self) -> None:
+        path = managed_repos_dir(data_dir=os.path.dirname(default_state_path()))
+        btn = QMessageBox.question(
+            self,
+            "Clean All",
+            "This will run all cleanup actions:\n\n"
+            "1) `docker system prune -fa`\n"
+            "2) delete GUI-managed git folders:\n"
+            f"   {path}\n\n"
+            "This cannot be undone.\n\n"
+            "Are you sure?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if btn != QMessageBox.StandardButton.Yes:
+            return
+        self.clean_all_requested.emit()
+
+    def _pick_copilot_dir(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Host Copilot Config folder",
+            self._host_copilot_dir.text() or os.path.expanduser("~/.copilot"),
+        )
+        if path:
+            self._host_copilot_dir.setText(path)
+
+    def _on_save(self) -> None:
+        self.try_autosave()
+
+    def try_autosave(self) -> bool:
+        self.saved.emit(self.get_settings())
+        return True
+
+    def _on_test_preflight(self) -> None:
+        self.test_preflight_requested.emit(self.get_settings())
+
+    def _sync_agent_config_widgets(self) -> None:
+        use_value = normalize_agent(str(self._use.currentData() or "codex"))
+        for agent, widgets in self._agent_config_widgets.items():
+            visible = agent == use_value
+            for widget in widgets:
+                widget.setVisible(visible)
+
+    @staticmethod
+    def _set_combo_value(combo: QComboBox, value: str, fallback: str) -> None:
+        idx = combo.findData(value)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)
+            return
+        idx = combo.findData(fallback)
+        if idx >= 0:
+            combo.setCurrentIndex(idx)

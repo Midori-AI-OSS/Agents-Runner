@@ -13,6 +13,12 @@ STATE_VERSION = 3
 
 
 def default_state_path() -> str:
+    override = str(os.environ.get("CODEX_CONTAINER_GUI_STATE_PATH") or "").strip()
+    if override:
+        override = os.path.expanduser(override)
+        if os.path.isdir(override):
+            return os.path.join(override, "state.json")
+        return override
     base = os.path.expanduser("~/.midoriai/codex-container-gui")
     return os.path.join(base, "state.json")
 

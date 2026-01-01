@@ -1,6 +1,6 @@
-from codex_local_conatinerd.gh.errors import GhManagementError
-from codex_local_conatinerd.gh.gh_cli import is_gh_available
-from codex_local_conatinerd.gh.git_ops import (
+from .errors import GhManagementError
+from .gh_cli import is_gh_available
+from .git_ops import (
     git_current_branch,
     git_default_base_branch,
     git_is_clean,
@@ -9,8 +9,8 @@ from codex_local_conatinerd.gh.git_ops import (
     git_repo_root,
     is_git_repo,
 )
-from codex_local_conatinerd.gh.repo_clone import ensure_github_clone
-from codex_local_conatinerd.gh.task_plan import RepoPlan, commit_push_and_pr, plan_repo_task, prepare_branch_for_task
+from .repo_clone import ensure_github_clone
+from .task_plan import RepoPlan, commit_push_and_pr, plan_repo_task, prepare_branch_for_task
 
 __all__ = [
     "GhManagementError",
@@ -28,4 +28,3 @@ __all__ = [
     "plan_repo_task",
     "prepare_branch_for_task",
 ]
-

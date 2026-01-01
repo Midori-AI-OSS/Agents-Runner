@@ -1,0 +1,3 @@
+class GhManagementError(RuntimeError):
+    pass
+

@@ -1,0 +1,191 @@
+from __future__ import annotations
+
+import os
+
+from PySide6.QtWidgets import QMessageBox
+
+from codex_local_conatinerd.agent_cli import normalize_agent
+from codex_local_conatinerd.environments import Environment
+from codex_local_conatinerd.environments import GH_MANAGEMENT_GITHUB
+from codex_local_conatinerd.environments import GH_MANAGEMENT_LOCAL
+from codex_local_conatinerd.environments import GH_MANAGEMENT_NONE
+from codex_local_conatinerd.environments import load_environments
+from codex_local_conatinerd.environments import normalize_gh_management_mode
+from codex_local_conatinerd.environments import managed_repo_checkout_path
+from codex_local_conatinerd.environments import save_environment
+from codex_local_conatinerd.gh_management import ensure_github_clone
+from codex_local_conatinerd.gh_management import GhManagementError
+from codex_local_conatinerd.gh_management import git_list_remote_heads
+from codex_local_conatinerd.gh_management import is_gh_available
+
+
+class _MainWindowEnvironmentMixin:
+    def _active_environment_id(self) -> str:
+        return str(self._settings_data.get("active_environment_id") or "default")
+
+
+    def _environment_list(self) -> list[Environment]:
+        return sorted(self._environments.values(), key=lambda e: (e.name or e.env_id).lower())
+
+
+    def _environment_effective_workdir(self, env: Environment | None, fallback: str) -> str:
+        fallback = os.path.expanduser(str(fallback or "").strip()) or os.getcwd()
+        if env is None:
+            return fallback
+        gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE))
+        if gh_mode == GH_MANAGEMENT_LOCAL:
+            return os.path.expanduser(str(env.gh_management_target or "").strip())
+        if gh_mode == GH_MANAGEMENT_GITHUB:
+            workdir = managed_repo_checkout_path(env.env_id, data_dir=os.path.dirname(self._state_path))
+            try:
+                os.makedirs(workdir, exist_ok=True)
+            except Exception:
+                pass
+            return workdir
+        return fallback
+
+
+    def _new_task_workspace(self, env: Environment | None) -> tuple[str, bool, str]:
+        if env is None:
+            return "—", False, "Pick an environment first."
+
+        gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE))
+        if gh_mode == GH_MANAGEMENT_LOCAL:
+            path = os.path.expanduser(str(env.gh_management_target or "").strip())
+            if not path:
+                return "—", False, "Set Workspace to a local folder in Environments."
+            if not os.path.isdir(path):
+                return path, False, f"Local folder does not exist: {path}"
+            return path, True, ""
+
+        if gh_mode == GH_MANAGEMENT_GITHUB:
+            path = managed_repo_checkout_path(env.env_id, data_dir=os.path.dirname(self._state_path))
+            target = str(env.gh_management_target or "").strip()
+            if not target:
+                return path, False, "Set Workspace to a GitHub repo in Environments."
+            return path, True, ""
+
+        return "—", False, "Set Workspace to a local folder or GitHub repo in Environments."
+
+
+    def _sync_new_task_repo_controls(self, env: Environment | None) -> None:
+        workdir, ready, _ = self._new_task_workspace(env)
+        if not ready:
+            self._new_task.set_repo_controls_visible(False)
+            self._new_task.set_repo_branches([])
+            return
+
+        gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) if env else GH_MANAGEMENT_NONE
+        has_repo = bool(gh_mode == GH_MANAGEMENT_GITHUB)
+        if gh_mode == GH_MANAGEMENT_NONE or not has_repo:
+            self._new_task.set_repo_controls_visible(False)
+            self._new_task.set_repo_branches([])
+            return
+
+        branches: list[str] = []
+        if gh_mode == GH_MANAGEMENT_GITHUB and env:
+            branches = git_list_remote_heads(str(env.gh_management_target or ""))
+
+        self._new_task.set_repo_controls_visible(True)
+        self._new_task.set_repo_branches(branches)
+
+
+    def _populate_environment_pickers(self) -> None:
+        active_id = self._active_environment_id()
+        envs = self._environment_list()
+        stains = {e.env_id: e.color for e in envs}
+
+        self._new_task.set_environment_stains(stains)
+        self._dashboard.set_environment_filter_options([(e.env_id, e.name or e.env_id) for e in envs])
+
+        self._syncing_environment = True
+        try:
+            self._new_task.set_environments([(e.env_id, e.name or e.env_id) for e in envs], active_id=active_id)
+            self._new_task.set_environment_id(active_id)
+        finally:
+            self._syncing_environment = False
+
+
+    def _apply_active_environment_to_new_task(self) -> None:
+        env = self._environments.get(self._active_environment_id())
+        agent_cli = normalize_agent(str(self._settings_data.get("use") or "codex"))
+        host_codex = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
+        workdir, ready, message = self._new_task_workspace(env)
+        self._new_task.set_defaults(host_codex=host_codex)
+        self._new_task.set_workspace_status(path=workdir, ready=ready, message=message)
+        self._sync_new_task_repo_controls(env)
+        interactive_key = self._interactive_command_key(agent_cli)
+        interactive_command = str(self._settings_data.get(interactive_key) or "").strip()
+        if not interactive_command:
+            interactive_command = self._default_interactive_command(agent_cli)
+        self._new_task.set_interactive_defaults(
+            terminal_id=str(self._settings_data.get("interactive_terminal_id") or ""),
+            command=interactive_command,
+        )
+        self._populate_environment_pickers()
+
+
+    def _on_new_task_env_changed(self, env_id: str) -> None:
+        if self._syncing_environment:
+            return
+        env_id = str(env_id or "")
+        if env_id and env_id in self._environments:
+            self._settings_data["active_environment_id"] = env_id
+            self._apply_active_environment_to_new_task()
+            self._schedule_save()
+
+
+    def _reload_environments(self, preferred_env_id: str = "") -> None:
+        envs = load_environments()
+        if not envs:
+            active_workdir = str(self._settings_data.get("host_workdir") or os.getcwd())
+            active_codex = str(self._settings_data.get("host_codex_dir") or os.path.expanduser("~/.codex"))
+            try:
+                max_agents_running = int(str(self._settings_data.get("max_agents_running", -1)).strip())
+            except Exception:
+                max_agents_running = -1
+            env = Environment(
+                env_id="default",
+                name="Default",
+                color="emerald",
+                host_workdir="",
+                host_codex_dir=active_codex,
+                max_agents_running=max_agents_running,
+                preflight_enabled=False,
+                preflight_script="",
+                gh_management_mode=GH_MANAGEMENT_LOCAL,
+                gh_management_target=os.path.expanduser(active_workdir),
+                gh_management_locked=True,
+                gh_use_host_cli=bool(is_gh_available()),
+            )
+            save_environment(env)
+            envs = load_environments()
+
+        for env in envs.values():
+            gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE))
+            if gh_mode != GH_MANAGEMENT_NONE:
+                continue
+            legacy_workdir = os.path.expanduser(str(env.host_workdir or "").strip())
+            if legacy_workdir:
+                env.gh_management_mode = GH_MANAGEMENT_LOCAL
+                env.gh_management_target = legacy_workdir
+                env.gh_management_locked = True
+
+        self._environments = dict(envs)
+        active_id = self._active_environment_id()
+        if active_id not in self._environments:
+            if "default" in self._environments:
+                self._settings_data["active_environment_id"] = "default"
+            else:
+                ordered = self._environment_list()
+                if ordered:
+                    self._settings_data["active_environment_id"] = ordered[0].env_id
+        for task in self._tasks.values():
+            if not task.environment_id:
+                task.environment_id = self._active_environment_id()
+        if self._envs_page.isVisible():
+            selected = preferred_env_id or self._envs_page.selected_environment_id() or self._active_environment_id()
+            self._envs_page.set_environments(self._environments, selected)
+        self._apply_active_environment_to_new_task()
+        self._refresh_task_rows()
+        self._schedule_save()
