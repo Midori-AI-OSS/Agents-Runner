@@ -83,6 +83,7 @@ from codex_local_conatinerd.log_format import prettify_log_line
 from codex_local_conatinerd.style import app_stylesheet
 from codex_local_conatinerd.terminal_apps import detect_terminal_options
 from codex_local_conatinerd.terminal_apps import launch_in_terminal
+from codex_local_conatinerd.widgets import BouncingLoadingBar
 from codex_local_conatinerd.widgets import GlassCard
 from codex_local_conatinerd.widgets import LogHighlighter
 from codex_local_conatinerd.widgets import StatusGlyph
@@ -178,6 +179,12 @@ def _stain_color(stain: str) -> QColor:
         "violet": (139, 92, 246, 220),
         "rose": (244, 63, 94, 220),
         "amber": (245, 158, 11, 220),
+        "blue": (59, 130, 246, 220),
+        "teal": (20, 184, 166, 220),
+        "lime": (132, 204, 22, 220),
+        "fuchsia": (217, 70, 239, 220),
+        "indigo": (99, 102, 241, 220),
+        "orange": (249, 115, 22, 220),
     }
     rgba = color_map.get((stain or "").strip().lower(), (148, 163, 184, 220))
     return QColor(*rgba)
@@ -618,10 +625,14 @@ class TaskRow(QWidget):
         state_layout.setSpacing(8)
         self._glyph = StatusGlyph(size=18)
         self._glyph.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._busy_bar = BouncingLoadingBar(width=72, height=8)
+        self._busy_bar.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._busy_bar.hide()
         self._status = QLabel("idle")
         self._status.setStyleSheet("color: rgba(237, 239, 245, 190);")
         self._status.setAttribute(Qt.WA_TransparentForMouseEvents, True)
         state_layout.addWidget(self._glyph, 0, Qt.AlignLeft)
+        state_layout.addWidget(self._busy_bar, 0, Qt.AlignLeft)
         state_layout.addWidget(self._status, 0, Qt.AlignLeft)
         state_wrap.setMinimumWidth(180)
         state_wrap.setAttribute(Qt.WA_TransparentForMouseEvents, True)
@@ -699,8 +710,14 @@ class TaskRow(QWidget):
         self._status.setStyleSheet(f"color: {_rgba(color, 235)}; font-weight: 700;")
 
         if task.is_active():
-            self._glyph.set_mode("spinner", spinner_color or color)
+            self._glyph.hide()
+            self._busy_bar.set_color(spinner_color or color)
+            self._busy_bar.show()
+            self._busy_bar.start()
             return
+        self._busy_bar.stop()
+        self._busy_bar.hide()
+        self._glyph.show()
         if task.is_done():
             self._glyph.set_mode("check", color)
             return
@@ -827,7 +844,9 @@ class DashboardPage(QWidget):
             self._rows[task_id].set_selected(True)
 
     def _pick_new_row_stain(self) -> str:
-        stains = ("cyan", "emerald", "violet", "rose", "amber")
+        stains = tuple(stain for stain in ALLOWED_STAINS if stain != "slate")
+        if not stains:
+            stains = ("slate",)
         current: str | None = None
         for i in range(self._list_layout.count()):
             item = self._list_layout.itemAt(i)
@@ -1413,7 +1432,7 @@ class NewTaskPage(QWidget):
         self._base_branch.blockSignals(True)
         try:
             self._base_branch.clear()
-            self._base_branch.addItem("Auto", "")
+            self._base_branch.addItem("Auto (default)", "")
             for name in branches or []:
                 b = str(name or "").strip()
                 if not b:

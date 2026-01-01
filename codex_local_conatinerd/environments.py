@@ -14,7 +14,20 @@ from codex_local_conatinerd.persistence import save_state
 ENVIRONMENT_VERSION = 1
 ENVIRONMENT_FILENAME_PREFIX = "environment-"
 
-ALLOWED_STAINS = ("slate", "cyan", "emerald", "violet", "rose", "amber")
+ALLOWED_STAINS = (
+    "slate",
+    "cyan",
+    "emerald",
+    "violet",
+    "rose",
+    "amber",
+    "blue",
+    "teal",
+    "lime",
+    "fuchsia",
+    "indigo",
+    "orange",
+)
 
 GH_MANAGEMENT_NONE = "none"
 GH_MANAGEMENT_LOCAL = "local"

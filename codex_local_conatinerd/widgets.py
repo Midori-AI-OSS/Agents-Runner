@@ -77,6 +77,80 @@ class ArcSpinner(QWidget):
             painter.drawEllipse(int(x - r), int(y - r), int(r * 2), int(r * 2))
 
 
+class BouncingLoadingBar(QWidget):
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        width: int = 72,
+        height: int = 8,
+        chunk_fraction: float = 0.20,
+    ) -> None:
+        super().__init__(parent)
+        self._chunk_fraction = float(chunk_fraction)
+        self._offset = 0.0
+        self._direction = 1.0
+        self._color = QColor(148, 163, 184, 220)
+        self._timer = QTimer(self)
+        self._timer.setInterval(30)
+        self._timer.timeout.connect(self._tick)
+        self.setFixedSize(int(width), int(height))
+
+    def set_color(self, color: QColor) -> None:
+        self._color = color
+        self.update()
+
+    def start(self) -> None:
+        if not self._timer.isActive():
+            self._timer.start()
+
+    def stop(self) -> None:
+        self._timer.stop()
+        self.update()
+
+    def _tick(self) -> None:
+        rect = self.rect().adjusted(1, 1, -1, -1)
+        chunk_w = max(2, int(rect.width() * self._chunk_fraction))
+        max_offset = max(0.0, float(rect.width() - chunk_w))
+        speed = max(1.0, rect.width() * 0.035)
+
+        self._offset += self._direction * speed
+        if self._offset <= 0.0:
+            self._offset = 0.0
+            self._direction = 1.0
+        elif self._offset >= max_offset:
+            self._offset = max_offset
+            self._direction = -1.0
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, False)
+
+        outer = self.rect().adjusted(0, 0, -1, -1)
+        inner = outer.adjusted(1, 1, -1, -1)
+        if inner.width() <= 0 or inner.height() <= 0:
+            return
+
+        border = QColor(255, 255, 255, 22)
+        bg = QColor(self._color.red(), self._color.green(), self._color.blue(), 22)
+        chunk = QColor(self._color.red(), self._color.green(), self._color.blue(), 215)
+
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(bg)
+        painter.drawRect(inner)
+
+        painter.setPen(border)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawRect(outer)
+
+        chunk_w = max(2, int(inner.width() * self._chunk_fraction))
+        max_offset = max(0.0, float(inner.width() - chunk_w))
+        x = int(inner.left() + (0.0 if max_offset <= 0.0 else self._offset))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(chunk)
+        painter.drawRect(x, int(inner.top()), int(chunk_w), int(inner.height()))
+
+
 class StatusGlyph(QWidget):
     def __init__(self, parent: QWidget | None = None, size: int = 18) -> None:
         super().__init__(parent)

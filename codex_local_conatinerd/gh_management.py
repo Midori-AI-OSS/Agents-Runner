@@ -11,6 +11,28 @@ class GhManagementError(RuntimeError):
     pass
 
 
+_TASK_BRANCH_PREFIXES: tuple[str, ...] = ("midoriaiagents/",)
+_COMMON_BASE_BRANCHES: tuple[str, ...] = ("main", "master", "trunk", "develop")
+
+_MIDORI_AI_AGENTS_RUNNER_URL = "https://github.com/Midori-AI-OSS/Agents-Runner"
+_MIDORI_AI_URL = "https://github.com/Midori-AI-OSS/Midori-AI"
+_PR_ATTRIBUTION_MARKER = "<!-- midori-ai-agents-runner-pr-footer -->"
+
+
+def _append_pr_attribution_footer(body: str) -> str:
+    body = (body or "").rstrip()
+    if _PR_ATTRIBUTION_MARKER in body:
+        return body + "\n"
+
+    footer = (
+        "\n\n---\n"
+        f"{_PR_ATTRIBUTION_MARKER}\n"
+        f"_This PR was created by the [Midori AI Agents Runner]({_MIDORI_AI_AGENTS_RUNNER_URL}). "
+        f"Related: [Midori AI]({_MIDORI_AI_URL})._\n"
+    )
+    return (body + footer) if body else footer.lstrip("\n")
+
+
 def is_gh_available() -> bool:
     return shutil.which("gh") is not None
 
@@ -112,6 +134,52 @@ def git_is_clean(repo_root: str) -> bool:
     return not (proc.stdout or "").strip()
 
 
+def _is_task_branch(branch: str) -> bool:
+    branch = (branch or "").strip()
+    if not branch:
+        return False
+    return any(branch.startswith(prefix) for prefix in _TASK_BRANCH_PREFIXES)
+
+
+def _pick_auto_base_branch(repo_root: str) -> str:
+    repo_root = _expand_dir(repo_root)
+    default = git_default_base_branch(repo_root)
+    if default:
+        return default
+    branches = git_list_branches(repo_root)
+    if branches:
+        for name in _COMMON_BASE_BRANCHES:
+            if name in branches:
+                return name
+        return branches[0]
+    current = git_current_branch(repo_root)
+    if current and not _is_task_branch(current):
+        return current
+    return "main"
+
+
+def _has_origin_branch(repo_root: str, branch: str) -> bool:
+    repo_root = _expand_dir(repo_root)
+    branch = (branch or "").strip()
+    if not branch:
+        return False
+    proc = _run(["git", "-C", repo_root, "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{branch}"], timeout_s=8.0)
+    return proc.returncode == 0
+
+
+def _update_base_branch_from_origin(repo_root: str, base_branch: str) -> None:
+    repo_root = _expand_dir(repo_root)
+    base_branch = (base_branch or "").strip()
+    if not base_branch:
+        return
+    if not _has_origin_branch(repo_root, base_branch):
+        return
+    _require_ok(
+        _run(["git", "-C", repo_root, "merge", "--ff-only", f"origin/{base_branch}"], timeout_s=120.0),
+        args=["git", "merge", "--ff-only"],
+    )
+
+
 def _is_empty_dir(path: str) -> bool:
     try:
         return os.path.isdir(path) and not os.listdir(path)
@@ -177,9 +245,9 @@ def prepare_branch_for_task(
     if not git_is_clean(repo_root):
         raise GhManagementError("repo has uncommitted changes; commit/stash before running")
 
-    desired_base = str(base_branch or "").strip()
-    base_branch = desired_base or git_current_branch(repo_root) or git_default_base_branch(repo_root) or "main"
     _require_ok(_run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0), args=["git", "fetch"])
+    desired_base = str(base_branch or "").strip()
+    base_branch = desired_base or _pick_auto_base_branch(repo_root)
     checkout_proc = _run(["git", "-C", repo_root, "checkout", base_branch], timeout_s=20.0)
     if checkout_proc.returncode != 0:
         _require_ok(
@@ -189,7 +257,7 @@ def prepare_branch_for_task(
             ),
             args=["git", "checkout", "-B", base_branch],
         )
-    _require_ok(_run(["git", "-C", repo_root, "pull", "--ff-only"], timeout_s=120.0), args=["git", "pull"])
+    _update_base_branch_from_origin(repo_root, base_branch)
 
     _require_ok(
         _run(["git", "-C", repo_root, "checkout", "-B", branch], timeout_s=20.0),
@@ -218,7 +286,7 @@ def plan_repo_task(
         return None
     branch = _sanitize_branch(f"midoriaiagents/{task_id}")
     desired_base = str(base_branch or "").strip()
-    base_branch = desired_base or git_current_branch(repo_root) or git_default_base_branch(repo_root) or "main"
+    base_branch = desired_base or _pick_auto_base_branch(repo_root)
     return RepoPlan(workdir=workdir, repo_root=repo_root, base_branch=base_branch, branch=branch)
 
 
@@ -232,6 +300,7 @@ def commit_push_and_pr(
     use_gh: bool = True,
 ) -> str | None:
     repo_root = _expand_dir(repo_root)
+    body = _append_pr_attribution_footer(body)
 
     _require_ok(
         _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
