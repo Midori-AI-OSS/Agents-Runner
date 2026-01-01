@@ -11,6 +11,14 @@ from PySide6.QtGui import QTextDocument
 from PySide6.QtWidgets import QFrame
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QWidget
+from typing import NamedTuple
+
+
+class _DottedLine(NamedTuple):
+    phase_offset: float
+    duration_s: float
+    alpha_scale: float
+    width_scale: float
 
 
 class GlassCard(QFrame):
@@ -91,11 +99,37 @@ class BouncingLoadingBar(QWidget):
         self._offset = 0.0
         self._direction = 1.0
         self._phase = 0.0
+        self._dotted_time_s = 0.0
+        self._dotted_lines: list[_DottedLine] = []
+        self._dotted_line_count = 0
         self._color = QColor(148, 163, 184, 220)
         self._timer = QTimer(self)
         self._timer.setInterval(30)
         self._timer.timeout.connect(self._tick)
         self.setFixedSize(int(width), int(height))
+
+    def _ensure_dotted_lines(self, line_count: int) -> None:
+        line_count = int(max(1, line_count))
+        if line_count == self._dotted_line_count and self._dotted_lines:
+            return
+
+        base_duration_s = 1.15
+        lines: list[_DottedLine] = []
+        for i in range(line_count):
+            # Deterministic "random-ish" variation (no RNG) so each line has its own
+            # timing/feel instead of moving as a rigid group.
+            f1 = (i * 0.61803398875) % 1.0
+            f2 = (i * 0.41421356237) % 1.0
+            f3 = (i * 0.73205080757) % 1.0
+
+            phase_offset = f1
+            duration_s = base_duration_s * (0.78 + 0.52 * f2)
+            alpha_scale = 0.55 + 0.45 * f3
+            width_scale = 0.85 + 0.30 * ((i * 0.27777777777) % 1.0)
+            lines.append(_DottedLine(phase_offset, duration_s, alpha_scale, width_scale))
+
+        self._dotted_lines = lines
+        self._dotted_line_count = line_count
 
     def set_color(self, color: QColor) -> None:
         self._color = color
@@ -112,6 +146,9 @@ class BouncingLoadingBar(QWidget):
             self._timer.setInterval(50)
         elif mode == "dotted":
             self._timer.setInterval(24)
+            self._dotted_time_s = 0.0
+            self._dotted_lines = []
+            self._dotted_line_count = 0
         else:
             self._timer.setInterval(30)
         self.update()
@@ -130,7 +167,10 @@ class BouncingLoadingBar(QWidget):
             self.update()
             return
         if self._mode == "dotted":
-            self._phase = (self._phase + 0.022) % 1.0
+            dt_s = max(0.001, float(self._timer.interval()) / 1000.0)
+            self._dotted_time_s += dt_s
+            if self._dotted_time_s >= 3600.0:
+                self._dotted_time_s %= 3600.0
             self.update()
             return
 
@@ -178,27 +218,28 @@ class BouncingLoadingBar(QWidget):
             return
 
         if self._mode == "dotted":
-            dot_w = max(2, int(inner.height() * 0.35))
-            gap = max(2, int(dot_w * 1.2))
-            dot_count = 6
-            group_w = dot_count * dot_w + (dot_count - 1) * gap
-            if group_w >= inner.width():
-                dot_count = max(1, inner.width() // max(1, dot_w + gap))
-                group_w = dot_count * dot_w + max(0, dot_count - 1) * gap
+            base_line_w = max(2, int(inner.height() * 0.32))
+            base_gap = max(3, int(base_line_w * 1.9))
+            line_count = max(4, min(9, inner.width() // max(1, base_line_w + base_gap)))
+            self._ensure_dotted_lines(line_count)
 
-            travel = max(0, inner.width() - group_w)
-            t = float(self._phase)
-            eased = 0.5 - 0.5 * math.cos(math.pi * t)
-            base_x = int(inner.left() + travel * eased)
+            travel_margin = max(6.0, float(base_line_w) * 3.0)
+            travel_w = float(inner.width()) + 2.0 * travel_margin
 
             r, g, b = self._color.red(), self._color.green(), self._color.blue()
             painter.setPen(Qt.NoPen)
-            for i in range(dot_count):
-                strength = 0.25 + 0.75 * (i / max(1, dot_count - 1))
-                alpha = int(70 + strength * 170)
+            for line in self._dotted_lines:
+                phase = (self._dotted_time_s / max(0.25, line.duration_s) + line.phase_offset) % 1.0
+                eased = 0.5 - 0.5 * math.cos(math.pi * phase)
+                fade = max(0.0, math.sin(math.pi * phase))
+
+                x = float(inner.left()) - travel_margin + travel_w * eased
+                line_w = max(2, int(base_line_w * line.width_scale))
+                alpha = int((70 + 170 * line.alpha_scale) * fade)
+                if alpha <= 0:
+                    continue
                 painter.setBrush(QColor(r, g, b, alpha))
-                x = base_x + i * (dot_w + gap)
-                painter.drawRect(int(x), int(inner.top()), int(dot_w), int(inner.height()))
+                painter.drawRect(int(x), int(inner.top()), int(line_w), int(inner.height()))
             return
 
         chunk = QColor(self._color.red(), self._color.green(), self._color.blue(), 215)
