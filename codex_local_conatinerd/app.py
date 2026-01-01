@@ -11,6 +11,7 @@ import threading
 
 from pathlib import Path
 from uuid import uuid4
+from typing import Callable
 from datetime import datetime
 from datetime import timezone
 from dataclasses import dataclass
@@ -55,6 +56,9 @@ from PySide6.QtWidgets import QWidget
 from codex_local_conatinerd.docker_runner import DockerCodexWorker
 from codex_local_conatinerd.docker_runner import DockerPreflightWorker
 from codex_local_conatinerd.docker_runner import DockerRunnerConfig
+from codex_local_conatinerd.docker_platform import ROSETTA_INSTALL_COMMAND
+from codex_local_conatinerd.docker_platform import docker_platform_args_for_pixelarch
+from codex_local_conatinerd.docker_platform import has_rosetta
 from codex_local_conatinerd.agent_cli import additional_config_mounts
 from codex_local_conatinerd.agent_cli import container_config_dir
 from codex_local_conatinerd.agent_cli import normalize_agent
@@ -67,6 +71,7 @@ from codex_local_conatinerd.environments import GH_MANAGEMENT_NONE
 from codex_local_conatinerd.environments import delete_environment
 from codex_local_conatinerd.environments import load_environments
 from codex_local_conatinerd.environments import managed_repo_checkout_path
+from codex_local_conatinerd.environments import managed_repos_dir
 from codex_local_conatinerd.environments import normalize_gh_management_mode
 from codex_local_conatinerd.environments import parse_env_vars_text
 from codex_local_conatinerd.environments import parse_mounts_text
@@ -145,10 +150,19 @@ def _safe_str(value: object, default: str = "") -> str:
     return str(value or default).strip() or default
 
 
+def _looks_like_agent_help_command(command: str) -> bool:
+    value = str(command or "").strip()
+    if not value:
+        return False
+    lowered = value.lower()
+    return "agent-help" in lowered or ".agent-help" in lowered
+
+
 def _status_color(status: str) -> QColor:
     """Map status string to color."""
     color_map = {
         "pulling": (56, 189, 248, 220),
+        "cleaning": (56, 189, 248, 220),
         "done": (16, 185, 129, 230),
         "failed": (244, 63, 94, 230),
         "created": (148, 163, 184, 220),
@@ -520,7 +534,7 @@ class Task:
         return f"exit {self.exit_code} • {_format_duration(duration)}"
 
     def is_active(self) -> bool:
-        return (self.status or "").lower() in {"queued", "pulling", "created", "running", "starting"}
+        return (self.status or "").lower() in {"queued", "pulling", "created", "running", "starting", "cleaning"}
 
     def is_done(self) -> bool:
         return (self.status or "").lower() == "done"
@@ -620,6 +634,31 @@ class DockerPruneBridge(QObject):
         if not output:
             output = f"Command exited with code {proc.returncode}."
         self.done.emit(int(proc.returncode), output)
+
+
+class HostCleanupBridge(QObject):
+    log = Signal(str)
+    done = Signal(int, str)
+
+    def __init__(
+        self,
+        runner: Callable[[Callable[[str], None], threading.Event], tuple[int, str]],
+    ) -> None:
+        super().__init__()
+        self._runner = runner
+        self._stop = threading.Event()
+
+    @Slot()
+    def request_stop(self) -> None:
+        self._stop.set()
+
+    def run(self) -> None:
+        try:
+            exit_code, output = self._runner(self.log.emit, self._stop)
+        except Exception as exc:
+            self.done.emit(1, str(exc))
+            return
+        self.done.emit(int(exit_code), str(output or "").strip())
 
 
 class TaskRow(QWidget):
@@ -1378,6 +1417,15 @@ class NewTaskPage(QWidget):
             )
             return
 
+        user_question = sanitize_prompt((self._prompt.toPlainText() or "").strip())
+        if not user_question:
+            QMessageBox.warning(
+                self,
+                "Missing question",
+                "Please type your question to get started with the help agent.",
+            )
+            return
+
         terminal_id = str(self._terminal.currentData() or "").strip()
         if not terminal_id:
             QMessageBox.warning(
@@ -1400,18 +1448,43 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
 
-        command = (
-            "bash -lc 'cd \"${HOME}/.agent-help/repos/Agents-Runner\" 2>/dev/null || "
-            "cd \"${HOME}/.agent-help/repos\" 2>/dev/null || "
-            "cd \"${HOME}\" 2>/dev/null || true; exec bash'"
+        command = (self._command.text() or "").strip()
+
+        prompt = "\n".join(
+            [
+                "Agents Runner - Help Request",
+                "",
+                "Question:",
+                user_question,
+                "",
+                "You're helping a user who is using Agents Runner and its GUI.",
+                "",
+                "Environment:",
+                "- PixelArch Linux container (passwordless sudo).",
+                "- Install/update packages with `yay -Syu`.",
+                "",
+                "Repositories:",
+                "- Available under `~/.agent-help/repos/` (the preflight clones if needed).",
+                "- Includes `Agents-Runner` plus `codex`, `claude-code`, and `copilot-cli`.",
+                "",
+                "Instructions:",
+                "- Answer the question directly; do not ask what they need help with again.",
+                "- If you need one missing detail (repo/path/version), ask one short clarifying question, then proceed.",
+            ]
         )
-        self.requested_launch.emit("Get Agent Help", command, host_codex, env_id, terminal_id, base_branch, helpme_script)
+        self.requested_launch.emit(
+            prompt,
+            command,
+            host_codex,
+            env_id,
+            terminal_id,
+            base_branch,
+            helpme_script,
+        )
 
     def _on_launch(self) -> None:
         prompt = sanitize_prompt((self._prompt.toPlainText() or "").strip())
         command = (self._command.text() or "").strip()
-        if not command:
-            command = "bash"
 
         if not self._workspace_ready:
             QMessageBox.warning(
@@ -2125,6 +2198,8 @@ class SettingsPage(QWidget):
     saved = Signal(dict)
     test_preflight_requested = Signal(dict)
     clean_docker_requested = Signal()
+    clean_git_folders_requested = Signal()
+    clean_all_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -2250,6 +2325,16 @@ class SettingsPage(QWidget):
         self._clean_docker.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self._clean_docker.setToolTip("Runs `docker system prune -fa` (destructive).")
         self._clean_docker.clicked.connect(self._on_clean_docker)
+        self._clean_git_folders = QToolButton()
+        self._clean_git_folders.setText("Clean Git Folders")
+        self._clean_git_folders.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._clean_git_folders.setToolTip("Deletes the GUI-managed git repo checkouts (destructive).")
+        self._clean_git_folders.clicked.connect(self._on_clean_git_folders)
+        self._clean_all = QToolButton()
+        self._clean_all.setText("Clean All")
+        self._clean_all.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._clean_all.setToolTip("Runs all cleanup actions (destructive).")
+        self._clean_all.clicked.connect(self._on_clean_all)
         save = QToolButton()
         save.setText("Save")
         save.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -2259,6 +2344,8 @@ class SettingsPage(QWidget):
         test.setToolButtonStyle(Qt.ToolButtonTextOnly)
         test.clicked.connect(self._on_test_preflight)
         buttons.addWidget(self._clean_docker)
+        buttons.addWidget(self._clean_git_folders)
+        buttons.addWidget(self._clean_all)
         buttons.addWidget(test)
         buttons.addWidget(save)
         buttons.addStretch(1)
@@ -2325,9 +2412,16 @@ class SettingsPage(QWidget):
         if path:
             self._host_claude_dir.setText(path)
 
-    def set_clean_docker_busy(self, busy: bool) -> None:
-        self._clean_docker.setEnabled(not busy)
-        self._clean_docker.setText("Cleaning…" if busy else "Clean Docker")
+    def set_clean_state(self, *, docker_busy: bool, git_busy: bool, all_busy: bool) -> None:
+        docker_busy = bool(docker_busy)
+        git_busy = bool(git_busy)
+        all_busy = bool(all_busy)
+        self._clean_docker.setEnabled(not docker_busy and not all_busy)
+        self._clean_docker.setText("Cleaning…" if docker_busy else "Clean Docker")
+        self._clean_git_folders.setEnabled(not git_busy and not all_busy)
+        self._clean_git_folders.setText("Cleaning…" if git_busy else "Clean Git Folders")
+        self._clean_all.setEnabled(not all_busy and not docker_busy and not git_busy)
+        self._clean_all.setText("Cleaning…" if all_busy else "Clean All")
 
     def _on_clean_docker(self) -> None:
         btn = QMessageBox.question(
@@ -2343,6 +2437,40 @@ class SettingsPage(QWidget):
         if btn != QMessageBox.StandardButton.Yes:
             return
         self.clean_docker_requested.emit()
+
+    def _on_clean_git_folders(self) -> None:
+        path = managed_repos_dir(data_dir=os.path.dirname(default_state_path()))
+        btn = QMessageBox.question(
+            self,
+            "Clean Git Folders",
+            "This will delete the GUI-managed git repo folders on disk:\n\n"
+            f"{path}\n\n"
+            "This cannot be undone.\n\n"
+            "Are you sure?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if btn != QMessageBox.StandardButton.Yes:
+            return
+        self.clean_git_folders_requested.emit()
+
+    def _on_clean_all(self) -> None:
+        path = managed_repos_dir(data_dir=os.path.dirname(default_state_path()))
+        btn = QMessageBox.question(
+            self,
+            "Clean All",
+            "This will run all cleanup actions:\n\n"
+            "1) `docker system prune -fa`\n"
+            "2) delete GUI-managed git folders:\n"
+            f"   {path}\n\n"
+            "This cannot be undone.\n\n"
+            "Are you sure?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if btn != QMessageBox.StandardButton.Yes:
+            return
+        self.clean_all_requested.emit()
 
     def _pick_copilot_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(
@@ -2498,8 +2626,13 @@ class MainWindow(QMainWindow):
         self._settings.saved.connect(self._apply_settings, Qt.QueuedConnection)
         self._settings.test_preflight_requested.connect(self._on_settings_test_preflight, Qt.QueuedConnection)
         self._settings.clean_docker_requested.connect(self._on_settings_clean_docker, Qt.QueuedConnection)
-        self._docker_prune_thread: QThread | None = None
-        self._docker_prune_bridge: DockerPruneBridge | None = None
+        self._settings.clean_git_folders_requested.connect(self._on_settings_clean_git_folders, Qt.QueuedConnection)
+        self._settings.clean_all_requested.connect(self._on_settings_clean_all, Qt.QueuedConnection)
+        self._cleanup_threads: dict[str, QThread] = {}
+        self._cleanup_bridges: dict[str, HostCleanupBridge] = {}
+        self._docker_cleanup_task_id: str | None = None
+        self._git_cleanup_task_id: str | None = None
+        self._clean_all_queue: list[str] = []
 
         self._stack = QWidget()
         self._stack_layout = QVBoxLayout(self._stack)
@@ -2521,41 +2654,245 @@ class MainWindow(QMainWindow):
         self._apply_window_prefs()
         self._reload_environments()
         self._apply_settings_to_pages()
+        self._sync_settings_clean_state()
 
     def _on_settings_clean_docker(self) -> None:
         if shutil.which("docker") is None:
             QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
             return
-        if self._docker_prune_thread is not None and self._docker_prune_thread.isRunning():
+        if self._docker_cleanup_task_id is not None:
             QMessageBox.information(self, "Clean Docker", "A Docker cleanup is already running.")
             return
 
-        self._settings.set_clean_docker_busy(True)
-        bridge = DockerPruneBridge()
+        self._docker_cleanup_task_id = self._start_cleanup_task(
+            kind="docker",
+            label="Clean Docker",
+            target=str(self._settings_data.get("host_workdir") or os.getcwd()),
+            runner=self._run_docker_prune,
+        )
+        self._sync_settings_clean_state()
+
+    def _on_settings_clean_git_folders(self) -> None:
+        if self._git_cleanup_task_id is not None:
+            QMessageBox.information(self, "Clean Git Folders", "A git cleanup is already running.")
+            return
+
+        target = managed_repos_dir(data_dir=os.path.dirname(self._state_path))
+        self._git_cleanup_task_id = self._start_cleanup_task(
+            kind="git",
+            label="Clean Git Folders",
+            target=target,
+            runner=self._run_clean_git_folders,
+        )
+        self._sync_settings_clean_state()
+
+    def _on_settings_clean_all(self) -> None:
+        if self._clean_all_queue:
+            QMessageBox.information(self, "Clean All", "A Clean All run is already in progress.")
+            return
+        if self._docker_cleanup_task_id is not None or self._git_cleanup_task_id is not None:
+            QMessageBox.information(
+                self,
+                "Clean All",
+                "Finish the currently running cleanup first.",
+            )
+            return
+        self._clean_all_queue = ["docker", "git"]
+        self._sync_settings_clean_state()
+        self._start_next_clean_all_step()
+
+    def _sync_settings_clean_state(self) -> None:
+        self._settings.set_clean_state(
+            docker_busy=self._docker_cleanup_task_id is not None,
+            git_busy=self._git_cleanup_task_id is not None,
+            all_busy=bool(self._clean_all_queue),
+        )
+
+    def _start_next_clean_all_step(self) -> None:
+        if not self._clean_all_queue:
+            self._sync_settings_clean_state()
+            return
+        kind = str(self._clean_all_queue[0] or "").strip().lower()
+        if kind == "docker":
+            self._on_settings_clean_docker()
+            return
+        if kind == "git":
+            self._on_settings_clean_git_folders()
+            return
+        self._clean_all_queue.pop(0)
+        self._start_next_clean_all_step()
+
+    @staticmethod
+    def _format_cmd(args: list[str]) -> str:
+        return " ".join(shlex.quote(str(a)) for a in args)
+
+    def _start_cleanup_task(
+        self,
+        *,
+        kind: str,
+        label: str,
+        target: str,
+        runner: Callable[[Callable[[str], None], threading.Event], tuple[int, str]],
+    ) -> str:
+        task_id = uuid4().hex[:10]
+        task = Task(
+            task_id=task_id,
+            prompt=str(label or "Cleanup").strip(),
+            image="",
+            host_workdir=str(target or "").strip(),
+            host_codex_dir="",
+            created_at_s=time.time(),
+            status="cleaning",
+        )
+        task.started_at = datetime.now(tz=timezone.utc)
+        self._tasks[task_id] = task
+        self._dashboard.upsert_task(task, stain="slate")
+        self._schedule_save()
+
+        bridge = HostCleanupBridge(runner)
         thread = QThread(self)
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
 
-        def _on_done(exit_code: int, output: str) -> None:
-            self._settings.set_clean_docker_busy(False)
-            title = "Docker cleaned" if exit_code == 0 else "Docker cleanup failed"
-            box = QMessageBox(self)
-            box.setWindowTitle(title)
-            box.setText(title)
-            box.setDetailedText(str(output or "").strip())
-            box.setIcon(QMessageBox.Icon.Information if exit_code == 0 else QMessageBox.Icon.Critical)
-            box.exec()
-            self._docker_prune_thread = None
-            self._docker_prune_bridge = None
+        bridge.log.connect(lambda line, tid=task_id: self.host_log.emit(tid, line), Qt.QueuedConnection)
+        bridge.done.connect(
+            lambda code, output, tid=task_id, k=kind: self._on_cleanup_done(tid, k, int(code), str(output or "")),
+            Qt.QueuedConnection,
+        )
 
-        bridge.done.connect(_on_done, Qt.QueuedConnection)
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
         thread.finished.connect(thread.deleteLater)
 
-        self._docker_prune_thread = thread
-        self._docker_prune_bridge = bridge
+        self._cleanup_threads[task_id] = thread
+        self._cleanup_bridges[task_id] = bridge
+
         thread.start()
+        self._show_dashboard()
+        return task_id
+
+    def _finalize_cleanup_task(self, task_id: str, exit_code: int, *, error: str | None = None) -> None:
+        task = self._tasks.get(task_id)
+        if task is None:
+            return
+        task.exit_code = int(exit_code)
+        task.error = str(error) if error else None
+        task.status = "done" if int(exit_code) == 0 else "failed"
+        task.finished_at = datetime.now(tz=timezone.utc)
+        self._dashboard.upsert_task(task)
+        self._details.update_task(task)
+        self._schedule_save()
+
+    def _on_cleanup_done(self, task_id: str, kind: str, exit_code: int, output: str) -> None:
+        kind = str(kind or "").strip().lower()
+        self._cleanup_threads.pop(task_id, None)
+        self._cleanup_bridges.pop(task_id, None)
+
+        output = str(output or "").strip()
+        if not output:
+            output = f"Command exited with code {int(exit_code)}."
+
+        self._finalize_cleanup_task(task_id, int(exit_code))
+
+        if kind == "docker":
+            self._docker_cleanup_task_id = None
+            title = "Docker cleaned" if int(exit_code) == 0 else "Docker cleanup failed"
+        else:
+            self._git_cleanup_task_id = None
+            title = "Git folders cleaned" if int(exit_code) == 0 else "Git folders cleanup failed"
+
+        self._sync_settings_clean_state()
+
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        box.setText(title)
+        box.setDetailedText(output)
+        box.setIcon(QMessageBox.Icon.Information if int(exit_code) == 0 else QMessageBox.Icon.Critical)
+        box.exec()
+
+        if self._clean_all_queue and self._clean_all_queue[0] == kind:
+            self._clean_all_queue.pop(0)
+            self._sync_settings_clean_state()
+            self._start_next_clean_all_step()
+
+    def _run_docker_prune(
+        self,
+        log: Callable[[str], None],
+        stop: threading.Event,
+    ) -> tuple[int, str]:
+        docker_args = ["docker", "system", "prune", "-f", "-a"]
+        args = ["sudo", "-n", *docker_args] if shutil.which("sudo") else docker_args
+        log(f"$ {self._format_cmd(args)}")
+        output_lines: list[str] = []
+        try:
+            proc = subprocess.Popen(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+        except Exception as exc:
+            return 1, str(exc)
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            if stop.is_set():
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                break
+            line = str(raw or "").rstrip("\n")
+            if line:
+                log(line)
+                output_lines.append(line)
+        try:
+            exit_code = int(proc.wait(timeout=60.0))
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            exit_code = 1
+        output = "\n".join(output_lines).strip()
+        if not output:
+            output = f"Command exited with code {exit_code}."
+        return exit_code, output
+
+    def _run_clean_git_folders(
+        self,
+        log: Callable[[str], None],
+        stop: threading.Event,
+    ) -> tuple[int, str]:
+        data_dir = os.path.dirname(self._state_path)
+        target = managed_repos_dir(data_dir=data_dir)
+        log(f"Target: {target}")
+
+        target_real = os.path.realpath(target)
+        data_real = os.path.realpath(data_dir)
+        if not (target_real == data_real or target_real.startswith(data_real + os.sep)):
+            msg = f"Refusing to delete unexpected path: {target_real}"
+            log(msg)
+            return 1, msg
+
+        if not os.path.exists(target):
+            msg = "Nothing to clean."
+            log(msg)
+            return 0, msg
+
+        if stop.is_set():
+            return 1, "Cancelled."
+
+        args = ["sudo", "-n", "rm", "-rf", target] if shutil.which("sudo") else ["rm", "-rf", target]
+        log(f"$ {self._format_cmd(args)}")
+        try:
+            proc = subprocess.run(args, capture_output=True, text=True, check=False)
+        except Exception as exc:
+            return 1, str(exc)
+
+        output = "\n".join([str(proc.stdout or "").strip(), str(proc.stderr or "").strip()]).strip()
+        if not output:
+            output = f"Command exited with code {proc.returncode}."
+        return int(proc.returncode), output
 
     def _count_running_agents(self, env_id: str | None = None) -> int:
         count = 0
@@ -2699,6 +3036,8 @@ class MainWindow(QMainWindow):
         merged["interactive_command"] = str(merged.get("interactive_command") or "--sandbox danger-full-access")
         merged["interactive_command_claude"] = str(merged.get("interactive_command_claude") or "")
         merged["interactive_command_copilot"] = str(merged.get("interactive_command_copilot") or "")
+        for key in ("interactive_command", "interactive_command_claude", "interactive_command_copilot"):
+            merged[key] = self._sanitize_interactive_command_value(key, merged.get(key))
         merged["append_pixelarch_context"] = bool(merged.get("append_pixelarch_context") or False)
 
         try:
@@ -2732,6 +3071,38 @@ class MainWindow(QMainWindow):
         if agent_cli == "copilot":
             return "--add-dir /home/midori-ai/workspace"
         return "--sandbox danger-full-access"
+
+    def _sanitize_interactive_command_value(self, key: str, raw: object) -> str:
+        value = str(raw or "").strip()
+        if not value:
+            return ""
+
+        try:
+            cmd_parts = shlex.split(value)
+        except ValueError:
+            cmd_parts = []
+        if cmd_parts and cmd_parts[0] in {"codex", "claude", "copilot"}:
+            head = cmd_parts.pop(0)
+            if head == "codex" and cmd_parts and cmd_parts[0] == "exec":
+                cmd_parts.pop(0)
+            value = " ".join(shlex.quote(part) for part in cmd_parts)
+
+        if _looks_like_agent_help_command(value):
+            agent_cli = "codex"
+            if str(key or "").endswith("_claude"):
+                agent_cli = "claude"
+            elif str(key or "").endswith("_copilot"):
+                agent_cli = "copilot"
+            return self._default_interactive_command(agent_cli)
+
+        return value
+
+    @staticmethod
+    def _is_agent_help_interactive_launch(prompt: str, command: str) -> bool:
+        prompt = str(prompt or "").strip().lower()
+        if prompt.startswith("get agent help"):
+            return True
+        return _looks_like_agent_help_command(command)
 
     def _effective_host_config_dir(
         self,
@@ -3269,7 +3640,22 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
                 return
 
-        command = str(command or "").strip() or "bash"
+        raw_command = str(command or "").strip()
+        if not raw_command:
+            interactive_key = self._interactive_command_key(agent_cli)
+            raw_command = str(self._settings_data.get(interactive_key) or "").strip()
+            if not raw_command:
+                raw_command = self._default_interactive_command(agent_cli)
+        command = raw_command
+        is_help_launch = self._is_agent_help_interactive_launch(prompt=prompt, command=command)
+        if is_help_launch:
+            prompt = "\n".join(
+                [
+                    f"You are running: `{agent_cli}` right now",
+                    "",
+                    str(prompt or "").strip(),
+                ]
+            ).strip()
         try:
             if command.startswith("-"):
                 cmd_parts = [agent_cli, *shlex.split(command)]
@@ -3535,9 +3921,11 @@ class MainWindow(QMainWindow):
             if forward_gh_token:
                 docker_env_passthrough = ["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"]
 
+            docker_platform_args = docker_platform_args_for_pixelarch()
             docker_args = [
                 "docker",
                 "run",
+                *docker_platform_args,
                 "-it",
                 "--name",
                 container_name,
@@ -3577,6 +3965,15 @@ class MainWindow(QMainWindow):
                     "fi"
                 )
 
+            rosetta_snippet = ""
+            if has_rosetta() is False:
+                rosetta_snippet = (
+                    f'echo "[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"'
+                )
+
+            docker_pull_parts = ["docker", "pull", *docker_platform_args, image]
+            docker_pull_cmd = " ".join(shlex.quote(part) for part in docker_pull_parts)
+
             host_script_parts = [
                     f'CONTAINER_NAME={shlex.quote(container_name)}',
                     f'TMP_SETTINGS={shlex.quote(settings_tmp_path)}',
@@ -3593,9 +3990,11 @@ class MainWindow(QMainWindow):
                 ]
             if gh_token_snippet:
                 host_script_parts.append(gh_token_snippet)
+            if rosetta_snippet:
+                host_script_parts.append(rosetta_snippet)
             host_script_parts.extend(
                 [
-                    f"docker pull {shlex.quote(image)} || {{ STATUS=$?; echo \"[host] docker pull failed (exit $STATUS)\"; write_finish \"$STATUS\"; read -r -p \"Press Enter to close...\"; exit $STATUS; }}",
+                    f"{docker_pull_cmd} || {{ STATUS=$?; echo \"[host] docker pull failed (exit $STATUS)\"; write_finish \"$STATUS\"; read -r -p \"Press Enter to close...\"; exit $STATUS; }}",
                     f"{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then echo \"[host] container command failed (exit $STATUS)\"; fi; write_finish \"$STATUS\"; if [ $STATUS -ne 0 ]; then read -r -p \"Press Enter to close...\"; fi; exit $STATUS",
                 ]
             )
@@ -3605,7 +4004,9 @@ class MainWindow(QMainWindow):
             self._settings_data[self._host_config_dir_key(agent_cli)] = host_codex
             self._settings_data["active_environment_id"] = env_id
             self._settings_data["interactive_terminal_id"] = str(terminal_id or "")
-            self._settings_data[self._interactive_command_key(agent_cli)] = command
+            interactive_key = self._interactive_command_key(agent_cli)
+            if not self._is_agent_help_interactive_launch(prompt=prompt, command=command):
+                self._settings_data[interactive_key] = self._sanitize_interactive_command_value(interactive_key, command)
             self._apply_active_environment_to_new_task()
             self._schedule_save()
 
@@ -4229,15 +4630,7 @@ class MainWindow(QMainWindow):
             raw = str(self._settings_data.get(key) or "").strip()
             if not raw:
                 continue
-            try:
-                cmd_parts = shlex.split(raw)
-            except ValueError:
-                cmd_parts = []
-            if cmd_parts and cmd_parts[0] in {"codex", "claude", "copilot"}:
-                head = cmd_parts.pop(0)
-                if head == "codex" and cmd_parts and cmd_parts[0] == "exec":
-                    cmd_parts.pop(0)
-                self._settings_data[key] = " ".join(shlex.quote(part) for part in cmd_parts)
+            self._settings_data[key] = self._sanitize_interactive_command_value(key, raw)
         items = payload.get("tasks") or []
         loaded: list[Task] = []
         for item in items:

@@ -20,6 +20,10 @@ from codex_local_conatinerd.agent_cli import build_noninteractive_cmd
 from codex_local_conatinerd.agent_cli import container_config_dir
 from codex_local_conatinerd.agent_cli import normalize_agent
 from codex_local_conatinerd.agent_cli import verify_cli_clause
+from codex_local_conatinerd.docker_platform import ROSETTA_INSTALL_COMMAND
+from codex_local_conatinerd.docker_platform import docker_platform_args_for_pixelarch
+from codex_local_conatinerd.docker_platform import docker_platform_for_pixelarch
+from codex_local_conatinerd.docker_platform import has_rosetta
 from codex_local_conatinerd.github_token import resolve_github_token
 
 
@@ -77,8 +81,28 @@ def _has_image(image: str) -> bool:
         return False
 
 
-def _pull_image(image: str) -> None:
-    _run_docker(["pull", image], timeout_s=600.0)
+def _has_platform_image(image: str, platform_value: str) -> bool:
+    platform_value = str(platform_value or "").strip()
+    try:
+        expected_arch = platform_value.split("/")[1].strip().lower()
+    except Exception:
+        expected_arch = ""
+    if not expected_arch:
+        return _has_image(image)
+
+    try:
+        actual_arch = (
+            _run_docker(["image", "inspect", image, "--format", "{{.Architecture}}"], timeout_s=10.0)
+            .strip()
+            .lower()
+        )
+    except Exception:
+        return False
+    return actual_arch == expected_arch
+
+
+def _pull_image(image: str, *, platform_args: list[str]) -> None:
+    _run_docker(["pull", *list(platform_args or []), image], timeout_s=600.0)
 
 
 def _is_git_repo_root(path: str) -> bool:
@@ -120,6 +144,15 @@ class DockerPreflightWorker:
         docker_env: dict[str, str] | None = None
         try:
             os.makedirs(self._config.host_codex_dir, exist_ok=True)
+            forced_platform = docker_platform_for_pixelarch()
+            platform_args = docker_platform_args_for_pixelarch()
+            if forced_platform:
+                self._on_log(f"[host] forcing Docker platform: {forced_platform}")
+                rosetta = has_rosetta()
+                if rosetta is False:
+                    self._on_log(
+                        f"[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"
+                    )
             agent_cli = normalize_agent(self._config.agent_cli)
             config_container_dir = container_config_dir(agent_cli)
             config_extra_mounts = additional_config_mounts(agent_cli, self._config.host_codex_dir)
@@ -168,12 +201,17 @@ class DockerPreflightWorker:
             if self._config.pull_before_run:
                 self._on_state({"Status": "pulling"})
                 self._on_log(f"[host] docker pull {self._config.image}")
-                _pull_image(self._config.image)
+                _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
-            elif not _has_image(self._config.image):
+            elif forced_platform and not _has_platform_image(self._config.image, forced_platform):
                 self._on_state({"Status": "pulling"})
                 self._on_log(f"[host] image missing; docker pull {self._config.image}")
-                _pull_image(self._config.image)
+                _pull_image(self._config.image, platform_args=platform_args)
+                self._on_log("[host] pull complete")
+            elif not forced_platform and not _has_image(self._config.image):
+                self._on_state({"Status": "pulling"})
+                self._on_log(f"[host] image missing; docker pull {self._config.image}")
+                _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
 
             preflight_clause = ""
@@ -243,6 +281,7 @@ class DockerPreflightWorker:
 
             args = [
                 "run",
+                *platform_args,
                 "-d",
                 "-t",
                 "--name",
@@ -377,6 +416,15 @@ class DockerCodexWorker:
         docker_env: dict[str, str] | None = None
         try:
             os.makedirs(self._config.host_codex_dir, exist_ok=True)
+            forced_platform = docker_platform_for_pixelarch()
+            platform_args = docker_platform_args_for_pixelarch()
+            if forced_platform:
+                self._on_log(f"[host] forcing Docker platform: {forced_platform}")
+                rosetta = has_rosetta()
+                if rosetta is False:
+                    self._on_log(
+                        f"[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"
+                    )
             agent_cli = normalize_agent(self._config.agent_cli)
             config_container_dir = container_config_dir(agent_cli)
             config_extra_mounts = additional_config_mounts(agent_cli, self._config.host_codex_dir)
@@ -425,12 +473,17 @@ class DockerCodexWorker:
             if self._config.pull_before_run:
                 self._on_state({"Status": "pulling"})
                 self._on_log(f"[host] docker pull {self._config.image}")
-                _pull_image(self._config.image)
+                _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
-            elif not _has_image(self._config.image):
+            elif forced_platform and not _has_platform_image(self._config.image, forced_platform):
                 self._on_state({"Status": "pulling"})
                 self._on_log(f"[host] image missing; docker pull {self._config.image}")
-                _pull_image(self._config.image)
+                _pull_image(self._config.image, platform_args=platform_args)
+                self._on_log("[host] pull complete")
+            elif not forced_platform and not _has_image(self._config.image):
+                self._on_state({"Status": "pulling"})
+                self._on_log(f"[host] image missing; docker pull {self._config.image}")
+                _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
 
             if agent_cli == "codex" and not _is_git_repo_root(self._config.host_workdir):
@@ -511,6 +564,7 @@ class DockerCodexWorker:
                 extra_mount_args.extend(["-v", m])
             args = [
                 "run",
+                *platform_args,
                 "-d",
                 "-t",
                 "--name",
