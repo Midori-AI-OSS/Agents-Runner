@@ -1417,6 +1417,15 @@ class NewTaskPage(QWidget):
             )
             return
 
+        user_question = sanitize_prompt((self._prompt.toPlainText() or "").strip())
+        if not user_question:
+            QMessageBox.warning(
+                self,
+                "Missing question",
+                "Please type your question to get started with the help agent.",
+            )
+            return
+
         terminal_id = str(self._terminal.currentData() or "").strip()
         if not terminal_id:
             QMessageBox.warning(
@@ -1439,24 +1448,38 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
 
-        command = (
-            "bash -lc 'cd \"${HOME}/.agent-help/repos/Agents-Runner\" 2>/dev/null || "
-            "cd \"${HOME}/.agent-help/repos\" 2>/dev/null || "
-            "cd \"${HOME}\" 2>/dev/null || true; "
-            "if command -v codex >/dev/null 2>&1; then "
-            "codex --sandbox danger-full-access \"Help me get started with Agents Runner and this Codex GUI. Explain the basic workflow, where settings live, and how to run a task.\"; "
-            "else "
-            "echo \"[help] codex not found in PATH; opening a shell instead.\"; "
-            "fi; "
-            "exec bash'"
+        command = (self._command.text() or "").strip()
+
+        prompt = "\n".join(
+            [
+                "Get Agent Help",
+                "",
+                "User question:",
+                user_question,
+                "",
+                "You are helping a user with Agents Runner and the Agent Runner GUI.",
+                "",
+                "Context:",
+                "- You are running inside PixelArch Linux with passwordless sudo; install/update packages via `yay -Syu`.",
+                "- Repos are already cloned locally in `~/.agent-help/repos/`: `Agents-Runner` (this project) plus agent repos (`codex`, `claude-code`, `copilot-cli`).",
+                "",
+                "The user already provided their question above; do not ask them what they need help with again.",
+                "Answer the question directly. If a repo/path detail is required, ask one short clarifying question and then proceed.",
+            ]
         )
-        self.requested_launch.emit("Get Agent Help", command, host_codex, env_id, terminal_id, base_branch, helpme_script)
+        self.requested_launch.emit(
+            prompt,
+            command,
+            host_codex,
+            env_id,
+            terminal_id,
+            base_branch,
+            helpme_script,
+        )
 
     def _on_launch(self) -> None:
         prompt = sanitize_prompt((self._prompt.toPlainText() or "").strip())
         command = (self._command.text() or "").strip()
-        if not command:
-            command = "bash"
 
         if not self._workspace_ready:
             QMessageBox.warning(
@@ -3071,6 +3094,9 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _is_agent_help_interactive_launch(prompt: str, command: str) -> bool:
+        prompt = str(prompt or "").strip().lower()
+        if prompt.startswith("get agent help"):
+            return True
         return _looks_like_agent_help_command(command)
 
     def _effective_host_config_dir(
@@ -3609,7 +3635,22 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
                 return
 
-        command = str(command or "").strip() or "bash"
+        raw_command = str(command or "").strip()
+        if not raw_command:
+            interactive_key = self._interactive_command_key(agent_cli)
+            raw_command = str(self._settings_data.get(interactive_key) or "").strip()
+            if not raw_command:
+                raw_command = self._default_interactive_command(agent_cli)
+        command = raw_command
+        is_help_launch = self._is_agent_help_interactive_launch(prompt=prompt, command=command)
+        if is_help_launch:
+            prompt = "\n".join(
+                [
+                    f"Agent: {agent_cli}",
+                    "",
+                    str(prompt or "").strip(),
+                ]
+            ).strip()
         try:
             if command.startswith("-"):
                 cmd_parts = [agent_cli, *shlex.split(command)]
