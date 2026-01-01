@@ -15,6 +15,12 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 ---
 
+## PixelArch Info
+- **PixelArch tooling:** `yay`, `gh`, and `git` are always installed in PixelArch—do not add fallbacks for missing binaries
+- **PixelArch Packages:** Do not use `pacman` unless the user uses it in preflight; install/update via `yay -Syu`
+
+---
+
 ## Development Basics
 
 - Run `uv run main.py` to test the GUI locally before committing changes.
