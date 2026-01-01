@@ -27,6 +27,7 @@ from PySide6.QtCore import Slot
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIntValidator
 from PySide6.QtGui import QPainter
 from PySide6.QtGui import QPainterPath
 from PySide6.QtGui import QRadialGradient
@@ -1544,6 +1545,7 @@ class EnvironmentsPage(QWidget):
         self._max_agents_running.setToolTip(
             "Maximum agents running at the same time for this environment. Set to -1 for no limit."
         )
+        self._max_agents_running.setValidator(QIntValidator(-1, 10_000_000, self))
         self._max_agents_running.setMaximumWidth(150)
 
         browse_codex = QPushButton("Browse…")
@@ -1559,8 +1561,6 @@ class EnvironmentsPage(QWidget):
         grid.addWidget(browse_codex, 2, 2)
         grid.addWidget(QLabel("Agent CLI Flags"), 3, 0)
         grid.addWidget(self._agent_cli_args, 3, 1, 1, 2)
-        grid.addWidget(QLabel("Max agents running"), 4, 0)
-        grid.addWidget(self._max_agents_running, 4, 1, 1, 2)
 
         self._gh_pr_metadata_enabled = QCheckBox("Allow agent to set PR title/body (non-interactive only)")
         self._gh_pr_metadata_enabled.setToolTip(
@@ -1568,7 +1568,30 @@ class EnvironmentsPage(QWidget):
             "The agent is prompted to update it with a PR title/body, which will be used when opening the PR."
         )
         self._gh_pr_metadata_enabled.setEnabled(False)
-        grid.addWidget(self._gh_pr_metadata_enabled, 5, 0, 1, 3)
+        self._gh_pr_metadata_enabled.setVisible(True)
+
+        max_agents_row = QWidget(general_tab)
+        max_agents_row_layout = QHBoxLayout(max_agents_row)
+        max_agents_row_layout.setContentsMargins(0, 0, 0, 0)
+        max_agents_row_layout.setSpacing(10)
+        max_agents_row_layout.addWidget(self._max_agents_running)
+        max_agents_row_layout.addStretch(1)
+
+        grid.addWidget(QLabel("Max agents running"), 4, 0)
+        grid.addWidget(max_agents_row, 4, 1, 1, 2)
+
+        self._gh_pr_metadata_label = QLabel("PR title/body")
+        self._gh_pr_metadata_row = QWidget(general_tab)
+        gh_pr_metadata_layout = QHBoxLayout(self._gh_pr_metadata_row)
+        gh_pr_metadata_layout.setContentsMargins(0, 0, 0, 0)
+        gh_pr_metadata_layout.setSpacing(10)
+        gh_pr_metadata_layout.addWidget(self._gh_pr_metadata_enabled)
+        gh_pr_metadata_layout.addStretch(1)
+
+        self._gh_pr_metadata_label.setVisible(False)
+        self._gh_pr_metadata_row.setVisible(False)
+        grid.addWidget(self._gh_pr_metadata_label, 5, 0)
+        grid.addWidget(self._gh_pr_metadata_row, 5, 1, 1, 2)
 
         self._gh_management_mode = QComboBox(general_tab)
         self._gh_management_mode.addItem("Use Settings workdir", GH_MANAGEMENT_NONE)
@@ -1684,6 +1707,8 @@ class EnvironmentsPage(QWidget):
             self._max_agents_running.setText("-1")
             self._gh_pr_metadata_enabled.setChecked(False)
             self._gh_pr_metadata_enabled.setEnabled(False)
+            self._gh_pr_metadata_label.setVisible(False)
+            self._gh_pr_metadata_row.setVisible(False)
             self._gh_management_mode.setCurrentIndex(0)
             self._gh_management_target.setText("")
             self._gh_use_host_cli.setChecked(bool(is_gh_available()))
@@ -1704,6 +1729,8 @@ class EnvironmentsPage(QWidget):
         is_github_env = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) == GH_MANAGEMENT_GITHUB
         self._gh_pr_metadata_enabled.setChecked(bool(getattr(env, "gh_pr_metadata_enabled", False)))
         self._gh_pr_metadata_enabled.setEnabled(is_github_env)
+        self._gh_pr_metadata_label.setVisible(is_github_env)
+        self._gh_pr_metadata_row.setVisible(is_github_env)
         idx = self._gh_management_mode.findData(normalize_gh_management_mode(env.gh_management_mode))
         if idx >= 0:
             self._gh_management_mode.setCurrentIndex(idx)
@@ -2075,7 +2102,7 @@ class SettingsPage(QWidget):
         browse_copilot.clicked.connect(self._pick_copilot_dir)
 
         self._preflight_enabled = QCheckBox("Enable settings preflight bash (runs on all envs, before env preflight)")
-        self._append_pixelarch_context = QCheckBox("Append PixelArch context to prompts (Run Agent only)")
+        self._append_pixelarch_context = QCheckBox("Append PixelArch context")
         self._append_pixelarch_context.setToolTip(
             "When enabled, appends a short note to the end of the prompt passed to Run Agent.\n"
             "This never affects Run Interactive."
