@@ -8,10 +8,12 @@ import time
 from datetime import datetime
 from datetime import timezone
 
+from PySide6.QtCore import QMetaObject
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QMessageBox
 
 from codex_local_conatinerd.log_format import prettify_log_line
+from codex_local_conatinerd.ui.bridges import TaskRunnerBridge
 from codex_local_conatinerd.ui.task_model import Task
 from codex_local_conatinerd.ui.utils import _parse_docker_time
 from codex_local_conatinerd.ui.utils import _stain_color

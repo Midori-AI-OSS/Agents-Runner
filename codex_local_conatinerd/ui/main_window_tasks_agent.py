@@ -22,6 +22,8 @@ from codex_local_conatinerd.environments import GH_MANAGEMENT_LOCAL
 from codex_local_conatinerd.environments import GH_MANAGEMENT_NONE
 from codex_local_conatinerd.environments import normalize_gh_management_mode
 from codex_local_conatinerd.gh_management import is_git_repo
+from codex_local_conatinerd.gh_management import is_gh_available
+from codex_local_conatinerd.gh_management import ensure_github_clone
 from codex_local_conatinerd.gh_management import plan_repo_task
 from codex_local_conatinerd.gh_management import prepare_branch_for_task
 from codex_local_conatinerd.gh_management import GhManagementError
