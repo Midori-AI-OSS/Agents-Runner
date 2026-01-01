@@ -57,15 +57,8 @@ def prettify_log_line(line: str) -> str:
 
     match = _DOCKER_LOG_PREFIX_RE.match(text)
     if match:
-        ts = match.group("ts")
         msg = match.group("msg")
-        dt = parse_docker_datetime(ts)
-        if dt is not None:
-            time_part = dt.astimezone().strftime("%H:%M:%S")
-        else:
-            time_part = ts[11:19] if len(ts) >= 19 else ts
-        text = f"[{time_part}] {msg}"
+        text = msg
 
-    text = re.sub(r"[ \t]{2,}", " ", text).strip()
-    return text
-
+    text = re.sub(r"^\[\d{2}:\d{2}:\d{2}\]\s+", "", text)
+    return text.rstrip()

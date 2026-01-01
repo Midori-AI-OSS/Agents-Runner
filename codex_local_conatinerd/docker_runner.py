@@ -270,7 +270,7 @@ class DockerPreflightWorker:
                 pass
 
             logs_proc = subprocess.Popen(
-                ["docker", "logs", "-f", "--timestamps", self._container_id],
+                ["docker", "logs", "-f", self._container_id],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -539,7 +539,7 @@ class DockerCodexWorker:
                 pass
 
             logs_proc = subprocess.Popen(
-                ["docker", "logs", "-f", "--timestamps", self._container_id],
+                ["docker", "logs", "-f", self._container_id],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
