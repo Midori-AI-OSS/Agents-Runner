@@ -1452,19 +1452,24 @@ class NewTaskPage(QWidget):
 
         prompt = "\n".join(
             [
-                "Get Agent Help",
+                "Agents Runner - Help Request",
                 "",
-                "User question:",
+                "Question:",
                 user_question,
                 "",
-                "You are helping a user with Agents Runner and the Agent Runner GUI.",
+                "You're helping a user who is using Agents Runner and its GUI.",
                 "",
-                "Context:",
-                "- You are running inside PixelArch Linux with passwordless sudo; install/update packages via `yay -Syu`.",
-                "- Repos are already cloned locally in `~/.agent-help/repos/`: `Agents-Runner` (this project) plus agent repos (`codex`, `claude-code`, `copilot-cli`).",
+                "Environment:",
+                "- PixelArch Linux container (passwordless sudo).",
+                "- Install/update packages with `yay -Syu`.",
                 "",
-                "The user already provided their question above; do not ask them what they need help with again.",
-                "Answer the question directly. If a repo/path detail is required, ask one short clarifying question and then proceed.",
+                "Repositories:",
+                "- Available under `~/.agent-help/repos/` (the preflight clones if needed).",
+                "- Includes `Agents-Runner` plus `codex`, `claude-code`, and `copilot-cli`.",
+                "",
+                "Instructions:",
+                "- Answer the question directly; do not ask what they need help with again.",
+                "- If you need one missing detail (repo/path/version), ask one short clarifying question, then proceed.",
             ]
         )
         self.requested_launch.emit(

@@ -26,19 +26,16 @@ def _append_pr_attribution_footer(body: str, agent_cli: str = "", agent_cli_args
     if _PR_ATTRIBUTION_MARKER in body:
         return body + "\n"
 
-    agent_info = ""
-    if agent_cli:
-        agent_info = f"\n\n_Agent: {agent_cli}"
-        if agent_cli_args:
-            agent_info += f" {agent_cli_args}"
-        agent_info += "_"
+    agent_used = " ".join(part for part in (agent_cli.strip(), agent_cli_args.strip()) if part)
+    if not agent_used:
+        agent_used = "(unknown)"
 
     footer = (
-        f"{agent_info}\n\n---\n"
+        "\n\n---\n"
         f"{_PR_ATTRIBUTION_MARKER}\n"
         f"Created by [Midori AI Agents Runner]({_MIDORI_AI_AGENTS_RUNNER_URL}).\n"
+        f"Agent Used: {agent_used}\n"
         f"Related: [Midori AI Monorepo]({_MIDORI_AI_URL}).\n"
-        f"PRs: [Agents Runner]({_MIDORI_AI_AGENTS_RUNNER_PRS_URL}) · [Midori AI]({_MIDORI_AI_PRS_URL}).\n"
     )
     return (body + footer) if body else footer.lstrip("\n")
 
