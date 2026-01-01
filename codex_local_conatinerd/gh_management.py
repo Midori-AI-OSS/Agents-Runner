@@ -247,13 +247,11 @@ def prepare_branch_for_task(
     base_branch: str | None = None,
 ) -> tuple[str, str]:
     repo_root = _expand_dir(repo_root)
-    if not git_is_clean(repo_root):
-        raise GhManagementError("repo has uncommitted changes; commit/stash before running")
 
     _require_ok(_run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0), args=["git", "fetch"])
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
-    checkout_proc = _run(["git", "-C", repo_root, "checkout", base_branch], timeout_s=20.0)
+    checkout_proc = _run(["git", "-C", repo_root, "checkout", "-f", base_branch], timeout_s=20.0)
     if checkout_proc.returncode != 0:
         _require_ok(
             _run(
@@ -263,6 +261,9 @@ def prepare_branch_for_task(
             args=["git", "checkout", "-B", base_branch],
         )
     _update_base_branch_from_origin(repo_root, base_branch)
+
+    if not git_is_clean(repo_root):
+        raise GhManagementError("repo has uncommitted changes; commit/stash before running")
 
     _require_ok(
         _run(["git", "-C", repo_root, "checkout", "-B", branch], timeout_s=20.0),
