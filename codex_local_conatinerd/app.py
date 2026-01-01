@@ -1192,7 +1192,7 @@ class TaskDetailsPage(QWidget):
 
 class NewTaskPage(QWidget):
     requested_run = Signal(str, str, str, str)
-    requested_launch = Signal(str, str, str, str, str, str)
+    requested_launch = Signal(str, str, str, str, str, str, str)
     back_requested = Signal()
     environment_changed = Signal(str)
 
@@ -1298,6 +1298,10 @@ class NewTaskPage(QWidget):
 
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
+        self._get_agent_help = QPushButton("Get Agent Help")
+        self._get_agent_help.clicked.connect(self._on_get_agent_help)
+        self._get_agent_help.setEnabled(False)
+        buttons.addWidget(self._get_agent_help)
         buttons.addStretch(1)
         self._run_interactive = QPushButton("Run Interactive")
         self._run_interactive.clicked.connect(self._on_launch)
@@ -1365,6 +1369,44 @@ class NewTaskPage(QWidget):
         base_branch = str(self._base_branch.currentData() or "")
         self.requested_run.emit(prompt, host_codex, env_id, base_branch)
 
+    def _on_get_agent_help(self) -> None:
+        if not self._workspace_ready:
+            QMessageBox.warning(
+                self,
+                "Workspace not configured",
+                self._workspace_error or "Pick an environment with a local folder or GitHub repo configured.",
+            )
+            return
+
+        terminal_id = str(self._terminal.currentData() or "").strip()
+        if not terminal_id:
+            QMessageBox.warning(
+                self,
+                "No terminals found",
+                "Could not detect an installed terminal emulator to launch.",
+            )
+            return
+
+        helpme_path = Path(__file__).resolve().parent / "preflights" / "helpme.sh"
+        try:
+            helpme_script = helpme_path.read_text(encoding="utf-8")
+        except Exception:
+            helpme_script = ""
+        if not helpme_script.strip():
+            QMessageBox.warning(self, "Missing preflight", f"Could not load {helpme_path}")
+            return
+
+        host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
+        env_id = str(self._environment.currentData() or "")
+        base_branch = str(self._base_branch.currentData() or "")
+
+        command = (
+            "bash -lc 'cd \"${HOME}/.agent-help/repos/Agents-Runner\" 2>/dev/null || "
+            "cd \"${HOME}/.agent-help/repos\" 2>/dev/null || "
+            "cd \"${HOME}\" 2>/dev/null || true; exec bash'"
+        )
+        self.requested_launch.emit("Get Agent Help", command, host_codex, env_id, terminal_id, base_branch, helpme_script)
+
     def _on_launch(self) -> None:
         prompt = sanitize_prompt((self._prompt.toPlainText() or "").strip())
         command = (self._command.text() or "").strip()
@@ -1392,7 +1434,7 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
-        self.requested_launch.emit(prompt, command, host_codex, env_id, terminal_id, base_branch)
+        self.requested_launch.emit(prompt, command, host_codex, env_id, terminal_id, base_branch, "")
 
     def _on_environment_changed(self, index: int) -> None:
         self._apply_environment_tints()
@@ -1449,6 +1491,7 @@ class NewTaskPage(QWidget):
 
         self._run_agent.setEnabled(self._workspace_ready)
         self._run_interactive.setEnabled(self._workspace_ready)
+        self._get_agent_help.setEnabled(self._workspace_ready)
 
     def set_repo_controls_visible(self, visible: bool) -> None:
         visible = bool(visible)
@@ -3174,6 +3217,7 @@ class MainWindow(QMainWindow):
         env_id: str,
         terminal_id: str,
         base_branch: str,
+        extra_preflight_script: str,
     ) -> None:
         if shutil.which("docker") is None:
             QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
@@ -3389,11 +3433,13 @@ class MainWindow(QMainWindow):
 
         settings_tmp_path = ""
         env_tmp_path = ""
+        helpme_tmp_path = ""
 
         preflight_clause = ""
         preflight_mounts: list[str] = []
         settings_container_path = f"/tmp/codex-preflight-settings-{task_token}.sh"
         environment_container_path = f"/tmp/codex-preflight-environment-{task_token}.sh"
+        helpme_container_path = f"/tmp/codex-preflight-helpme-{task_token}.sh"
 
         def _write_preflight_script(script: str, label: str) -> str:
             fd, tmp_path = tempfile.mkstemp(prefix=f"codex-preflight-{label}-{task_token}-", suffix=".sh")
@@ -3430,8 +3476,18 @@ class MainWindow(QMainWindow):
                     '/bin/bash "${PREFLIGHT_ENV}"; '
                     'echo "[preflight] environment: done"; '
                 )
+
+            if str(extra_preflight_script or "").strip():
+                helpme_tmp_path = _write_preflight_script(str(extra_preflight_script or ""), "helpme")
+                preflight_mounts.extend(["-v", f"{helpme_tmp_path}:{helpme_container_path}:ro"])
+                preflight_clause += (
+                    f'PREFLIGHT_HELP={shlex.quote(helpme_container_path)}; '
+                    'echo "[preflight] helpme: running"; '
+                    '/bin/bash "${PREFLIGHT_HELP}"; '
+                    'echo "[preflight] helpme: done"; '
+                )
         except Exception as exc:
-            for tmp in (settings_tmp_path, env_tmp_path):
+            for tmp in (settings_tmp_path, env_tmp_path, helpme_tmp_path):
                 try:
                     if tmp and os.path.exists(tmp):
                         os.unlink(tmp)
@@ -3525,11 +3581,13 @@ class MainWindow(QMainWindow):
                     f'CONTAINER_NAME={shlex.quote(container_name)}',
                     f'TMP_SETTINGS={shlex.quote(settings_tmp_path)}',
                     f'TMP_ENV={shlex.quote(env_tmp_path)}',
+                    f'TMP_HELPME={shlex.quote(helpme_tmp_path)}',
                     f'FINISH_FILE={shlex.quote(finish_path)}',
                     'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
                     'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
                     'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
-                    'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; }',
+                    'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; '
+                    'if [ -n "$TMP_HELPME" ]; then rm -f -- "$TMP_HELPME" >/dev/null 2>&1 || true; fi; }',
                     'finish() { STATUS=$?; if [ ! -e "$FINISH_FILE" ]; then write_finish "$STATUS"; fi; cleanup; }',
                     "trap finish EXIT",
                 ]
@@ -3563,7 +3621,7 @@ class MainWindow(QMainWindow):
             self._show_dashboard()
             self._new_task.reset_for_new_run()
         except Exception as exc:
-            for tmp in (settings_tmp_path, env_tmp_path):
+            for tmp in (settings_tmp_path, env_tmp_path, helpme_tmp_path):
                 try:
                     if tmp and os.path.exists(tmp):
                         os.unlink(tmp)
