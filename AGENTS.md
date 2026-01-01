@@ -25,6 +25,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 - Run `uv run main.py` to test the GUI locally before committing changes.
 - Follow existing code style: Python 3.13+, type hints throughout, and minimal modifications.
+- Avoid monolith files: **soft max 300 lines per file**, **hard max 600 lines per file** (split modules/classes when approaching the soft limit).
 - Keep UI elements sharp—no rounded corners in stylesheets or custom painting code.
 - Run linters and tests before submitting PRs.
 - Use structured commit messages: `[TYPE] Concise summary`
