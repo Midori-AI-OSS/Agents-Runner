@@ -3651,7 +3651,7 @@ class MainWindow(QMainWindow):
         if is_help_launch:
             prompt = "\n".join(
                 [
-                    f"Agent: {agent_cli}",
+                    f"You are running: `{agent_cli}` right now",
                     "",
                     str(prompt or "").strip(),
                 ]
