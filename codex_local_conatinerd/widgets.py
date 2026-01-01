@@ -86,9 +86,11 @@ class BouncingLoadingBar(QWidget):
         chunk_fraction: float = 0.20,
     ) -> None:
         super().__init__(parent)
+        self._mode = "bounce"
         self._chunk_fraction = float(chunk_fraction)
         self._offset = 0.0
         self._direction = 1.0
+        self._phase = 0.0
         self._color = QColor(148, 163, 184, 220)
         self._timer = QTimer(self)
         self._timer.setInterval(30)
@@ -97,6 +99,21 @@ class BouncingLoadingBar(QWidget):
 
     def set_color(self, color: QColor) -> None:
         self._color = color
+        self.update()
+
+    def set_mode(self, mode: str) -> None:
+        mode = str(mode or "").strip().lower()
+        if mode not in {"bounce", "pulse_full", "dotted"}:
+            mode = "bounce"
+        if self._mode == mode:
+            return
+        self._mode = mode
+        if mode == "pulse_full":
+            self._timer.setInterval(50)
+        elif mode == "dotted":
+            self._timer.setInterval(24)
+        else:
+            self._timer.setInterval(30)
         self.update()
 
     def start(self) -> None:
@@ -108,6 +125,15 @@ class BouncingLoadingBar(QWidget):
         self.update()
 
     def _tick(self) -> None:
+        if self._mode == "pulse_full":
+            self._phase = (self._phase + 0.08) % (math.tau * 4.0)
+            self.update()
+            return
+        if self._mode == "dotted":
+            self._phase = (self._phase + 0.022) % 1.0
+            self.update()
+            return
+
         rect = self.rect().adjusted(1, 1, -1, -1)
         chunk_w = max(2, int(rect.width() * self._chunk_fraction))
         max_offset = max(0.0, float(rect.width() - chunk_w))
@@ -133,7 +159,6 @@ class BouncingLoadingBar(QWidget):
 
         border = QColor(255, 255, 255, 22)
         bg = QColor(self._color.red(), self._color.green(), self._color.blue(), 22)
-        chunk = QColor(self._color.red(), self._color.green(), self._color.blue(), 215)
 
         painter.setPen(Qt.NoPen)
         painter.setBrush(bg)
@@ -143,6 +168,40 @@ class BouncingLoadingBar(QWidget):
         painter.setBrush(Qt.NoBrush)
         painter.drawRect(outer)
 
+        if self._mode == "pulse_full":
+            pulse = 0.5 * (1.0 + math.sin(self._phase))
+            alpha = int(110 + pulse * 105)
+            chunk = QColor(self._color.red(), self._color.green(), self._color.blue(), alpha)
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(chunk)
+            painter.drawRect(inner)
+            return
+
+        if self._mode == "dotted":
+            dot_w = max(2, int(inner.height() * 0.35))
+            gap = max(2, int(dot_w * 1.2))
+            dot_count = 6
+            group_w = dot_count * dot_w + (dot_count - 1) * gap
+            if group_w >= inner.width():
+                dot_count = max(1, inner.width() // max(1, dot_w + gap))
+                group_w = dot_count * dot_w + max(0, dot_count - 1) * gap
+
+            travel = max(0, inner.width() - group_w)
+            t = float(self._phase)
+            eased = 0.5 - 0.5 * math.cos(math.pi * t)
+            base_x = int(inner.left() + travel * eased)
+
+            r, g, b = self._color.red(), self._color.green(), self._color.blue()
+            painter.setPen(Qt.NoPen)
+            for i in range(dot_count):
+                strength = 0.25 + 0.75 * (i / max(1, dot_count - 1))
+                alpha = int(70 + strength * 170)
+                painter.setBrush(QColor(r, g, b, alpha))
+                x = base_x + i * (dot_w + gap)
+                painter.drawRect(int(x), int(inner.top()), int(dot_w), int(inner.height()))
+            return
+
+        chunk = QColor(self._color.red(), self._color.green(), self._color.blue(), 215)
         chunk_w = max(2, int(inner.width() * self._chunk_fraction))
         max_offset = max(0.0, float(inner.width() - chunk_w))
         x = int(inner.left() + (0.0 if max_offset <= 0.0 else self._offset))

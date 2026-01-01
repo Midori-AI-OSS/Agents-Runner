@@ -19,13 +19,20 @@ _MIDORI_AI_URL = "https://github.com/Midori-AI-OSS/Midori-AI"
 _PR_ATTRIBUTION_MARKER = "<!-- midori-ai-agents-runner-pr-footer -->"
 
 
-def _append_pr_attribution_footer(body: str) -> str:
+def _append_pr_attribution_footer(body: str, agent_cli: str = "", agent_cli_args: str = "") -> str:
     body = (body or "").rstrip()
     if _PR_ATTRIBUTION_MARKER in body:
         return body + "\n"
 
+    agent_info = ""
+    if agent_cli:
+        agent_info = f"\n\n_Agent: {agent_cli}"
+        if agent_cli_args:
+            agent_info += f" {agent_cli_args}"
+        agent_info += "_"
+
     footer = (
-        "\n\n---\n"
+        f"{agent_info}\n\n---\n"
         f"{_PR_ATTRIBUTION_MARKER}\n"
         f"_This PR was created by the [Midori AI Agents Runner]({_MIDORI_AI_AGENTS_RUNNER_URL}). "
         f"Related: [Midori AI]({_MIDORI_AI_URL})._\n"
@@ -298,9 +305,11 @@ def commit_push_and_pr(
     title: str,
     body: str,
     use_gh: bool = True,
+    agent_cli: str = "",
+    agent_cli_args: str = "",
 ) -> str | None:
     repo_root = _expand_dir(repo_root)
-    body = _append_pr_attribution_footer(body)
+    body = _append_pr_attribution_footer(body, agent_cli=agent_cli, agent_cli_args=agent_cli_args)
 
     _require_ok(
         _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),

@@ -90,7 +90,6 @@ from codex_local_conatinerd.widgets import StatusGlyph
 from codex_local_conatinerd.gh_management import GhManagementError
 from codex_local_conatinerd.gh_management import commit_push_and_pr
 from codex_local_conatinerd.gh_management import ensure_github_clone
-from codex_local_conatinerd.gh_management import git_list_branches
 from codex_local_conatinerd.gh_management import git_list_remote_heads
 from codex_local_conatinerd.gh_management import is_gh_available
 from codex_local_conatinerd.gh_management import is_git_repo
@@ -459,6 +458,8 @@ class Task:
     gh_branch: str = ""
     gh_pr_url: str = ""
     gh_pr_metadata_path: str = ""
+    agent_cli: str = ""
+    agent_cli_args: str = ""
 
     def last_nonblank_log_line(self) -> str:
         for line in reversed(self.logs):
@@ -595,6 +596,32 @@ class TaskRunnerBridge(QObject):
         self._worker.run()
 
 
+class DockerPruneBridge(QObject):
+    done = Signal(int, str)
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def run(self) -> None:
+        docker_args = ["docker", "system", "prune", "-f", "-a"]
+        args: list[str]
+        if shutil.which("sudo"):
+            args = ["sudo", "-n", *docker_args]
+        else:
+            args = docker_args
+
+        try:
+            proc = subprocess.run(args, capture_output=True, text=True, check=False)
+        except Exception as exc:
+            self.done.emit(1, str(exc))
+            return
+
+        output = "\n".join([str(proc.stdout or "").strip(), str(proc.stderr or "").strip()]).strip()
+        if not output:
+            output = f"Command exited with code {proc.returncode}."
+        self.done.emit(int(proc.returncode), output)
+
+
 class TaskRow(QWidget):
     clicked = Signal()
     discard_requested = Signal(str)
@@ -712,6 +739,7 @@ class TaskRow(QWidget):
         if task.is_active():
             self._glyph.hide()
             self._busy_bar.set_color(spinner_color or color)
+            self._busy_bar.set_mode("dotted" if status_key == "queued" else "bounce")
             self._busy_bar.show()
             self._busy_bar.start()
             return
@@ -1460,6 +1488,9 @@ class NewTaskPage(QWidget):
         self._prompt.setPlainText("")
         self._prompt.setFocus(Qt.OtherFocusReason)
 
+    def focus_prompt(self) -> None:
+        self._prompt.setFocus(Qt.OtherFocusReason)
+
 
 class EnvironmentsPage(QWidget):
     back_requested = Signal()
@@ -1562,7 +1593,8 @@ class EnvironmentsPage(QWidget):
         self._max_agents_running = QLineEdit()
         self._max_agents_running.setPlaceholderText("-1 (unlimited)")
         self._max_agents_running.setToolTip(
-            "Maximum agents running at the same time for this environment. Set to -1 for no limit."
+            "Maximum agents running at the same time for this environment. Set to -1 for no limit.\n"
+            "Tip: For local-folder workspaces, set this to 1 to avoid agents fighting over setup/files."
         )
         self._max_agents_running.setValidator(QIntValidator(-1, 10_000_000, self))
         self._max_agents_running.setMaximumWidth(150)
@@ -2049,6 +2081,7 @@ class SettingsPage(QWidget):
     back_requested = Signal()
     saved = Signal(dict)
     test_preflight_requested = Signal(dict)
+    clean_docker_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -2169,6 +2202,11 @@ class SettingsPage(QWidget):
 
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
+        self._clean_docker = QToolButton()
+        self._clean_docker.setText("Clean Docker")
+        self._clean_docker.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._clean_docker.setToolTip("Runs `docker system prune -fa` (destructive).")
+        self._clean_docker.clicked.connect(self._on_clean_docker)
         save = QToolButton()
         save.setText("Save")
         save.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -2177,6 +2215,7 @@ class SettingsPage(QWidget):
         test.setText("Test preflights (all envs)")
         test.setToolButtonStyle(Qt.ToolButtonTextOnly)
         test.clicked.connect(self._on_test_preflight)
+        buttons.addWidget(self._clean_docker)
         buttons.addWidget(test)
         buttons.addWidget(save)
         buttons.addStretch(1)
@@ -2242,6 +2281,25 @@ class SettingsPage(QWidget):
         )
         if path:
             self._host_claude_dir.setText(path)
+
+    def set_clean_docker_busy(self, busy: bool) -> None:
+        self._clean_docker.setEnabled(not busy)
+        self._clean_docker.setText("Cleaning…" if busy else "Clean Docker")
+
+    def _on_clean_docker(self) -> None:
+        btn = QMessageBox.question(
+            self,
+            "Clean Docker",
+            "This will run `docker system prune -fa`.\n\n"
+            "It will remove unused images, containers, networks, and build cache.\n"
+            "This cannot be undone.\n\n"
+            "Are you sure?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if btn != QMessageBox.StandardButton.Yes:
+            return
+        self.clean_docker_requested.emit()
 
     def _pick_copilot_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(
@@ -2396,6 +2454,9 @@ class MainWindow(QMainWindow):
         self._settings.back_requested.connect(self._show_dashboard)
         self._settings.saved.connect(self._apply_settings, Qt.QueuedConnection)
         self._settings.test_preflight_requested.connect(self._on_settings_test_preflight, Qt.QueuedConnection)
+        self._settings.clean_docker_requested.connect(self._on_settings_clean_docker, Qt.QueuedConnection)
+        self._docker_prune_thread: QThread | None = None
+        self._docker_prune_bridge: DockerPruneBridge | None = None
 
         self._stack = QWidget()
         self._stack_layout = QVBoxLayout(self._stack)
@@ -2417,6 +2478,41 @@ class MainWindow(QMainWindow):
         self._apply_window_prefs()
         self._reload_environments()
         self._apply_settings_to_pages()
+
+    def _on_settings_clean_docker(self) -> None:
+        if shutil.which("docker") is None:
+            QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
+            return
+        if self._docker_prune_thread is not None and self._docker_prune_thread.isRunning():
+            QMessageBox.information(self, "Clean Docker", "A Docker cleanup is already running.")
+            return
+
+        self._settings.set_clean_docker_busy(True)
+        bridge = DockerPruneBridge()
+        thread = QThread(self)
+        bridge.moveToThread(thread)
+        thread.started.connect(bridge.run)
+
+        def _on_done(exit_code: int, output: str) -> None:
+            self._settings.set_clean_docker_busy(False)
+            title = "Docker cleaned" if exit_code == 0 else "Docker cleanup failed"
+            box = QMessageBox(self)
+            box.setWindowTitle(title)
+            box.setText(title)
+            box.setDetailedText(str(output or "").strip())
+            box.setIcon(QMessageBox.Icon.Information if exit_code == 0 else QMessageBox.Icon.Critical)
+            box.exec()
+            self._docker_prune_thread = None
+            self._docker_prune_bridge = None
+
+        bridge.done.connect(_on_done, Qt.QueuedConnection)
+        bridge.done.connect(thread.quit, Qt.QueuedConnection)
+        bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
+        thread.finished.connect(thread.deleteLater)
+
+        self._docker_prune_thread = thread
+        self._docker_prune_bridge = bridge
+        thread.start()
 
     def _count_running_agents(self, env_id: str | None = None) -> int:
         count = 0
@@ -2490,7 +2586,7 @@ class MainWindow(QMainWindow):
         self._details.hide()
         self._envs_page.hide()
         self._settings.hide()
-        self._new_task.reset_for_new_run()
+        self._new_task.focus_prompt()
         self._new_task.show()
 
     def _show_task_details(self) -> None:
@@ -2910,6 +3006,8 @@ class MainWindow(QMainWindow):
             created_at_s=time.time(),
             status="queued",
             gh_management_mode=gh_mode,
+            agent_cli=agent_cli,
+            agent_cli_args=" ".join(agent_cli_args),
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -3562,6 +3660,8 @@ class MainWindow(QMainWindow):
                         str(task.task_id or task_id),
                         bool(task.gh_use_host_cli),
                         None,
+                        str(task.agent_cli or "").strip(),
+                        str(task.agent_cli_args or "").strip(),
                     ),
                     daemon=True,
                 ).start()
@@ -3960,6 +4060,8 @@ class MainWindow(QMainWindow):
                     task_token,
                     bool(task.gh_use_host_cli),
                     pr_metadata_path,
+                    str(task.agent_cli or "").strip(),
+                    str(task.agent_cli_args or "").strip(),
                 ),
                 daemon=True,
             ).start()
@@ -3974,6 +4076,8 @@ class MainWindow(QMainWindow):
         task_token: str,
         use_gh: bool,
         pr_metadata_path: str | None = None,
+        agent_cli: str = "",
+        agent_cli_args: str = "",
     ) -> None:
         if not repo_root or not branch:
             return
@@ -4008,6 +4112,8 @@ class MainWindow(QMainWindow):
                 title=title,
                 body=body,
                 use_gh=bool(use_gh),
+                agent_cli=agent_cli,
+                agent_cli_args=agent_cli_args,
             )
         except GhManagementError as exc:
             self.host_log.emit(task_id, f"[gh] failed: {exc}")

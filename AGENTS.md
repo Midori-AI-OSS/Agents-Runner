@@ -11,6 +11,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - **Design constraint:** Keep sharp/square corners (avoid `border-radius` and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
 - **Docs:** Do not update the readme unless asked to
+- **Test:** Do not build tests unless asked to, tests go in the test folder
 
 ---
 

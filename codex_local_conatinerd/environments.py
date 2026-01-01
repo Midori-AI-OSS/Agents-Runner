@@ -1,6 +1,5 @@
 import json
 import os
-import tempfile
 
 from dataclasses import dataclass
 from dataclasses import field
@@ -92,21 +91,6 @@ class Environment:
         return value if value in ALLOWED_STAINS else "slate"
 
 
-def _atomic_write_json(path: str, payload: dict[str, Any]) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(prefix="env-", suffix=".json", dir=os.path.dirname(path))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
-        os.replace(tmp_path, path)
-    finally:
-        try:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-        except Exception:
-            pass
-
-
 def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     """Deserialize environment from JSON payload."""
     if not isinstance(payload, dict):
@@ -114,37 +98,37 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     version = int(payload.get("version", ENVIRONMENT_VERSION))
     if version != ENVIRONMENT_VERSION:
         return None
-    
+
     env_id = str(payload.get("env_id") or payload.get("id") or "").strip()
     if not env_id:
         return None
-    
+
     name = str(payload.get("name") or env_id).strip()
     color = str(payload.get("color") or "slate").strip().lower()
     host_workdir = str(payload.get("host_workdir") or "").strip()
     host_codex_dir = str(payload.get("host_codex_dir") or "").strip()
     agent_cli_args = str(payload.get("agent_cli_args") or payload.get("codex_extra_args") or "").strip()
-    
+
     try:
         max_agents_running = int(str(payload.get("max_agents_running", -1)).strip())
     except (ValueError, AttributeError):
         max_agents_running = -1
-    
+
     preflight_enabled = bool(payload.get("preflight_enabled", False))
     preflight_script = str(payload.get("preflight_script") or "")
-    
+
     env_vars = payload.get("env_vars", {})
     env_vars = env_vars if isinstance(env_vars, dict) else {}
-    
+
     extra_mounts = payload.get("extra_mounts", [])
     extra_mounts = extra_mounts if isinstance(extra_mounts, list) else []
-    
+
     gh_management_mode = normalize_gh_management_mode(str(payload.get("gh_management_mode") or ""))
     gh_management_target = str(payload.get("gh_management_target") or "").strip()
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
     gh_pr_metadata_enabled = bool(payload.get("gh_pr_metadata_enabled", False))
-    
+
     return Environment(
         env_id=env_id,
         name=name or env_id,
