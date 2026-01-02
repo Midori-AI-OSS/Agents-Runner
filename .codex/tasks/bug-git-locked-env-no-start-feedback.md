@@ -1,14 +1,15 @@
-# Bug: Git locked envs show no "task started" feedback
+# Bug: GH-managed "Run Agent" shows no immediate feedback
 
 ## Summary
-When a managed repo/environment is in a Git-locked state (e.g., index.lock or another operation in progress), starting a task can appear to do nothing: the UI does not immediately show a log line indicating that the task start was attempted, and the user has no feedback until the operation eventually fails (or times out).
+On the **New Task** page, clicking **Run Agent** in a GitHub-managed environment can appear to do nothing while the repo is being cloned/branched. The task exists and cloning logs may be emitted, but the UI stays on the New Task page, so the user cannot see the task or its logs until later.
+
+If the user manually navigates to the task viewer during cloning and is watching the clone step, completing the clone can forcibly navigate them back to the dashboard (“kicking them out” of the current view).
 
 ## Expected
-- As soon as the user clicks Run/Start, emit an immediate log line like:
-  - `[git] checking repo lock...`
-  - `[git] repo appears locked; waiting...`
-  - or a clear error message if we choose to fail fast.
+- As soon as the user clicks **Run Agent**, the app should navigate to a view where progress is visible (dashboard and/or task details), and the task should visibly enter `cloning` immediately.
+- Completing the clone/branch prep should not forcibly navigate away from whatever view the user is currently using.
 
 ## Notes / Ideas
-- Detect lock files and/or Git operations in progress early and log explicitly.
-- Consider a short "preflight" step that runs before cloning/branch prep and before Docker pull/run, so the task timeline always has an initial user-visible event.
+- Root cause: GH prep path returns early before calling `_show_dashboard()`, so dashboard/info updates remain hidden until GH prep completes.
+- The GH prep subprocesses use `capture_output=True`, so a blocked git operation produces no streaming output; log explicit “starting clone/branch prep” lines and consider basic lock detection for `.git/index.lock`.
+- Consider running GH prep as a visible “preflight” stage (before Docker pull/run) so it behaves like other preflight work.

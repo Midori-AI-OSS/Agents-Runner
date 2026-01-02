@@ -154,7 +154,7 @@ class _MainWindowTasksAgentMixin:
 
         desired_base = str(base_branch or "").strip()
 
-        def _continue_after_gh() -> None:
+        def _continue_after_gh(*, show_ui: bool = True) -> None:
             runner_prompt = prompt
             if bool(self._settings_data.get("append_pixelarch_context") or False):
                 runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
@@ -219,13 +219,16 @@ class _MainWindowTasksAgentMixin:
                 self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
                 self._schedule_save()
 
-            self._show_dashboard()
-            self._new_task.reset_for_new_run()
+            if show_ui:
+                self._show_dashboard()
+                self._new_task.reset_for_new_run()
 
         if gh_mode == GH_MANAGEMENT_GITHUB and env:
             task.status = "cloning"
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
+            self._show_dashboard()
+            self._new_task.reset_for_new_run()
 
             bridge = GhManagementBridge(
                 task_id=task_id,
@@ -270,7 +273,7 @@ class _MainWindowTasksAgentMixin:
                 current.status = "queued"
                 self._dashboard.upsert_task(current, stain=stain, spinner_color=spinner)
                 self._details.update_task(current)
-                _continue_after_gh()
+                _continue_after_gh(show_ui=False)
 
             setattr(bridge, "_ui_on_done", _on_done)
             bridge.done.connect(_on_done, Qt.QueuedConnection)
