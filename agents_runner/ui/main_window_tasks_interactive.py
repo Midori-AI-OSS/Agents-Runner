@@ -34,7 +34,6 @@ from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
-from agents_runner.ui.bridges import GhManagementBridge
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _safe_str
 from agents_runner.ui.utils import _stain_color
@@ -252,62 +251,6 @@ class _MainWindowTasksInteractiveMixin:
                 desired_base=desired_base,
             )
 
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            task.status = "cloning"
-            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            self._schedule_save()
-
-            bridge = GhManagementBridge(
-                task_id=task_id,
-                repo=str(env.gh_management_target or ""),
-                dest_dir=host_workdir,
-                prefer_gh=bool(task.gh_use_host_cli),
-                recreate_if_needed=True,
-                base_branch=desired_base,
-            )
-            thread = QThread(self)
-            bridge.moveToThread(thread)
-            thread.started.connect(bridge.run)
-
-            def _on_gh_log(line: str) -> None:
-                self._on_task_log(task_id, line)
-
-            setattr(bridge, "_ui_on_log", _on_gh_log)
-            bridge.log.connect(_on_gh_log, Qt.QueuedConnection)
-
-            def _on_done(ok: bool, payload: object) -> None:
-                self._gh_threads.pop(task_id, None)
-                self._gh_bridges.pop(task_id, None)
-                current = self._tasks.get(task_id)
-                if current is None or (current.status or "").lower() == "discarded":
-                    return
-                if not ok:
-                    msg = str(payload or "GitHub repo preparation failed")
-                    current.status = "failed"
-                    current.error = msg
-                    current.exit_code = 1
-                    current.finished_at = datetime.now(tz=timezone.utc)
-                    self._dashboard.upsert_task(current, stain=stain, spinner_color=spinner)
-                    self._details.update_task(current)
-                    self._schedule_save()
-                    QMessageBox.warning(self, "Failed to prepare repo", msg)
-                    return
-                if isinstance(payload, dict):
-                    current.gh_repo_root = str(payload.get("repo_root") or "")
-                    current.gh_base_branch = str(payload.get("base_branch") or "")
-                    current.gh_branch = str(payload.get("branch") or "")
-                    self._schedule_save()
-                _continue_after_gh()
-
-            setattr(bridge, "_ui_on_done", _on_done)
-            bridge.done.connect(_on_done, Qt.QueuedConnection)
-            bridge.done.connect(thread.quit, Qt.QueuedConnection)
-            bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
-            thread.finished.connect(thread.deleteLater)
-
-            self._gh_bridges[task_id] = bridge
-            self._gh_threads[task_id] = thread
-            thread.start()
             return
 
         _continue_after_gh()
