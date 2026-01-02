@@ -19,6 +19,7 @@ from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QMessageBox
 
 from codex_local_conatinerd.environments import managed_repos_dir
+from codex_local_conatinerd.environments import SYSTEM_ENV_ID
 from codex_local_conatinerd.ui.bridges import HostCleanupBridge
 from codex_local_conatinerd.ui.task_model import Task
 
@@ -202,6 +203,7 @@ class _MainWindowCleanupMixin:
             host_workdir=str(target or "").strip(),
             host_codex_dir="",
             created_at_s=time.time(),
+            environment_id=SYSTEM_ENV_ID,
             status="queued" if queued else "running",
         )
         if not queued:
@@ -237,8 +239,16 @@ class _MainWindowCleanupMixin:
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
 
-        bridge.log.connect(self._on_cleanup_bridge_log, Qt.QueuedConnection)
-        bridge.done.connect(self._on_cleanup_bridge_done, Qt.QueuedConnection)
+        bridge.log.connect(
+            lambda line, tid=task_id: self._on_task_log(tid, str(line or "")),
+            Qt.QueuedConnection,
+        )
+        bridge.done.connect(
+            lambda exit_code, output, tid=task_id, k=kind: self._on_cleanup_done(
+                tid, k, int(exit_code), str(output or "")
+            ),
+            Qt.QueuedConnection,
+        )
 
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
@@ -296,6 +306,14 @@ class _MainWindowCleanupMixin:
         box = QMessageBox(self)
         box.setWindowTitle(title)
         box.setText(title)
+        if kind == "docker":
+            box.setInformativeText(
+                "Runs Docker commands without sudo. This may fail if Docker is not configured for your user."
+            )
+        else:
+            box.setInformativeText(
+                "Deletes GUI-managed folders without sudo. This may fail if the files are owned by root."
+            )
         box.setDetailedText(output)
         box.setIcon(QMessageBox.Icon.Information if int(exit_code) == 0 else QMessageBox.Icon.Critical)
         box.exec()

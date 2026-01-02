@@ -11,11 +11,7 @@ log() {
 
 run_cmd() {
   log "\$ $*"
-  if command -v sudo >/dev/null 2>&1; then
-    sudo -n "$@"
-  else
-    "$@"
-  fi
+  "$@"
 }
 
 log "[docker] Cleanup started"
@@ -36,4 +32,3 @@ log "[docker] Final system prune…"
 run_cmd docker system prune -f -a
 
 log "[docker] Cleanup completed"
-

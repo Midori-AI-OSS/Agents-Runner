@@ -264,6 +264,7 @@ class SettingsPage(QWidget):
             "3) volumes\n"
             "4) networks\n"
             "5) system prune (`docker system prune -fa`)\n\n"
+            "This runs without sudo and may fail if Docker is not configured for your user.\n\n"
             "This cannot be undone.\n\n"
             "Are you sure?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -280,6 +281,7 @@ class SettingsPage(QWidget):
             "Clean Git Folders",
             "This will delete the GUI-managed git repo folders on disk:\n\n"
             f"{path}\n\n"
+            "This runs without sudo and may fail if the files are owned by root.\n\n"
             "This cannot be undone.\n\n"
             "Are you sure?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -298,6 +300,7 @@ class SettingsPage(QWidget):
             "1) prune Docker (containers, images, volumes, networks, then `docker system prune -fa`)\n"
             "2) delete GUI-managed git folders:\n"
             f"   {path}\n\n"
+            "These steps run without sudo and may fail if Docker or the target folders require elevated permissions.\n\n"
             "This cannot be undone.\n\n"
             "Are you sure?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,

@@ -4,6 +4,8 @@ from codex_local_conatinerd.environments.model import ENVIRONMENT_VERSION
 from codex_local_conatinerd.environments.model import GH_MANAGEMENT_GITHUB
 from codex_local_conatinerd.environments.model import GH_MANAGEMENT_LOCAL
 from codex_local_conatinerd.environments.model import GH_MANAGEMENT_NONE
+from codex_local_conatinerd.environments.model import SYSTEM_ENV_ID
+from codex_local_conatinerd.environments.model import SYSTEM_ENV_NAME
 from codex_local_conatinerd.environments.model import Environment
 from codex_local_conatinerd.environments.model import normalize_gh_management_mode
 from codex_local_conatinerd.environments.parse import parse_env_vars_text
@@ -36,5 +38,6 @@ __all__ = [
     "parse_mounts_text",
     "save_environment",
     "serialize_environment",
+    "SYSTEM_ENV_ID",
+    "SYSTEM_ENV_NAME",
 ]
-
