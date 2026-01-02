@@ -42,6 +42,18 @@ class TaskRunnerBridge(QObject):
     def container_id(self) -> str | None:
         return self._worker.container_id
 
+    @property
+    def gh_repo_root(self) -> str | None:
+        return getattr(self._worker, "gh_repo_root", None)
+
+    @property
+    def gh_base_branch(self) -> str | None:
+        return getattr(self._worker, "gh_base_branch", None)
+
+    @property
+    def gh_branch(self) -> str | None:
+        return getattr(self._worker, "gh_branch", None)
+
     @Slot()
     def request_stop(self) -> None:
         self._worker.request_stop()

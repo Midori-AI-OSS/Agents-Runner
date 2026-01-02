@@ -20,6 +20,11 @@ from codex_local_conatinerd.docker_platform import docker_platform_args_for_pixe
 from codex_local_conatinerd.docker_platform import docker_platform_for_pixelarch
 from codex_local_conatinerd.docker_platform import has_rosetta
 from codex_local_conatinerd.github_token import resolve_github_token
+from codex_local_conatinerd.gh_management import ensure_github_clone
+from codex_local_conatinerd.gh_management import is_git_repo
+from codex_local_conatinerd.gh_management import plan_repo_task
+from codex_local_conatinerd.gh_management import prepare_branch_for_task
+from codex_local_conatinerd.gh_management import GhManagementError
 
 from codex_local_conatinerd.docker.config import DockerRunnerConfig
 from codex_local_conatinerd.docker.paths import _is_git_repo_root
@@ -47,10 +52,25 @@ class DockerCodexWorker:
         self._on_done = on_done
         self._stop = Event()
         self._container_id: str | None = None
+        self._gh_repo_root: str | None = None
+        self._gh_base_branch: str | None = None
+        self._gh_branch: str | None = None
 
     @property
     def container_id(self) -> str | None:
         return self._container_id
+
+    @property
+    def gh_repo_root(self) -> str | None:
+        return self._gh_repo_root
+
+    @property
+    def gh_base_branch(self) -> str | None:
+        return self._gh_base_branch
+
+    @property
+    def gh_branch(self) -> str | None:
+        return self._gh_branch
 
     def request_stop(self) -> None:
         self._stop.set()
@@ -67,6 +87,48 @@ class DockerCodexWorker:
         preflight_tmp_paths: list[str] = []
         docker_env: dict[str, str] | None = None
         try:
+            # GitHub repo preparation (clone + branch prep) - happens first, before Docker
+            if self._config.gh_repo:
+                # Check for git lock file that might indicate a stalled operation.
+                # We log a warning and continue - if the lock is actually active, the
+                # subsequent git operations will fail with proper error messages.
+                lock_file = os.path.join(self._config.host_workdir, ".git", "index.lock")
+                if os.path.exists(lock_file):
+                    self._on_log(f"[gh] WARNING: found .git/index.lock - another git operation may be in progress")
+                    self._on_log(f"[gh] If this is a stale lock, remove it: rm {lock_file}")
+
+                self._on_log(f"[gh] cloning {self._config.gh_repo} -> {self._config.host_workdir}")
+                try:
+                    ensure_github_clone(
+                        self._config.gh_repo,
+                        self._config.host_workdir,
+                        prefer_gh=self._config.gh_prefer_gh_cli,
+                        recreate_if_needed=self._config.gh_recreate_if_needed,
+                    )
+                    if is_git_repo(self._config.host_workdir):
+                        plan = plan_repo_task(
+                            self._config.host_workdir,
+                            task_id=self._config.task_id,
+                            base_branch=self._config.gh_base_branch or None,
+                        )
+                        if plan is not None:
+                            self._on_log(f"[gh] creating branch {plan.branch} (base {plan.base_branch})")
+                            self._gh_base_branch, self._gh_branch = prepare_branch_for_task(
+                                plan.repo_root,
+                                branch=plan.branch,
+                                base_branch=plan.base_branch,
+                            )
+                            self._gh_repo_root = plan.repo_root
+                            self._on_log(f"[gh] ready on branch {self._gh_branch}")
+                        else:
+                            self._on_log("[gh] not a git repo; skipping branch/PR")
+                    else:
+                        self._on_log("[gh] not a git repo; skipping branch/PR")
+                except (GhManagementError, Exception) as exc:
+                    self._on_log(f"[gh] ERROR: {exc}")
+                    self._on_done(1, str(exc))
+                    return
+
             os.makedirs(self._config.host_codex_dir, exist_ok=True)
             forced_platform = docker_platform_for_pixelarch()
             platform_args = docker_platform_args_for_pixelarch()
