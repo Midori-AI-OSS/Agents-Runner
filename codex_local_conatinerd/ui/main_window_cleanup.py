@@ -76,25 +76,6 @@ class _MainWindowCleanupMixin:
             exit_code = 1
         return exit_code, output_lines
 
-    @Slot(str)
-    def _on_cleanup_bridge_log(self, line: str) -> None:
-        bridge = self.sender()
-        if not isinstance(bridge, HostCleanupBridge):
-            return
-        task_id = str(getattr(bridge, "task_id", "") or "").strip()
-        if not task_id:
-            return
-        self._on_task_log(task_id, str(line or ""))
-    @Slot(int, str)
-    def _on_cleanup_bridge_done(self, exit_code: int, output: str) -> None:
-        bridge = self.sender()
-        if not isinstance(bridge, HostCleanupBridge):
-            return
-        task_id = str(getattr(bridge, "task_id", "") or "").strip()
-        kind = str(getattr(bridge, "kind", "") or "").strip()
-        if not task_id:
-            return
-        self._on_cleanup_done(task_id, kind, int(exit_code), str(output or ""))
     def _on_settings_clean_docker(self) -> None:
         if shutil.which("docker") is None:
             QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
