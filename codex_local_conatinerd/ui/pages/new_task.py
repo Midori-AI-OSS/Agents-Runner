@@ -165,24 +165,37 @@ class NewTaskPage(QWidget):
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
+    def _update_run_buttons(self) -> None:
+        has_terminal = bool(str(self._terminal.currentData() or "").strip())
+        self._run_agent.setEnabled(self._workspace_ready)
+        self._run_interactive.setEnabled(self._workspace_ready and has_terminal)
+        self._get_agent_help.setEnabled(self._workspace_ready and has_terminal)
+
     def _refresh_terminals(self) -> None:
         current = str(self._terminal.currentData() or "")
         options = detect_terminal_options()
         self._terminal.blockSignals(True)
         try:
             self._terminal.clear()
-            for opt in options:
-                self._terminal.addItem(opt.label, opt.terminal_id)
-            desired = current
-            if desired:
-                idx = self._terminal.findData(desired)
-                if idx >= 0:
-                    self._terminal.setCurrentIndex(idx)
-                    return
-            if self._terminal.count() > 0:
+            if not options:
+                self._terminal.addItem("No terminals detected", "")
                 self._terminal.setCurrentIndex(0)
+            else:
+                selected = False
+                for opt in options:
+                    self._terminal.addItem(opt.label, opt.terminal_id)
+                desired = current
+                if desired:
+                    idx = self._terminal.findData(desired)
+                    if idx >= 0:
+                        self._terminal.setCurrentIndex(idx)
+                        selected = True
+                if not selected and self._terminal.count() > 0:
+                    self._terminal.setCurrentIndex(0)
         finally:
             self._terminal.blockSignals(False)
+        if hasattr(self, "_run_interactive"):
+            self._update_run_buttons()
 
     def _on_run(self) -> None:
         prompt = (self._prompt.toPlainText() or "").strip()
@@ -359,9 +372,7 @@ class NewTaskPage(QWidget):
         self._workspace_hint.setText(hint)
         self._workspace_hint.setVisible(bool(hint))
 
-        self._run_agent.setEnabled(self._workspace_ready)
-        self._run_interactive.setEnabled(self._workspace_ready)
-        self._get_agent_help.setEnabled(self._workspace_ready)
+        self._update_run_buttons()
 
     def set_repo_controls_visible(self, visible: bool) -> None:
         visible = bool(visible)

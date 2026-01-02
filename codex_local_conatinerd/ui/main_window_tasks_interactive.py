@@ -263,7 +263,11 @@ class _MainWindowTasksInteractiveMixin:
             bridge.moveToThread(thread)
             thread.started.connect(bridge.run)
 
-            bridge.log.connect(lambda line: self._on_task_log(task_id, line), Qt.QueuedConnection)
+            def _on_gh_log(line: str) -> None:
+                self._on_task_log(task_id, line)
+
+            setattr(bridge, "_ui_on_log", _on_gh_log)
+            bridge.log.connect(_on_gh_log, Qt.QueuedConnection)
 
             def _on_done(ok: bool, payload: object) -> None:
                 self._gh_threads.pop(task_id, None)
@@ -289,6 +293,7 @@ class _MainWindowTasksInteractiveMixin:
                     self._schedule_save()
                 _continue_after_gh()
 
+            setattr(bridge, "_ui_on_done", _on_done)
             bridge.done.connect(_on_done, Qt.QueuedConnection)
             bridge.done.connect(thread.quit, Qt.QueuedConnection)
             bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)

@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import subprocess
+import shlex
 
 from dataclasses import dataclass
 
@@ -27,20 +28,51 @@ def detect_terminal_options() -> list[TerminalOption]:
         return options
 
     if platform.startswith("linux"):
+        terminal_hint = os.environ.get("TERMINAL") or ""
+        hint_exe = ""
+        if terminal_hint.strip():
+            try:
+                hint_exe = shlex.split(terminal_hint.strip())[0]
+            except ValueError:
+                hint_exe = terminal_hint.strip().split()[0] if terminal_hint.strip().split() else ""
+        if hint_exe:
+            hint_base = os.path.basename(hint_exe)
+            hint_terminal_id = hint_base or "terminal-env"
+            resolved = shutil.which(hint_exe)
+            if resolved:
+                options.append(
+                    TerminalOption(
+                        hint_terminal_id,
+                        f"{hint_base or hint_exe} ($TERMINAL)",
+                        "linux-exe",
+                        exe=resolved,
+                    )
+                )
+
         candidates: list[tuple[str, str, str]] = [
             ("konsole", "Konsole", "konsole"),
+            ("kgx", "GNOME Console", "kgx"),
+            ("gnome-console", "GNOME Console", "gnome-console"),
             ("gnome-terminal", "GNOME Terminal", "gnome-terminal"),
             ("x-terminal-emulator", "x-terminal-emulator", "x-terminal-emulator"),
+            ("mate-terminal", "MATE Terminal", "mate-terminal"),
+            ("tilix", "Tilix", "tilix"),
             ("kitty", "Kitty", "kitty"),
             ("wezterm", "WezTerm", "wezterm"),
             ("alacritty", "Alacritty", "alacritty"),
+            ("foot", "foot", "foot"),
+            ("footclient", "footclient", "footclient"),
             ("terminator", "Terminator", "terminator"),
+            ("lxterminal", "LXTerminal", "lxterminal"),
+            ("qterminal", "QTerminal", "qterminal"),
             ("xfce4-terminal", "XFCE Terminal", "xfce4-terminal"),
             ("xterm", "xterm", "xterm"),
         ]
         for terminal_id, label, exe in candidates:
             resolved = shutil.which(exe)
             if resolved:
+                if any(opt.terminal_id == terminal_id for opt in options):
+                    continue
                 options.append(TerminalOption(terminal_id, label, "linux-exe", exe=resolved))
         return options
 
@@ -71,11 +103,21 @@ def _linux_terminal_args(terminal_id: str, exe: str, bash_script: str, cwd: str 
     if cwd:
         command = f"cd {shlex_quote(cwd)}; {bash_script}"
 
+    if terminal_id in {"kgx", "gnome-console"}:
+        return [exe, "--", "bash", "-lc", command]
+
     if terminal_id == "konsole":
         args = [exe]
         if cwd:
             args.extend(["--workdir", cwd])
         args.extend(["-e", "bash", "-lc", command])
+        return args
+
+    if terminal_id == "mate-terminal":
+        args = [exe]
+        if cwd:
+            args.extend(["--working-directory", cwd])
+        args.extend(["--", "bash", "-lc", command])
         return args
 
     if terminal_id == "gnome-terminal":
@@ -105,6 +147,12 @@ def _linux_terminal_args(terminal_id: str, exe: str, bash_script: str, cwd: str 
             args.extend(["--directory", cwd])
         args.extend(["bash", "-lc", command])
         return args
+
+    if terminal_id in {"foot", "footclient"}:
+        return [exe, "-e", "bash", "-lc", command]
+
+    if terminal_id in {"tilix", "lxterminal", "qterminal"}:
+        return [exe, "-e", "bash", "-lc", command]
 
     if terminal_id == "alacritty":
         args = [exe]
