@@ -155,6 +155,10 @@ class _MainWindowTasksAgentMixin:
         extra_mounts_for_task = list(env.extra_mounts) if env else []
 
         # PR metadata prep (only if gh mode is enabled)
+        # Note: We prepare the PR metadata file before the task starts, even though
+        # gh_repo_root and gh_branch won't be available until after the git clone
+        # completes in the worker. This is fine because the file is created with just
+        # the task_id, and the actual branch/repo info is captured later in _on_bridge_done.
         if (
             env
             and gh_mode == GH_MANAGEMENT_GITHUB

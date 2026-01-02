@@ -90,11 +90,13 @@ class DockerCodexWorker:
             # GitHub repo preparation (clone + branch prep) - happens first, before Docker
             if self._config.gh_repo:
                 # Check for git lock file that might indicate a stalled operation
+                # This is just a warning; if the lock is active, the clone/branch operations
+                # will fail naturally with a proper error message.
                 lock_file = os.path.join(self._config.host_workdir, ".git", "index.lock")
                 if os.path.exists(lock_file):
                     self._on_log(f"[gh] WARNING: found .git/index.lock - another git operation may be in progress")
                     self._on_log(f"[gh] If this is a stale lock, remove it: rm {lock_file}")
-                
+
                 self._on_log(f"[gh] cloning {self._config.gh_repo} -> {self._config.host_workdir}")
                 try:
                     ensure_github_clone(
