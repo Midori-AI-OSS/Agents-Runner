@@ -54,7 +54,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         title = QLabel("Environments")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
-        subtitle = QLabel("Saved locally in ~/.midoriai/codex-container-gui/state.json")
+        subtitle = QLabel("Saved locally in ~/.midoriai/agents-runner/state.json")
         subtitle.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
         back = QToolButton()
