@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() {
+  printf '%s\n' "[pre-commit] $*" >&2
+}
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "${repo_root}"
+
+if ! command -v uv >/dev/null 2>&1; then
+  log "uv not found; install uv to run pre-commit checks (or use --no-verify to bypass)"
+  exit 127
+fi
+
+log "Running Python bytecode compile check (compileall)"
+uv run python -m compileall -q codex_local_conatinerd main.py
+
+log "Running import smoke test"
+uv run python - <<'PY'
+import importlib
+
+modules = [
+    "codex_local_conatinerd",
+    "codex_local_conatinerd.app",
+    "codex_local_conatinerd.ui.main_window",
+]
+
+for module in modules:
+    importlib.import_module(module)
+print("ok")
+PY
+
+log "OK"
