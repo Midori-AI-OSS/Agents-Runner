@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import threading
+
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices
+from PySide6.QtWidgets import QMessageBox
+
+from agents_runner.environments import GH_MANAGEMENT_GITHUB
+from agents_runner.environments import normalize_gh_management_mode
+
+
+class _MainWindowTaskReviewMixin:
+    def _on_task_pr_requested(self, task_id: str) -> None:
+        task_id = str(task_id or "").strip()
+        task = self._tasks.get(task_id)
+        if task is None:
+            return
+
+        env = self._environments.get(task.environment_id)
+        if env is not None and not bool(getattr(env, "gh_management_locked", False)):
+            QMessageBox.information(
+                self,
+                "PR not available",
+                "PR creation is only available for GitHub-locked environments.",
+            )
+            return
+
+        if normalize_gh_management_mode(task.gh_management_mode) != GH_MANAGEMENT_GITHUB:
+            return
+
+        pr_url = str(task.gh_pr_url or "").strip()
+        if pr_url.startswith("http"):
+            if not QDesktopServices.openUrl(QUrl(pr_url)):
+                QMessageBox.warning(self, "Failed to open PR", pr_url)
+            return
+
+        repo_root = str(task.gh_repo_root or "").strip()
+        branch = str(task.gh_branch or "").strip()
+        if not repo_root or not branch:
+            QMessageBox.warning(self, "PR not available", "This task is missing repo/branch metadata.")
+            return
+
+        if task.is_active():
+            QMessageBox.information(self, "Task still running", "Wait for the task to finish before creating a PR.")
+            return
+
+        base_branch = str(task.gh_base_branch or "").strip() or "main"
+        message = f"Create a PR from {branch} -> {base_branch}?\n\nThis will commit and push any local changes."
+        if QMessageBox.question(self, "Create pull request?", message) != QMessageBox.StandardButton.Yes:
+            return
+
+        prompt_text = str(task.prompt or "")
+        task_token = str(task.task_id or task_id)
+        pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
+        self._on_task_log(task_id, f"[gh] PR requested ({branch} -> {base_branch})")
+        threading.Thread(
+            target=self._finalize_gh_management_worker,
+            args=(
+                task_id,
+                repo_root,
+                branch,
+                base_branch,
+                prompt_text,
+                task_token,
+                bool(task.gh_use_host_cli),
+                pr_metadata_path,
+                str(task.agent_cli or "").strip(),
+                str(task.agent_cli_args or "").strip(),
+            ),
+            daemon=True,
+        ).start()

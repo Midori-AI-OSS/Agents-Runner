@@ -1,6 +1,6 @@
 import sys
 
-from codex_local_conatinerd.app import run_app
+from agents_runner.app import run_app
 
 
 def main() -> None:
