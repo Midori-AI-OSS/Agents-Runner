@@ -29,12 +29,7 @@ from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
-from agents_runner.gh_management import ensure_github_clone
 from agents_runner.gh_management import is_gh_available
-from agents_runner.gh_management import is_git_repo
-from agents_runner.gh_management import plan_repo_task
-from agents_runner.gh_management import prepare_branch_for_task
-from agents_runner.gh_management import GhManagementError
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.terminal_apps import launch_in_terminal
