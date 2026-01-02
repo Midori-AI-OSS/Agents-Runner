@@ -245,7 +245,7 @@ class NewTaskPage(QWidget):
             )
             return
 
-        helpme_path = Path(__file__).resolve().parent / "preflights" / "helpme.sh"
+        helpme_path = Path(__file__).resolve().parents[2] / "preflights" / "helpme.sh"
         try:
             helpme_script = helpme_path.read_text(encoding="utf-8")
         except Exception:
