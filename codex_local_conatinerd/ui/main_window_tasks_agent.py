@@ -177,49 +177,30 @@ class _MainWindowTasksAgentMixin:
         if gh_mode == GH_MANAGEMENT_GITHUB and env:
             gh_repo = str(env.gh_management_target or "").strip() or None
 
+        config = DockerRunnerConfig(
+            task_id=task_id,
+            image=image,
+            host_codex_dir=host_codex,
+            host_workdir=effective_workdir,
+            agent_cli=agent_cli,
+            auto_remove=True,
+            pull_before_run=True,
+            settings_preflight_script=settings_preflight_script,
+            environment_preflight_script=environment_preflight_script,
+            env_vars=env_vars_for_task,
+            extra_mounts=extra_mounts_for_task,
+            agent_cli_args=agent_cli_args,
+            gh_repo=gh_repo,
+            gh_prefer_gh_cli=use_host_gh,
+            gh_recreate_if_needed=True,
+            gh_base_branch=desired_base or None,
+        )
+        task._runner_config = config
+        task._runner_prompt = runner_prompt
+
         if self._can_start_new_agent_for_env(env_id):
-            config = DockerRunnerConfig(
-                task_id=task_id,
-                image=image,
-                host_codex_dir=host_codex,
-                host_workdir=effective_workdir,
-                agent_cli=agent_cli,
-                auto_remove=True,
-                pull_before_run=True,
-                settings_preflight_script=settings_preflight_script,
-                environment_preflight_script=environment_preflight_script,
-                env_vars=env_vars_for_task,
-                extra_mounts=extra_mounts_for_task,
-                agent_cli_args=agent_cli_args,
-                gh_repo=gh_repo,
-                gh_prefer_gh_cli=use_host_gh,
-                gh_recreate_if_needed=True,
-                gh_base_branch=desired_base or None,
-            )
-            task._runner_config = config
-            task._runner_prompt = runner_prompt
             self._actually_start_task(task)
         else:
-            config = DockerRunnerConfig(
-                task_id=task_id,
-                image=image,
-                host_codex_dir=host_codex,
-                host_workdir=effective_workdir,
-                agent_cli=agent_cli,
-                auto_remove=True,
-                pull_before_run=True,
-                settings_preflight_script=settings_preflight_script,
-                environment_preflight_script=environment_preflight_script,
-                env_vars=env_vars_for_task,
-                extra_mounts=extra_mounts_for_task,
-                agent_cli_args=agent_cli_args,
-                gh_repo=gh_repo,
-                gh_prefer_gh_cli=use_host_gh,
-                gh_recreate_if_needed=True,
-                gh_base_branch=desired_base or None,
-            )
-            task._runner_config = config
-            task._runner_prompt = runner_prompt
             self._on_task_log(task_id, "[queue] Waiting for available slot...")
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
