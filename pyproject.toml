@@ -1,5 +1,5 @@
 [project]
-name = "codex-local-conatinerd"
+name = "agents-runner"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"

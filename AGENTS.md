@@ -7,7 +7,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 ## Quick Start
 
 - **Run locally:** `uv run main.py`
-- **UI styling:** Located in `codex_local_conatinerd/style/` (Qt stylesheet builder) and `codex_local_conatinerd/widgets/` (custom widgets)
+- **UI styling:** Located in `agents_runner/style/` (Qt stylesheet builder) and `agents_runner/widgets/` (custom widgets)
 - **Design constraint:** Keep sharp/square corners (avoid non-`0px` `border-radius` values and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
 - **Docs:** Do not update the readme unless asked to
