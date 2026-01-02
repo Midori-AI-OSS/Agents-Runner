@@ -4,6 +4,19 @@ import subprocess
 from .errors import GhManagementError
 
 
+def _noninteractive_env() -> dict[str, str]:
+    env = dict(os.environ)
+    env.setdefault("GIT_TERMINAL_PROMPT", "0")
+    env.setdefault("GCM_INTERACTIVE", "Never")
+    env.setdefault("GIT_ASKPASS", "true")
+    env.setdefault("SSH_ASKPASS", "true")
+    env.setdefault(
+        "GIT_SSH_COMMAND",
+        "ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
+    )
+    return env
+
+
 def _run(
     args: list[str],
     *,
@@ -17,6 +30,8 @@ def _run(
             check=False,
             capture_output=True,
             text=True,
+            stdin=subprocess.DEVNULL,
+            env=_noninteractive_env(),
             timeout=timeout_s,
         )
     except subprocess.TimeoutExpired as exc:
@@ -45,4 +60,3 @@ def _is_empty_dir(path: str) -> bool:
         return os.path.isdir(path) and not os.listdir(path)
     except OSError:
         return False
-

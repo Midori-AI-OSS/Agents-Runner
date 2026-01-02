@@ -1,6 +1,6 @@
 # Task Master Mode
 
-> **Note:** Keep Task Master process notes in `.codex/instructions/` and store active work in the root `.codex/tasks/` directory. Follow the naming conventions established by your team (for example, prefix files with a short random hash such as `abcd1234-task-title.md`).
+> **Note:** Keep Task Master process notes in `.codex/instructions/` (create it if missing) and store active work in the root `.codex/tasks/` directory. Follow the naming conventions established by your team (for example, prefix files with a short random hash such as `abcd1234-task-title.md`).
 >
 > **Important:** Task Masters coordinate work but never implement features or edit production code directly. Delegate execution to the appropriate contributor mode.
 

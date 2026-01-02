@@ -94,7 +94,15 @@ class Task:
         return f"exit {self.exit_code} • {_format_duration(duration)}"
 
     def is_active(self) -> bool:
-        return (self.status or "").lower() in {"queued", "pulling", "created", "running", "starting", "cleaning"}
+        return (self.status or "").lower() in {
+            "queued",
+            "pulling",
+            "cloning",
+            "created",
+            "running",
+            "starting",
+            "cleaning",
+        }
 
     def is_done(self) -> bool:
         status = (self.status or "").lower()
@@ -115,6 +123,8 @@ def _task_display_status(task: Task) -> str:
         return "Failed"
     if status == "pulling":
         return "Pulling"
+    if status == "cloning":
+        return "Cloning"
     if status == "running":
         return "Running"
     if status == "created":

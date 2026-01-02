@@ -55,6 +55,8 @@ class _MainWindowTaskEventsMixin:
 
         bridge = self._bridges.get(task_id)
         thread = self._threads.get(task_id)
+        gh_bridge = self._gh_bridges.get(task_id)
+        gh_thread = self._gh_threads.get(task_id)
         container_id = task.container_id or (bridge.container_id if bridge is not None else None)
         watch = self._interactive_watch.get(task_id)
         if watch is not None:
@@ -71,11 +73,23 @@ class _MainWindowTaskEventsMixin:
                 thread.quit()
             except Exception:
                 pass
+        if gh_bridge is not None:
+            try:
+                QMetaObject.invokeMethod(gh_bridge, "request_stop", Qt.QueuedConnection)
+            except Exception:
+                pass
+        if gh_thread is not None:
+            try:
+                gh_thread.quit()
+            except Exception:
+                pass
 
         self._dashboard.remove_tasks({task_id})
         self._tasks.pop(task_id, None)
         self._threads.pop(task_id, None)
         self._bridges.pop(task_id, None)
+        self._gh_threads.pop(task_id, None)
+        self._gh_bridges.pop(task_id, None)
         self._run_started_s.pop(task_id, None)
         self._dashboard_log_refresh_s.pop(task_id, None)
         self._interactive_watch.pop(task_id, None)

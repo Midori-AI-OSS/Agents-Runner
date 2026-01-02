@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 
 from PySide6.QtWidgets import QMessageBox
 
@@ -96,12 +97,43 @@ class _MainWindowEnvironmentMixin:
             self._new_task.set_repo_branches([])
             return
 
-        branches: list[str] = []
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            branches = git_list_remote_heads(str(env.gh_management_target or ""))
-
         self._new_task.set_repo_controls_visible(True)
-        self._new_task.set_repo_branches(branches)
+        self._new_task.set_repo_branches([])
+
+        if gh_mode == GH_MANAGEMENT_GITHUB and env:
+            target = str(env.gh_management_target or "").strip()
+            if not target:
+                return
+            self._repo_branches_request_id += 1
+            request_id = int(self._repo_branches_request_id)
+
+            def _worker() -> None:
+                branches = git_list_remote_heads(target)
+                try:
+                    self.repo_branches_ready.emit(request_id, branches)
+                except Exception:
+                    pass
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+
+    def _on_repo_branches_ready(self, request_id: int, branches: object) -> None:
+        try:
+            request_id = int(request_id)
+        except Exception:
+            return
+        if request_id != int(getattr(self, "_repo_branches_request_id", 0)):
+            return
+        env = self._environments.get(self._active_environment_id())
+        gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) if env else GH_MANAGEMENT_NONE
+        if gh_mode != GH_MANAGEMENT_GITHUB:
+            return
+        if not isinstance(branches, list):
+            return
+        cleaned = [str(b or "").strip() for b in branches]
+        cleaned = [b for b in cleaned if b]
+        self._new_task.set_repo_controls_visible(True)
+        self._new_task.set_repo_branches(cleaned)
 
 
     def _populate_environment_pickers(self) -> None:

@@ -1,6 +1,6 @@
 # Reviewer Mode
 
-> **Note:** Save review notes in `.codex/reviews/` at the repository root or within the relevant service directory. Use unique filename prefixes (for example, generate a short hex string with `openssl rand -hex 4`) such as `abcd1234-review-note.md`.
+> **Note:** Save review notes in `.codex/reviews/` (create it if missing) at the repository root or within the relevant service directory. Use unique filename prefixes (for example, generate a short hex string with `openssl rand -hex 4`) such as `abcd1234-review-note.md`.
 
 ## Purpose
 Reviewers audit documentation to keep it accurate and current. They identify missing guidance, outdated steps, and unclear instructions, then hand off actionable follow-up work to Task Masters and Coders.
@@ -8,9 +8,9 @@ Reviewers audit documentation to keep it accurate and current. They identify mis
 ## Guidelines
 - Do **not** edit production code or documentation directly. Report findings so the appropriate contributor can make the change.
 - Read previous review notes in `.codex/reviews/` before starting a new audit.
-- Inspect `.feedback/` folders, planning documents, `.codex/**` instructions, `.github/` workflows, and top-level README files.
-- For every discrepancy, create a `TMT-<hash>-<description>.md` task file in `.codex/tasks/` so the Task Master can prioritize it.
-- Maintain a reviewer cheat sheet (for example, `.codex/notes/reviewer-mode-cheat-sheet.md`) with recurring preferences or reminders from leads.
+- Inspect `.feedback/` folders, planning documents, `.codex/**` instructions, `.github/` workflows, and top-level README files (if present).
+- For every discrepancy, create a `TMT-<hash>-<description>.md` task file in `.codex/tasks/` so the Task Master can prioritize it (or use `<hash>-<description>.md` if your team does not use `TMT-` prefixes).
+- Maintain a reviewer cheat sheet (for example, `.codex/notes/reviewer-mode-cheat-sheet.md`) with recurring preferences or reminders from leads (create the folder if missing).
 
 ## Typical Actions
 - Add a new hashed review note summarizing findings in `.codex/reviews/`.

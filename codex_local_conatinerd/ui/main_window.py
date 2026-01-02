@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QWidget
 
 from codex_local_conatinerd.environments import Environment
 from codex_local_conatinerd.persistence import default_state_path
+from codex_local_conatinerd.ui.bridges import GhManagementBridge
 from codex_local_conatinerd.ui.bridges import TaskRunnerBridge
 from codex_local_conatinerd.ui.constants import APP_TITLE
 from codex_local_conatinerd.ui.graphics import GlassRoot
@@ -61,6 +62,7 @@ class MainWindow(
     host_log = Signal(str, str)
     host_pr_url = Signal(str, str)
     interactive_finished = Signal(str, int)
+    repo_branches_ready = Signal(int, object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -92,9 +94,12 @@ class MainWindow(
         self._tasks: dict[str, Task] = {}
         self._threads: dict[str, QThread] = {}
         self._bridges: dict[str, TaskRunnerBridge] = {}
+        self._gh_threads: dict[str, QThread] = {}
+        self._gh_bridges: dict[str, GhManagementBridge] = {}
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}
+        self._repo_branches_request_id: int = 0
         self._state_path = default_state_path()
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -104,6 +109,7 @@ class MainWindow(
         self.host_log.connect(self._on_host_log, Qt.QueuedConnection)
         self.host_pr_url.connect(self._on_host_pr_url, Qt.QueuedConnection)
         self.interactive_finished.connect(self._on_interactive_finished, Qt.QueuedConnection)
+        self.repo_branches_ready.connect(self._on_repo_branches_ready, Qt.QueuedConnection)
 
         self._dashboard_ticker = QTimer(self)
         self._dashboard_ticker.setInterval(1000)

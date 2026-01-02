@@ -1,13 +1,13 @@
 # Coder Mode
 
-> **Note:** Keep technical documentation and implementation notes in `.codex/implementation/` for the area you are modifying. Capture process updates or workflow adjustments in `.codex/instructions/`.
+> **Note:** Keep technical documentation and implementation notes in `.codex/implementation/` for the area you are modifying. Capture process updates or workflow adjustments in `.codex/instructions/` (create it if missing).
 
 ## Purpose
 Coders implement, refactor, and review code. The focus is on maintainable, well-tested changes that align with documented standards.
 
 ## Project-Specific Guidelines
 - **Python 3.13+**: Use modern Python with type hints throughout
-- **UI Styling**: Keep sharp/square corners—avoid `border-radius` in `codex_local_conatinerd/style.py` and `addRoundedRect(...)` in `codex_local_conatinerd/widgets.py`
+- **UI Styling**: Keep sharp/square corners—avoid non-`0px` `border-radius` values in `codex_local_conatinerd/style/` and avoid `addRoundedRect(...)` in custom painting (for example under `codex_local_conatinerd/widgets/`)
 - **Minimal diffs**: Avoid drive-by refactors; make surgical, focused changes
 - **Test locally**: Run `uv run main.py` to verify UI changes before committing
 - Write clear, well-structured code with meaningful naming and sufficient comments where intent is not obvious
