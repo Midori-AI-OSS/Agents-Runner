@@ -3,8 +3,6 @@ from __future__ import annotations
 import os
 import threading
 
-from collections.abc import Callable
-
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtCore import QTimer
@@ -18,7 +16,6 @@ from PySide6.QtWidgets import QWidget
 
 from codex_local_conatinerd.environments import Environment
 from codex_local_conatinerd.persistence import default_state_path
-from codex_local_conatinerd.ui.bridges import HostCleanupBridge
 from codex_local_conatinerd.ui.bridges import TaskRunnerBridge
 from codex_local_conatinerd.ui.constants import APP_TITLE
 from codex_local_conatinerd.ui.graphics import GlassRoot
@@ -31,7 +28,6 @@ from codex_local_conatinerd.ui.task_model import Task
 from codex_local_conatinerd.widgets import GlassCard
 
 from codex_local_conatinerd.ui.main_window_capacity import _MainWindowCapacityMixin
-from codex_local_conatinerd.ui.main_window_cleanup import _MainWindowCleanupMixin
 from codex_local_conatinerd.ui.main_window_dashboard import _MainWindowDashboardMixin
 from codex_local_conatinerd.ui.main_window_environment import _MainWindowEnvironmentMixin
 from codex_local_conatinerd.ui.main_window_navigation import _MainWindowNavigationMixin
@@ -49,7 +45,6 @@ from codex_local_conatinerd.ui.main_window_tasks_interactive_finalize import (
 
 class MainWindow(
     QMainWindow,
-    _MainWindowCleanupMixin,
     _MainWindowCapacityMixin,
     _MainWindowNavigationMixin,
     _MainWindowSettingsMixin,
@@ -179,15 +174,6 @@ class MainWindow(
         self._settings.back_requested.connect(self._show_dashboard)
         self._settings.saved.connect(self._apply_settings, Qt.QueuedConnection)
         self._settings.test_preflight_requested.connect(self._on_settings_test_preflight, Qt.QueuedConnection)
-        self._settings.clean_docker_requested.connect(self._on_settings_clean_docker, Qt.QueuedConnection)
-        self._settings.clean_git_folders_requested.connect(self._on_settings_clean_git_folders, Qt.QueuedConnection)
-        self._settings.clean_all_requested.connect(self._on_settings_clean_all, Qt.QueuedConnection)
-        self._cleanup_threads: dict[str, QThread] = {}
-        self._cleanup_bridges: dict[str, HostCleanupBridge] = {}
-        self._cleanup_pending: dict[str, tuple[str, Callable]] = {}
-        self._docker_cleanup_task_id: str | None = None
-        self._git_cleanup_task_id: str | None = None
-        self._clean_all_queue: list[str] = []
 
         self._stack = QWidget()
         self._stack_layout = QVBoxLayout(self._stack)
@@ -209,7 +195,6 @@ class MainWindow(
         self._apply_window_prefs()
         self._reload_environments()
         self._apply_settings_to_pages()
-        self._sync_settings_clean_state()
         self._try_start_queued_tasks()
 
 

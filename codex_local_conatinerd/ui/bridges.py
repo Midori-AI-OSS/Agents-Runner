@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import threading
-from typing import Callable
-
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
@@ -46,33 +43,3 @@ class TaskRunnerBridge(QObject):
 
     def run(self) -> None:
         self._worker.run()
-
-
-class HostCleanupBridge(QObject):
-    log = Signal(str)
-    done = Signal(int, str)
-
-    def __init__(
-        self,
-        *,
-        task_id: str,
-        kind: str,
-        runner: Callable[[Callable[[str], None], threading.Event], tuple[int, str]],
-    ) -> None:
-        super().__init__()
-        self.task_id = str(task_id or "").strip()
-        self.kind = str(kind or "").strip()
-        self._runner = runner
-        self._stop = threading.Event()
-
-    @Slot()
-    def request_stop(self) -> None:
-        self._stop.set()
-
-    def run(self) -> None:
-        try:
-            exit_code, output = self._runner(self.log.emit, self._stop)
-        except Exception as exc:
-            self.done.emit(1, str(exc))
-            return
-        self.done.emit(int(exit_code), str(output or "").strip())
