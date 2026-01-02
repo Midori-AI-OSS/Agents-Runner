@@ -160,6 +160,8 @@ class _MainWindowTasksAgentMixin:
         # completes in the worker. This is fine because the file is created with just
         # the task_id, and the actual branch/repo info is captured later when the
         # worker completes (see _on_bridge_done in main_window_task_events.py).
+        # If the git clone fails, the orphaned metadata file is harmless and will be
+        # cleaned up with other temp files.
         if (
             env
             and gh_mode == GH_MANAGEMENT_GITHUB

@@ -124,11 +124,7 @@ class DockerCodexWorker:
                             self._on_log("[gh] not a git repo; skipping branch/PR")
                     else:
                         self._on_log("[gh] not a git repo; skipping branch/PR")
-                except GhManagementError as exc:
-                    self._on_log(f"[gh] ERROR: {exc}")
-                    self._on_done(1, str(exc))
-                    return
-                except Exception as exc:
+                except (GhManagementError, Exception) as exc:
                     self._on_log(f"[gh] ERROR: {exc}")
                     self._on_done(1, str(exc))
                     return
