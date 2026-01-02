@@ -10,8 +10,11 @@ from datetime import timezone
 
 from PySide6.QtCore import QMetaObject
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
+from codex_local_conatinerd.environments import GH_MANAGEMENT_NONE
+from codex_local_conatinerd.environments import normalize_gh_management_mode
 from codex_local_conatinerd.log_format import prettify_log_line
 from codex_local_conatinerd.ui.bridges import TaskRunnerBridge
 from codex_local_conatinerd.ui.task_model import Task

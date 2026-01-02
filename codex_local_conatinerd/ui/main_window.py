@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QWidget
 
 from codex_local_conatinerd.environments import Environment
 from codex_local_conatinerd.persistence import default_state_path
+from codex_local_conatinerd.ui.bridges import HostCleanupBridge
 from codex_local_conatinerd.ui.bridges import TaskRunnerBridge
 from codex_local_conatinerd.ui.constants import APP_TITLE
 from codex_local_conatinerd.ui.graphics import GlassRoot

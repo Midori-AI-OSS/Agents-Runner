@@ -1,22 +1,25 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 import threading
+import time
 
 from datetime import datetime
 from datetime import timezone
+from uuid import uuid4
+from collections.abc import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 
 from PySide6.QtWidgets import QMessageBox
 
-from codex_local_conatinerd.persistence import default_state_path
 from codex_local_conatinerd.environments import managed_repos_dir
-from codex_local_conatinerd.ui.bridges import DockerPruneBridge
 from codex_local_conatinerd.ui.bridges import HostCleanupBridge
+from codex_local_conatinerd.ui.task_model import Task
 
 
 class _MainWindowCleanupMixin:
