@@ -18,8 +18,13 @@ In some cases, tasks can remain stuck in `cloning` indefinitely (never transitio
 ## Likely cause
 - GH cloning/branch-prep runs in a `QThread` via `GhManagementBridge`, but the UI updates are wired through nested Python functions connected as signal handlers. Depending on PySide6 behavior, those callables can be invoked on the wrong thread (causing Qt thread-affinity errors) or not delivered reliably, leaving the task stuck in `cloning`.
 
+## Required fix (enforced)
+- GitHub repo preparation (clone + branch prep) must run through the existing **preflight task runner** so logs are streamed into the task viewer via the same path as other preflight output (not a separate `QThread` + custom signals).
+- The user must be able to watch clone progress live in the task viewer; no “silent cloning” in the background.
+- Completion of the clone step must not force-navigation away from the user’s current view.
+
 ## Notes / Ideas
 - Root cause for “no immediate feedback”: GH prep path returns early before calling `_show_dashboard()`, so dashboard/info updates remain hidden until GH prep completes.
 - The GH prep subprocesses use `capture_output=True`, so a blocked git operation produces no streaming output; log explicit “starting clone/branch prep” lines and consider basic lock detection for `.git/index.lock`.
-- Consider making GH prep a visible “preflight” stage (before Docker pull/run) so it behaves like other preflight work.
+- GH prep should be a visible “preflight” stage (before Docker pull/run) so it behaves like other preflight work.
 - Prefer connecting `GhManagementBridge` signals to real `QObject` slots on `MainWindow` (not lambdas/nested functions), and include `task_id` in the signal payloads so the slots can safely update the correct task from the UI thread.
