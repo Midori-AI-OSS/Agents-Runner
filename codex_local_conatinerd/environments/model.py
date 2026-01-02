@@ -7,6 +7,9 @@ from dataclasses import field
 ENVIRONMENT_VERSION = 1
 ENVIRONMENT_FILENAME_PREFIX = "environment-"
 
+SYSTEM_ENV_ID = "_system"
+SYSTEM_ENV_NAME = "System"
+
 ALLOWED_STAINS = (
     "slate",
     "cyan",
@@ -56,4 +59,3 @@ class Environment:
     def normalized_color(self) -> str:
         value = (self.color or "").strip().lower()
         return value if value in ALLOWED_STAINS else "slate"
-

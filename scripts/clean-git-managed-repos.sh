@@ -51,11 +51,6 @@ fi
 
 log "[git] Removing managed repos directory…"
 log "\$ rm -rf ${TARGET}"
-if command -v sudo >/dev/null 2>&1; then
-  sudo -n rm -rf "${TARGET}"
-else
-  rm -rf "${TARGET}"
-fi
+rm -rf "${TARGET}"
 
 log "[git] Cleanup completed"
-

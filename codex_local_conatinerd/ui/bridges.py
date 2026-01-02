@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import shutil
-import subprocess
 import threading
 from typing import Callable
 
@@ -48,32 +46,6 @@ class TaskRunnerBridge(QObject):
 
     def run(self) -> None:
         self._worker.run()
-
-
-class DockerPruneBridge(QObject):
-    done = Signal(int, str)
-
-    def __init__(self) -> None:
-        super().__init__()
-
-    def run(self) -> None:
-        docker_args = ["docker", "system", "prune", "-f", "-a"]
-        args: list[str]
-        if shutil.which("sudo"):
-            args = ["sudo", "-n", *docker_args]
-        else:
-            args = docker_args
-
-        try:
-            proc = subprocess.run(args, capture_output=True, text=True, check=False)
-        except Exception as exc:
-            self.done.emit(1, str(exc))
-            return
-
-        output = "\n".join([str(proc.stdout or "").strip(), str(proc.stderr or "").strip()]).strip()
-        if not output:
-            output = f"Command exited with code {proc.returncode}."
-        self.done.emit(int(proc.returncode), output)
 
 
 class HostCleanupBridge(QObject):

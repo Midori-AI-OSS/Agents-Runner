@@ -55,7 +55,10 @@ class _MainWindowNavigationMixin:
         self._new_task.hide()
         self._details.hide()
         self._settings.hide()
-        self._envs_page.set_environments(self._environments, self._active_environment_id())
+        active_id = self._active_environment_id()
+        if hasattr(self, "_is_internal_environment_id") and self._is_internal_environment_id(active_id):
+            active_id = "default"
+        self._envs_page.set_environments(self._user_environment_map(), active_id)
         self._envs_page.show()
 
 

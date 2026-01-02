@@ -19,6 +19,7 @@ from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QMessageBox
 
 from codex_local_conatinerd.environments import managed_repos_dir
+from codex_local_conatinerd.environments import SYSTEM_ENV_ID
 from codex_local_conatinerd.ui.bridges import HostCleanupBridge
 from codex_local_conatinerd.ui.task_model import Task
 
@@ -75,25 +76,6 @@ class _MainWindowCleanupMixin:
             exit_code = 1
         return exit_code, output_lines
 
-    @Slot(str)
-    def _on_cleanup_bridge_log(self, line: str) -> None:
-        bridge = self.sender()
-        if not isinstance(bridge, HostCleanupBridge):
-            return
-        task_id = str(getattr(bridge, "task_id", "") or "").strip()
-        if not task_id:
-            return
-        self._on_task_log(task_id, str(line or ""))
-    @Slot(int, str)
-    def _on_cleanup_bridge_done(self, exit_code: int, output: str) -> None:
-        bridge = self.sender()
-        if not isinstance(bridge, HostCleanupBridge):
-            return
-        task_id = str(getattr(bridge, "task_id", "") or "").strip()
-        kind = str(getattr(bridge, "kind", "") or "").strip()
-        if not task_id:
-            return
-        self._on_cleanup_done(task_id, kind, int(exit_code), str(output or ""))
     def _on_settings_clean_docker(self) -> None:
         if shutil.which("docker") is None:
             QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
@@ -202,6 +184,7 @@ class _MainWindowCleanupMixin:
             host_workdir=str(target or "").strip(),
             host_codex_dir="",
             created_at_s=time.time(),
+            environment_id=SYSTEM_ENV_ID,
             status="queued" if queued else "running",
         )
         if not queued:
@@ -237,8 +220,16 @@ class _MainWindowCleanupMixin:
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
 
-        bridge.log.connect(self._on_cleanup_bridge_log, Qt.QueuedConnection)
-        bridge.done.connect(self._on_cleanup_bridge_done, Qt.QueuedConnection)
+        bridge.log.connect(
+            lambda line, tid=task_id: self._on_task_log(tid, str(line or "")),
+            Qt.QueuedConnection,
+        )
+        bridge.done.connect(
+            lambda exit_code, output, tid=task_id, k=kind: self._on_cleanup_done(
+                tid, k, int(exit_code), str(output or "")
+            ),
+            Qt.QueuedConnection,
+        )
 
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
@@ -296,6 +287,14 @@ class _MainWindowCleanupMixin:
         box = QMessageBox(self)
         box.setWindowTitle(title)
         box.setText(title)
+        if kind == "docker":
+            box.setInformativeText(
+                "Runs Docker commands without sudo. This may fail if Docker is not configured for your user."
+            )
+        else:
+            box.setInformativeText(
+                "Deletes GUI-managed folders without sudo. This may fail if the files are owned by root."
+            )
         box.setDetailedText(output)
         box.setIcon(QMessageBox.Icon.Information if int(exit_code) == 0 else QMessageBox.Icon.Critical)
         box.exec()
