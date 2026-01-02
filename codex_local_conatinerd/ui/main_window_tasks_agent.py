@@ -21,18 +21,15 @@ from codex_local_conatinerd.environments import GH_MANAGEMENT_GITHUB
 from codex_local_conatinerd.environments import GH_MANAGEMENT_LOCAL
 from codex_local_conatinerd.environments import GH_MANAGEMENT_NONE
 from codex_local_conatinerd.environments import normalize_gh_management_mode
-from codex_local_conatinerd.gh_management import is_git_repo
 from codex_local_conatinerd.gh_management import is_gh_available
-from codex_local_conatinerd.gh_management import ensure_github_clone
-from codex_local_conatinerd.gh_management import plan_repo_task
-from codex_local_conatinerd.gh_management import prepare_branch_for_task
-from codex_local_conatinerd.gh_management import GhManagementError
 from codex_local_conatinerd.docker_runner import DockerRunnerConfig
 from codex_local_conatinerd.pr_metadata import ensure_pr_metadata_file
 from codex_local_conatinerd.pr_metadata import pr_metadata_container_path
 from codex_local_conatinerd.pr_metadata import pr_metadata_host_path
 from codex_local_conatinerd.pr_metadata import pr_metadata_prompt_instructions
 from codex_local_conatinerd.prompt_sanitizer import sanitize_prompt
+from codex_local_conatinerd.persistence import save_task_payload
+from codex_local_conatinerd.persistence import serialize_task
 from codex_local_conatinerd.ui.bridges import TaskRunnerBridge
 from codex_local_conatinerd.ui.constants import PIXELARCH_AGENT_CONTEXT_SUFFIX
 from codex_local_conatinerd.ui.constants import PIXELARCH_EMERALD_IMAGE
@@ -49,6 +46,11 @@ class _MainWindowTasksAgentMixin:
                 to_remove.add(task_id)
         if not to_remove:
             return
+        for task_id in sorted(to_remove):
+            task = self._tasks.get(task_id)
+            if task is None:
+                continue
+            save_task_payload(self._state_path, serialize_task(task), archived=True)
         self._dashboard.remove_tasks(to_remove)
         for task_id in to_remove:
             self._tasks.pop(task_id, None)
@@ -144,65 +146,26 @@ class _MainWindowTasksAgentMixin:
         use_host_gh = bool(use_host_gh and is_gh_available())
         task.gh_use_host_cli = use_host_gh
 
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            self._on_task_log(task_id, f"[gh] cloning {env.gh_management_target} -> {effective_workdir}")
-            try:
-                ensure_github_clone(
-                    str(env.gh_management_target or ""),
-                    effective_workdir,
-                    prefer_gh=use_host_gh,
-                    recreate_if_needed=True,
-                )
-            except GhManagementError as exc:
-                task.status = "failed"
-                task.error = str(exc)
-                task.exit_code = 1
-                task.finished_at = datetime.now(tz=timezone.utc)
-                self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-                self._details.update_task(task)
-                self._schedule_save()
-                QMessageBox.warning(self, "Failed to clone repo", str(exc))
-                return
-
         desired_base = str(base_branch or "").strip()
-        if gh_mode == GH_MANAGEMENT_GITHUB and is_git_repo(effective_workdir):
-            plan = plan_repo_task(effective_workdir, task_id=task_id, base_branch=desired_base or None)
-            if plan is not None:
-                self._on_task_log(task_id, f"[gh] creating branch {plan.branch} (base {plan.base_branch})")
-                try:
-                    base_branch, branch = prepare_branch_for_task(
-                        plan.repo_root,
-                        branch=plan.branch,
-                        base_branch=plan.base_branch,
-                    )
-                except GhManagementError as exc:
-                    task.status = "failed"
-                    task.error = str(exc)
-                    task.exit_code = 1
-                    task.finished_at = datetime.now(tz=timezone.utc)
-                    self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-                    self._details.update_task(task)
-                    self._schedule_save()
-                    QMessageBox.warning(self, "Failed to create branch", str(exc))
-                    return
-                task.gh_repo_root = plan.repo_root
-                task.gh_base_branch = base_branch
-                task.gh_branch = branch
-                self._schedule_save()
-        elif gh_mode == GH_MANAGEMENT_GITHUB:
-            self._on_task_log(task_id, "[gh] not a git repo; skipping branch/PR")
 
         runner_prompt = prompt
         if bool(self._settings_data.get("append_pixelarch_context") or False):
             runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
+
+        # PR metadata prep (only if gh mode is enabled)
+        # Note: We prepare the PR metadata file before the task starts, even though
+        # gh_repo_root and gh_branch won't be available until after the git clone
+        # completes in the worker. This is fine because the file is created with just
+        # the task_id, and the actual branch/repo info is captured later when the
+        # worker completes (see _on_bridge_done in main_window_task_events.py).
+        # If the git clone fails, the orphaned metadata file is harmless and will be
+        # cleaned up with other temp files.
         if (
             env
             and gh_mode == GH_MANAGEMENT_GITHUB
             and bool(getattr(env, "gh_pr_metadata_enabled", False))
-            and task.gh_repo_root
-            and task.gh_branch
         ):
             host_path = pr_metadata_host_path(os.path.dirname(self._state_path), task_id)
             container_path = pr_metadata_container_path(task_id)
@@ -217,41 +180,35 @@ class _MainWindowTasksAgentMixin:
                 runner_prompt = f"{runner_prompt}{pr_metadata_prompt_instructions(container_path)}"
                 self._on_task_log(task_id, f"[gh] PR metadata enabled; mounted -> {container_path}")
 
+        # Build config with GitHub repo info if needed
+        gh_repo: str | None = None
+        if gh_mode == GH_MANAGEMENT_GITHUB and env:
+            gh_repo = str(env.gh_management_target or "").strip() or None
+
+        config = DockerRunnerConfig(
+            task_id=task_id,
+            image=image,
+            host_codex_dir=host_codex,
+            host_workdir=effective_workdir,
+            agent_cli=agent_cli,
+            auto_remove=True,
+            pull_before_run=True,
+            settings_preflight_script=settings_preflight_script,
+            environment_preflight_script=environment_preflight_script,
+            env_vars=env_vars_for_task,
+            extra_mounts=extra_mounts_for_task,
+            agent_cli_args=agent_cli_args,
+            gh_repo=gh_repo,
+            gh_prefer_gh_cli=use_host_gh,
+            gh_recreate_if_needed=True,
+            gh_base_branch=desired_base or None,
+        )
+        task._runner_config = config
+        task._runner_prompt = runner_prompt
+
         if self._can_start_new_agent_for_env(env_id):
-            config = DockerRunnerConfig(
-                task_id=task_id,
-                image=image,
-                host_codex_dir=host_codex,
-                host_workdir=effective_workdir,
-                agent_cli=agent_cli,
-                auto_remove=True,
-                pull_before_run=True,
-                settings_preflight_script=settings_preflight_script,
-                environment_preflight_script=environment_preflight_script,
-                env_vars=env_vars_for_task,
-                extra_mounts=extra_mounts_for_task,
-                agent_cli_args=agent_cli_args,
-            )
-            task._runner_config = config
-            task._runner_prompt = runner_prompt
             self._actually_start_task(task)
         else:
-            config = DockerRunnerConfig(
-                task_id=task_id,
-                image=image,
-                host_codex_dir=host_codex,
-                host_workdir=effective_workdir,
-                agent_cli=agent_cli,
-                auto_remove=True,
-                pull_before_run=True,
-                settings_preflight_script=settings_preflight_script,
-                environment_preflight_script=environment_preflight_script,
-                env_vars=env_vars_for_task,
-                extra_mounts=extra_mounts_for_task,
-                agent_cli_args=agent_cli_args,
-            )
-            task._runner_config = config
-            task._runner_prompt = runner_prompt
             self._on_task_log(task_id, "[queue] Waiting for available slot...")
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()

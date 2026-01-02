@@ -1,6 +1,6 @@
 # Manager Mode
 
-> **Note:** Store manager-facing documentation and decision logs in `.codex/instructions/`. When you adjust contributor guidance, coordinate with Task Masters so active tasks reflect the change. Never modify `.codex/audit/` unless you are also acting in Auditor Mode.
+> **Note:** Store manager-facing documentation and decision logs in `.codex/instructions/` (create it if missing). When you adjust contributor guidance, coordinate with Task Masters so active tasks reflect the change. Never modify `.codex/audit/` unless you are also acting in Auditor Mode.
 >
 > **Important:** Managers maintain instructions and alignment. They do **not** implement features or refactor code unless explicitly following another mode's guide.
 

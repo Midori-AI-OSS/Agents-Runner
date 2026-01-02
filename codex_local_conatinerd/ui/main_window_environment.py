@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import threading
 
 from PySide6.QtWidgets import QMessageBox
 
@@ -9,6 +10,8 @@ from codex_local_conatinerd.environments import Environment
 from codex_local_conatinerd.environments import GH_MANAGEMENT_GITHUB
 from codex_local_conatinerd.environments import GH_MANAGEMENT_LOCAL
 from codex_local_conatinerd.environments import GH_MANAGEMENT_NONE
+from codex_local_conatinerd.environments import SYSTEM_ENV_ID
+from codex_local_conatinerd.environments import SYSTEM_ENV_NAME
 from codex_local_conatinerd.environments import load_environments
 from codex_local_conatinerd.environments import normalize_gh_management_mode
 from codex_local_conatinerd.environments import managed_repo_checkout_path
@@ -20,12 +23,24 @@ from codex_local_conatinerd.gh_management import is_gh_available
 
 
 class _MainWindowEnvironmentMixin:
+    @staticmethod
+    def _is_internal_environment_id(env_id: str) -> bool:
+        return str(env_id or "").strip() == SYSTEM_ENV_ID
+
     def _active_environment_id(self) -> str:
         return str(self._settings_data.get("active_environment_id") or "default")
 
 
+    def _user_environment_map(self) -> dict[str, Environment]:
+        return {
+            env.env_id: env
+            for env in self._environments.values()
+            if not self._is_internal_environment_id(env.env_id)
+        }
+
+
     def _environment_list(self) -> list[Environment]:
-        return sorted(self._environments.values(), key=lambda e: (e.name or e.env_id).lower())
+        return sorted(self._user_environment_map().values(), key=lambda e: (e.name or e.env_id).lower())
 
 
     def _environment_effective_workdir(self, env: Environment | None, fallback: str) -> str:
@@ -82,12 +97,43 @@ class _MainWindowEnvironmentMixin:
             self._new_task.set_repo_branches([])
             return
 
-        branches: list[str] = []
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            branches = git_list_remote_heads(str(env.gh_management_target or ""))
-
         self._new_task.set_repo_controls_visible(True)
-        self._new_task.set_repo_branches(branches)
+        self._new_task.set_repo_branches([])
+
+        if gh_mode == GH_MANAGEMENT_GITHUB and env:
+            target = str(env.gh_management_target or "").strip()
+            if not target:
+                return
+            self._repo_branches_request_id += 1
+            request_id = int(self._repo_branches_request_id)
+
+            def _worker() -> None:
+                branches = git_list_remote_heads(target)
+                try:
+                    self.repo_branches_ready.emit(request_id, branches)
+                except Exception:
+                    pass
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+
+    def _on_repo_branches_ready(self, request_id: int, branches: object) -> None:
+        try:
+            request_id = int(request_id)
+        except Exception:
+            return
+        if request_id != int(getattr(self, "_repo_branches_request_id", 0)):
+            return
+        env = self._environments.get(self._active_environment_id())
+        gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) if env else GH_MANAGEMENT_NONE
+        if gh_mode != GH_MANAGEMENT_GITHUB:
+            return
+        if not isinstance(branches, list):
+            return
+        cleaned = [str(b or "").strip() for b in branches]
+        cleaned = [b for b in cleaned if b]
+        self._new_task.set_repo_controls_visible(True)
+        self._new_task.set_repo_branches(cleaned)
 
 
     def _populate_environment_pickers(self) -> None:
@@ -161,6 +207,22 @@ class _MainWindowEnvironmentMixin:
             save_environment(env)
             envs = load_environments()
 
+        if SYSTEM_ENV_ID not in envs:
+            envs[SYSTEM_ENV_ID] = Environment(
+                env_id=SYSTEM_ENV_ID,
+                name=SYSTEM_ENV_NAME,
+                color="slate",
+                host_workdir="",
+                host_codex_dir="",
+                max_agents_running=-1,
+                preflight_enabled=False,
+                preflight_script="",
+                gh_management_mode=GH_MANAGEMENT_NONE,
+                gh_management_target="",
+                gh_management_locked=True,
+                gh_use_host_cli=False,
+            )
+
         for env in envs.values():
             gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE))
             if gh_mode != GH_MANAGEMENT_NONE:
@@ -173,6 +235,9 @@ class _MainWindowEnvironmentMixin:
 
         self._environments = dict(envs)
         active_id = self._active_environment_id()
+        if self._is_internal_environment_id(active_id):
+            active_id = "default"
+            self._settings_data["active_environment_id"] = active_id
         if active_id not in self._environments:
             if "default" in self._environments:
                 self._settings_data["active_environment_id"] = "default"
@@ -185,7 +250,9 @@ class _MainWindowEnvironmentMixin:
                 task.environment_id = self._active_environment_id()
         if self._envs_page.isVisible():
             selected = preferred_env_id or self._envs_page.selected_environment_id() or self._active_environment_id()
-            self._envs_page.set_environments(self._environments, selected)
+            if self._is_internal_environment_id(selected):
+                selected = self._active_environment_id()
+            self._envs_page.set_environments(self._user_environment_map(), selected)
         self._apply_active_environment_to_new_task()
         self._refresh_task_rows()
         self._schedule_save()

@@ -16,6 +16,8 @@ from PySide6.QtWidgets import QMessageBox
 from codex_local_conatinerd.environments import GH_MANAGEMENT_NONE
 from codex_local_conatinerd.environments import normalize_gh_management_mode
 from codex_local_conatinerd.log_format import prettify_log_line
+from codex_local_conatinerd.persistence import save_task_payload
+from codex_local_conatinerd.persistence import serialize_task
 from codex_local_conatinerd.ui.bridges import TaskRunnerBridge
 from codex_local_conatinerd.ui.task_model import Task
 from codex_local_conatinerd.ui.utils import _parse_docker_time
@@ -41,13 +43,20 @@ class _MainWindowTaskEventsMixin:
         message = (
             f"Discard task {task_id}?\n\n"
             f"{prompt}\n\n"
-            "This removes it from the list and will attempt to stop/remove any running container."
+            "This removes it from the list, archives it for auditing, and will attempt to stop/remove any running container."
         )
         if QMessageBox.question(self, "Discard task?", message) != QMessageBox.StandardButton.Yes:
             return
 
+        task.status = "discarded"
+        if task.finished_at is None:
+            task.finished_at = datetime.now(tz=timezone.utc)
+        save_task_payload(self._state_path, serialize_task(task), archived=True)
+
         bridge = self._bridges.get(task_id)
         thread = self._threads.get(task_id)
+        gh_bridge = self._gh_bridges.get(task_id)
+        gh_thread = self._gh_threads.get(task_id)
         container_id = task.container_id or (bridge.container_id if bridge is not None else None)
         watch = self._interactive_watch.get(task_id)
         if watch is not None:
@@ -64,11 +73,23 @@ class _MainWindowTaskEventsMixin:
                 thread.quit()
             except Exception:
                 pass
+        if gh_bridge is not None:
+            try:
+                QMetaObject.invokeMethod(gh_bridge, "request_stop", Qt.QueuedConnection)
+            except Exception:
+                pass
+        if gh_thread is not None:
+            try:
+                gh_thread.quit()
+            except Exception:
+                pass
 
         self._dashboard.remove_tasks({task_id})
         self._tasks.pop(task_id, None)
         self._threads.pop(task_id, None)
         self._bridges.pop(task_id, None)
+        self._gh_threads.pop(task_id, None)
+        self._gh_bridges.pop(task_id, None)
         self._run_started_s.pop(task_id, None)
         self._dashboard_log_refresh_s.pop(task_id, None)
         self._interactive_watch.pop(task_id, None)
@@ -85,7 +106,7 @@ class _MainWindowTaskEventsMixin:
             ).start()
 
 
-    def _force_remove_container(container_id: str) -> None:
+    def _force_remove_container(self, container_id: str) -> None:
         container_id = str(container_id or "").strip()
         if not container_id:
             return
@@ -116,6 +137,15 @@ class _MainWindowTaskEventsMixin:
     def _on_bridge_done(self, exit_code: int, error: object) -> None:
         bridge = self.sender()
         if isinstance(bridge, TaskRunnerBridge):
+            # Capture GitHub repo info from the worker if available
+            task = self._tasks.get(bridge.task_id)
+            if task is not None:
+                if bridge.gh_repo_root:
+                    task.gh_repo_root = bridge.gh_repo_root
+                if bridge.gh_base_branch:
+                    task.gh_base_branch = bridge.gh_base_branch
+                if bridge.gh_branch:
+                    task.gh_branch = bridge.gh_branch
             self._on_task_done(bridge.task_id, exit_code, error)
 
 

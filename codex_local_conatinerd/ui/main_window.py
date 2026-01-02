@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QWidget
 
 from codex_local_conatinerd.environments import Environment
 from codex_local_conatinerd.persistence import default_state_path
-from codex_local_conatinerd.ui.bridges import HostCleanupBridge
+from codex_local_conatinerd.ui.bridges import GhManagementBridge
 from codex_local_conatinerd.ui.bridges import TaskRunnerBridge
 from codex_local_conatinerd.ui.constants import APP_TITLE
 from codex_local_conatinerd.ui.graphics import GlassRoot
@@ -29,7 +29,6 @@ from codex_local_conatinerd.ui.task_model import Task
 from codex_local_conatinerd.widgets import GlassCard
 
 from codex_local_conatinerd.ui.main_window_capacity import _MainWindowCapacityMixin
-from codex_local_conatinerd.ui.main_window_cleanup import _MainWindowCleanupMixin
 from codex_local_conatinerd.ui.main_window_dashboard import _MainWindowDashboardMixin
 from codex_local_conatinerd.ui.main_window_environment import _MainWindowEnvironmentMixin
 from codex_local_conatinerd.ui.main_window_navigation import _MainWindowNavigationMixin
@@ -37,6 +36,7 @@ from codex_local_conatinerd.ui.main_window_persistence import _MainWindowPersist
 from codex_local_conatinerd.ui.main_window_preflight import _MainWindowPreflightMixin
 from codex_local_conatinerd.ui.main_window_settings import _MainWindowSettingsMixin
 from codex_local_conatinerd.ui.main_window_task_events import _MainWindowTaskEventsMixin
+from codex_local_conatinerd.ui.main_window_task_review import _MainWindowTaskReviewMixin
 from codex_local_conatinerd.ui.main_window_tasks_agent import _MainWindowTasksAgentMixin
 from codex_local_conatinerd.ui.main_window_tasks_interactive import _MainWindowTasksInteractiveMixin
 from codex_local_conatinerd.ui.main_window_tasks_interactive_finalize import (
@@ -46,7 +46,6 @@ from codex_local_conatinerd.ui.main_window_tasks_interactive_finalize import (
 
 class MainWindow(
     QMainWindow,
-    _MainWindowCleanupMixin,
     _MainWindowCapacityMixin,
     _MainWindowNavigationMixin,
     _MainWindowSettingsMixin,
@@ -56,12 +55,14 @@ class MainWindow(
     _MainWindowTasksInteractiveMixin,
     _MainWindowTasksInteractiveFinalizeMixin,
     _MainWindowPreflightMixin,
+    _MainWindowTaskReviewMixin,
     _MainWindowTaskEventsMixin,
     _MainWindowPersistenceMixin,
 ):
     host_log = Signal(str, str)
     host_pr_url = Signal(str, str)
     interactive_finished = Signal(str, int)
+    repo_branches_ready = Signal(int, object)
 
     def __init__(self) -> None:
         super().__init__()
@@ -93,9 +94,12 @@ class MainWindow(
         self._tasks: dict[str, Task] = {}
         self._threads: dict[str, QThread] = {}
         self._bridges: dict[str, TaskRunnerBridge] = {}
+        self._gh_threads: dict[str, QThread] = {}
+        self._gh_bridges: dict[str, GhManagementBridge] = {}
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}
+        self._repo_branches_request_id: int = 0
         self._state_path = default_state_path()
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -105,6 +109,7 @@ class MainWindow(
         self.host_log.connect(self._on_host_log, Qt.QueuedConnection)
         self.host_pr_url.connect(self._on_host_pr_url, Qt.QueuedConnection)
         self.interactive_finished.connect(self._on_interactive_finished, Qt.QueuedConnection)
+        self.repo_branches_ready.connect(self._on_repo_branches_ready, Qt.QueuedConnection)
 
         self._dashboard_ticker = QTimer(self)
         self._dashboard_ticker.setInterval(1000)
@@ -166,6 +171,7 @@ class MainWindow(
         self._new_task.back_requested.connect(self._show_dashboard)
         self._details = TaskDetailsPage()
         self._details.back_requested.connect(self._show_dashboard)
+        self._details.pr_requested.connect(self._on_task_pr_requested)
         self._envs_page = EnvironmentsPage()
         self._envs_page.back_requested.connect(self._show_dashboard)
         self._envs_page.updated.connect(self._reload_environments, Qt.QueuedConnection)
@@ -174,14 +180,6 @@ class MainWindow(
         self._settings.back_requested.connect(self._show_dashboard)
         self._settings.saved.connect(self._apply_settings, Qt.QueuedConnection)
         self._settings.test_preflight_requested.connect(self._on_settings_test_preflight, Qt.QueuedConnection)
-        self._settings.clean_docker_requested.connect(self._on_settings_clean_docker, Qt.QueuedConnection)
-        self._settings.clean_git_folders_requested.connect(self._on_settings_clean_git_folders, Qt.QueuedConnection)
-        self._settings.clean_all_requested.connect(self._on_settings_clean_all, Qt.QueuedConnection)
-        self._cleanup_threads: dict[str, QThread] = {}
-        self._cleanup_bridges: dict[str, HostCleanupBridge] = {}
-        self._docker_cleanup_task_id: str | None = None
-        self._git_cleanup_task_id: str | None = None
-        self._clean_all_queue: list[str] = []
 
         self._stack = QWidget()
         self._stack_layout = QVBoxLayout(self._stack)
@@ -203,7 +201,7 @@ class MainWindow(
         self._apply_window_prefs()
         self._reload_environments()
         self._apply_settings_to_pages()
-        self._sync_settings_clean_state()
+        self._try_start_queued_tasks()
 
 
     def resizeEvent(self, event) -> None:

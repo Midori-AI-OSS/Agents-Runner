@@ -11,15 +11,12 @@ from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
-from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
-from codex_local_conatinerd.environments import managed_repos_dir
-from codex_local_conatinerd.persistence import default_state_path
 from codex_local_conatinerd.agent_cli import normalize_agent
 from codex_local_conatinerd.widgets import GlassCard
 
@@ -28,9 +25,6 @@ class SettingsPage(QWidget):
     back_requested = Signal()
     saved = Signal(dict)
     test_preflight_requested = Signal(dict)
-    clean_docker_requested = Signal()
-    clean_git_folders_requested = Signal()
-    clean_all_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -151,21 +145,6 @@ class SettingsPage(QWidget):
 
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
-        self._clean_docker = QToolButton()
-        self._clean_docker.setText("Clean Docker")
-        self._clean_docker.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self._clean_docker.setToolTip("Runs `docker system prune -fa` (destructive).")
-        self._clean_docker.clicked.connect(self._on_clean_docker)
-        self._clean_git_folders = QToolButton()
-        self._clean_git_folders.setText("Clean Git Folders")
-        self._clean_git_folders.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self._clean_git_folders.setToolTip("Deletes the GUI-managed git repo checkouts (destructive).")
-        self._clean_git_folders.clicked.connect(self._on_clean_git_folders)
-        self._clean_all = QToolButton()
-        self._clean_all.setText("Clean All")
-        self._clean_all.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self._clean_all.setToolTip("Runs all cleanup actions (destructive).")
-        self._clean_all.clicked.connect(self._on_clean_all)
         save = QToolButton()
         save.setText("Save")
         save.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -174,9 +153,6 @@ class SettingsPage(QWidget):
         test.setText("Test preflights (all envs)")
         test.setToolButtonStyle(Qt.ToolButtonTextOnly)
         test.clicked.connect(self._on_test_preflight)
-        buttons.addWidget(self._clean_docker)
-        buttons.addWidget(self._clean_git_folders)
-        buttons.addWidget(self._clean_all)
         buttons.addWidget(test)
         buttons.addWidget(save)
         buttons.addStretch(1)
@@ -242,66 +218,6 @@ class SettingsPage(QWidget):
         )
         if path:
             self._host_claude_dir.setText(path)
-
-    def set_clean_state(self, *, docker_busy: bool, git_busy: bool, all_busy: bool) -> None:
-        docker_busy = bool(docker_busy)
-        git_busy = bool(git_busy)
-        all_busy = bool(all_busy)
-        self._clean_docker.setEnabled(not docker_busy and not all_busy)
-        self._clean_docker.setText("Cleaning…" if docker_busy else "Clean Docker")
-        self._clean_git_folders.setEnabled(not git_busy and not all_busy)
-        self._clean_git_folders.setText("Cleaning…" if git_busy else "Clean Git Folders")
-        self._clean_all.setEnabled(not all_busy and not docker_busy and not git_busy)
-        self._clean_all.setText("Cleaning…" if all_busy else "Clean All")
-
-    def _on_clean_docker(self) -> None:
-        btn = QMessageBox.question(
-            self,
-            "Clean Docker",
-            "This will run `docker system prune -fa`.\n\n"
-            "It will remove unused images, containers, networks, and build cache.\n"
-            "This cannot be undone.\n\n"
-            "Are you sure?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if btn != QMessageBox.StandardButton.Yes:
-            return
-        self.clean_docker_requested.emit()
-
-    def _on_clean_git_folders(self) -> None:
-        path = managed_repos_dir(data_dir=os.path.dirname(default_state_path()))
-        btn = QMessageBox.question(
-            self,
-            "Clean Git Folders",
-            "This will delete the GUI-managed git repo folders on disk:\n\n"
-            f"{path}\n\n"
-            "This cannot be undone.\n\n"
-            "Are you sure?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if btn != QMessageBox.StandardButton.Yes:
-            return
-        self.clean_git_folders_requested.emit()
-
-    def _on_clean_all(self) -> None:
-        path = managed_repos_dir(data_dir=os.path.dirname(default_state_path()))
-        btn = QMessageBox.question(
-            self,
-            "Clean All",
-            "This will run all cleanup actions:\n\n"
-            "1) `docker system prune -fa`\n"
-            "2) delete GUI-managed git folders:\n"
-            f"   {path}\n\n"
-            "This cannot be undone.\n\n"
-            "Are you sure?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if btn != QMessageBox.StandardButton.Yes:
-            return
-        self.clean_all_requested.emit()
 
     def _pick_copilot_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(

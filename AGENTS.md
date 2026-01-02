@@ -7,17 +7,26 @@ This project uses the Codex contributor coordination system. Follow these guidel
 ## Quick Start
 
 - **Run locally:** `uv run main.py`
-- **UI styling:** Located in `codex_local_conatinerd/style.py` (Qt stylesheet) and `codex_local_conatinerd/widgets.py` (custom widgets)
-- **Design constraint:** Keep sharp/square corners (avoid `border-radius` and `addRoundedRect(...)`)
+- **UI styling:** Located in `codex_local_conatinerd/style/` (Qt stylesheet builder) and `codex_local_conatinerd/widgets/` (custom widgets)
+- **Design constraint:** Keep sharp/square corners (avoid non-`0px` `border-radius` values and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
 - **Docs:** Do not update the readme unless asked to
-- **Test:** Do not build tests unless asked to, tests go in the test folder
+- **Test:** Do not build tests unless asked to; place tests under `tests/` (create it if missing)
 
 ---
 
 ## PixelArch Info
-- **PixelArch tooling:** `yay`, `gh`, and `git` are always installed in PixelArch—do not add fallbacks for missing binaries
+- **PixelArch Tooling:** `yay`, `gh`, and `git` are always installed in PixelArch—avoid adding auto-install or alternate toolchain paths for them
 - **PixelArch Packages:** Do not use `pacman` unless the user uses it in preflight; install/update via `yay -Syu`
+
+---
+
+## Config & Data Directories
+
+- `~/.midoriai`: App data folder for this program (and other Midori AI programs)
+- `~/.codex`: Codex agent config folder (read-only)
+- `~/.copilot`: Copilot config folder (read-only)
+- `~/.claude`: Claude agent config folder (read-only)
 
 ---
 
@@ -43,10 +52,8 @@ Use these mode guides from `.codex/modes/` when working on specific tasks:
 - **Manager Mode** (`.codex/modes/MANAGER.md`): Planning and coordination
 - **Auditor Mode** (`.codex/modes/AUDITOR.md`): Code and security audits
 
-Other modes available: Blogger, Brainstormer, Prompter, Storyteller
-
 ---
 
 ## Communication
 
-Open issues or PRs on GitHub for significant changes. Keep commit messages and PR descriptions concise and outcome-focused.
+Use GitHub issues/PRs/comments as the primary async communication channel. Keep commit messages and PR descriptions concise and outcome-focused.

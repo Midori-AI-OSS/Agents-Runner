@@ -6,23 +6,73 @@ from codex_local_conatinerd.agent_cli import normalize_agent
 from codex_local_conatinerd.environments import serialize_environment
 from codex_local_conatinerd.log_format import prettify_log_line
 from codex_local_conatinerd.persistence import deserialize_task
+from codex_local_conatinerd.persistence import load_active_task_payloads
 from codex_local_conatinerd.persistence import load_state
+from codex_local_conatinerd.persistence import save_task_payload
 from codex_local_conatinerd.persistence import save_state
 from codex_local_conatinerd.persistence import serialize_task
 from codex_local_conatinerd.ui.task_model import Task
+from codex_local_conatinerd.ui.utils import _parse_docker_time
 from codex_local_conatinerd.ui.utils import _stain_color
 
 
 class _MainWindowPersistenceMixin:
+    @staticmethod
+    def _should_archive_task(task: Task) -> bool:
+        status = (task.status or "").lower()
+        if status == "discarded":
+            return True
+        return task.is_done() or task.is_failed()
+
+    @staticmethod
+    def _try_sync_container_state(task: Task) -> bool:
+        container_id = str(task.container_id or "").strip()
+        if not container_id:
+            return False
+        try:
+            from codex_local_conatinerd.docker.process import _inspect_state
+        except Exception:
+            return False
+        try:
+            state = _inspect_state(container_id)
+        except Exception:
+            return False
+        if not isinstance(state, dict) or not state:
+            return False
+
+        incoming = str(state.get("Status") or "").strip().lower()
+        if incoming:
+            task.status = incoming
+
+        started_at = _parse_docker_time(state.get("StartedAt"))
+        finished_at = _parse_docker_time(state.get("FinishedAt"))
+        if started_at:
+            task.started_at = started_at
+        if finished_at:
+            task.finished_at = finished_at
+
+        exit_code = state.get("ExitCode")
+        if exit_code is not None:
+            try:
+                task.exit_code = int(exit_code)
+            except Exception:
+                pass
+        return True
+
     def _schedule_save(self) -> None:
         self._save_timer.start()
 
 
     def _save_state(self) -> None:
-        tasks = sorted(self._tasks.values(), key=lambda t: t.created_at_s)
         environments = [serialize_environment(env) for env in self._environment_list()]
-        payload = {"tasks": [serialize_task(t) for t in tasks], "settings": dict(self._settings_data), "environments": environments}
+        payload = {"settings": dict(self._settings_data), "environments": environments}
         save_state(self._state_path, payload)
+        for task in sorted(self._tasks.values(), key=lambda t: t.created_at_s):
+            save_task_payload(
+                self._state_path,
+                serialize_task(task),
+                archived=self._should_archive_task(task),
+            )
 
 
     def _load_state(self) -> None:
@@ -50,7 +100,8 @@ class _MainWindowPersistenceMixin:
             if not raw:
                 continue
             self._settings_data[key] = self._sanitize_interactive_command_value(key, raw)
-        items = payload.get("tasks") or []
+
+        items = load_active_task_payloads(self._state_path)
         loaded: list[Task] = []
         for item in items:
             if not isinstance(item, dict):
@@ -60,12 +111,18 @@ class _MainWindowPersistenceMixin:
                 continue
             if task.logs:
                 task.logs = [prettify_log_line(line) for line in task.logs if isinstance(line, str)]
+            status = (task.status or "").lower()
+            synced = False
+            if status != "queued":
+                synced = self._try_sync_container_state(task)
+            if self._should_archive_task(task):
+                save_task_payload(self._state_path, serialize_task(task), archived=True)
+                continue
+            if not synced and task.is_active() and status != "queued":
+                task.status = "unknown"
             loaded.append(task)
         loaded.sort(key=lambda t: t.created_at_s)
         for task in loaded:
-            active = (task.status or "").lower() in {"queued", "pulling", "created", "running", "starting"}
-            if active:
-                task.status = "unknown"
             self._tasks[task.task_id] = task
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
