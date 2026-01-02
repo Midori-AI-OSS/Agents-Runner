@@ -153,7 +153,7 @@ class _MainWindowTasksAgentMixin:
             runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
-        
+
         # PR metadata prep (only if gh mode is enabled)
         if (
             env
@@ -171,6 +171,7 @@ class _MainWindowTasksAgentMixin:
                 extra_mounts_for_task.append(f"{host_path}:{container_path}:rw")
                 env_vars_for_task.setdefault("CODEX_PR_METADATA_PATH", container_path)
                 runner_prompt = f"{runner_prompt}{pr_metadata_prompt_instructions(container_path)}"
+                self._on_task_log(task_id, f"[gh] PR metadata enabled; mounted -> {container_path}")
 
         # Build config with GitHub repo info if needed
         gh_repo: str | None = None
