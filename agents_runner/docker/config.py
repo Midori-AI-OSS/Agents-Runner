@@ -27,4 +27,5 @@ class DockerRunnerConfig:
     gh_prefer_gh_cli: bool = True
     gh_recreate_if_needed: bool = True
     gh_base_branch: str | None = None
+    gh_prepare_local_repo: bool = False
 

@@ -21,6 +21,7 @@ from agents_runner.docker_platform import docker_platform_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
 from agents_runner.github_token import resolve_github_token
 from agents_runner.gh_management import prepare_github_repo_for_task
+from agents_runner.gh_management import prepare_local_repo_for_task
 from agents_runner.gh_management import GhManagementError
 
 from agents_runner.docker.config import DockerRunnerConfig
@@ -101,6 +102,26 @@ class DockerAgentWorker:
                     self._gh_branch = str(result.get("branch") or "") or None
                     if self._gh_branch:
                         self._on_log(f"[gh] ready on branch {self._gh_branch}")
+                except (GhManagementError, Exception) as exc:
+                    self._on_log(f"[gh] ERROR: {exc}")
+                    self._on_done(1, str(exc))
+                    return
+            # Local git repo preparation (no clone, just branch prep) - for LOCAL mode
+            elif self._config.gh_prepare_local_repo:
+                try:
+                    from agents_runner.gh_management import is_git_repo
+                    if is_git_repo(self._config.host_workdir):
+                        result = prepare_local_repo_for_task(
+                            self._config.host_workdir,
+                            task_id=self._config.task_id,
+                            base_branch=self._config.gh_base_branch or None,
+                            on_log=self._on_log,
+                        )
+                        self._gh_repo_root = str(result.get("repo_root") or "") or None
+                        self._gh_base_branch = str(result.get("base_branch") or "") or None
+                        self._gh_branch = str(result.get("branch") or "") or None
+                        if self._gh_branch:
+                            self._on_log(f"[gh] ready on branch {self._gh_branch}")
                 except (GhManagementError, Exception) as exc:
                     self._on_log(f"[gh] ERROR: {exc}")
                     self._on_done(1, str(exc))

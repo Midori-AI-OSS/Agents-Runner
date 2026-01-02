@@ -8,6 +8,7 @@ from agents_runner.docker_runner import DockerAgentWorker
 from agents_runner.docker_runner import DockerPreflightWorker
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.gh_management import prepare_github_repo_for_task
+from agents_runner.gh_management import prepare_local_repo_for_task
 from agents_runner.gh_management import GhManagementError
 
 
@@ -105,3 +106,43 @@ class GhManagementBridge(QObject):
             self.done.emit(False, str(exc))
         except Exception as exc:
             self.done.emit(False, str(exc))
+
+
+class LocalGitRepoBridge(QObject):
+    log = Signal(str)
+    done = Signal(bool, object)
+
+    def __init__(
+        self,
+        *,
+        task_id: str,
+        local_dir: str,
+        base_branch: str = "",
+    ) -> None:
+        super().__init__()
+        self._task_id = str(task_id or "").strip()
+        self._local_dir = str(local_dir or "").strip()
+        self._base_branch = str(base_branch or "").strip()
+        self._stop_requested = False
+
+    @Slot()
+    def request_stop(self) -> None:
+        self._stop_requested = True
+
+    def run(self) -> None:
+        if self._stop_requested:
+            self.done.emit(False, "cancelled")
+            return
+        try:
+            result = prepare_local_repo_for_task(
+                self._local_dir,
+                task_id=self._task_id,
+                base_branch=self._base_branch or None,
+                on_log=self.log.emit,
+            )
+            self.done.emit(True, result)
+        except GhManagementError as exc:
+            self.done.emit(False, str(exc))
+        except Exception as exc:
+            self.done.emit(False, str(exc))
+

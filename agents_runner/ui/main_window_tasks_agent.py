@@ -182,8 +182,12 @@ class _MainWindowTasksAgentMixin:
 
         # Build config with GitHub repo info if needed
         gh_repo: str | None = None
+        gh_prepare_local_repo = False
         if gh_mode == GH_MANAGEMENT_GITHUB and env:
             gh_repo = str(env.gh_management_target or "").strip() or None
+        elif gh_mode == GH_MANAGEMENT_LOCAL:
+            # Enable local repo preparation for LOCAL mode
+            gh_prepare_local_repo = True
 
         config = DockerRunnerConfig(
             task_id=task_id,
@@ -202,6 +206,7 @@ class _MainWindowTasksAgentMixin:
             gh_prefer_gh_cli=use_host_gh,
             gh_recreate_if_needed=True,
             gh_base_branch=desired_base or None,
+            gh_prepare_local_repo=gh_prepare_local_repo,
         )
         task._runner_config = config
         task._runner_prompt = runner_prompt
