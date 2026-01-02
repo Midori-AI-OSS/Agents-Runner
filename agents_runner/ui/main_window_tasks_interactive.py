@@ -81,7 +81,12 @@ class _MainWindowTasksInteractiveMixin:
 
         task_id = uuid4().hex[:10]
         task_token = f"interactive-{task_id}"
-        if gh_mode != GH_MANAGEMENT_GITHUB and not os.path.isdir(host_workdir):
+        if gh_mode == GH_MANAGEMENT_GITHUB:
+            try:
+                os.makedirs(host_workdir, exist_ok=True)
+            except Exception:
+                pass
+        elif not os.path.isdir(host_workdir):
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return
 
@@ -92,6 +97,10 @@ class _MainWindowTasksInteractiveMixin:
             host_codex = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
         if not self._ensure_agent_config_dir(agent_cli, host_codex):
             return
+
+        self._settings_data["active_environment_id"] = env_id
+        self._settings_data["host_workdir"] = host_workdir
+        self._settings_data[self._host_config_dir_key(agent_cli)] = host_codex
 
         agent_cli_args: list[str] = []
         if env and env.agent_cli_args.strip():
@@ -204,6 +213,8 @@ class _MainWindowTasksInteractiveMixin:
             container_id=container_name,
             gh_management_mode=gh_mode,
             gh_use_host_cli=bool(getattr(env, "gh_use_host_cli", True)) if env else True,
+            agent_cli=agent_cli,
+            agent_cli_args=" ".join(agent_cli_args),
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -334,6 +345,16 @@ class _MainWindowTasksInteractiveMixin:
         settings_tmp_path = ""
         env_tmp_path = ""
         helpme_tmp_path = ""
+
+        if cmd_parts and cmd_parts[0] == "codex":
+            has_skip = "--skip-git-repo-check" in cmd_parts
+            has_git = os.path.exists(os.path.join(host_workdir, ".git"))
+            if not has_skip and not has_git:
+                self._on_task_log(task_id, "[host] .git missing in workdir; adding --skip-git-repo-check")
+                if prompt and cmd_parts[-1] == prompt:
+                    cmd_parts.insert(len(cmd_parts) - 1, "--skip-git-repo-check")
+                else:
+                    cmd_parts.append("--skip-git-repo-check")
 
         preflight_clause = ""
         preflight_mounts: list[str] = []
