@@ -22,4 +22,9 @@ class DockerRunnerConfig:
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
     agent_cli_args: list[str] = field(default_factory=list)
+    # GitHub repo preparation
+    gh_repo: str | None = None
+    gh_prefer_gh_cli: bool = True
+    gh_recreate_if_needed: bool = True
+    gh_base_branch: str | None = None
 

@@ -137,6 +137,15 @@ class _MainWindowTaskEventsMixin:
     def _on_bridge_done(self, exit_code: int, error: object) -> None:
         bridge = self.sender()
         if isinstance(bridge, TaskRunnerBridge):
+            # Capture GitHub repo info from the worker if available
+            task = self._tasks.get(bridge.task_id)
+            if task is not None:
+                if bridge.gh_repo_root:
+                    task.gh_repo_root = bridge.gh_repo_root
+                if bridge.gh_base_branch:
+                    task.gh_base_branch = bridge.gh_base_branch
+                if bridge.gh_branch:
+                    task.gh_branch = bridge.gh_branch
             self._on_task_done(bridge.task_id, exit_code, error)
 
 
