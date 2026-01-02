@@ -70,4 +70,3 @@ class _MainWindowTaskReviewMixin:
             ),
             daemon=True,
         ).start()
-

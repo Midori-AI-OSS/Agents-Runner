@@ -12,4 +12,3 @@ When a managed repo/environment is in a Git-locked state (e.g., index.lock or an
 ## Notes / Ideas
 - Detect lock files and/or Git operations in progress early and log explicitly.
 - Consider a short "preflight" step that runs before cloning/branch prep and before Docker pull/run, so the task timeline always has an initial user-visible event.
-
