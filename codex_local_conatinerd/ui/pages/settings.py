@@ -248,9 +248,9 @@ class SettingsPage(QWidget):
         git_busy = bool(git_busy)
         all_busy = bool(all_busy)
         self._clean_docker.setEnabled(not docker_busy and not all_busy)
-        self._clean_docker.setText("Cleaning…" if docker_busy else "Clean Docker")
+        self._clean_docker.setText("Cleaning…" if (docker_busy or all_busy) else "Clean Docker")
         self._clean_git_folders.setEnabled(not git_busy and not all_busy)
-        self._clean_git_folders.setText("Cleaning…" if git_busy else "Clean Git Folders")
+        self._clean_git_folders.setText("Cleaning…" if (git_busy or all_busy) else "Clean Git Folders")
         self._clean_all.setEnabled(not all_busy and not docker_busy and not git_busy)
         self._clean_all.setText("Cleaning…" if all_busy else "Clean All")
 
@@ -258,8 +258,12 @@ class SettingsPage(QWidget):
         btn = QMessageBox.question(
             self,
             "Clean Docker",
-            "This will run `docker system prune -fa`.\n\n"
-            "It will remove unused images, containers, networks, and build cache.\n"
+            "This will prune Docker in steps:\n\n"
+            "1) containers\n"
+            "2) images\n"
+            "3) volumes\n"
+            "4) networks\n"
+            "5) system prune (`docker system prune -fa`)\n\n"
             "This cannot be undone.\n\n"
             "Are you sure?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -291,7 +295,7 @@ class SettingsPage(QWidget):
             self,
             "Clean All",
             "This will run all cleanup actions:\n\n"
-            "1) `docker system prune -fa`\n"
+            "1) prune Docker (containers, images, volumes, networks, then `docker system prune -fa`)\n"
             "2) delete GUI-managed git folders:\n"
             f"   {path}\n\n"
             "This cannot be undone.\n\n"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
@@ -11,6 +12,8 @@ from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
+from codex_local_conatinerd.environments import GH_MANAGEMENT_GITHUB
+from codex_local_conatinerd.environments import normalize_gh_management_mode
 from codex_local_conatinerd.ui.task_model import Task
 from codex_local_conatinerd.ui.task_model import _task_display_status
 from codex_local_conatinerd.ui.utils import _format_duration
@@ -23,6 +26,7 @@ from codex_local_conatinerd.widgets import StatusGlyph
 
 class TaskDetailsPage(QWidget):
     back_requested = Signal()
+    pr_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -47,8 +51,19 @@ class TaskDetailsPage(QWidget):
         back.setToolButtonStyle(Qt.ToolButtonTextOnly)
         back.clicked.connect(self.back_requested.emit)
 
+        self._review_menu = QMenu(self)
+        self._review_pr = self._review_menu.addAction("Create PR")
+        self._review_pr.triggered.connect(self._on_pr_triggered)
+        self._review = QToolButton()
+        self._review.setText("Review")
+        self._review.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._review.setMenu(self._review_menu)
+        self._review.setPopupMode(QToolButton.InstantPopup)
+        self._review.setVisible(False)
+
         header_layout.addWidget(self._title)
         header_layout.addWidget(self._subtitle, 1)
+        header_layout.addWidget(self._review, 0, Qt.AlignRight)
         header_layout.addWidget(back, 0, Qt.AlignRight)
         layout.addWidget(header)
 
@@ -150,6 +165,21 @@ class TaskDetailsPage(QWidget):
 
         self._last_task: Task | None = None
 
+    def _on_pr_triggered(self) -> None:
+        task_id = str(self._current_task_id or "").strip()
+        if task_id:
+            self.pr_requested.emit(task_id)
+
+    def _sync_review_menu(self, task: Task) -> None:
+        gh_mode = normalize_gh_management_mode(str(task.gh_management_mode or ""))
+        can_pr = bool(gh_mode == GH_MANAGEMENT_GITHUB and task.gh_repo_root and task.gh_branch)
+        pr_url = str(task.gh_pr_url or "").strip()
+        self._review_pr.setVisible(can_pr)
+        self._review_pr.setEnabled(can_pr and not task.is_active())
+        self._review_pr.setText("Open PR" if pr_url.startswith("http") else "Create PR")
+        self._review.setVisible(can_pr)
+        self._review.setEnabled(can_pr and not task.is_active())
+
     def _logs_is_at_bottom(self, slack: int = 6) -> bool:
         bar = self._logs.verticalScrollBar()
         return bar.value() >= (bar.maximum() - slack)
@@ -174,6 +204,7 @@ class TaskDetailsPage(QWidget):
         QTimer.singleShot(0, self._scroll_logs_to_bottom)
         self._apply_status(task)
         self._tick_uptime()
+        self._sync_review_menu(task)
 
     def append_log(self, task_id: str, line: str) -> None:
         if self._current_task_id != task_id:
@@ -191,6 +222,7 @@ class TaskDetailsPage(QWidget):
         self._exit.setText("—" if task.exit_code is None else str(task.exit_code))
         self._apply_status(task)
         self._tick_uptime()
+        self._sync_review_menu(task)
 
     def _apply_status(self, task: Task) -> None:
         status = _task_display_status(task)

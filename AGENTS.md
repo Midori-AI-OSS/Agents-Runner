@@ -21,6 +21,15 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 ---
 
+## Config & Data Directories
+
+- `~/.midoriai`: App data folder for this program (and other Midori AI programs)
+- `~/.codex`: Codex agent config folder (read-only)
+- `~/.copilot`: Copilot config folder (read-only)
+- `~/.claude`: Claude agent config folder (read-only)
+
+---
+
 ## Development Basics
 
 - Run `uv run main.py` to test the GUI locally before committing changes.

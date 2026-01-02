@@ -82,9 +82,14 @@ class HostCleanupBridge(QObject):
 
     def __init__(
         self,
+        *,
+        task_id: str,
+        kind: str,
         runner: Callable[[Callable[[str], None], threading.Event], tuple[int, str]],
     ) -> None:
         super().__init__()
+        self.task_id = str(task_id or "").strip()
+        self.kind = str(kind or "").strip()
         self._runner = runner
         self._stop = threading.Event()
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import threading
 
+from collections.abc import Callable
+
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtCore import QTimer
@@ -37,6 +39,7 @@ from codex_local_conatinerd.ui.main_window_persistence import _MainWindowPersist
 from codex_local_conatinerd.ui.main_window_preflight import _MainWindowPreflightMixin
 from codex_local_conatinerd.ui.main_window_settings import _MainWindowSettingsMixin
 from codex_local_conatinerd.ui.main_window_task_events import _MainWindowTaskEventsMixin
+from codex_local_conatinerd.ui.main_window_task_review import _MainWindowTaskReviewMixin
 from codex_local_conatinerd.ui.main_window_tasks_agent import _MainWindowTasksAgentMixin
 from codex_local_conatinerd.ui.main_window_tasks_interactive import _MainWindowTasksInteractiveMixin
 from codex_local_conatinerd.ui.main_window_tasks_interactive_finalize import (
@@ -56,6 +59,7 @@ class MainWindow(
     _MainWindowTasksInteractiveMixin,
     _MainWindowTasksInteractiveFinalizeMixin,
     _MainWindowPreflightMixin,
+    _MainWindowTaskReviewMixin,
     _MainWindowTaskEventsMixin,
     _MainWindowPersistenceMixin,
 ):
@@ -166,6 +170,7 @@ class MainWindow(
         self._new_task.back_requested.connect(self._show_dashboard)
         self._details = TaskDetailsPage()
         self._details.back_requested.connect(self._show_dashboard)
+        self._details.pr_requested.connect(self._on_task_pr_requested)
         self._envs_page = EnvironmentsPage()
         self._envs_page.back_requested.connect(self._show_dashboard)
         self._envs_page.updated.connect(self._reload_environments, Qt.QueuedConnection)
@@ -179,6 +184,7 @@ class MainWindow(
         self._settings.clean_all_requested.connect(self._on_settings_clean_all, Qt.QueuedConnection)
         self._cleanup_threads: dict[str, QThread] = {}
         self._cleanup_bridges: dict[str, HostCleanupBridge] = {}
+        self._cleanup_pending: dict[str, tuple[str, Callable]] = {}
         self._docker_cleanup_task_id: str | None = None
         self._git_cleanup_task_id: str | None = None
         self._clean_all_queue: list[str] = []
@@ -204,6 +210,7 @@ class MainWindow(
         self._reload_environments()
         self._apply_settings_to_pages()
         self._sync_settings_clean_state()
+        self._try_start_queued_tasks()
 
 
     def resizeEvent(self, event) -> None:

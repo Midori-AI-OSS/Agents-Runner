@@ -14,6 +14,7 @@ from collections.abc import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
+from PySide6.QtCore import Slot
 
 from PySide6.QtWidgets import QMessageBox
 
@@ -23,6 +24,76 @@ from codex_local_conatinerd.ui.task_model import Task
 
 
 class _MainWindowCleanupMixin:
+    @staticmethod
+    def _repo_scripts_dir() -> str:
+        return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "scripts"))
+
+    @classmethod
+    def _script_path(cls, filename: str) -> str:
+        return os.path.join(cls._repo_scripts_dir(), str(filename or "").strip())
+
+    @staticmethod
+    def _stream_cmd(
+        args: list[str],
+        log: Callable[[str], None],
+        stop: threading.Event,
+        *,
+        timeout_s: float | None = None,
+    ) -> tuple[int, list[str]]:
+        log(f"$ {_MainWindowCleanupMixin._format_cmd(args)}")
+        output_lines: list[str] = []
+        try:
+            proc = subprocess.Popen(
+                args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+        except Exception as exc:
+            return 1, [str(exc)]
+
+        assert proc.stdout is not None
+        for raw in proc.stdout:
+            if stop.is_set():
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                break
+            line = str(raw or "").rstrip("\n")
+            if line:
+                log(line)
+                output_lines.append(line)
+
+        try:
+            exit_code = int(proc.wait(timeout=timeout_s))
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            exit_code = 1
+        return exit_code, output_lines
+
+    @Slot(str)
+    def _on_cleanup_bridge_log(self, line: str) -> None:
+        bridge = self.sender()
+        if not isinstance(bridge, HostCleanupBridge):
+            return
+        task_id = str(getattr(bridge, "task_id", "") or "").strip()
+        if not task_id:
+            return
+        self._on_task_log(task_id, str(line or ""))
+    @Slot(int, str)
+    def _on_cleanup_bridge_done(self, exit_code: int, output: str) -> None:
+        bridge = self.sender()
+        if not isinstance(bridge, HostCleanupBridge):
+            return
+        task_id = str(getattr(bridge, "task_id", "") or "").strip()
+        kind = str(getattr(bridge, "kind", "") or "").strip()
+        if not task_id:
+            return
+        self._on_cleanup_done(task_id, kind, int(exit_code), str(output or ""))
     def _on_settings_clean_docker(self) -> None:
         if shutil.which("docker") is None:
             QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
@@ -38,8 +109,6 @@ class _MainWindowCleanupMixin:
             runner=self._run_docker_prune,
         )
         self._sync_settings_clean_state()
-
-
     def _on_settings_clean_git_folders(self) -> None:
         if self._git_cleanup_task_id is not None:
             QMessageBox.information(self, "Clean Git Folders", "A git cleanup is already running.")
@@ -66,7 +135,23 @@ class _MainWindowCleanupMixin:
                 "Finish the currently running cleanup first.",
             )
             return
-        self._clean_all_queue = ["docker", "git"]
+        docker_task_id = self._start_cleanup_task(
+            kind="docker",
+            label="Clean Docker",
+            target=str(self._settings_data.get("host_workdir") or os.getcwd()),
+            runner=self._run_docker_prune,
+        )
+        git_target = managed_repos_dir(data_dir=os.path.dirname(self._state_path))
+        git_task_id = self._start_cleanup_task(
+            kind="git",
+            label="Clean Git Folders",
+            target=git_target,
+            runner=self._run_clean_git_folders,
+            defer_start=True,
+        )
+        self._docker_cleanup_task_id = docker_task_id
+        self._git_cleanup_task_id = git_task_id
+        self._clean_all_queue = [docker_task_id, git_task_id]
         self._sync_settings_clean_state()
         self._start_next_clean_all_step()
 
@@ -80,18 +165,19 @@ class _MainWindowCleanupMixin:
 
 
     def _start_next_clean_all_step(self) -> None:
-        if not self._clean_all_queue:
-            self._sync_settings_clean_state()
+        while self._clean_all_queue:
+            task_id = str(self._clean_all_queue[0] or "").strip()
+            if not task_id:
+                self._clean_all_queue.pop(0)
+                continue
+            if task_id in self._cleanup_threads:
+                return
+            if task_id not in self._cleanup_pending:
+                self._clean_all_queue.pop(0)
+                continue
+            self._begin_cleanup_task(task_id)
             return
-        kind = str(self._clean_all_queue[0] or "").strip().lower()
-        if kind == "docker":
-            self._on_settings_clean_docker()
-            return
-        if kind == "git":
-            self._on_settings_clean_git_folders()
-            return
-        self._clean_all_queue.pop(0)
-        self._start_next_clean_all_step()
+        self._sync_settings_clean_state()
 
 
     def _format_cmd(args: list[str]) -> str:
@@ -105,8 +191,10 @@ class _MainWindowCleanupMixin:
         label: str,
         target: str,
         runner: Callable[[Callable[[str], None], threading.Event], tuple[int, str]],
+        defer_start: bool = False,
     ) -> str:
         task_id = uuid4().hex[:10]
+        queued = bool(defer_start)
         task = Task(
             task_id=task_id,
             prompt=str(label or "Cleanup").strip(),
@@ -114,23 +202,43 @@ class _MainWindowCleanupMixin:
             host_workdir=str(target or "").strip(),
             host_codex_dir="",
             created_at_s=time.time(),
-            status="cleaning",
+            status="queued" if queued else "running",
         )
-        task.started_at = datetime.now(tz=timezone.utc)
+        if not queued:
+            task.started_at = datetime.now(tz=timezone.utc)
         self._tasks[task_id] = task
         self._dashboard.upsert_task(task, stain="slate")
         self._schedule_save()
 
-        bridge = HostCleanupBridge(runner)
+        self._cleanup_pending[task_id] = (str(kind or "").strip().lower(), runner)
+        if defer_start:
+            self._on_task_log(task_id, "[queue] waiting for previous cleanup step…")
+            self._show_dashboard()
+            return task_id
+        self._begin_cleanup_task(task_id)
+        return task_id
+
+
+    def _begin_cleanup_task(self, task_id: str) -> None:
+        task_id = str(task_id or "").strip()
+        pending = self._cleanup_pending.pop(task_id, None)
+        if pending is None:
+            return
+        kind, runner = pending
+        task = self._tasks.get(task_id)
+        if task is not None:
+            if task.started_at is None:
+                task.started_at = datetime.now(tz=timezone.utc)
+            task.status = "running"
+            self._dashboard.upsert_task(task, stain="slate")
+
+        bridge = HostCleanupBridge(task_id=task_id, kind=kind, runner=runner)
         thread = QThread(self)
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
 
-        bridge.log.connect(lambda line, tid=task_id: self.host_log.emit(tid, line), Qt.QueuedConnection)
-        bridge.done.connect(
-            lambda code, output, tid=task_id, k=kind: self._on_cleanup_done(tid, k, int(code), str(output or "")),
-            Qt.QueuedConnection,
-        )
+        bridge.log.connect(self._on_cleanup_bridge_log, Qt.QueuedConnection)
+        bridge.done.connect(self._on_cleanup_bridge_done, Qt.QueuedConnection)
 
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
@@ -141,7 +249,6 @@ class _MainWindowCleanupMixin:
 
         thread.start()
         self._show_dashboard()
-        return task_id
 
 
     def _finalize_cleanup_task(self, task_id: str, exit_code: int, *, error: str | None = None) -> None:
@@ -175,7 +282,16 @@ class _MainWindowCleanupMixin:
             self._git_cleanup_task_id = None
             title = "Git folders cleaned" if int(exit_code) == 0 else "Git folders cleanup failed"
 
+        continuing = False
+        if self._clean_all_queue and self._clean_all_queue[0] == task_id:
+            self._clean_all_queue.pop(0)
+            continuing = bool(self._clean_all_queue)
+
         self._sync_settings_clean_state()
+
+        if continuing:
+            self._start_next_clean_all_step()
+            return
 
         box = QMessageBox(self)
         box.setWindowTitle(title)
@@ -183,10 +299,7 @@ class _MainWindowCleanupMixin:
         box.setDetailedText(output)
         box.setIcon(QMessageBox.Icon.Information if int(exit_code) == 0 else QMessageBox.Icon.Critical)
         box.exec()
-
-        if self._clean_all_queue and self._clean_all_queue[0] == kind:
-            self._clean_all_queue.pop(0)
-            self._sync_settings_clean_state()
+        if self._clean_all_queue:
             self._start_next_clean_all_step()
 
 
@@ -195,43 +308,14 @@ class _MainWindowCleanupMixin:
         log: Callable[[str], None],
         stop: threading.Event,
     ) -> tuple[int, str]:
-        docker_args = ["docker", "system", "prune", "-f", "-a"]
-        args = ["sudo", "-n", *docker_args] if shutil.which("sudo") else docker_args
-        log(f"$ {self._format_cmd(args)}")
-        output_lines: list[str] = []
-        try:
-            proc = subprocess.Popen(
-                args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-        except Exception as exc:
-            return 1, str(exc)
-        assert proc.stdout is not None
-        for raw in proc.stdout:
-            if stop.is_set():
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
-                break
-            line = str(raw or "").rstrip("\n")
-            if line:
-                log(line)
-                output_lines.append(line)
-        try:
-            exit_code = int(proc.wait(timeout=60.0))
-        except Exception:
-            try:
-                proc.kill()
-            except Exception:
-                pass
-            exit_code = 1
-        output = "\n".join(output_lines).strip()
-        if not output:
-            output = f"Command exited with code {exit_code}."
-        return exit_code, output
+        script = self._script_path("clean-docker.sh")
+        if not os.path.exists(script):
+            msg = f"Missing script: {script}"
+            log(msg)
+            return 1, msg
+        exit_code, lines = self._stream_cmd(["bash", script], log, stop, timeout_s=None)
+        output = "\n".join(lines).strip() or f"Command exited with code {exit_code}."
+        return int(exit_code), output
 
 
     def _run_clean_git_folders(
@@ -241,31 +325,13 @@ class _MainWindowCleanupMixin:
     ) -> tuple[int, str]:
         data_dir = os.path.dirname(self._state_path)
         target = managed_repos_dir(data_dir=data_dir)
-        log(f"Target: {target}")
-
-        target_real = os.path.realpath(target)
-        data_real = os.path.realpath(data_dir)
-        if not (target_real == data_real or target_real.startswith(data_real + os.sep)):
-            msg = f"Refusing to delete unexpected path: {target_real}"
+        script = self._script_path("clean-git-managed-repos.sh")
+        if not os.path.exists(script):
+            msg = f"Missing script: {script}"
             log(msg)
             return 1, msg
-
-        if not os.path.exists(target):
-            msg = "Nothing to clean."
-            log(msg)
-            return 0, msg
-
         if stop.is_set():
             return 1, "Cancelled."
-
-        args = ["sudo", "-n", "rm", "-rf", target] if shutil.which("sudo") else ["rm", "-rf", target]
-        log(f"$ {self._format_cmd(args)}")
-        try:
-            proc = subprocess.run(args, capture_output=True, text=True, check=False)
-        except Exception as exc:
-            return 1, str(exc)
-
-        output = "\n".join([str(proc.stdout or "").strip(), str(proc.stderr or "").strip()]).strip()
-        if not output:
-            output = f"Command exited with code {proc.returncode}."
-        return int(proc.returncode), output
+        exit_code, lines = self._stream_cmd(["bash", script, target], log, stop, timeout_s=None)
+        output = "\n".join(lines).strip() or f"Command exited with code {exit_code}."
+        return int(exit_code), output

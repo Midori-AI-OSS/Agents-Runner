@@ -16,6 +16,8 @@ from PySide6.QtWidgets import QMessageBox
 from codex_local_conatinerd.environments import GH_MANAGEMENT_NONE
 from codex_local_conatinerd.environments import normalize_gh_management_mode
 from codex_local_conatinerd.log_format import prettify_log_line
+from codex_local_conatinerd.persistence import save_task_payload
+from codex_local_conatinerd.persistence import serialize_task
 from codex_local_conatinerd.ui.bridges import TaskRunnerBridge
 from codex_local_conatinerd.ui.task_model import Task
 from codex_local_conatinerd.ui.utils import _parse_docker_time
@@ -41,10 +43,15 @@ class _MainWindowTaskEventsMixin:
         message = (
             f"Discard task {task_id}?\n\n"
             f"{prompt}\n\n"
-            "This removes it from the list and will attempt to stop/remove any running container."
+            "This removes it from the list, archives it for auditing, and will attempt to stop/remove any running container."
         )
         if QMessageBox.question(self, "Discard task?", message) != QMessageBox.StandardButton.Yes:
             return
+
+        task.status = "discarded"
+        if task.finished_at is None:
+            task.finished_at = datetime.now(tz=timezone.utc)
+        save_task_payload(self._state_path, serialize_task(task), archived=True)
 
         bridge = self._bridges.get(task_id)
         thread = self._threads.get(task_id)

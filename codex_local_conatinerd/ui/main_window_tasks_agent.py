@@ -33,6 +33,8 @@ from codex_local_conatinerd.pr_metadata import pr_metadata_container_path
 from codex_local_conatinerd.pr_metadata import pr_metadata_host_path
 from codex_local_conatinerd.pr_metadata import pr_metadata_prompt_instructions
 from codex_local_conatinerd.prompt_sanitizer import sanitize_prompt
+from codex_local_conatinerd.persistence import save_task_payload
+from codex_local_conatinerd.persistence import serialize_task
 from codex_local_conatinerd.ui.bridges import TaskRunnerBridge
 from codex_local_conatinerd.ui.constants import PIXELARCH_AGENT_CONTEXT_SUFFIX
 from codex_local_conatinerd.ui.constants import PIXELARCH_EMERALD_IMAGE
@@ -49,6 +51,11 @@ class _MainWindowTasksAgentMixin:
                 to_remove.add(task_id)
         if not to_remove:
             return
+        for task_id in sorted(to_remove):
+            task = self._tasks.get(task_id)
+            if task is None:
+                continue
+            save_task_payload(self._state_path, serialize_task(task), archived=True)
         self._dashboard.remove_tasks(to_remove)
         for task_id in to_remove:
             self._tasks.pop(task_id, None)
