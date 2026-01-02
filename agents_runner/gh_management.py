@@ -110,7 +110,7 @@ def prepare_local_repo_for_task(
         on_log(str(line or ""))
 
     result: dict[str, str] = {"repo_root": "", "base_branch": "", "branch": ""}
-    
+
     if not local_dir or not os.path.isdir(local_dir):
         _log("[gh] local directory does not exist; skipping")
         return result
