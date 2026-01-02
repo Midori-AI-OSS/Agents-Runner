@@ -107,6 +107,7 @@ class _MainWindowSettingsMixin:
         return value
 
 
+    @staticmethod
     def _is_agent_help_interactive_launch(prompt: str, command: str) -> bool:
         prompt = str(prompt or "").strip().lower()
         if prompt.startswith("get agent help"):

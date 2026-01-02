@@ -106,7 +106,7 @@ class _MainWindowTaskEventsMixin:
             ).start()
 
 
-    def _force_remove_container(container_id: str) -> None:
+    def _force_remove_container(self, container_id: str) -> None:
         container_id = str(container_id or "").strip()
         if not container_id:
             return
