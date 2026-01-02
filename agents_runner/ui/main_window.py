@@ -51,7 +51,6 @@ class MainWindow(
     _MainWindowEnvironmentMixin,
     _MainWindowDashboardMixin,
     _MainWindowTasksAgentMixin,
-    _MainWindowTasksInteractiveMixin,
     _MainWindowTasksInteractiveFinalizeMixin,
     _MainWindowPreflightMixin,
     _MainWindowTaskReviewMixin,
