@@ -30,6 +30,8 @@ from agents_runner.gh_management import is_gh_available
 from agents_runner.widgets import GlassCard
 
 from agents_runner.ui.pages.environments_actions import _EnvironmentsPageActionsMixin
+from agents_runner.ui.pages.environments_prompts import PromptsTabWidget
+from agents_runner.ui.pages.environments_agents import AgentsTabWidget
 
 
 class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
@@ -257,10 +259,18 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         mounts_layout.addWidget(QLabel("Extra bind mounts"))
         mounts_layout.addWidget(self._mounts, 1)
 
+        self._prompts_tab = PromptsTabWidget()
+        self._prompts_tab.prompts_changed.connect(self._on_prompts_changed)
+
+        self._agents_tab = AgentsTabWidget()
+        self._agents_tab.agents_changed.connect(self._on_agents_changed)
+
         tabs.addTab(general_tab, "General")
         tabs.addTab(preflight_tab, "Preflight")
         tabs.addTab(env_vars_tab, "Env Vars")
         tabs.addTab(mounts_tab, "Mounts")
+        tabs.addTab(self._prompts_tab, "Prompts")
+        tabs.addTab(self._agents_tab, "Agents")
 
         card_layout.addWidget(tabs, 1)
 
@@ -307,6 +317,8 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._preflight_script.setPlainText("")
             self._env_vars.setPlainText("")
             self._mounts.setPlainText("")
+            self._prompts_tab.set_prompts([], False)
+            self._agents_tab.set_agent_selection(None)
             self._sync_gh_management_controls()
             return
 
@@ -334,6 +346,14 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         env_lines = "\n".join(f"{k}={v}" for k, v in sorted(env.env_vars.items()))
         self._env_vars.setPlainText(env_lines)
         self._mounts.setPlainText("\n".join(env.extra_mounts))
+        self._prompts_tab.set_prompts(env.prompts or [], env.prompts_unlocked or False)
+        self._agents_tab.set_agent_selection(env.agent_selection)
+
+    def _on_prompts_changed(self) -> None:
+        pass
+
+    def _on_agents_changed(self) -> None:
+        pass
 
     def _on_env_selected(self, index: int) -> None:
         self._load_selected()
