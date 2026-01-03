@@ -204,6 +204,8 @@ class _MainWindowTasksInteractiveMixin:
             container_id=container_name,
             gh_management_mode=gh_mode,
             gh_use_host_cli=bool(getattr(env, "gh_use_host_cli", True)) if env else True,
+            agent_cli=agent_cli,
+            agent_cli_args=" ".join(agent_cli_args),
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
