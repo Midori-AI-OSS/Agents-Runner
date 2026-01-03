@@ -42,19 +42,23 @@ class _MainWindowNavigationMixin:
         effect_in.setOpacity(0.0)
         
         anim_out = QPropertyAnimation(effect_out, b"opacity")
-        anim_out.setDuration(200)
+        anim_out.setDuration(150)
         anim_out.setStartValue(1.0)
         anim_out.setEndValue(0.0)
-        anim_out.finished.connect(current_page.hide)
         
-        target_page.show()
+        def start_fade_in():
+            current_page.hide()
+            target_page.show()
+            anim_in.start()
+        
+        anim_out.finished.connect(start_fade_in)
+        
         anim_in = QPropertyAnimation(effect_in, b"opacity")
         anim_in.setDuration(200)
         anim_in.setStartValue(0.0)
         anim_in.setEndValue(1.0)
         
         anim_out.start()
-        anim_in.start()
         
         if not hasattr(self, "_page_animations"):
             self._page_animations = []
