@@ -6,6 +6,7 @@ from .loading_bar import BouncingLoadingBar
 from .log_highlighter import LogHighlighter
 from .smooth_scroll import SmoothScrollArea
 from .status_glyph import StatusGlyph
+from .stained_glass_button import StainedGlassButton
 
 __all__ = [
     "AnimatedCheckBox",
@@ -16,5 +17,6 @@ __all__ = [
     "GlassCard",
     "LogHighlighter",
     "SmoothScrollArea",
+    "StainedGlassButton",
     "StatusGlyph",
 ]

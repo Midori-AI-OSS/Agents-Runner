@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
-from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -24,6 +23,7 @@ from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
 from agents_runner.widgets import GlassCard
+from agents_runner.widgets import StainedGlassButton
 
 
 class NewTaskPage(QWidget):
@@ -134,14 +134,17 @@ class NewTaskPage(QWidget):
 
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
-        self._get_agent_help = QPushButton("Get Agent Help")
+        self._get_agent_help = StainedGlassButton("Get Agent Help")
+        self._get_agent_help.set_glass_enabled(False)
         self._get_agent_help.clicked.connect(self._on_get_agent_help)
         self._get_agent_help.setEnabled(False)
         buttons.addWidget(self._get_agent_help)
         buttons.addStretch(1)
-        self._run_interactive = QPushButton("Run Interactive")
+        self._run_interactive = StainedGlassButton("Run Interactive")
+        self._run_interactive.set_glass_enabled(False)
         self._run_interactive.clicked.connect(self._on_launch)
-        self._run_agent = QPushButton("Run Agent")
+        self._run_agent = StainedGlassButton("Run Agent")
+        self._run_agent.set_glass_enabled(False)
         self._run_agent.clicked.connect(self._on_run)
         self._run_interactive.setEnabled(False)
         self._run_agent.setEnabled(False)
@@ -329,10 +332,17 @@ class NewTaskPage(QWidget):
         if not stain:
             self._environment.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
+            self._get_agent_help.set_tint_color(None)
+            self._run_interactive.set_tint_color(None)
+            self._run_agent.set_tint_color(None)
             return
 
         _apply_environment_combo_tint(self._environment, stain)
-        self._tint_overlay.set_tint_color(_stain_color(stain))
+        tint = _stain_color(stain)
+        self._tint_overlay.set_tint_color(tint)
+        self._get_agent_help.set_tint_color(tint)
+        self._run_interactive.set_tint_color(tint)
+        self._run_agent.set_tint_color(tint)
 
     def set_environment_stains(self, stains: dict[str, str]) -> None:
         self._env_stains = {str(k): str(v) for k, v in (stains or {}).items()}
