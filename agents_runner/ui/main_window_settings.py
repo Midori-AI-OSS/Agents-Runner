@@ -145,6 +145,10 @@ class _MainWindowSettingsMixin:
         # Check environment agent_selection for per-agent config directory
         if env and env.agent_selection and env.agent_selection.agent_config_dirs:
             # Normalize keys to handle case sensitivity issues
+            # Note: We normalize on each call rather than caching because:
+            # 1. This is a lightweight operation (dict comprehension over small dict)
+            # 2. Environments can change between calls
+            # 3. Caching would add complexity with minimal performance benefit
             normalized_dirs = {
                 normalize_agent(str(name)): path
                 for name, path in env.agent_selection.agent_config_dirs.items()
@@ -227,8 +231,9 @@ class _MainWindowSettingsMixin:
             original_agent = env.agent_selection.enabled_agents[0]
             agent_cli = normalize_agent(original_agent)
             
-            # Log warning if agent was invalid and got normalized
-            if agent_cli != original_agent.lower():
+            # Log warning if agent was invalid (normalize_agent returned default "codex")
+            # when the original wasn't a variant of "codex"
+            if agent_cli == "codex" and original_agent.strip().lower() not in ("codex", "claude", "copilot"):
                 logger.warning(
                     f"Environment agent_selection specified invalid agent '{original_agent}', "
                     f"using '{agent_cli}' instead. Valid agents: codex, claude, copilot"
