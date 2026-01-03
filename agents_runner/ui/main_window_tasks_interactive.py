@@ -439,9 +439,13 @@ class _MainWindowTasksInteractiveMixin:
                 quoted_dest = shlex.quote(host_workdir)
                 branch_name = f"agents-runner-{task_id}"
                 quoted_branch = shlex.quote(branch_name)
-                # Use gh if preferred and available, otherwise fall back to git
+                # Build clone command with gh -> git fallback
+                # Try gh first if preferred, fall back to git clone if gh fails or is unavailable
                 if gh_prefer_gh_cli:
-                    clone_cmd = f'gh repo clone {quoted_repo} {quoted_dest}'
+                    clone_cmd = (
+                        f'(command -v gh >/dev/null 2>&1 && gh repo clone {quoted_repo} {quoted_dest}) || '
+                        f'git clone {quoted_repo} {quoted_dest}'
+                    )
                 else:
                     clone_cmd = f'git clone {quoted_repo} {quoted_dest}'
                 # Build the clone and branch setup script as separate steps
