@@ -3,11 +3,6 @@ set -u
 
 echo "[preflight] system: running: yay -Syu --noconfirm && yay -Yccc --noconfirm"
 
-if ! command -v yay >/dev/null 2>&1; then
-  echo "[preflight] system: yay not found; skipping"
-  exit 0
-fi
-
 set +e
 
 yay -Syu --noconfirm
