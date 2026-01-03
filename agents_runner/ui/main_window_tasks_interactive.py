@@ -85,7 +85,7 @@ class _MainWindowTasksInteractiveMixin:
 
         desired_base = str(base_branch or "").strip()
 
-        agent_cli = normalize_agent(str(self._settings_data.get("use") or "codex"))
+        agent_cli = self._effective_agent_cli(env=env)
         if not host_codex:
             host_codex = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
         if not self._ensure_agent_config_dir(agent_cli, host_codex):

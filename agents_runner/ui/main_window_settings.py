@@ -135,9 +135,27 @@ class _MainWindowSettingsMixin:
                 settings.get("host_codex_dir")
                 or os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex"))
             )
-        if env and env.host_codex_dir:
+        
+        if env and env.agent_selection and env.agent_selection.agent_config_dirs:
+            agent_config = env.agent_selection.agent_config_dirs.get(agent_cli, "")
+            if agent_config:
+                config_dir = agent_config
+        elif env and env.host_codex_dir:
             config_dir = env.host_codex_dir
+        
         return os.path.expanduser(str(config_dir or "").strip())
+
+
+    def _effective_agent_cli(
+        self,
+        *,
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+    ) -> str:
+        settings = settings or self._settings_data
+        if env and env.agent_selection and env.agent_selection.enabled_agents:
+            return normalize_agent(env.agent_selection.enabled_agents[0])
+        return normalize_agent(str(settings.get("use") or "codex"))
 
 
     def _ensure_agent_config_dir(self, agent_cli: str, host_config_dir: str) -> bool:
