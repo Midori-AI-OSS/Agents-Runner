@@ -468,7 +468,7 @@ class _MainWindowTasksInteractiveMixin:
                 branch_name = f"agents-runner-{task_id}"
                 task.gh_repo_root = host_workdir
                 task.gh_branch = branch_name
-                task.gh_base_branch = desired_base or "main"
+                task.gh_base_branch = desired_base
                 self._schedule_save()
 
             docker_pull_parts = ["docker", "pull", *docker_platform_args, image]

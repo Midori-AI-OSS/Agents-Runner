@@ -52,8 +52,9 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             and task.gh_branch
             and not task.gh_pr_url
         ):
-            base = task.gh_base_branch or "main"
-            message = f"Interactive run finished.\n\nCreate a PR from {task.gh_branch} -> {base}?"
+            base = str(task.gh_base_branch or "").strip()
+            base_display = base or "auto"
+            message = f"Interactive run finished.\n\nCreate a PR from {task.gh_branch} -> {base_display}?"
             if QMessageBox.question(self, "Create pull request?", message) == QMessageBox.StandardButton.Yes:
                 threading.Thread(
                     target=self._finalize_gh_management_worker,
@@ -109,7 +110,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         if not body:
             body = default_body
 
-        self.host_log.emit(task_id, f"[gh] preparing PR from {branch} -> {base_branch}")
+        self.host_log.emit(task_id, f"[gh] preparing PR from {branch} -> {base_branch or 'auto'}")
         try:
             pr_url = commit_push_and_pr(
                 repo_root,

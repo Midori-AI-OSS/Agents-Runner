@@ -67,19 +67,20 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         else:
             enabled_agents = []
         
-        selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
-        
-        agent_config_dirs = agent_selection_data.get("agent_config_dirs", {})
-        if isinstance(agent_config_dirs, dict):
-            agent_config_dirs = {str(k): str(v) for k, v in agent_config_dirs.items()}
-        else:
-            agent_config_dirs = {}
-        
-        agent_selection = AgentSelection(
-            enabled_agents=enabled_agents,
-            selection_mode=selection_mode,
-            agent_config_dirs=agent_config_dirs
-        )
+        if enabled_agents:
+            selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
+            
+            agent_config_dirs = agent_selection_data.get("agent_config_dirs", {})
+            if isinstance(agent_config_dirs, dict):
+                agent_config_dirs = {str(k): str(v) for k, v in agent_config_dirs.items()}
+            else:
+                agent_config_dirs = {}
+            
+            agent_selection = AgentSelection(
+                enabled_agents=enabled_agents,
+                selection_mode=selection_mode,
+                agent_config_dirs=agent_config_dirs
+            )
 
     return Environment(
         env_id=env_id,

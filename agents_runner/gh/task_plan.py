@@ -165,6 +165,7 @@ def commit_push_and_pr(
     agent_cli_args: str = "",
 ) -> str | None:
     repo_root = _expand_dir(repo_root)
+    base_branch = str(base_branch or "").strip() or _pick_auto_base_branch(repo_root)
     body = _append_pr_attribution_footer(body, agent_cli=agent_cli, agent_cli_args=agent_cli_args)
 
     _require_ok(
