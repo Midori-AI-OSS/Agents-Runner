@@ -20,10 +20,7 @@ from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import docker_platform_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
 from agents_runner.github_token import resolve_github_token
-from agents_runner.gh_management import ensure_github_clone
-from agents_runner.gh_management import is_git_repo
-from agents_runner.gh_management import plan_repo_task
-from agents_runner.gh_management import prepare_branch_for_task
+from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.gh_management import GhManagementError
 
 from agents_runner.docker.config import DockerRunnerConfig
@@ -89,41 +86,21 @@ class DockerAgentWorker:
         try:
             # GitHub repo preparation (clone + branch prep) - happens first, before Docker
             if self._config.gh_repo:
-                # Check for git lock file that might indicate a stalled operation.
-                # We log a warning and continue - if the lock is actually active, the
-                # subsequent git operations will fail with proper error messages.
-                lock_file = os.path.join(self._config.host_workdir, ".git", "index.lock")
-                if os.path.exists(lock_file):
-                    self._on_log(f"[gh] WARNING: found .git/index.lock - another git operation may be in progress")
-                    self._on_log(f"[gh] If this is a stale lock, remove it: rm {lock_file}")
-
-                self._on_log(f"[gh] cloning {self._config.gh_repo} -> {self._config.host_workdir}")
                 try:
-                    ensure_github_clone(
+                    result = prepare_github_repo_for_task(
                         self._config.gh_repo,
                         self._config.host_workdir,
+                        task_id=self._config.task_id,
+                        base_branch=self._config.gh_base_branch or None,
                         prefer_gh=self._config.gh_prefer_gh_cli,
                         recreate_if_needed=self._config.gh_recreate_if_needed,
+                        on_log=self._on_log,
                     )
-                    if is_git_repo(self._config.host_workdir):
-                        plan = plan_repo_task(
-                            self._config.host_workdir,
-                            task_id=self._config.task_id,
-                            base_branch=self._config.gh_base_branch or None,
-                        )
-                        if plan is not None:
-                            self._on_log(f"[gh] creating branch {plan.branch} (base {plan.base_branch})")
-                            self._gh_base_branch, self._gh_branch = prepare_branch_for_task(
-                                plan.repo_root,
-                                branch=plan.branch,
-                                base_branch=plan.base_branch,
-                            )
-                            self._gh_repo_root = plan.repo_root
-                            self._on_log(f"[gh] ready on branch {self._gh_branch}")
-                        else:
-                            self._on_log("[gh] not a git repo; skipping branch/PR")
-                    else:
-                        self._on_log("[gh] not a git repo; skipping branch/PR")
+                    self._gh_repo_root = str(result.get("repo_root") or "") or None
+                    self._gh_base_branch = str(result.get("base_branch") or "") or None
+                    self._gh_branch = str(result.get("branch") or "") or None
+                    if self._gh_branch:
+                        self._on_log(f"[gh] ready on branch {self._gh_branch}")
                 except (GhManagementError, Exception) as exc:
                     self._on_log(f"[gh] ERROR: {exc}")
                     self._on_done(1, str(exc))
