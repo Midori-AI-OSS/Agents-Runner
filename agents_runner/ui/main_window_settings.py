@@ -115,6 +115,44 @@ class _MainWindowSettingsMixin:
         return _looks_like_agent_help_command(command)
 
 
+    def _effective_agent_and_config(
+        self,
+        *,
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+    ) -> tuple[str, str]:
+        """Return (agent_cli, config_dir) considering environment agent_selection override."""
+        settings = settings or self._settings_data
+        agent_cli = normalize_agent(str(settings.get("use") or "codex"))
+        
+        # Check if environment has agent_selection override
+        if env and env.agent_selection and env.agent_selection.enabled_agents:
+            # Use first enabled agent from environment
+            agent_cli = normalize_agent(env.agent_selection.enabled_agents[0])
+            
+            # Get config dir from agent_selection if specified
+            if agent_cli in env.agent_selection.agent_config_dirs:
+                config_dir = env.agent_selection.agent_config_dirs[agent_cli]
+                return agent_cli, os.path.expanduser(str(config_dir or "").strip())
+        
+        # Fall back to settings-based config dir
+        config_dir = ""
+        if agent_cli == "claude":
+            config_dir = str(settings.get("host_claude_dir") or "")
+        elif agent_cli == "copilot":
+            config_dir = str(settings.get("host_copilot_dir") or "")
+        else:
+            config_dir = str(
+                settings.get("host_codex_dir")
+                or os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex"))
+            )
+        
+        # Legacy: check env.host_codex_dir override (deprecated)
+        if env and env.host_codex_dir:
+            config_dir = env.host_codex_dir
+            
+        return agent_cli, os.path.expanduser(str(config_dir or "").strip())
+
     def _effective_host_config_dir(
         self,
         *,
@@ -122,8 +160,14 @@ class _MainWindowSettingsMixin:
         env: Environment | None,
         settings: dict[str, object] | None = None,
     ) -> str:
+        """Get config dir for a specific agent CLI, considering environment overrides."""
         agent_cli = normalize_agent(agent_cli)
         settings = settings or self._settings_data
+
+        # Check if environment has agent_selection override for this agent
+        if env and env.agent_selection and agent_cli in env.agent_selection.agent_config_dirs:
+            config_dir = env.agent_selection.agent_config_dirs[agent_cli]
+            return os.path.expanduser(str(config_dir or "").strip())
 
         config_dir = ""
         if agent_cli == "claude":
@@ -135,8 +179,11 @@ class _MainWindowSettingsMixin:
                 settings.get("host_codex_dir")
                 or os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex"))
             )
+        
+        # Legacy: check env.host_codex_dir override (deprecated)
         if env and env.host_codex_dir:
             config_dir = env.host_codex_dir
+            
         return os.path.expanduser(str(config_dir or "").strip())
 
 

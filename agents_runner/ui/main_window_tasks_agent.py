@@ -73,8 +73,6 @@ class _MainWindowTasksAgentMixin:
             return
         prompt = sanitize_prompt((prompt or "").strip())
 
-        agent_cli = normalize_agent(str(self._settings_data.get("use") or "codex"))
-
         task_id = uuid4().hex[:10]
         env_id = str(env_id or "").strip() or self._active_environment_id()
         if env_id not in self._environments:
@@ -82,6 +80,9 @@ class _MainWindowTasksAgentMixin:
             return
         self._settings_data["active_environment_id"] = env_id
         env = self._environments.get(env_id)
+
+        # Get effective agent and config dir (environment agent_selection overrides settings)
+        agent_cli, auto_config_dir = self._effective_agent_and_config(env=env)
 
         gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) if env else GH_MANAGEMENT_NONE
         effective_workdir, ready, message = self._new_task_workspace(env)
@@ -100,7 +101,7 @@ class _MainWindowTasksAgentMixin:
         self._settings_data["host_workdir"] = effective_workdir
         host_codex = os.path.expanduser(str(host_codex or "").strip())
         if not host_codex:
-            host_codex = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
+            host_codex = auto_config_dir
         if not self._ensure_agent_config_dir(agent_cli, host_codex):
             return
         self._settings_data[self._host_config_dir_key(agent_cli)] = host_codex

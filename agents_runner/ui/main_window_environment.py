@@ -154,8 +154,8 @@ class _MainWindowEnvironmentMixin:
 
     def _apply_active_environment_to_new_task(self) -> None:
         env = self._environments.get(self._active_environment_id())
-        agent_cli = normalize_agent(str(self._settings_data.get("use") or "codex"))
-        host_codex = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
+        # Get effective agent and config dir (environment agent_selection overrides settings)
+        agent_cli, host_codex = self._effective_agent_and_config(env=env)
         workdir, ready, message = self._new_task_workspace(env)
         self._new_task.set_defaults(host_codex=host_codex)
         self._new_task.set_workspace_status(path=workdir, ready=ready, message=message)
