@@ -101,17 +101,18 @@ class PromptsTabWidget(QWidget):
             self._sync_visible_tabs()
             self.prompts_changed.emit()
 
+    def _calculate_visible_count(self) -> int:
+        """Calculate how many tabs should be visible based on prompt content."""
+        last_nonempty_index = -1
+        for i, (tab, enabled_cb, text_edit) in enumerate(self._prompt_tabs):
+            if text_edit.toPlainText().strip():
+                last_nonempty_index = i
+        return min(last_nonempty_index + 2, self.MAX_PROMPTS)
+
     def _on_prompt_changed(self) -> None:
         if self._unlocked:
-            # Calculate the new visible count without rebuilding tabs
-            last_nonempty_index = -1
-            for i, (tab, enabled_cb, text_edit) in enumerate(self._prompt_tabs):
-                if text_edit.toPlainText().strip():
-                    last_nonempty_index = i
-            
-            new_visible_count = min(last_nonempty_index + 2, self.MAX_PROMPTS)
-            
             # Only sync tabs if the visible count changed
+            new_visible_count = self._calculate_visible_count()
             if new_visible_count != self._current_visible_count:
                 self._sync_visible_tabs()
             
@@ -123,12 +124,7 @@ class PromptsTabWidget(QWidget):
 
         self._tabs.clear()
 
-        last_nonempty_index = -1
-        for i, (tab, enabled_cb, text_edit) in enumerate(self._prompt_tabs):
-            if text_edit.toPlainText().strip():
-                last_nonempty_index = i
-
-        visible_count = min(last_nonempty_index + 2, self.MAX_PROMPTS)
+        visible_count = self._calculate_visible_count()
         self._current_visible_count = visible_count
 
         for i in range(visible_count):
