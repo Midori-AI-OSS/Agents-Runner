@@ -22,13 +22,13 @@ TEMPLATE_BASE = """
     }
 
     QLineEdit:hover, QPlainTextEdit:hover {
-        border: 1px solid rgba(255, 255, 255, 32);
+        border: 1px solid rgba(56, 189, 248, 50);
         background-color: rgba(18, 20, 28, 205);
     }
 
     QLineEdit:focus, QPlainTextEdit:focus {
-        border: 1px solid rgba(56, 189, 248, 95);
-        background-color: rgba(18, 20, 28, 215);
+        border: 1px solid rgba(56, 189, 248, 120);
+        background-color: rgba(18, 20, 28, 225);
     }
 
     QComboBox {
@@ -40,11 +40,13 @@ TEMPLATE_BASE = """
     }
 
     QComboBox:hover {
-        border: 1px solid rgba(255, 255, 255, 30);
+        border: 1px solid rgba(56, 189, 248, 60);
+        background-color: rgba(18, 20, 28, 210);
     }
 
     QComboBox:focus {
-        border: 1px solid rgba(56, 189, 248, 95);
+        border: 1px solid rgba(56, 189, 248, 120);
+        background-color: rgba(18, 20, 28, 225);
     }
 
     QComboBox:disabled {
@@ -61,6 +63,10 @@ TEMPLATE_BASE = """
         background-color: rgba(18, 20, 28, 120);
         border-top-right-radius: 0px;
         border-bottom-right-radius: 0px;
+    }
+
+    QComboBox::drop-down:hover {
+        background-color: rgba(56, 189, 248, 30);
     }
 
     QComboBox QAbstractItemView {
@@ -87,7 +93,8 @@ TEMPLATE_BASE = """
     }
 
     QPushButton:hover {
-        background-color: rgba(56, 189, 248, 195);
+        background-color: rgba(56, 189, 248, 205);
+        border: 1px solid rgba(255, 255, 255, 35);
     }
 
     QPushButton:pressed {
@@ -113,8 +120,8 @@ TEMPLATE_BASE = """
     }
 
     QToolButton:hover {
-        background-color: rgba(255, 255, 255, 14);
-        border: 1px solid rgba(255, 255, 255, 30);
+        background-color: rgba(56, 189, 248, 30);
+        border: 1px solid rgba(56, 189, 248, 80);
     }
 
     QToolButton:pressed {
@@ -162,9 +169,19 @@ TEMPLATE_BASE = """
         background-color: rgba(18, 20, 28, 170);
     }
 
+    QCheckBox::indicator:hover {
+        border: 1px solid rgba(56, 189, 248, 70);
+        background-color: rgba(18, 20, 28, 200);
+    }
+
     QCheckBox::indicator:checked {
         background-color: rgba(16, 185, 129, 165);
-        border: 1px solid rgba(255, 255, 255, 35);
+        border: 1px solid rgba(16, 185, 129, 180);
+    }
+
+    QCheckBox::indicator:checked:hover {
+        background-color: rgba(16, 185, 129, 195);
+        border: 1px solid rgba(16, 185, 129, 220);
     }
 
     QScrollBar:vertical {
@@ -178,7 +195,10 @@ TEMPLATE_BASE = """
         min-height: 20px;
     }
     QScrollBar::handle:vertical:hover {
-        background: rgba(255, 255, 255, 55);
+        background: rgba(56, 189, 248, 100);
+    }
+    QScrollBar::handle:vertical:pressed {
+        background: rgba(56, 189, 248, 140);
     }
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
         height: 0px;
@@ -211,13 +231,18 @@ TEMPLATE_BASE = """
     }
 
     QTabBar::tab:hover {
-        background-color: rgba(255, 255, 255, 14);
-        border: 1px solid rgba(255, 255, 255, 26);
+        background-color: rgba(56, 189, 248, 25);
+        border: 1px solid rgba(56, 189, 248, 60);
     }
 
     QTabBar::tab:selected {
-        background-color: rgba(56, 189, 248, 60);
-        border: 1px solid rgba(56, 189, 248, 90);
+        background-color: rgba(56, 189, 248, 75);
+        border: 1px solid rgba(56, 189, 248, 120);
+    }
+
+    QTabBar::tab:selected:hover {
+        background-color: rgba(56, 189, 248, 90);
+        border: 1px solid rgba(56, 189, 248, 140);
     }
 """
 
