@@ -356,6 +356,18 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         pass
 
     def _on_env_selected(self, index: int) -> None:
+        old_env_id = self._current_env_id
+        if not self.try_autosave():
+            # Autosave failed, revert dropdown selection
+            if old_env_id:
+                self._env_select.blockSignals(True)
+                try:
+                    idx = self._env_select.findData(old_env_id)
+                    if idx >= 0:
+                        self._env_select.setCurrentIndex(idx)
+                finally:
+                    self._env_select.blockSignals(False)
+            return
         self._load_selected()
 
     def _pick_codex_dir(self) -> None:

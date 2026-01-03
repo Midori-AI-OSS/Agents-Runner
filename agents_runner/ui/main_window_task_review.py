@@ -45,15 +45,16 @@ class _MainWindowTaskReviewMixin:
             QMessageBox.information(self, "Task still running", "Wait for the task to finish before creating a PR.")
             return
 
-        base_branch = str(task.gh_base_branch or "").strip() or "main"
-        message = f"Create a PR from {branch} -> {base_branch}?\n\nThis will commit and push any local changes."
+        base_branch = str(task.gh_base_branch or "").strip()
+        base_display = base_branch or "auto"
+        message = f"Create a PR from {branch} -> {base_display}?\n\nThis will commit and push any local changes."
         if QMessageBox.question(self, "Create pull request?", message) != QMessageBox.StandardButton.Yes:
             return
 
         prompt_text = str(task.prompt or "")
         task_token = str(task.task_id or task_id)
         pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
-        self._on_task_log(task_id, f"[gh] PR requested ({branch} -> {base_branch})")
+        self._on_task_log(task_id, f"[gh] PR requested ({branch} -> {base_display})")
         threading.Thread(
             target=self._finalize_gh_management_worker,
             args=(

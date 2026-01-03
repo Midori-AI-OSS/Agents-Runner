@@ -85,9 +85,10 @@ class _MainWindowTasksInteractiveMixin:
 
         desired_base = str(base_branch or "").strip()
 
-        agent_cli = normalize_agent(str(self._settings_data.get("use") or "codex"))
+        # Get effective agent and config dir (environment agent_selection overrides settings)
+        agent_cli, auto_config_dir = self._effective_agent_and_config(env=env)
         if not host_codex:
-            host_codex = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
+            host_codex = auto_config_dir
         if not self._ensure_agent_config_dir(agent_cli, host_codex):
             return
 
@@ -467,7 +468,7 @@ class _MainWindowTasksInteractiveMixin:
                 branch_name = f"agents-runner-{task_id}"
                 task.gh_repo_root = host_workdir
                 task.gh_branch = branch_name
-                task.gh_base_branch = desired_base or "main"
+                task.gh_base_branch = desired_base
                 self._schedule_save()
 
             docker_pull_parts = ["docker", "pull", *docker_platform_args, image]

@@ -128,7 +128,7 @@ class _MainWindowTaskEventsMixin:
             if task is not None:
                 if bridge.gh_repo_root:
                     task.gh_repo_root = bridge.gh_repo_root
-                if bridge.gh_base_branch:
+                if bridge.gh_base_branch and not task.gh_base_branch:
                     task.gh_base_branch = bridge.gh_base_branch
                 if bridge.gh_branch:
                     task.gh_branch = bridge.gh_branch
@@ -258,7 +258,7 @@ class _MainWindowTaskEventsMixin:
         ):
             repo_root = str(task.gh_repo_root or "").strip()
             branch = str(task.gh_branch or "").strip()
-            base_branch = str(task.gh_base_branch or "").strip() or "main"
+            base_branch = str(task.gh_base_branch or "").strip()
             prompt_text = str(task.prompt or "")
             task_token = str(task.task_id or task_id)
             pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None

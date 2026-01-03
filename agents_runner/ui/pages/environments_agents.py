@@ -83,7 +83,7 @@ class AgentsTabWidget(QWidget):
         self._selection_mode.addItem("Fallback (use next on failure)", "fallback")
         self._selection_mode.setMaximumWidth(300)
         self._selection_mode.setVisible(False)
-        self._selection_mode.currentIndexChanged.connect(self.agents_changed.emit)
+        self._selection_mode.currentIndexChanged.connect(lambda _index: self.agents_changed.emit())
         mode_row.addWidget(self._selection_mode)
         mode_row.addStretch(1)
         layout.addLayout(mode_row)
@@ -101,7 +101,7 @@ class AgentsTabWidget(QWidget):
             label = QLabel(f"{agent.title()} config:")
             line_edit = QLineEdit()
             line_edit.setPlaceholderText(f"~/.{agent}")
-            line_edit.textChanged.connect(self.agents_changed.emit)
+            line_edit.textChanged.connect(lambda _text: self.agents_changed.emit())
 
             browse_btn = QPushButton("Browse…")
             browse_btn.setFixedWidth(100)

@@ -143,9 +143,7 @@ class _MainWindowPreflightMixin:
                 settings_script = candidate
 
         host_workdir_base = str(self._settings_data.get("host_workdir") or os.getcwd())
-        agent_cli = normalize_agent(str(settings.get("use") or self._settings_data.get("use") or "codex"))
-        host_codex_base = self._effective_host_config_dir(agent_cli=agent_cli, env=None, settings=settings)
-
+        
         if settings_script is None:
             has_env_preflights = any(
                 e.preflight_enabled and (e.preflight_script or "").strip() for e in self._environment_list()
@@ -167,8 +165,9 @@ class _MainWindowPreflightMixin:
             if settings_script is None and env_script is None:
                 continue
 
+            # Get effective agent and config for each environment
+            agent_cli, host_codex = self._effective_agent_and_config(env=env, settings=settings)
             host_workdir = self._environment_effective_workdir(env, fallback=host_workdir_base)
-            host_codex = env.host_codex_dir or host_codex_base
             if not os.path.isdir(host_workdir):
                 skipped.append(f"{env.name or env.env_id} ({host_workdir})")
                 continue
@@ -210,10 +209,9 @@ class _MainWindowPreflightMixin:
             environment_preflight_script = env.preflight_script
 
         host_workdir_base = str(self._settings_data.get("host_workdir") or os.getcwd())
-        agent_cli = normalize_agent(str(self._settings_data.get("use") or "codex"))
-        host_codex_base = self._effective_host_config_dir(agent_cli=agent_cli, env=None)
+        # Get effective agent and config for this environment
+        agent_cli, host_codex = self._effective_agent_and_config(env=env)
         host_workdir = self._environment_effective_workdir(env, fallback=host_workdir_base)
-        host_codex = env.host_codex_dir or host_codex_base
 
         self._start_preflight_task(
             label=f"Preflight test: {env.name or env.env_id}",
