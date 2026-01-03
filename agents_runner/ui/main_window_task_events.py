@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import threading
 import time
@@ -13,8 +12,6 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
-from agents_runner.environments import GH_MANAGEMENT_NONE
-from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
@@ -235,6 +232,10 @@ class _MainWindowTaskEventsMixin:
         self._details.update_task(task)
         self._schedule_save()
 
+        # Interactive runs don't have a worker "done" callback; offer PR here once.
+        if task.is_interactive_run() and current not in {"done", "failed"} and task.status in {"done", "failed"}:
+            self._maybe_offer_pr_for_task(task_id)
+
 
     def _on_task_done(self, task_id: str, exit_code: int, error: object) -> None:
         task = self._tasks.get(task_id)
@@ -264,31 +265,4 @@ class _MainWindowTaskEventsMixin:
         QApplication.beep()
 
         self._try_start_queued_tasks()
-
-        if (
-            normalize_gh_management_mode(task.gh_management_mode) != GH_MANAGEMENT_NONE
-            and task.gh_repo_root
-            and task.gh_branch
-        ):
-            repo_root = str(task.gh_repo_root or "").strip()
-            branch = str(task.gh_branch or "").strip()
-            base_branch = str(task.gh_base_branch or "").strip() or "main"
-            prompt_text = str(task.prompt or "")
-            task_token = str(task.task_id or task_id)
-            pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
-            threading.Thread(
-                target=self._finalize_gh_management_worker,
-                args=(
-                    task_id,
-                    repo_root,
-                    branch,
-                    base_branch,
-                    prompt_text,
-                    task_token,
-                    bool(task.gh_use_host_cli),
-                    pr_metadata_path,
-                    str(task.agent_cli or "").strip(),
-                    str(task.agent_cli_args or "").strip(),
-                ),
-                daemon=True,
-            ).start()
+        self._maybe_offer_pr_for_task(task_id)

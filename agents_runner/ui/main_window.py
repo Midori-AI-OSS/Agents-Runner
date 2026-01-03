@@ -30,6 +30,7 @@ from agents_runner.widgets import GlassCard
 from agents_runner.ui.main_window_capacity import _MainWindowCapacityMixin
 from agents_runner.ui.main_window_dashboard import _MainWindowDashboardMixin
 from agents_runner.ui.main_window_environment import _MainWindowEnvironmentMixin
+from agents_runner.ui.main_window_gh_pr import _MainWindowGitHubPrMixin
 from agents_runner.ui.main_window_navigation import _MainWindowNavigationMixin
 from agents_runner.ui.main_window_persistence import _MainWindowPersistenceMixin
 from agents_runner.ui.main_window_preflight import _MainWindowPreflightMixin
@@ -51,6 +52,7 @@ class MainWindow(
     _MainWindowTasksInteractiveMixin,
     _MainWindowPreflightMixin,
     _MainWindowTaskReviewMixin,
+    _MainWindowGitHubPrMixin,
     _MainWindowTaskEventsMixin,
     _MainWindowPersistenceMixin,
 ):
@@ -93,6 +95,7 @@ class MainWindow(
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}
         self._repo_branches_request_id: int = 0
+        self._pr_offer_task_ids: set[str] = set()
         self._state_path = default_state_path()
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)

@@ -16,6 +16,7 @@ from agents_runner.docker.process import _inspect_state
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.gh_management import is_gh_available
 from agents_runner.github_token import resolve_github_token
 from agents_runner.terminal_apps import TerminalOption
 from agents_runner.terminal_apps import detect_terminal_options
@@ -169,6 +170,9 @@ class _MainWindowTasksInteractiveMixin:
             agent_cli=agent_cli,
             agent_cli_args=agent_args_record,
         )
+        task.gh_base_branch = str(base_branch or "").strip()
+        use_host_gh = bool(getattr(env, "gh_use_host_cli", True)) if env else True
+        task.gh_use_host_cli = bool(use_host_gh and is_gh_available())
         self._tasks[task_id] = task
         stain = env.color if env else None
         spinner = _stain_color(env.color) if env else None

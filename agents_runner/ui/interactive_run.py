@@ -44,6 +44,47 @@ def build_interactive_container_command(
         return cmd, verify
 
     combined_args = list(env_agent_args or []) + list(user_parts or [])
+
+    def _strip_noninteractive_args(agent: str, args: list[str]) -> list[str]:
+        agent = normalize_agent(agent)
+        if not args:
+            return []
+        if agent == "claude":
+            # Interactive mode should not force non-interactive print output.
+            print_only_with_value = {
+                "--output-format",
+                "--json-schema",
+                "--input-format",
+                "--max-budget-usd",
+            }
+            cleaned: list[str] = []
+            skip_next = False
+            for part in args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if part in {"-p", "--print"}:
+                    continue
+                if part in print_only_with_value:
+                    skip_next = True
+                    continue
+                cleaned.append(part)
+            return cleaned
+        if agent == "copilot":
+            # Interactive mode should not force prompt (non-interactive) mode.
+            cleaned: list[str] = []
+            skip_next = False
+            for part in args:
+                if skip_next:
+                    skip_next = False
+                    continue
+                if part in {"-p", "--prompt"}:
+                    skip_next = True
+                    continue
+                cleaned.append(part)
+            return cleaned
+        return args
+
     if agent_cli == "codex":
         if combined_args and combined_args[0] == "exec":
             combined_args = combined_args[1:]
@@ -56,11 +97,13 @@ def build_interactive_container_command(
         return cmd, "codex"
 
     if agent_cli == "claude":
+        combined_args = _strip_noninteractive_args("claude", combined_args)
         cmd = ["claude", *combined_args]
         if prompt:
             cmd.append(prompt)
         return cmd, "claude"
 
+    combined_args = _strip_noninteractive_args("copilot", combined_args)
     cmd = ["copilot", *combined_args]
     if (
         prompt
@@ -162,6 +205,11 @@ def build_interactive_terminal_script(
             continue
         env_args.extend(["-e", f"{k}={value}"])
 
+    # Ensure TUIs have the basic terminal+locale variables inside the container.
+    for key in ("TERM", "COLORTERM", "LANG", "LC_ALL"):
+        if key not in (env_vars or {}):
+            env_args.extend(["-e", key])
+
     export_lines: list[str] = []
     if token and "GH_TOKEN" not in (env_vars or {}) and "GITHUB_TOKEN" not in (env_vars or {}):
         env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
@@ -235,6 +283,7 @@ def build_interactive_terminal_script(
     script_lines = [
         "set -euo pipefail",
         cleanup_trap,
+        'export TERM="${TERM:-xterm-256color}"',
         f'echo "[host] Agents Runner: interactive task {task_id} ({container_name})"',
         *export_lines,
         gh_setup,
@@ -243,7 +292,7 @@ def build_interactive_terminal_script(
         f'echo "[host] {docker_cmd_line}"',
         docker_cmd_line,
         'echo "[host] session ended"',
-        "exec bash",
+        "bash",
     ]
     script = "\n".join(line for line in script_lines if str(line).strip())
     return script, host_workdir
