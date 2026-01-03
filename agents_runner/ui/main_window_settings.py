@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 
@@ -10,6 +11,8 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import verify_cli_clause
 from agents_runner.ui.utils import _looks_like_agent_help_command
 from agents_runner.environments import Environment
+
+logger = logging.getLogger(__name__)
 
 
 class _MainWindowSettingsMixin:
@@ -115,27 +118,41 @@ class _MainWindowSettingsMixin:
         return _looks_like_agent_help_command(command)
 
 
-    def _effective_agent_and_config(
+    def _resolve_config_dir_for_agent(
         self,
         *,
+        agent_cli: str,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
-    ) -> tuple[str, str]:
-        """Return (agent_cli, config_dir) considering environment agent_selection override."""
-        settings = settings or self._settings_data
-        agent_cli = normalize_agent(str(settings.get("use") or "codex"))
-        
-        # Check if environment has agent_selection override
-        if env and env.agent_selection and env.agent_selection.enabled_agents:
-            # Use first enabled agent from environment
-            agent_cli = normalize_agent(env.agent_selection.enabled_agents[0])
-            
-            # Get config dir from agent_selection if specified
-            if agent_cli in env.agent_selection.agent_config_dirs:
-                config_dir = env.agent_selection.agent_config_dirs[agent_cli]
-                return agent_cli, os.path.expanduser(str(config_dir or "").strip())
-        
-        # Fall back to settings-based config dir
+        settings: dict[str, object],
+    ) -> str:
+        """Resolve config directory for a given agent.
+
+        This helper method encapsulates the common logic for determining the
+        config directory for an agent, following this precedence:
+
+        1. Environment-specific agent_selection.agent_config_dirs (normalized keys)
+        2. Global per-agent settings (host_claude_dir, host_copilot_dir, host_codex_dir)
+        3. Legacy env.host_codex_dir override (deprecated, backwards compatibility)
+
+        Args:
+            agent_cli: The normalized agent name (e.g., "codex", "claude", "copilot")
+            env: Optional environment with potential overrides
+            settings: The settings dictionary containing global agent config
+
+        Returns:
+            The resolved config directory path (with ~ expanded)
+        """
+        # Check environment agent_selection for per-agent config directory
+        if env and env.agent_selection and env.agent_selection.agent_config_dirs:
+            # Normalize keys to handle case sensitivity issues
+            normalized_dirs = {
+                normalize_agent(str(name)): path
+                for name, path in env.agent_selection.agent_config_dirs.items()
+            }
+            if agent_cli in normalized_dirs:
+                return os.path.expanduser(str(normalized_dirs[agent_cli] or "").strip())
+
+        # Fall back to global settings-based config dir
         config_dir = ""
         if agent_cli == "claude":
             config_dir = str(settings.get("host_claude_dir") or "")
@@ -146,12 +163,85 @@ class _MainWindowSettingsMixin:
                 settings.get("host_codex_dir")
                 or os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex"))
             )
-        
+
         # Legacy: check env.host_codex_dir override (deprecated)
         if env and env.host_codex_dir:
             config_dir = env.host_codex_dir
+
+        return os.path.expanduser(str(config_dir or "").strip())
+
+    def _effective_agent_and_config(
+        self,
+        *,
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+    ) -> tuple[str, str]:
+        """Return the effective ``(agent_cli, config_dir)`` for a launch.
+
+        Agent and config directory selection follows this precedence:
+
+        1. Environment ``agent_selection`` override
+
+           * If ``env`` is provided and ``env.agent_selection.enabled_agents`` is
+             non-empty, the first enabled agent is used as ``agent_cli``.
+           * If that agent has an explicit config directory in
+             ``env.agent_selection.agent_config_dirs[agent_cli]`` (with normalized
+             keys), that path is used.
+
+        2. Global UI settings
+
+           * If no environment-specific agent is found, the agent is taken from
+             ``settings["use"]`` (defaulting to ``"codex"``) and normalized via
+             :func:`normalize_agent`.
+           * The config directory is then derived from the corresponding
+             ``host_*_dir`` entry:
+
+               - ``"claude"``  -> ``settings["host_claude_dir"]``
+               - ``"copilot"`` -> ``settings["host_copilot_dir"]``
+               - ``"codex"``   -> ``settings["host_codex_dir"]`` or, if unset,
+                 ``$CODEX_HOST_CODEX_DIR`` or ``~/.codex``.
+
+        3. Legacy ``Environment.host_codex_dir`` override
+
+           * If ``env`` is provided and ``env.host_codex_dir`` is set, its value
+             (after :func:`os.path.expanduser`) overrides the config directory
+             computed from global settings. This field is deprecated and kept
+             only for backwards compatibility.
+
+        The returned ``config_dir`` is always a string with ``~`` expanded via
+        :func:`os.path.expanduser`.
+
+        Args:
+            env: Optional environment with potential agent overrides
+            settings: Optional settings dict; uses ``self._settings_data`` if None
+
+        Returns:
+            A tuple of (agent_cli, config_dir) where agent_cli is normalized
+        """
+        settings = settings or self._settings_data
+        agent_cli = normalize_agent(str(settings.get("use") or "codex"))
+
+        # Check if environment has agent_selection override
+        if env and env.agent_selection and env.agent_selection.enabled_agents:
+            # Use first enabled agent from environment
+            original_agent = env.agent_selection.enabled_agents[0]
+            agent_cli = normalize_agent(original_agent)
             
-        return agent_cli, os.path.expanduser(str(config_dir or "").strip())
+            # Log warning if agent was invalid and got normalized
+            if agent_cli != original_agent.lower():
+                logger.warning(
+                    f"Environment agent_selection specified invalid agent '{original_agent}', "
+                    f"using '{agent_cli}' instead. Valid agents: codex, claude, copilot"
+                )
+
+        # Use helper method to resolve config directory
+        config_dir = self._resolve_config_dir_for_agent(
+            agent_cli=agent_cli,
+            env=env,
+            settings=settings,
+        )
+
+        return agent_cli, config_dir
 
     def _effective_host_config_dir(
         self,
@@ -160,31 +250,42 @@ class _MainWindowSettingsMixin:
         env: Environment | None,
         settings: dict[str, object] | None = None,
     ) -> str:
-        """Get config dir for a specific agent CLI, considering environment overrides."""
+        """Return the effective host config directory for the given agent CLI.
+
+        The directory is resolved using the following precedence order:
+
+        1. If an ``env`` is provided and it has an ``agent_selection`` entry with a
+           config directory for this (normalized) ``agent_cli``, that directory is used.
+           Keys in ``agent_config_dirs`` are normalized to handle case sensitivity.
+        2. Otherwise, per-agent settings are consulted:
+
+           * ``host_claude_dir`` when ``agent_cli == "claude"``
+           * ``host_copilot_dir`` when ``agent_cli == "copilot"``
+           * ``host_codex_dir`` for all other agents; if unset, falls back to the
+             ``CODEX_HOST_CODEX_DIR`` environment variable, then to ``~/.codex``.
+        3. Finally, for legacy/backwards compatibility, if ``env`` defines
+           ``host_codex_dir``, that value overrides whichever directory was selected
+           earlier (even for non-codex agents).
+
+        The returned path is normalized with :func:`os.path.expanduser`.
+
+        Args:
+            agent_cli: The agent CLI name (will be normalized)
+            env: Optional environment with potential overrides
+            settings: Optional settings dict; uses ``self._settings_data`` if None
+
+        Returns:
+            The resolved config directory path (with ~ expanded)
+        """
         agent_cli = normalize_agent(agent_cli)
         settings = settings or self._settings_data
 
-        # Check if environment has agent_selection override for this agent
-        if env and env.agent_selection and agent_cli in env.agent_selection.agent_config_dirs:
-            config_dir = env.agent_selection.agent_config_dirs[agent_cli]
-            return os.path.expanduser(str(config_dir or "").strip())
-
-        config_dir = ""
-        if agent_cli == "claude":
-            config_dir = str(settings.get("host_claude_dir") or "")
-        elif agent_cli == "copilot":
-            config_dir = str(settings.get("host_copilot_dir") or "")
-        else:
-            config_dir = str(
-                settings.get("host_codex_dir")
-                or os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex"))
-            )
-        
-        # Legacy: check env.host_codex_dir override (deprecated)
-        if env and env.host_codex_dir:
-            config_dir = env.host_codex_dir
-            
-        return os.path.expanduser(str(config_dir or "").strip())
+        # Use helper method to resolve config directory
+        return self._resolve_config_dir_for_agent(
+            agent_cli=agent_cli,
+            env=env,
+            settings=settings,
+        )
 
 
     def _ensure_agent_config_dir(self, agent_cli: str, host_config_dir: str) -> bool:
