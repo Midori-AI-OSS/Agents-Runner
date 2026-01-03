@@ -37,6 +37,7 @@ from agents_runner.ui.main_window_settings import _MainWindowSettingsMixin
 from agents_runner.ui.main_window_task_events import _MainWindowTaskEventsMixin
 from agents_runner.ui.main_window_task_review import _MainWindowTaskReviewMixin
 from agents_runner.ui.main_window_tasks_agent import _MainWindowTasksAgentMixin
+from agents_runner.ui.main_window_tasks_interactive import _MainWindowTasksInteractiveMixin
 
 
 class MainWindow(
@@ -47,12 +48,14 @@ class MainWindow(
     _MainWindowEnvironmentMixin,
     _MainWindowDashboardMixin,
     _MainWindowTasksAgentMixin,
+    _MainWindowTasksInteractiveMixin,
     _MainWindowPreflightMixin,
     _MainWindowTaskReviewMixin,
     _MainWindowTaskEventsMixin,
     _MainWindowPersistenceMixin,
 ):
     host_log = Signal(str, str)
+    host_state = Signal(str, object)
     host_pr_url = Signal(str, str)
     repo_branches_ready = Signal(int, object)
 
@@ -97,6 +100,7 @@ class MainWindow(
         self._save_timer.timeout.connect(self._save_state)
 
         self.host_log.connect(self._on_host_log, Qt.QueuedConnection)
+        self.host_state.connect(self._on_host_state, Qt.QueuedConnection)
         self.host_pr_url.connect(self._on_host_pr_url, Qt.QueuedConnection)
         self.repo_branches_ready.connect(self._on_repo_branches_ready, Qt.QueuedConnection)
 
@@ -155,6 +159,7 @@ class MainWindow(
         self._dashboard.task_discard_requested.connect(self._discard_task_from_ui)
         self._new_task = NewTaskPage()
         self._new_task.requested_run.connect(self._start_task_from_ui)
+        self._new_task.requested_launch.connect(self._start_interactive_from_ui)
         self._new_task.environment_changed.connect(self._on_new_task_env_changed)
         self._new_task.back_requested.connect(self._show_dashboard)
         self._details = TaskDetailsPage()
