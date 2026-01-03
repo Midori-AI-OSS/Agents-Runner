@@ -437,7 +437,6 @@ class _MainWindowTasksInteractiveMixin:
             if gh_repo:
                 quoted_repo = shlex.quote(gh_repo)
                 quoted_dest = shlex.quote(host_workdir)
-                quoted_base = shlex.quote(desired_base) if desired_base else ""
                 branch_name = f"agents-runner-{task_id}"
                 quoted_branch = shlex.quote(branch_name)
                 # Use gh if preferred and available, otherwise fall back to git
@@ -445,17 +444,42 @@ class _MainWindowTasksInteractiveMixin:
                     clone_cmd = f'gh repo clone {quoted_repo} {quoted_dest}'
                 else:
                     clone_cmd = f'git clone {quoted_repo} {quoted_dest}'
-                # Build the clone and branch setup script
+                # Build the clone and branch setup script as separate steps
                 gh_clone_parts = [
                     f'echo "[host] cloning {gh_repo} -> {host_workdir}"',
-                    f'if [ -d {quoted_dest} ] && [ -d {quoted_dest}/.git ]; then echo "[host] repo already exists, skipping clone"; else {clone_cmd} || {{ STATUS=$?; echo "[host] git clone failed (exit $STATUS)"; write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; }}; fi',
                 ]
+                # Clone step: skip if repo exists, otherwise clone with error handling
+                clone_step = (
+                    f'if [ -d {quoted_dest} ] && [ -d {quoted_dest}/.git ]; then '
+                    f'echo "[host] repo already exists, skipping clone"; '
+                    f'else {clone_cmd} || {{ '
+                    f'STATUS=$?; echo "[host] git clone failed (exit $STATUS)"; '
+                    f'write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; '
+                    f'}}; fi'
+                )
+                gh_clone_parts.append(clone_step)
+                # Base branch step: try to checkout base branch (non-fatal if it fails)
                 if desired_base:
-                    gh_clone_parts.append(f'cd {quoted_dest} && git fetch origin && git checkout {quoted_base} 2>/dev/null || git checkout -b {quoted_base} origin/{quoted_base} 2>/dev/null || true')
-                gh_clone_parts.extend([
-                    f'cd {quoted_dest} && git checkout -b {quoted_branch} 2>/dev/null || git checkout {quoted_branch} 2>/dev/null || true',
-                    f'echo "[host] ready on branch {branch_name}"',
-                ])
+                    quoted_base = shlex.quote(desired_base)
+                    base_step = (
+                        f'cd {quoted_dest} && '
+                        f'echo "[host] checking out base branch {desired_base}" && '
+                        f'git fetch origin && '
+                        f'(git checkout {quoted_base} 2>/dev/null || '
+                        f'git checkout -b {quoted_base} origin/{quoted_base} 2>/dev/null || '
+                        f'echo "[host] warning: could not checkout {desired_base}, using default branch")'
+                    )
+                    gh_clone_parts.append(base_step)
+                # Task branch step: create or checkout the task branch (non-fatal)
+                branch_step = (
+                    f'cd {quoted_dest} && '
+                    f'echo "[host] creating task branch {branch_name}" && '
+                    f'(git checkout -b {quoted_branch} 2>/dev/null || '
+                    f'git checkout {quoted_branch} 2>/dev/null || '
+                    f'echo "[host] warning: could not create branch {branch_name}")'
+                )
+                gh_clone_parts.append(branch_step)
+                gh_clone_parts.append(f'echo "[host] ready on branch {branch_name}"')
                 gh_clone_snippet = " ; ".join(gh_clone_parts)
                 # Update task with branch info
                 task.gh_repo_root = host_workdir
