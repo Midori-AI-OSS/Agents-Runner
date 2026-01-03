@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from pathlib import Path
 
 from datetime import datetime
 from datetime import timezone
@@ -282,9 +283,11 @@ class _MainWindowTasksInteractiveMixin:
         settings_tmp_path = ""
         env_tmp_path = ""
         helpme_tmp_path = ""
+        system_tmp_path = ""
 
         preflight_clause = ""
         preflight_mounts: list[str] = []
+        system_container_path = f"/tmp/codex-preflight-system-{task_token}.sh"
         settings_container_path = f"/tmp/codex-preflight-settings-{task_token}.sh"
         environment_container_path = f"/tmp/codex-preflight-environment-{task_token}.sh"
         helpme_container_path = f"/tmp/codex-preflight-helpme-{task_token}.sh"
@@ -305,6 +308,20 @@ class _MainWindowTasksInteractiveMixin:
             return tmp_path
 
         try:
+            system_preflight_path = Path(__file__).resolve().parent.parent / "preflights" / "pixelarch_yay.sh"
+            system_preflight_script = system_preflight_path.read_text(encoding="utf-8")
+            if not system_preflight_script.strip():
+                raise RuntimeError(f"Missing system preflight: {system_preflight_path}")
+
+            system_tmp_path = _write_preflight_script(system_preflight_script, "system")
+            preflight_mounts.extend(["-v", f"{system_tmp_path}:{system_container_path}:ro"])
+            preflight_clause += (
+                f'PREFLIGHT_SYSTEM={shlex.quote(system_container_path)}; '
+                'echo "[preflight] system: starting"; '
+                '/bin/bash "${PREFLIGHT_SYSTEM}"; '
+                'echo "[preflight] system: done"; '
+            )
+
             if (settings_preflight_script or "").strip():
                 settings_tmp_path = _write_preflight_script(str(settings_preflight_script or ""), "settings")
                 preflight_mounts.extend(["-v", f"{settings_tmp_path}:{settings_container_path}:ro"])
@@ -335,7 +352,7 @@ class _MainWindowTasksInteractiveMixin:
                     'echo "[preflight] helpme: done"; '
                 )
         except Exception as exc:
-            for tmp in (settings_tmp_path, env_tmp_path, helpme_tmp_path):
+            for tmp in (system_tmp_path, settings_tmp_path, env_tmp_path, helpme_tmp_path):
                 try:
                     if tmp and os.path.exists(tmp):
                         os.unlink(tmp)
@@ -458,12 +475,14 @@ class _MainWindowTasksInteractiveMixin:
 
             host_script_parts = [
                 f'CONTAINER_NAME={shlex.quote(container_name)}',
+                f'TMP_SYSTEM={shlex.quote(system_tmp_path)}',
                 f'TMP_SETTINGS={shlex.quote(settings_tmp_path)}',
                 f'TMP_ENV={shlex.quote(env_tmp_path)}',
                 f'TMP_HELPME={shlex.quote(helpme_tmp_path)}',
                 f'FINISH_FILE={shlex.quote(finish_path)}',
                 'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
                 'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
+                'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
                 'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
                 'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; '
                 'if [ -n "$TMP_HELPME" ]; then rm -f -- "$TMP_HELPME" >/dev/null 2>&1 || true; fi; }',
@@ -509,7 +528,7 @@ class _MainWindowTasksInteractiveMixin:
             self._show_dashboard()
             self._new_task.reset_for_new_run()
         except Exception as exc:
-            for tmp in (settings_tmp_path, env_tmp_path, helpme_tmp_path):
+            for tmp in (system_tmp_path, settings_tmp_path, env_tmp_path, helpme_tmp_path):
                 try:
                     if tmp and os.path.exists(tmp):
                         os.unlink(tmp)
