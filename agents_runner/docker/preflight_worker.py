@@ -17,6 +17,8 @@ from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import docker_platform_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
+from agents_runner.gh_management import GhManagementError
+from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.github_token import resolve_github_token
 
 from agents_runner.docker.config import DockerRunnerConfig
@@ -62,6 +64,25 @@ class DockerPreflightWorker:
         preflight_tmp_paths: list[str] = []
         docker_env: dict[str, str] | None = None
         try:
+            # GitHub repo preparation (clone + update) - happens first, before Docker
+            if self._config.gh_repo:
+                try:
+                    result = prepare_github_repo_for_task(
+                        self._config.gh_repo,
+                        self._config.host_workdir,
+                        task_id=self._config.task_id,
+                        base_branch=self._config.gh_base_branch or None,
+                        prefer_gh=self._config.gh_prefer_gh_cli,
+                        recreate_if_needed=self._config.gh_recreate_if_needed,
+                        on_log=self._on_log,
+                    )
+                    if result.get("branch"):
+                        self._on_log(f"[gh] ready on branch {result['branch']}")
+                except (GhManagementError, Exception) as exc:
+                    self._on_log(f"[gh] ERROR: {exc}")
+                    self._on_done(1, str(exc))
+                    return
+
             os.makedirs(self._config.host_codex_dir, exist_ok=True)
             forced_platform = docker_platform_for_pixelarch()
             platform_args = docker_platform_args_for_pixelarch()
