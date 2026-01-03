@@ -91,7 +91,7 @@ class _MainWindowPersistenceMixin:
         self._settings_data.setdefault("host_claude_dir", "")
         self._settings_data.setdefault("host_copilot_dir", "")
         self._settings_data.setdefault("interactive_command_claude", "--add-dir /home/midori-ai/workspace")
-        self._settings_data.setdefault("interactive_command_copilot", "--add-dir /home/midori-ai/workspace")
+        self._settings_data.setdefault("interactive_command_copilot", "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace")
         host_codex_dir = os.path.normpath(os.path.expanduser(str(self._settings_data.get("host_codex_dir") or "").strip()))
         if host_codex_dir == os.path.expanduser("~/.midoriai"):
             self._settings_data["host_codex_dir"] = os.path.expanduser("~/.codex")

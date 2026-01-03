@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtCore import QPropertyAnimation
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QMessageBox
 
 
 class _MainWindowNavigationMixin:
@@ -14,36 +15,74 @@ class _MainWindowNavigationMixin:
         h = max(int(self.minimumHeight()), h)
         self.resize(w, h)
 
+    def _transition_to_page(self, target_page) -> None:
+        """Smooth cross-fade transition between pages."""
+        pages = [self._dashboard, self._new_task, self._details, self._envs_page, self._settings]
+        current_page = None
+        
+        for page in pages:
+            if page.isVisible() and page != target_page:
+                current_page = page
+                break
+        
+        if current_page is None:
+            target_page.show()
+            return
+        
+        effect_out = current_page.graphicsEffect()
+        if not isinstance(effect_out, QGraphicsOpacityEffect):
+            effect_out = QGraphicsOpacityEffect(current_page)
+            current_page.setGraphicsEffect(effect_out)
+        effect_out.setOpacity(1.0)
+        
+        effect_in = target_page.graphicsEffect()
+        if not isinstance(effect_in, QGraphicsOpacityEffect):
+            effect_in = QGraphicsOpacityEffect(target_page)
+            target_page.setGraphicsEffect(effect_in)
+        effect_in.setOpacity(0.0)
+        
+        anim_out = QPropertyAnimation(effect_out, b"opacity")
+        anim_out.setDuration(150)
+        anim_out.setStartValue(1.0)
+        anim_out.setEndValue(0.0)
+        
+        def start_fade_in():
+            current_page.hide()
+            target_page.show()
+            anim_in.start()
+        
+        anim_out.finished.connect(start_fade_in)
+        
+        anim_in = QPropertyAnimation(effect_in, b"opacity")
+        anim_in.setDuration(200)
+        anim_in.setStartValue(0.0)
+        anim_in.setEndValue(1.0)
+        
+        anim_out.start()
+        
+        if not hasattr(self, "_page_animations"):
+            self._page_animations = []
+        self._page_animations.append(anim_out)
+        self._page_animations.append(anim_in)
+
 
     def _show_dashboard(self) -> None:
         if not self._try_autosave_before_navigation():
             return
-        self._new_task.hide()
-        self._details.hide()
-        self._envs_page.hide()
-        self._settings.hide()
-        self._dashboard.show()
+        self._transition_to_page(self._dashboard)
 
 
     def _show_new_task(self) -> None:
         if not self._try_autosave_before_navigation():
             return
-        self._dashboard.hide()
-        self._details.hide()
-        self._envs_page.hide()
-        self._settings.hide()
         self._new_task.focus_prompt()
-        self._new_task.show()
+        self._transition_to_page(self._new_task)
 
 
     def _show_task_details(self) -> None:
         if not self._try_autosave_before_navigation():
             return
-        self._dashboard.hide()
-        self._new_task.hide()
-        self._envs_page.hide()
-        self._settings.hide()
-        self._details.show()
+        self._transition_to_page(self._details)
 
 
     def _show_environments(self) -> None:
@@ -51,15 +90,11 @@ class _MainWindowNavigationMixin:
             return
         if not self._try_autosave_before_navigation():
             return
-        self._dashboard.hide()
-        self._new_task.hide()
-        self._details.hide()
-        self._settings.hide()
         active_id = self._active_environment_id()
         if hasattr(self, "_is_internal_environment_id") and self._is_internal_environment_id(active_id):
             active_id = "default"
         self._envs_page.set_environments(self._user_environment_map(), active_id)
-        self._envs_page.show()
+        self._transition_to_page(self._envs_page)
 
 
     def _show_settings(self) -> None:
@@ -67,12 +102,8 @@ class _MainWindowNavigationMixin:
             return
         if not self._try_autosave_before_navigation():
             return
-        self._dashboard.hide()
-        self._new_task.hide()
-        self._details.hide()
-        self._envs_page.hide()
         self._settings.set_settings(self._settings_data)
-        self._settings.show()
+        self._transition_to_page(self._settings)
 
 
     def _try_autosave_before_navigation(self) -> bool:

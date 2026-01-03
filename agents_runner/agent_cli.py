@@ -84,6 +84,7 @@ def build_noninteractive_cmd(
         args = [
             "copilot",
             "--allow-all-tools",
+            "--allow-all-paths",
             "--add-dir",
             container_workdir,
             *extra_args,
