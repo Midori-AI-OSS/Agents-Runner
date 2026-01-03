@@ -84,7 +84,7 @@ class PromptsTabWidget(QWidget):
                 "This will be appended to the agent's system prompt before starting (non-interactive only)."
             )
             text_edit.setTabChangesFocus(True)
-            text_edit.focusLost.connect(self._on_prompt_text_changed)
+            text_edit.focusLost.connect(self._on_prompt_text_focus_lost)
 
             tab_layout.addWidget(enabled_cb)
             tab_layout.addWidget(text_edit, 1)
@@ -123,7 +123,7 @@ class PromptsTabWidget(QWidget):
                 last_nonempty_index = i
         return min(last_nonempty_index + 2, self.MAX_PROMPTS)
 
-    def _on_prompt_text_changed(self) -> None:
+    def _on_prompt_text_focus_lost(self) -> None:
         """Handle when prompt text loses focus."""
         if self._unlocked:
             # Only sync tabs if the visible count changed
