@@ -31,6 +31,7 @@ from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
+from agents_runner.ui.shell_templates import build_git_clone_or_update_snippet
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _safe_str
 from agents_runner.ui.utils import _stain_color
@@ -435,57 +436,18 @@ class _MainWindowTasksInteractiveMixin:
             # Build git clone snippet if gh_repo is specified
             gh_clone_snippet = ""
             if gh_repo:
-                quoted_repo = shlex.quote(gh_repo)
                 quoted_dest = shlex.quote(host_workdir)
-                branch_name = f"agents-runner-{task_id}"
-                quoted_branch = shlex.quote(branch_name)
-                # Build clone command with gh -> git fallback
-                # Try gh first if preferred, fall back to git clone if gh fails or is unavailable
-                if gh_prefer_gh_cli:
-                    clone_cmd = (
-                        f'(command -v gh >/dev/null 2>&1 && gh repo clone {quoted_repo} {quoted_dest}) || '
-                        f'git clone {quoted_repo} {quoted_dest}'
-                    )
-                else:
-                    clone_cmd = f'git clone {quoted_repo} {quoted_dest}'
-                # Build the clone and branch setup script as separate steps
-                gh_clone_parts = [
-                    f'echo "[host] cloning {gh_repo} -> {host_workdir}"',
-                ]
-                # Clone step: skip if repo exists, otherwise clone with error handling
-                clone_step = (
-                    f'if [ -d {quoted_dest} ] && [ -d {quoted_dest}/.git ]; then '
-                    f'echo "[host] repo already exists, skipping clone"; '
-                    f'else {clone_cmd} || {{ '
-                    f'STATUS=$?; echo "[host] git clone failed (exit $STATUS)"; '
-                    f'write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; '
-                    f'}}; fi'
+                gh_clone_snippet = build_git_clone_or_update_snippet(
+                    gh_repo=gh_repo,
+                    host_workdir=host_workdir,
+                    quoted_dest=quoted_dest,
+                    prefer_gh_cli=gh_prefer_gh_cli,
+                    task_id=task_id,
+                    desired_base=desired_base,
+                    is_locked_env=False,
                 )
-                gh_clone_parts.append(clone_step)
-                # Base branch step: try to checkout base branch (non-fatal if it fails)
-                if desired_base:
-                    quoted_base = shlex.quote(desired_base)
-                    base_step = (
-                        f'cd {quoted_dest} && '
-                        f'echo "[host] checking out base branch {desired_base}" && '
-                        f'git fetch origin && '
-                        f'(git checkout {quoted_base} 2>/dev/null || '
-                        f'git checkout -b {quoted_base} origin/{quoted_base} 2>/dev/null || '
-                        f'echo "[host] warning: could not checkout {desired_base}, using default branch")'
-                    )
-                    gh_clone_parts.append(base_step)
-                # Task branch step: create or checkout the task branch (non-fatal)
-                branch_step = (
-                    f'cd {quoted_dest} && '
-                    f'echo "[host] creating task branch {branch_name}" && '
-                    f'(git checkout -b {quoted_branch} 2>/dev/null || '
-                    f'git checkout {quoted_branch} 2>/dev/null || '
-                    f'echo "[host] warning: could not create branch {branch_name}")'
-                )
-                gh_clone_parts.append(branch_step)
-                gh_clone_parts.append(f'echo "[host] ready on branch {branch_name}"')
-                gh_clone_snippet = " ; ".join(gh_clone_parts)
                 # Update task with branch info
+                branch_name = f"agents-runner-{task_id}"
                 task.gh_repo_root = host_workdir
                 task.gh_branch = branch_name
                 task.gh_base_branch = desired_base or "main"
