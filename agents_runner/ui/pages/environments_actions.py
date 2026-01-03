@@ -145,6 +145,9 @@ class _EnvironmentsPageActionsMixin:
             gh_management_locked=True,
             gh_use_host_cli=gh_use_host_cli,
             gh_pr_metadata_enabled=bool(gh_pr_metadata_enabled),
+            prompts=[],
+            prompts_unlocked=False,
+            agent_selection=None,
         )
         save_environment(env)
         self.updated.emit(env_id)
@@ -204,6 +207,9 @@ class _EnvironmentsPageActionsMixin:
             return False
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        prompts, prompts_unlocked = self._prompts_tab.get_prompts()
+        agent_selection = self._agents_tab.get_agent_selection()
+
         env = Environment(
             env_id=env_id,
             name=name,
@@ -221,6 +227,9 @@ class _EnvironmentsPageActionsMixin:
             gh_management_locked=gh_locked,
             gh_use_host_cli=gh_use_host_cli,
             gh_pr_metadata_enabled=gh_pr_metadata_enabled,
+            prompts=prompts,
+            prompts_unlocked=prompts_unlocked,
+            agent_selection=agent_selection,
         )
         save_environment(env)
         self.updated.emit(env_id)
@@ -261,6 +270,9 @@ class _EnvironmentsPageActionsMixin:
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
         name = (self._name.text() or "").strip() or env_id
+        prompts, prompts_unlocked = self._prompts_tab.get_prompts()
+        agent_selection = self._agents_tab.get_agent_selection()
+
         return Environment(
             env_id=env_id,
             name=name,
@@ -278,6 +290,9 @@ class _EnvironmentsPageActionsMixin:
             gh_management_locked=gh_locked,
             gh_use_host_cli=gh_use_host_cli,
             gh_pr_metadata_enabled=gh_pr_metadata_enabled,
+            prompts=prompts,
+            prompts_unlocked=prompts_unlocked,
+            agent_selection=agent_selection,
         )
 
     def _on_test_preflight(self) -> None:

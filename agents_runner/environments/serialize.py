@@ -5,6 +5,8 @@ from typing import Any
 from .model import ENVIRONMENT_VERSION
 from .model import Environment
 from .model import normalize_gh_management_mode
+from .model import PromptConfig
+from .model import AgentSelection
 
 
 def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
@@ -45,6 +47,40 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
     gh_pr_metadata_enabled = bool(payload.get("gh_pr_metadata_enabled", False))
 
+    prompts_data = payload.get("prompts", [])
+    prompts = []
+    if isinstance(prompts_data, list):
+        for p in prompts_data:
+            if isinstance(p, dict):
+                prompts.append(PromptConfig(
+                    enabled=bool(p.get("enabled", False)),
+                    text=str(p.get("text", ""))
+                ))
+    prompts_unlocked = bool(payload.get("prompts_unlocked", False))
+
+    agent_selection_data = payload.get("agent_selection")
+    agent_selection = None
+    if isinstance(agent_selection_data, dict):
+        enabled_agents = agent_selection_data.get("enabled_agents", [])
+        if isinstance(enabled_agents, list):
+            enabled_agents = [str(a) for a in enabled_agents if str(a).strip()]
+        else:
+            enabled_agents = []
+        
+        selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
+        
+        agent_config_dirs = agent_selection_data.get("agent_config_dirs", {})
+        if isinstance(agent_config_dirs, dict):
+            agent_config_dirs = {str(k): str(v) for k, v in agent_config_dirs.items()}
+        else:
+            agent_config_dirs = {}
+        
+        agent_selection = AgentSelection(
+            enabled_agents=enabled_agents,
+            selection_mode=selection_mode,
+            agent_config_dirs=agent_config_dirs
+        )
+
     return Environment(
         env_id=env_id,
         name=name or env_id,
@@ -62,6 +98,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         gh_management_locked=gh_management_locked,
         gh_use_host_cli=gh_use_host_cli,
         gh_pr_metadata_enabled=gh_pr_metadata_enabled,
+        prompts=prompts,
+        prompts_unlocked=prompts_unlocked,
+        agent_selection=agent_selection,
     )
 
 
@@ -87,5 +126,12 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gh_management_locked": bool(env.gh_management_locked),
         "gh_use_host_cli": bool(env.gh_use_host_cli),
         "gh_pr_metadata_enabled": bool(env.gh_pr_metadata_enabled),
+        "prompts": [{"enabled": p.enabled, "text": p.text} for p in (env.prompts or [])],
+        "prompts_unlocked": bool(env.prompts_unlocked),
+        "agent_selection": {
+            "enabled_agents": env.agent_selection.enabled_agents,
+            "selection_mode": env.agent_selection.selection_mode,
+            "agent_config_dirs": dict(env.agent_selection.agent_config_dirs),
+        } if env.agent_selection else None,
     }
 

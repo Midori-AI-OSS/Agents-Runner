@@ -38,6 +38,19 @@ def normalize_gh_management_mode(value: str) -> str:
 
 
 @dataclass
+class PromptConfig:
+    enabled: bool = False
+    text: str = ""
+
+
+@dataclass
+class AgentSelection:
+    enabled_agents: list[str] = field(default_factory=list)
+    selection_mode: str = "round-robin"
+    agent_config_dirs: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class Environment:
     env_id: str
     name: str
@@ -55,6 +68,9 @@ class Environment:
     gh_management_locked: bool = False
     gh_use_host_cli: bool = True
     gh_pr_metadata_enabled: bool = False
+    prompts: list[PromptConfig] = field(default_factory=list)
+    prompts_unlocked: bool = False
+    agent_selection: AgentSelection | None = None
 
     def normalized_color(self) -> str:
         value = (self.color or "").strip().lower()
