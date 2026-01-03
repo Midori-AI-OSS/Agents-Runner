@@ -26,6 +26,7 @@ class PromptsTabWidget(QWidget):
 
         self._unlocked = False
         self._prompt_tabs: list[tuple[QWidget, QCheckBox, QPlainTextEdit]] = []
+        self._current_visible_count = 0
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 16, 0, 12)
@@ -102,7 +103,18 @@ class PromptsTabWidget(QWidget):
 
     def _on_prompt_changed(self) -> None:
         if self._unlocked:
-            self._sync_visible_tabs()
+            # Calculate the new visible count without rebuilding tabs
+            last_nonempty_index = -1
+            for i, (tab, enabled_cb, text_edit) in enumerate(self._prompt_tabs):
+                if text_edit.toPlainText().strip():
+                    last_nonempty_index = i
+            
+            new_visible_count = min(last_nonempty_index + 2, self.MAX_PROMPTS)
+            
+            # Only sync tabs if the visible count changed
+            if new_visible_count != self._current_visible_count:
+                self._sync_visible_tabs()
+            
             self.prompts_changed.emit()
 
     def _sync_visible_tabs(self) -> None:
@@ -117,6 +129,7 @@ class PromptsTabWidget(QWidget):
                 last_nonempty_index = i
 
         visible_count = min(last_nonempty_index + 2, self.MAX_PROMPTS)
+        self._current_visible_count = visible_count
 
         for i in range(visible_count):
             tab, enabled_cb, text_edit = self._prompt_tabs[i]
