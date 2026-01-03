@@ -115,7 +115,7 @@ class PromptsTabWidget(QWidget):
             new_visible_count = self._calculate_visible_count()
             if new_visible_count != self._current_visible_count:
                 self._sync_visible_tabs()
-            
+
             self.prompts_changed.emit()
 
     def _sync_visible_tabs(self) -> None:
