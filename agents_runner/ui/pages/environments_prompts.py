@@ -16,6 +16,15 @@ from agents_runner.environments import Environment
 from agents_runner.environments.model import PromptConfig
 
 
+class FocusOutPlainTextEdit(QPlainTextEdit):
+    """QPlainTextEdit that emits a signal when focus is lost."""
+    focusLost = Signal()
+
+    def focusOutEvent(self, event) -> None:
+        super().focusOutEvent(event)
+        self.focusLost.emit()
+
+
 class PromptsTabWidget(QWidget):
     prompts_changed = Signal()
 
@@ -64,13 +73,13 @@ class PromptsTabWidget(QWidget):
             enabled_cb = QCheckBox(f"Enable Prompt {i + 1}")
             enabled_cb.toggled.connect(self._on_prompt_changed)
 
-            text_edit = QPlainTextEdit()
+            text_edit = FocusOutPlainTextEdit()
             text_edit.setPlaceholderText(
                 f"Enter custom prompt text for prompt #{i + 1}...\n\n"
                 "This will be appended to the agent's system prompt before starting (non-interactive only)."
             )
             text_edit.setTabChangesFocus(True)
-            text_edit.textChanged.connect(self._on_prompt_changed)
+            text_edit.focusLost.connect(self._on_prompt_text_changed)
 
             tab_layout.addWidget(enabled_cb)
             tab_layout.addWidget(text_edit, 1)
@@ -109,13 +118,19 @@ class PromptsTabWidget(QWidget):
                 last_nonempty_index = i
         return min(last_nonempty_index + 2, self.MAX_PROMPTS)
 
-    def _on_prompt_changed(self) -> None:
+    def _on_prompt_text_changed(self) -> None:
+        """Handle when prompt text loses focus."""
         if self._unlocked:
             # Only sync tabs if the visible count changed
             new_visible_count = self._calculate_visible_count()
             if new_visible_count != self._current_visible_count:
                 self._sync_visible_tabs()
 
+            self.prompts_changed.emit()
+
+    def _on_prompt_changed(self) -> None:
+        """Handle when checkbox state changes."""
+        if self._unlocked:
             self.prompts_changed.emit()
 
     def _sync_visible_tabs(self) -> None:
