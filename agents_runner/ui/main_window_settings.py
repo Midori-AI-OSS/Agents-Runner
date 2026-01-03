@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import verify_cli_clause
+from agents_runner.agent_cli import SUPPORTED_AGENTS
 from agents_runner.ui.utils import _looks_like_agent_help_command
 from agents_runner.environments import Environment
 
@@ -231,12 +232,11 @@ class _MainWindowSettingsMixin:
             original_agent = env.agent_selection.enabled_agents[0]
             agent_cli = normalize_agent(original_agent)
             
-            # Log warning if agent was invalid (normalize_agent returned default "codex")
-            # when the original wasn't a variant of "codex"
-            if agent_cli == "codex" and original_agent.strip().lower() not in ("codex", "claude", "copilot"):
+            # Log warning if the original agent specification was invalid
+            if original_agent.strip().lower() not in SUPPORTED_AGENTS:
                 logger.warning(
                     f"Environment agent_selection specified invalid agent '{original_agent}', "
-                    f"using '{agent_cli}' instead. Valid agents: codex, claude, copilot"
+                    f"using '{agent_cli}' instead. Valid agents: {', '.join(SUPPORTED_AGENTS)}"
                 )
 
         # Use helper method to resolve config directory
