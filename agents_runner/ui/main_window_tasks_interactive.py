@@ -12,9 +12,6 @@ from datetime import datetime
 from datetime import timezone
 from uuid import uuid4
 
-from PySide6.QtCore import Qt
-from PySide6.QtCore import QThread
-
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import additional_config_mounts
@@ -34,7 +31,6 @@ from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
-from agents_runner.ui.bridges import GhManagementBridge
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _safe_str
 from agents_runner.ui.utils import _stain_color
@@ -204,6 +200,8 @@ class _MainWindowTasksInteractiveMixin:
             container_id=container_name,
             gh_management_mode=gh_mode,
             gh_use_host_cli=bool(getattr(env, "gh_use_host_cli", True)) if env else True,
+            agent_cli=agent_cli,
+            agent_cli_args=" ".join(agent_cli_args),
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -213,93 +211,40 @@ class _MainWindowTasksInteractiveMixin:
 
         task.gh_use_host_cli = bool(task.gh_use_host_cli and is_gh_available())
 
-        def _continue_after_gh() -> None:
-            self._launch_interactive_terminal_task(
-                task_id=task_id,
-                task_token=task_token,
-                task=task,
-                env=env,
-                env_id=env_id,
-                terminal_id=str(terminal_id or ""),
-                opt=opt,
-                cmd_parts=cmd_parts,
-                prompt=prompt,
-                command=command,
-                agent_cli=agent_cli,
-                host_codex=host_codex,
-                host_workdir=host_workdir,
-                config_extra_mounts=config_extra_mounts,
-                image=image,
-                container_name=container_name,
-                container_agent_dir=container_agent_dir,
-                container_workdir=container_workdir,
-                settings_preflight_script=settings_preflight_script,
-                environment_preflight_script=environment_preflight_script,
-                extra_preflight_script=extra_preflight_script,
-                stain=stain,
-                spinner=spinner,
-                desired_base=desired_base,
-            )
-
+        # Extract gh_repo from environment if GitHub management is enabled
+        gh_repo: str = ""
         if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            task.status = "cloning"
-            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            self._schedule_save()
+            gh_repo = str(env.gh_management_target or "").strip()
 
-            bridge = GhManagementBridge(
-                task_id=task_id,
-                repo=str(env.gh_management_target or ""),
-                dest_dir=host_workdir,
-                prefer_gh=bool(task.gh_use_host_cli),
-                recreate_if_needed=True,
-                base_branch=desired_base,
-            )
-            thread = QThread(self)
-            bridge.moveToThread(thread)
-            thread.started.connect(bridge.run)
-
-            def _on_gh_log(line: str) -> None:
-                self._on_task_log(task_id, line)
-
-            setattr(bridge, "_ui_on_log", _on_gh_log)
-            bridge.log.connect(_on_gh_log, Qt.QueuedConnection)
-
-            def _on_done(ok: bool, payload: object) -> None:
-                self._gh_threads.pop(task_id, None)
-                self._gh_bridges.pop(task_id, None)
-                current = self._tasks.get(task_id)
-                if current is None or (current.status or "").lower() == "discarded":
-                    return
-                if not ok:
-                    msg = str(payload or "GitHub repo preparation failed")
-                    current.status = "failed"
-                    current.error = msg
-                    current.exit_code = 1
-                    current.finished_at = datetime.now(tz=timezone.utc)
-                    self._dashboard.upsert_task(current, stain=stain, spinner_color=spinner)
-                    self._details.update_task(current)
-                    self._schedule_save()
-                    QMessageBox.warning(self, "Failed to prepare repo", msg)
-                    return
-                if isinstance(payload, dict):
-                    current.gh_repo_root = str(payload.get("repo_root") or "")
-                    current.gh_base_branch = str(payload.get("base_branch") or "")
-                    current.gh_branch = str(payload.get("branch") or "")
-                    self._schedule_save()
-                _continue_after_gh()
-
-            setattr(bridge, "_ui_on_done", _on_done)
-            bridge.done.connect(_on_done, Qt.QueuedConnection)
-            bridge.done.connect(thread.quit, Qt.QueuedConnection)
-            bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
-            thread.finished.connect(thread.deleteLater)
-
-            self._gh_bridges[task_id] = bridge
-            self._gh_threads[task_id] = thread
-            thread.start()
-            return
-
-        _continue_after_gh()
+        # Launch interactive terminal directly - git clone happens in the terminal script
+        self._launch_interactive_terminal_task(
+            task_id=task_id,
+            task_token=task_token,
+            task=task,
+            env=env,
+            env_id=env_id,
+            terminal_id=str(terminal_id or ""),
+            opt=opt,
+            cmd_parts=cmd_parts,
+            prompt=prompt,
+            command=command,
+            agent_cli=agent_cli,
+            host_codex=host_codex,
+            host_workdir=host_workdir,
+            config_extra_mounts=config_extra_mounts,
+            image=image,
+            container_name=container_name,
+            container_agent_dir=container_agent_dir,
+            container_workdir=container_workdir,
+            settings_preflight_script=settings_preflight_script,
+            environment_preflight_script=environment_preflight_script,
+            extra_preflight_script=extra_preflight_script,
+            stain=stain,
+            spinner=spinner,
+            desired_base=desired_base,
+            gh_repo=gh_repo,
+            gh_prefer_gh_cli=bool(task.gh_use_host_cli),
+        )
         return
 
 
@@ -330,6 +275,8 @@ class _MainWindowTasksInteractiveMixin:
         stain: str | None,
         spinner: str | None,
         desired_base: str = "",
+        gh_repo: str = "",
+        gh_prefer_gh_cli: bool = True,
     ) -> None:
         settings_tmp_path = ""
         env_tmp_path = ""
@@ -485,6 +432,65 @@ class _MainWindowTasksInteractiveMixin:
                     f'echo "[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"'
                 )
 
+            # Build git clone snippet if gh_repo is specified
+            gh_clone_snippet = ""
+            if gh_repo:
+                quoted_repo = shlex.quote(gh_repo)
+                quoted_dest = shlex.quote(host_workdir)
+                branch_name = f"agents-runner-{task_id}"
+                quoted_branch = shlex.quote(branch_name)
+                # Build clone command with gh -> git fallback
+                # Try gh first if preferred, fall back to git clone if gh fails or is unavailable
+                if gh_prefer_gh_cli:
+                    clone_cmd = (
+                        f'(command -v gh >/dev/null 2>&1 && gh repo clone {quoted_repo} {quoted_dest}) || '
+                        f'git clone {quoted_repo} {quoted_dest}'
+                    )
+                else:
+                    clone_cmd = f'git clone {quoted_repo} {quoted_dest}'
+                # Build the clone and branch setup script as separate steps
+                gh_clone_parts = [
+                    f'echo "[host] cloning {gh_repo} -> {host_workdir}"',
+                ]
+                # Clone step: skip if repo exists, otherwise clone with error handling
+                clone_step = (
+                    f'if [ -d {quoted_dest} ] && [ -d {quoted_dest}/.git ]; then '
+                    f'echo "[host] repo already exists, skipping clone"; '
+                    f'else {clone_cmd} || {{ '
+                    f'STATUS=$?; echo "[host] git clone failed (exit $STATUS)"; '
+                    f'write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; '
+                    f'}}; fi'
+                )
+                gh_clone_parts.append(clone_step)
+                # Base branch step: try to checkout base branch (non-fatal if it fails)
+                if desired_base:
+                    quoted_base = shlex.quote(desired_base)
+                    base_step = (
+                        f'cd {quoted_dest} && '
+                        f'echo "[host] checking out base branch {desired_base}" && '
+                        f'git fetch origin && '
+                        f'(git checkout {quoted_base} 2>/dev/null || '
+                        f'git checkout -b {quoted_base} origin/{quoted_base} 2>/dev/null || '
+                        f'echo "[host] warning: could not checkout {desired_base}, using default branch")'
+                    )
+                    gh_clone_parts.append(base_step)
+                # Task branch step: create or checkout the task branch (non-fatal)
+                branch_step = (
+                    f'cd {quoted_dest} && '
+                    f'echo "[host] creating task branch {branch_name}" && '
+                    f'(git checkout -b {quoted_branch} 2>/dev/null || '
+                    f'git checkout {quoted_branch} 2>/dev/null || '
+                    f'echo "[host] warning: could not create branch {branch_name}")'
+                )
+                gh_clone_parts.append(branch_step)
+                gh_clone_parts.append(f'echo "[host] ready on branch {branch_name}"')
+                gh_clone_snippet = " ; ".join(gh_clone_parts)
+                # Update task with branch info
+                task.gh_repo_root = host_workdir
+                task.gh_branch = branch_name
+                task.gh_base_branch = desired_base or "main"
+                self._schedule_save()
+
             docker_pull_parts = ["docker", "pull", *docker_platform_args, image]
             docker_pull_cmd = " ".join(shlex.quote(part) for part in docker_pull_parts)
 
@@ -506,6 +512,8 @@ class _MainWindowTasksInteractiveMixin:
                 host_script_parts.append(gh_token_snippet)
             if rosetta_snippet:
                 host_script_parts.append(rosetta_snippet)
+            if gh_clone_snippet:
+                host_script_parts.append(gh_clone_snippet)
             host_script_parts.extend(
                 [
                     f"{docker_pull_cmd} || {{ STATUS=$?; echo \"[host] docker pull failed (exit $STATUS)\"; write_finish \"$STATUS\"; read -r -p \"Press Enter to close...\"; exit $STATUS; }}",

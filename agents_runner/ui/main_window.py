@@ -16,7 +16,6 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import Environment
 from agents_runner.persistence import default_state_path
-from agents_runner.ui.bridges import GhManagementBridge
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import APP_TITLE
 from agents_runner.ui.graphics import GlassRoot
@@ -94,8 +93,6 @@ class MainWindow(
         self._tasks: dict[str, Task] = {}
         self._threads: dict[str, QThread] = {}
         self._bridges: dict[str, TaskRunnerBridge] = {}
-        self._gh_threads: dict[str, QThread] = {}
-        self._gh_bridges: dict[str, GhManagementBridge] = {}
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}
