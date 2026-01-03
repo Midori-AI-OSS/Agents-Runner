@@ -82,7 +82,7 @@ class MainWindow(
             "interactive_terminal_id": "",
             "interactive_command": "--sandbox danger-full-access",
             "interactive_command_claude": "--add-dir /home/midori-ai/workspace",
-            "interactive_command_copilot": "--add-dir /home/midori-ai/workspace",
+            "interactive_command_copilot": "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace",
             "window_w": 1280,
             "window_h": 720,
             "max_agents_running": -1,
