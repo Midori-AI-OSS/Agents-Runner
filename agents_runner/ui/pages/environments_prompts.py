@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QFocusEvent
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
@@ -17,10 +18,14 @@ from agents_runner.environments.model import PromptConfig
 
 
 class FocusOutPlainTextEdit(QPlainTextEdit):
-    """QPlainTextEdit that emits a signal when focus is lost."""
+    """QPlainTextEdit that emits a signal when focus is lost.
+    
+    Emits focusLost signal when the widget loses focus, allowing consumers
+    to delay processing until the user finishes editing.
+    """
     focusLost = Signal()
 
-    def focusOutEvent(self, event) -> None:
+    def focusOutEvent(self, event: QFocusEvent) -> None:
         super().focusOutEvent(event)
         self.focusLost.emit()
 
