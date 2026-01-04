@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMenu
@@ -8,6 +9,7 @@ from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QPlainTextEdit
+from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -27,6 +29,7 @@ from agents_runner.widgets import StatusGlyph
 class TaskDetailsPage(QWidget):
     back_requested = Signal()
     pr_requested = Signal(str)
+    container_action_requested = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -113,6 +116,47 @@ class TaskDetailsPage(QWidget):
         stitle = QLabel("Container state")
         stitle.setStyleSheet("font-size: 14px; font-weight: 650;")
 
+        self._btn_freeze = QToolButton()
+        self._btn_freeze.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_freeze.setAutoRaise(True)
+        self._btn_freeze.setIcon(self.style().standardIcon(QStyle.SP_MediaPause))
+        self._btn_freeze.setIconSize(QSize(16, 16))
+        self._btn_freeze.setToolTip("frz (pause container)")
+        self._btn_freeze.clicked.connect(lambda: self._emit_container_action("freeze"))
+
+        self._btn_unfreeze = QToolButton()
+        self._btn_unfreeze.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_unfreeze.setAutoRaise(True)
+        self._btn_unfreeze.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
+        self._btn_unfreeze.setIconSize(QSize(16, 16))
+        self._btn_unfreeze.setToolTip("unfrz (unpause container)")
+        self._btn_unfreeze.clicked.connect(lambda: self._emit_container_action("unfreeze"))
+
+        self._btn_stop = QToolButton()
+        self._btn_stop.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_stop.setAutoRaise(True)
+        self._btn_stop.setIcon(self.style().standardIcon(QStyle.SP_MediaStop))
+        self._btn_stop.setIconSize(QSize(16, 16))
+        self._btn_stop.setToolTip("stop container")
+        self._btn_stop.clicked.connect(lambda: self._emit_container_action("stop"))
+
+        self._btn_kill = QToolButton()
+        self._btn_kill.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_kill.setAutoRaise(True)
+        self._btn_kill.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxCritical))
+        self._btn_kill.setIconSize(QSize(16, 16))
+        self._btn_kill.setToolTip("kill container")
+        self._btn_kill.clicked.connect(lambda: self._emit_container_action("kill"))
+
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+        title_row.addWidget(stitle)
+        title_row.addStretch(1)
+        title_row.addWidget(self._btn_freeze)
+        title_row.addWidget(self._btn_unfreeze)
+        title_row.addWidget(self._btn_stop)
+        title_row.addWidget(self._btn_kill)
+
         state_row = QHBoxLayout()
         state_row.setSpacing(12)
         self._glyph = StatusGlyph(size=44)
@@ -135,7 +179,7 @@ class TaskDetailsPage(QWidget):
         details.addWidget(QLabel("Exit code"), 2, 0)
         details.addWidget(self._exit, 2, 1)
 
-        right_layout.addWidget(stitle)
+        right_layout.addLayout(title_row)
         right_layout.addLayout(state_row)
         right_layout.addLayout(details)
         right_layout.addStretch(1)
@@ -191,6 +235,19 @@ class TaskDetailsPage(QWidget):
     def current_task_id(self) -> str | None:
         return self._current_task_id
 
+    def _emit_container_action(self, action: str) -> None:
+        task_id = str(self._current_task_id or "").strip()
+        if task_id:
+            self.container_action_requested.emit(task_id, str(action or "").strip())
+
+    def _sync_container_actions(self, task: Task) -> None:
+        has_container = bool(str(task.container_id or "").strip())
+        is_paused = (task.status or "").lower() == "paused"
+        self._btn_freeze.setEnabled(has_container and not is_paused)
+        self._btn_unfreeze.setEnabled(has_container and is_paused)
+        self._btn_stop.setEnabled(has_container)
+        self._btn_kill.setEnabled(has_container)
+
     def show_task(self, task: Task) -> None:
         self._current_task_id = task.task_id
         self._last_task = task
@@ -200,6 +257,7 @@ class TaskDetailsPage(QWidget):
         self._workdir.setText(task.host_workdir)
         self._codexdir.setText(task.host_codex_dir)
         self._container.setText(task.container_id or "—")
+        self._sync_container_actions(task)
         self._logs.setPlainText("\n".join(task.logs[-5000:]))
         QTimer.singleShot(0, self._scroll_logs_to_bottom)
         self._apply_status(task)
@@ -219,6 +277,7 @@ class TaskDetailsPage(QWidget):
             return
         self._last_task = task
         self._container.setText(task.container_id or "—")
+        self._sync_container_actions(task)
         self._exit.setText("—" if task.exit_code is None else str(task.exit_code))
         self._apply_status(task)
         self._tick_uptime()
