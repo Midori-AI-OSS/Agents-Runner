@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
-import subprocess
 import tempfile
 import threading
 import time
@@ -17,14 +16,12 @@ from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
-from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import verify_cli_clause
 from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
 from agents_runner.environments import Environment
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.gh_management import is_gh_available
@@ -50,7 +47,9 @@ class _MainWindowTasksInteractiveMixin:
         extra_preflight_script: str,
     ) -> None:
         if shutil.which("docker") is None:
-            QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
+            QMessageBox.critical(
+                self, "Docker not found", "Could not find `docker` in PATH."
+            )
             return
 
         prompt = sanitize_prompt((prompt or "").strip())
@@ -68,10 +67,18 @@ class _MainWindowTasksInteractiveMixin:
 
         env_id = str(env_id or "").strip() or self._active_environment_id()
         if env_id not in self._environments:
-            QMessageBox.warning(self, "Unknown environment", "Pick an environment first.")
+            QMessageBox.warning(
+                self, "Unknown environment", "Pick an environment first."
+            )
             return
         env = self._environments.get(env_id)
-        gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) if env else GH_MANAGEMENT_NONE
+        gh_mode = (
+            normalize_gh_management_mode(
+                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
+            )
+            if env
+            else GH_MANAGEMENT_NONE
+        )
         host_workdir, ready, message = self._new_task_workspace(env)
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
@@ -88,13 +95,17 @@ class _MainWindowTasksInteractiveMixin:
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
-            agent_cli, auto_config_dir, agent_instance_id = self._select_agent_instance_for_env(
-                env=env,
-                settings=self._settings_data,
-                advance_round_robin=True,
+            agent_cli, auto_config_dir, agent_instance_id = (
+                self._select_agent_instance_for_env(
+                    env=env,
+                    settings=self._settings_data,
+                    advance_round_robin=True,
+                )
             )
         else:
-            agent_cli, auto_config_dir = self._effective_agent_and_config(env=env, advance_round_robin=True)
+            agent_cli, auto_config_dir = self._effective_agent_and_config(
+                env=env, advance_round_robin=True
+            )
         if not host_codex:
             host_codex = auto_config_dir
         if not self._ensure_agent_config_dir(agent_cli, host_codex):
@@ -115,7 +126,9 @@ class _MainWindowTasksInteractiveMixin:
             if not raw_command:
                 raw_command = self._default_interactive_command(agent_cli)
         command = raw_command
-        is_help_launch = self._is_agent_help_interactive_launch(prompt=prompt, command=command)
+        is_help_launch = self._is_agent_help_interactive_launch(
+            prompt=prompt, command=command
+        )
         if is_help_launch:
             prompt = "\n".join(
                 [
@@ -188,12 +201,18 @@ class _MainWindowTasksInteractiveMixin:
                 cmd_parts.extend(agent_cli_args)
             if "--include-directories" not in cmd_parts:
                 cmd_parts[1:1] = ["--include-directories", "/home/midori-ai/workspace"]
-            if "--sandbox" not in cmd_parts and "--no-sandbox" not in cmd_parts and "-s" not in cmd_parts:
+            if (
+                "--sandbox" not in cmd_parts
+                and "--no-sandbox" not in cmd_parts
+                and "-s" not in cmd_parts
+            ):
                 cmd_parts[1:1] = ["--no-sandbox"]
             if "--approval-mode" not in cmd_parts:
                 cmd_parts[1:1] = ["--approval-mode", "yolo"]
             if prompt:
-                has_interactive_prompt = "-i" in cmd_parts or "--prompt-interactive" in cmd_parts
+                has_interactive_prompt = (
+                    "-i" in cmd_parts or "--prompt-interactive" in cmd_parts
+                )
                 has_prompt = "-p" in cmd_parts or "--prompt" in cmd_parts
                 if has_interactive_prompt:
                     _move_flag_value_to_end(cmd_parts, {"-i", "--prompt-interactive"})
@@ -205,8 +224,13 @@ class _MainWindowTasksInteractiveMixin:
         image = PIXELARCH_EMERALD_IMAGE
 
         settings_preflight_script: str | None = None
-        if self._settings_data.get("preflight_enabled") and str(self._settings_data.get("preflight_script") or "").strip():
-            settings_preflight_script = str(self._settings_data.get("preflight_script") or "")
+        if (
+            self._settings_data.get("preflight_enabled")
+            and str(self._settings_data.get("preflight_script") or "").strip()
+        ):
+            settings_preflight_script = str(
+                self._settings_data.get("preflight_script") or ""
+            )
 
         environment_preflight_script: str | None = None
         if env and env.preflight_enabled and (env.preflight_script or "").strip():
@@ -228,7 +252,9 @@ class _MainWindowTasksInteractiveMixin:
             status="starting",
             container_id=container_name,
             gh_management_mode=gh_mode,
-            gh_use_host_cli=bool(getattr(env, "gh_use_host_cli", True)) if env else True,
+            gh_use_host_cli=(
+                bool(getattr(env, "gh_use_host_cli", True)) if env else True
+            ),
             agent_cli=agent_cli,
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
@@ -277,7 +303,6 @@ class _MainWindowTasksInteractiveMixin:
         )
         return
 
-
     def _launch_interactive_terminal_task(
         self,
         *,
@@ -321,7 +346,9 @@ class _MainWindowTasksInteractiveMixin:
         helpme_container_path = f"/tmp/codex-preflight-helpme-{task_token}.sh"
 
         def _write_preflight_script(script: str, label: str) -> str:
-            fd, tmp_path = tempfile.mkstemp(prefix=f"codex-preflight-{label}-{task_token}-", suffix=".sh")
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=f"codex-preflight-{label}-{task_token}-", suffix=".sh"
+            )
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     if not script.endswith("\n"):
@@ -336,51 +363,74 @@ class _MainWindowTasksInteractiveMixin:
             return tmp_path
 
         try:
-            system_preflight_path = Path(__file__).resolve().parent.parent / "preflights" / "pixelarch_yay.sh"
+            system_preflight_path = (
+                Path(__file__).resolve().parent.parent
+                / "preflights"
+                / "pixelarch_yay.sh"
+            )
             system_preflight_script = system_preflight_path.read_text(encoding="utf-8")
             if not system_preflight_script.strip():
                 raise RuntimeError(f"Missing system preflight: {system_preflight_path}")
 
             system_tmp_path = _write_preflight_script(system_preflight_script, "system")
-            preflight_mounts.extend(["-v", f"{system_tmp_path}:{system_container_path}:ro"])
+            preflight_mounts.extend(
+                ["-v", f"{system_tmp_path}:{system_container_path}:ro"]
+            )
             preflight_clause += (
-                f'PREFLIGHT_SYSTEM={shlex.quote(system_container_path)}; '
+                f"PREFLIGHT_SYSTEM={shlex.quote(system_container_path)}; "
                 'echo "[preflight] system: starting"; '
                 '/bin/bash "${PREFLIGHT_SYSTEM}"; '
                 'echo "[preflight] system: done"; '
             )
 
             if (settings_preflight_script or "").strip():
-                settings_tmp_path = _write_preflight_script(str(settings_preflight_script or ""), "settings")
-                preflight_mounts.extend(["-v", f"{settings_tmp_path}:{settings_container_path}:ro"])
+                settings_tmp_path = _write_preflight_script(
+                    str(settings_preflight_script or ""), "settings"
+                )
+                preflight_mounts.extend(
+                    ["-v", f"{settings_tmp_path}:{settings_container_path}:ro"]
+                )
                 preflight_clause += (
-                    f'PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; '
+                    f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
                     'echo "[preflight] settings: running"; '
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
                     'echo "[preflight] settings: done"; '
                 )
 
             if (environment_preflight_script or "").strip():
-                env_tmp_path = _write_preflight_script(str(environment_preflight_script or ""), "environment")
-                preflight_mounts.extend(["-v", f"{env_tmp_path}:{environment_container_path}:ro"])
+                env_tmp_path = _write_preflight_script(
+                    str(environment_preflight_script or ""), "environment"
+                )
+                preflight_mounts.extend(
+                    ["-v", f"{env_tmp_path}:{environment_container_path}:ro"]
+                )
                 preflight_clause += (
-                    f'PREFLIGHT_ENV={shlex.quote(environment_container_path)}; '
+                    f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
                     'echo "[preflight] environment: running"; '
                     '/bin/bash "${PREFLIGHT_ENV}"; '
                     'echo "[preflight] environment: done"; '
                 )
 
             if str(extra_preflight_script or "").strip():
-                helpme_tmp_path = _write_preflight_script(str(extra_preflight_script or ""), "helpme")
-                preflight_mounts.extend(["-v", f"{helpme_tmp_path}:{helpme_container_path}:ro"])
+                helpme_tmp_path = _write_preflight_script(
+                    str(extra_preflight_script or ""), "helpme"
+                )
+                preflight_mounts.extend(
+                    ["-v", f"{helpme_tmp_path}:{helpme_container_path}:ro"]
+                )
                 preflight_clause += (
-                    f'PREFLIGHT_HELP={shlex.quote(helpme_container_path)}; '
+                    f"PREFLIGHT_HELP={shlex.quote(helpme_container_path)}; "
                     'echo "[preflight] helpme: running"; '
                     '/bin/bash "${PREFLIGHT_HELP}"; '
                     'echo "[preflight] helpme: done"; '
                 )
         except Exception as exc:
-            for tmp in (system_tmp_path, settings_tmp_path, env_tmp_path, helpme_tmp_path):
+            for tmp in (
+                system_tmp_path,
+                settings_tmp_path,
+                env_tmp_path,
+                helpme_tmp_path,
+            ):
                 try:
                     if tmp and os.path.exists(tmp):
                         os.unlink(tmp)
@@ -421,7 +471,9 @@ class _MainWindowTasksInteractiveMixin:
             if cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
                 verify_clause = verify_cli_clause(cmd_parts[0])
 
-            container_script = "set -euo pipefail; " f"{preflight_clause}{verify_clause}{target_cmd}"
+            container_script = (
+                "set -euo pipefail; " f"{preflight_clause}{verify_clause}{target_cmd}"
+            )
 
             forward_gh_token = bool(cmd_parts and cmd_parts[0] == "copilot")
             docker_env_passthrough: list[str] = []
@@ -474,9 +526,7 @@ class _MainWindowTasksInteractiveMixin:
 
             rosetta_snippet = ""
             if has_rosetta() is False:
-                rosetta_snippet = (
-                    f'echo "[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"'
-                )
+                rosetta_snippet = f'echo "[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"'
 
             # Build git clone snippet if gh_repo is specified
             gh_clone_snippet = ""
@@ -502,12 +552,12 @@ class _MainWindowTasksInteractiveMixin:
             docker_pull_cmd = " ".join(shlex.quote(part) for part in docker_pull_parts)
 
             host_script_parts = [
-                f'CONTAINER_NAME={shlex.quote(container_name)}',
-                f'TMP_SYSTEM={shlex.quote(system_tmp_path)}',
-                f'TMP_SETTINGS={shlex.quote(settings_tmp_path)}',
-                f'TMP_ENV={shlex.quote(env_tmp_path)}',
-                f'TMP_HELPME={shlex.quote(helpme_tmp_path)}',
-                f'FINISH_FILE={shlex.quote(finish_path)}',
+                f"CONTAINER_NAME={shlex.quote(container_name)}",
+                f"TMP_SYSTEM={shlex.quote(system_tmp_path)}",
+                f"TMP_SETTINGS={shlex.quote(settings_tmp_path)}",
+                f"TMP_ENV={shlex.quote(env_tmp_path)}",
+                f"TMP_HELPME={shlex.quote(helpme_tmp_path)}",
+                f"FINISH_FILE={shlex.quote(finish_path)}",
                 'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
                 'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
                 'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
@@ -525,8 +575,8 @@ class _MainWindowTasksInteractiveMixin:
                 host_script_parts.append(gh_clone_snippet)
             host_script_parts.extend(
                 [
-                    f"{docker_pull_cmd} || {{ STATUS=$?; echo \"[host] docker pull failed (exit $STATUS)\"; write_finish \"$STATUS\"; read -r -p \"Press Enter to close...\"; exit $STATUS; }}",
-                    f"{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then echo \"[host] container command failed (exit $STATUS)\"; fi; write_finish \"$STATUS\"; if [ $STATUS -ne 0 ]; then read -r -p \"Press Enter to close...\"; fi; exit $STATUS",
+                    f'{docker_pull_cmd} || {{ STATUS=$?; echo "[host] docker pull failed (exit $STATUS)"; write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; }}',
+                    f'{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then echo "[host] container command failed (exit $STATUS)"; fi; write_finish "$STATUS"; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS',
                 ]
             )
             host_script = " ; ".join(host_script_parts)
@@ -539,8 +589,12 @@ class _MainWindowTasksInteractiveMixin:
             self._settings_data["active_environment_id"] = env_id
             self._settings_data["interactive_terminal_id"] = str(terminal_id or "")
             interactive_key = self._interactive_command_key(agent_cli)
-            if not self._is_agent_help_interactive_launch(prompt=prompt, command=command):
-                self._settings_data[interactive_key] = self._sanitize_interactive_command_value(interactive_key, command)
+            if not self._is_agent_help_interactive_launch(
+                prompt=prompt, command=command
+            ):
+                self._settings_data[interactive_key] = (
+                    self._sanitize_interactive_command_value(interactive_key, command)
+                )
             self._apply_active_environment_to_new_task()
             self._schedule_save()
 
@@ -550,13 +604,21 @@ class _MainWindowTasksInteractiveMixin:
             self._details.update_task(task)
             self._schedule_save()
             self._start_interactive_finish_watch(task_id, finish_path)
-            self._on_task_log(task_id, f"[interactive] launched in {_safe_str(getattr(opt, 'label', 'Terminal'))}")
+            self._on_task_log(
+                task_id,
+                f"[interactive] launched in {_safe_str(getattr(opt, 'label', 'Terminal'))}",
+            )
 
             launch_in_terminal(opt, host_script, cwd=host_workdir)
             self._show_dashboard()
             self._new_task.reset_for_new_run()
         except Exception as exc:
-            for tmp in (system_tmp_path, settings_tmp_path, env_tmp_path, helpme_tmp_path):
+            for tmp in (
+                system_tmp_path,
+                settings_tmp_path,
+                env_tmp_path,
+                helpme_tmp_path,
+            ):
                 try:
                     if tmp and os.path.exists(tmp):
                         os.unlink(tmp)
@@ -571,10 +633,11 @@ class _MainWindowTasksInteractiveMixin:
             self._schedule_save()
             QMessageBox.warning(self, "Failed to launch terminal", str(exc))
 
-
     def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
         task_id = str(task_id or "").strip()
-        finish_path = os.path.abspath(os.path.expanduser(str(finish_path or "").strip()))
+        finish_path = os.path.abspath(
+            os.path.expanduser(str(finish_path or "").strip())
+        )
         if not task_id or not finish_path:
             return
 

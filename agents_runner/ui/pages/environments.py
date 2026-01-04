@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
-from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QTabWidget
@@ -155,7 +154,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         grid.addWidget(QLabel("Agent CLI Flags"), 3, 0)
         grid.addWidget(self._agent_cli_args, 3, 1, 1, 2)
 
-        self._gh_pr_metadata_enabled = QCheckBox("Allow agent to set PR title/body (non-interactive only)")
+        self._gh_pr_metadata_enabled = QCheckBox(
+            "Allow agent to set PR title/body (non-interactive only)"
+        )
         self._gh_pr_metadata_enabled.setToolTip(
             "When enabled and Workspace is a GitHub repo (clone), a per-task JSON file is mounted into the container.\n"
             "The agent is prompted to update it with a PR title/body, which will be used when opening the PR."
@@ -189,19 +190,31 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._gh_management_mode = QComboBox(general_tab)
         self._gh_management_mode.addItem("Use Settings workdir", GH_MANAGEMENT_NONE)
         self._gh_management_mode.addItem("Lock to local folder", GH_MANAGEMENT_LOCAL)
-        self._gh_management_mode.addItem("Lock to GitHub repo (clone)", GH_MANAGEMENT_GITHUB)
-        self._gh_management_mode.currentIndexChanged.connect(self._sync_gh_management_controls)
+        self._gh_management_mode.addItem(
+            "Lock to GitHub repo (clone)", GH_MANAGEMENT_GITHUB
+        )
+        self._gh_management_mode.currentIndexChanged.connect(
+            self._sync_gh_management_controls
+        )
 
         self._gh_management_target = QLineEdit(general_tab)
-        self._gh_management_target.setPlaceholderText("owner/repo, https://github.com/owner/repo, or /path/to/folder")
-        self._gh_management_target.textChanged.connect(self._sync_gh_management_controls)
+        self._gh_management_target.setPlaceholderText(
+            "owner/repo, https://github.com/owner/repo, or /path/to/folder"
+        )
+        self._gh_management_target.textChanged.connect(
+            self._sync_gh_management_controls
+        )
 
         self._gh_management_browse = QPushButton("Browse…", general_tab)
         self._gh_management_browse.setFixedWidth(100)
         self._gh_management_browse.clicked.connect(self._pick_gh_management_folder)
 
-        self._gh_use_host_cli = QCheckBox("Use host `gh` for clone/PR (if installed)", general_tab)
-        self._gh_use_host_cli.setToolTip("When disabled, cloning uses `git` and PR creation is skipped.")
+        self._gh_use_host_cli = QCheckBox(
+            "Use host `gh` for clone/PR (if installed)", general_tab
+        )
+        self._gh_use_host_cli.setToolTip(
+            "When disabled, cloning uses `git` and PR creation is skipped."
+        )
         self._gh_use_host_cli.setVisible(False)
 
         self._gh_management_hint = QLabel(
@@ -218,7 +231,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         general_layout.addLayout(grid)
         general_layout.addStretch(1)
 
-        self._preflight_enabled = QCheckBox("Enable environment preflight bash (runs after Settings preflight)")
+        self._preflight_enabled = QCheckBox(
+            "Enable environment preflight bash (runs after Settings preflight)"
+        )
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
@@ -283,7 +298,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._env_select.blockSignals(True)
         try:
             self._env_select.clear()
-            ordered = sorted(self._environments.values(), key=lambda e: (e.name or e.env_id).lower())
+            ordered = sorted(
+                self._environments.values(), key=lambda e: (e.name or e.env_id).lower()
+            )
             for env in ordered:
                 self._env_select.addItem(env.name or env.env_id, env.env_id)
             desired = active_id or current
@@ -328,13 +345,24 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._color.setCurrentIndex(idx)
         self._host_codex_dir.setText(env.host_codex_dir)
         self._agent_cli_args.setText(env.agent_cli_args)
-        self._max_agents_running.setText(str(int(getattr(env, "max_agents_running", -1))))
-        is_github_env = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) == GH_MANAGEMENT_GITHUB
-        self._gh_pr_metadata_enabled.setChecked(bool(getattr(env, "gh_pr_metadata_enabled", False)))
+        self._max_agents_running.setText(
+            str(int(getattr(env, "max_agents_running", -1)))
+        )
+        is_github_env = (
+            normalize_gh_management_mode(
+                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
+            )
+            == GH_MANAGEMENT_GITHUB
+        )
+        self._gh_pr_metadata_enabled.setChecked(
+            bool(getattr(env, "gh_pr_metadata_enabled", False))
+        )
         self._gh_pr_metadata_enabled.setEnabled(is_github_env)
         self._gh_pr_metadata_label.setVisible(is_github_env)
         self._gh_pr_metadata_row.setVisible(is_github_env)
-        idx = self._gh_management_mode.findData(normalize_gh_management_mode(env.gh_management_mode))
+        idx = self._gh_management_mode.findData(
+            normalize_gh_management_mode(env.gh_management_mode)
+        )
         if idx >= 0:
             self._gh_management_mode.setCurrentIndex(idx)
         self._gh_management_target.setText(str(env.gh_management_target or ""))
@@ -372,7 +400,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._load_selected()
 
     def _pick_codex_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Select default host Config folder", self._host_codex_dir.text())
+        path = QFileDialog.getExistingDirectory(
+            self, "Select default host Config folder", self._host_codex_dir.text()
+        )
         if path:
             self._host_codex_dir.setText(path)
 

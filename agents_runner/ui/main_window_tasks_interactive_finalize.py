@@ -47,7 +47,8 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         self._on_task_log(task_id, f"[interactive] exited with {task.exit_code}")
 
         if (
-            normalize_gh_management_mode(task.gh_management_mode) == GH_MANAGEMENT_GITHUB
+            normalize_gh_management_mode(task.gh_management_mode)
+            == GH_MANAGEMENT_GITHUB
             and task.gh_repo_root
             and task.gh_branch
             and not task.gh_pr_url
@@ -55,7 +56,10 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             base = str(task.gh_base_branch or "").strip()
             base_display = base or "auto"
             message = f"Interactive run finished.\n\nCreate a PR from {task.gh_branch} -> {base_display}?"
-            if QMessageBox.question(self, "Create pull request?", message) == QMessageBox.StandardButton.Yes:
+            if (
+                QMessageBox.question(self, "Create pull request?", message)
+                == QMessageBox.StandardButton.Yes
+            ):
                 threading.Thread(
                     target=self._finalize_gh_management_worker,
                     args=(
@@ -98,9 +102,13 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             "Prompt:\n"
             f"{(prompt_text or '').strip()}\n"
         )
-        metadata = load_pr_metadata(pr_metadata_path or "") if pr_metadata_path else None
+        metadata = (
+            load_pr_metadata(pr_metadata_path or "") if pr_metadata_path else None
+        )
         if metadata is not None and (metadata.title or metadata.body):
-            self.host_log.emit(task_id, f"[gh] using PR metadata from {pr_metadata_path}")
+            self.host_log.emit(
+                task_id, f"[gh] using PR metadata from {pr_metadata_path}"
+            )
         title = (
             normalize_pr_title(str(metadata.title or ""), fallback=default_title)
             if metadata is not None
@@ -110,7 +118,9 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         if not body:
             body = default_body
 
-        self.host_log.emit(task_id, f"[gh] preparing PR from {branch} -> {base_branch or 'auto'}")
+        self.host_log.emit(
+            task_id, f"[gh] preparing PR from {branch} -> {base_branch or 'auto'}"
+        )
         try:
             pr_url = commit_push_and_pr(
                 repo_root,
@@ -133,8 +143,10 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             self.host_log.emit(task_id, "[gh] no changes to commit; skipping PR")
             return
         if pr_url == "":
-            self.host_log.emit(task_id, "[gh] pushed branch; PR creation skipped (gh disabled or missing)")
+            self.host_log.emit(
+                task_id,
+                "[gh] pushed branch; PR creation skipped (gh disabled or missing)",
+            )
             return
         self.host_pr_url.emit(task_id, pr_url)
         self.host_log.emit(task_id, f"[gh] PR: {pr_url}")
-

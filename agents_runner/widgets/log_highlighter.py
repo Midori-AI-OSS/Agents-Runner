@@ -54,7 +54,10 @@ class LogHighlighter(QSyntaxHighlighter):
             (r"\*\*[^*]+\*\*", fmt(zinc, True)),
             (r"__[^_]+__", fmt(zinc, True)),
             (r"`[^`]+`", fmt_block(violet, background=QColor(168, 85, 247, 28))),
-            (r"```.*$", fmt_block(violet, background=QColor(168, 85, 247, 28), bold=True)),
+            (
+                r"```.*$",
+                fmt_block(violet, background=QColor(168, 85, 247, 28), bold=True),
+            ),
             (r"https?://\S+", fmt(cyan, False)),
             (r"\bTODO\b", fmt(amber, True)),
             (r"\bNOTE\b", fmt(slate, True)),

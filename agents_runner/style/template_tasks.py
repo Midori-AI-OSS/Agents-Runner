@@ -150,4 +150,3 @@ TEMPLATE_TASKS = """    QWidget#TaskList {
         font-size: 12px;
     }
     """
-

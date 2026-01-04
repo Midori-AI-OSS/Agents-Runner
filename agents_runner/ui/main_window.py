@@ -37,7 +37,9 @@ from agents_runner.ui.main_window_settings import _MainWindowSettingsMixin
 from agents_runner.ui.main_window_task_events import _MainWindowTaskEventsMixin
 from agents_runner.ui.main_window_task_review import _MainWindowTaskReviewMixin
 from agents_runner.ui.main_window_tasks_agent import _MainWindowTasksAgentMixin
-from agents_runner.ui.main_window_tasks_interactive import _MainWindowTasksInteractiveMixin
+from agents_runner.ui.main_window_tasks_interactive import (
+    _MainWindowTasksInteractiveMixin,
+)
 from agents_runner.ui.main_window_tasks_interactive_finalize import (
     _MainWindowTasksInteractiveFinalizeMixin,
 )
@@ -75,7 +77,9 @@ class MainWindow(
             "preflight_enabled": False,
             "preflight_script": "",
             "host_workdir": os.environ.get("CODEX_HOST_WORKDIR", os.getcwd()),
-            "host_codex_dir": os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")),
+            "host_codex_dir": os.environ.get(
+                "CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")
+            ),
             "host_claude_dir": os.path.expanduser("~/.claude"),
             "host_copilot_dir": os.path.expanduser("~/.copilot"),
             "host_gemini_dir": os.path.expanduser("~/.gemini"),
@@ -107,8 +111,12 @@ class MainWindow(
 
         self.host_log.connect(self._on_host_log, Qt.QueuedConnection)
         self.host_pr_url.connect(self._on_host_pr_url, Qt.QueuedConnection)
-        self.interactive_finished.connect(self._on_interactive_finished, Qt.QueuedConnection)
-        self.repo_branches_ready.connect(self._on_repo_branches_ready, Qt.QueuedConnection)
+        self.interactive_finished.connect(
+            self._on_interactive_finished, Qt.QueuedConnection
+        )
+        self.repo_branches_ready.connect(
+            self._on_repo_branches_ready, Qt.QueuedConnection
+        )
 
         self._dashboard_ticker = QTimer(self)
         self._dashboard_ticker.setInterval(1000)
@@ -148,7 +156,9 @@ class MainWindow(
         self._btn_settings = QToolButton()
         self._btn_settings.setText("Settings")
         self._btn_settings.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self._btn_settings.setIcon(self.style().standardIcon(QStyle.SP_FileDialogDetailedView))
+        self._btn_settings.setIcon(
+            self.style().standardIcon(QStyle.SP_FileDialogDetailedView)
+        )
         self._btn_settings.clicked.connect(self._show_settings)
 
         top_layout.addWidget(self._btn_home)
@@ -175,11 +185,15 @@ class MainWindow(
         self._envs_page = EnvironmentsPage()
         self._envs_page.back_requested.connect(self._show_dashboard)
         self._envs_page.updated.connect(self._reload_environments, Qt.QueuedConnection)
-        self._envs_page.test_preflight_requested.connect(self._on_environment_test_preflight, Qt.QueuedConnection)
+        self._envs_page.test_preflight_requested.connect(
+            self._on_environment_test_preflight, Qt.QueuedConnection
+        )
         self._settings = SettingsPage()
         self._settings.back_requested.connect(self._show_dashboard)
         self._settings.saved.connect(self._apply_settings, Qt.QueuedConnection)
-        self._settings.test_preflight_requested.connect(self._on_settings_test_preflight, Qt.QueuedConnection)
+        self._settings.test_preflight_requested.connect(
+            self._on_settings_test_preflight, Qt.QueuedConnection
+        )
 
         self._stack = QWidget()
         self._stack_layout = QVBoxLayout(self._stack)
@@ -203,14 +217,12 @@ class MainWindow(
         self._apply_settings_to_pages()
         self._try_start_queued_tasks()
 
-
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._settings_data["window_w"] = int(self.width())
         self._settings_data["window_h"] = int(self.height())
         if hasattr(self, "_save_timer"):
             self._schedule_save()
-
 
     def closeEvent(self, event) -> None:
         try:

@@ -14,7 +14,13 @@ class TaskRunnerBridge(QObject):
     log = Signal(str)
     done = Signal(int, object)
 
-    def __init__(self, task_id: str, config: DockerRunnerConfig, prompt: str = "", mode: str = "codex") -> None:
+    def __init__(
+        self,
+        task_id: str,
+        config: DockerRunnerConfig,
+        prompt: str = "",
+        mode: str = "codex",
+    ) -> None:
         super().__init__()
         self.task_id = task_id
         if mode == "preflight":

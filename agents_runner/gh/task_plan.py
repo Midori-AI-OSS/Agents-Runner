@@ -21,12 +21,16 @@ _MIDORI_AI_URL = "https://github.com/Midori-AI-OSS/Midori-AI"
 _PR_ATTRIBUTION_MARKER = "<!-- midori-ai-agents-runner-pr-footer -->"
 
 
-def _append_pr_attribution_footer(body: str, agent_cli: str = "", agent_cli_args: str = "") -> str:
+def _append_pr_attribution_footer(
+    body: str, agent_cli: str = "", agent_cli_args: str = ""
+) -> str:
     body = (body or "").rstrip()
     if _PR_ATTRIBUTION_MARKER in body:
         return body + "\n"
 
-    agent_used = " ".join(part for part in (agent_cli.strip(), agent_cli_args.strip()) if part)
+    agent_used = " ".join(
+        part for part in (agent_cli.strip(), agent_cli_args.strip()) if part
+    )
     if not agent_used:
         agent_used = "(unknown)"
 
@@ -78,7 +82,15 @@ def _has_origin_branch(repo_root: str, branch: str) -> bool:
     if not branch:
         return False
     proc = _run(
-        ["git", "-C", repo_root, "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{branch}"],
+        [
+            "git",
+            "-C",
+            repo_root,
+            "show-ref",
+            "--verify",
+            "--quiet",
+            f"refs/remotes/origin/{branch}",
+        ],
         timeout_s=8.0,
     )
     return proc.returncode == 0
@@ -92,7 +104,10 @@ def _update_base_branch_from_origin(repo_root: str, base_branch: str) -> None:
     if not _has_origin_branch(repo_root, base_branch):
         return
     _require_ok(
-        _run(["git", "-C", repo_root, "merge", "--ff-only", f"origin/{base_branch}"], timeout_s=120.0),
+        _run(
+            ["git", "-C", repo_root, "merge", "--ff-only", f"origin/{base_branch}"],
+            timeout_s=120.0,
+        ),
         args=["git", "merge", "--ff-only"],
     )
 
@@ -105,14 +120,27 @@ def prepare_branch_for_task(
 ) -> tuple[str, str]:
     repo_root = _expand_dir(repo_root)
 
-    _require_ok(_run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0), args=["git", "fetch"])
+    _require_ok(
+        _run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0),
+        args=["git", "fetch"],
+    )
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
-    checkout_proc = _run(["git", "-C", repo_root, "checkout", "-f", base_branch], timeout_s=20.0)
+    checkout_proc = _run(
+        ["git", "-C", repo_root, "checkout", "-f", base_branch], timeout_s=20.0
+    )
     if checkout_proc.returncode != 0:
         _require_ok(
             _run(
-                ["git", "-C", repo_root, "checkout", "-B", base_branch, f"origin/{base_branch}"],
+                [
+                    "git",
+                    "-C",
+                    repo_root,
+                    "checkout",
+                    "-B",
+                    base_branch,
+                    f"origin/{base_branch}",
+                ],
                 timeout_s=20.0,
             ),
             args=["git", "checkout", "-B", base_branch],
@@ -120,7 +148,9 @@ def prepare_branch_for_task(
     _update_base_branch_from_origin(repo_root, base_branch)
 
     if not git_is_clean(repo_root):
-        raise GhManagementError("repo has uncommitted changes; commit/stash before running")
+        raise GhManagementError(
+            "repo has uncommitted changes; commit/stash before running"
+        )
 
     _require_ok(
         _run(["git", "-C", repo_root, "checkout", "-B", branch], timeout_s=20.0),
@@ -150,7 +180,9 @@ def plan_repo_task(
     branch = _sanitize_branch(f"midoriaiagents/{task_id}")
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
-    return RepoPlan(workdir=workdir, repo_root=repo_root, base_branch=base_branch, branch=branch)
+    return RepoPlan(
+        workdir=workdir, repo_root=repo_root, base_branch=base_branch, branch=branch
+    )
 
 
 def commit_push_and_pr(
@@ -166,7 +198,9 @@ def commit_push_and_pr(
 ) -> str | None:
     repo_root = _expand_dir(repo_root)
     base_branch = str(base_branch or "").strip() or _pick_auto_base_branch(repo_root)
-    body = _append_pr_attribution_footer(body, agent_cli=agent_cli, agent_cli_args=agent_cli_args)
+    body = _append_pr_attribution_footer(
+        body, agent_cli=agent_cli, agent_cli_args=agent_cli_args
+    )
 
     _require_ok(
         _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
@@ -178,8 +212,13 @@ def commit_push_and_pr(
     has_worktree_changes = bool((proc.stdout or "").strip())
 
     if has_worktree_changes:
-        _require_ok(_run(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0), args=["git", "add"])
-        commit_proc = _run(["git", "-C", repo_root, "commit", "-m", title], timeout_s=60.0)
+        _require_ok(
+            _run(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0),
+            args=["git", "add"],
+        )
+        commit_proc = _run(
+            ["git", "-C", repo_root, "commit", "-m", title], timeout_s=60.0
+        )
         if commit_proc.returncode != 0:
             combined = (commit_proc.stdout or "") + "\n" + (commit_proc.stderr or "")
             if "nothing to commit" not in combined.lower():
@@ -187,7 +226,10 @@ def commit_push_and_pr(
 
     ahead_count = None
     for base_ref in (base_branch, f"origin/{base_branch}"):
-        count_proc = _run(["git", "-C", repo_root, "rev-list", "--count", f"{base_ref}..HEAD"], timeout_s=15.0)
+        count_proc = _run(
+            ["git", "-C", repo_root, "rev-list", "--count", f"{base_ref}..HEAD"],
+            timeout_s=15.0,
+        )
         if count_proc.returncode == 0:
             try:
                 ahead_count = int((count_proc.stdout or "").strip() or "0")
@@ -198,7 +240,9 @@ def commit_push_and_pr(
     if not has_worktree_changes and (ahead_count is not None and ahead_count <= 0):
         return None
 
-    push_proc = _run(["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0)
+    push_proc = _run(
+        ["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0
+    )
     _require_ok(push_proc, args=["git", "push"])
 
     if not use_gh or not is_gh_available():

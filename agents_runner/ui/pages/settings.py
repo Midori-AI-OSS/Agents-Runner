@@ -103,7 +103,9 @@ class SettingsPage(QWidget):
         browse_gemini.setFixedWidth(100)
         browse_gemini.clicked.connect(self._pick_gemini_dir)
 
-        self._preflight_enabled = QCheckBox("Enable settings preflight bash (runs on all envs, before env preflight)")
+        self._preflight_enabled = QCheckBox(
+            "Enable settings preflight bash (runs on all envs, before env preflight)"
+        )
         self._append_pixelarch_context = QCheckBox("Append PixelArch context")
         self._append_pixelarch_context.setToolTip(
             "When enabled, appends a short note to the end of the prompt passed to Run Agent.\n"
@@ -183,18 +185,26 @@ class SettingsPage(QWidget):
         shell_value = str(settings.get("shell") or "bash").strip().lower()
         self._set_combo_value(self._shell, shell_value, fallback="bash")
 
-        host_codex_dir = os.path.expanduser(str(settings.get("host_codex_dir") or "").strip())
+        host_codex_dir = os.path.expanduser(
+            str(settings.get("host_codex_dir") or "").strip()
+        )
         if not host_codex_dir:
             host_codex_dir = os.path.expanduser("~/.codex")
         self._host_codex_dir.setText(host_codex_dir)
 
-        host_claude_dir = os.path.expanduser(str(settings.get("host_claude_dir") or "").strip())
+        host_claude_dir = os.path.expanduser(
+            str(settings.get("host_claude_dir") or "").strip()
+        )
         self._host_claude_dir.setText(host_claude_dir)
 
-        host_copilot_dir = os.path.expanduser(str(settings.get("host_copilot_dir") or "").strip())
+        host_copilot_dir = os.path.expanduser(
+            str(settings.get("host_copilot_dir") or "").strip()
+        )
         self._host_copilot_dir.setText(host_copilot_dir)
 
-        host_gemini_dir = os.path.expanduser(str(settings.get("host_gemini_dir") or "").strip())
+        host_gemini_dir = os.path.expanduser(
+            str(settings.get("host_gemini_dir") or "").strip()
+        )
         self._host_gemini_dir.setText(host_gemini_dir)
 
         enabled = bool(settings.get("preflight_enabled") or False)
@@ -202,19 +212,31 @@ class SettingsPage(QWidget):
         self._preflight_script.setEnabled(enabled)
         self._preflight_script.setPlainText(str(settings.get("preflight_script") or ""))
 
-        self._append_pixelarch_context.setChecked(bool(settings.get("append_pixelarch_context") or False))
+        self._append_pixelarch_context.setChecked(
+            bool(settings.get("append_pixelarch_context") or False)
+        )
 
     def get_settings(self) -> dict:
         return {
             "use": str(self._use.currentData() or "codex"),
             "shell": str(self._shell.currentData() or "bash"),
-            "host_codex_dir": os.path.expanduser(str(self._host_codex_dir.text() or "").strip()),
-            "host_claude_dir": os.path.expanduser(str(self._host_claude_dir.text() or "").strip()),
-            "host_copilot_dir": os.path.expanduser(str(self._host_copilot_dir.text() or "").strip()),
-            "host_gemini_dir": os.path.expanduser(str(self._host_gemini_dir.text() or "").strip()),
+            "host_codex_dir": os.path.expanduser(
+                str(self._host_codex_dir.text() or "").strip()
+            ),
+            "host_claude_dir": os.path.expanduser(
+                str(self._host_claude_dir.text() or "").strip()
+            ),
+            "host_copilot_dir": os.path.expanduser(
+                str(self._host_copilot_dir.text() or "").strip()
+            ),
+            "host_gemini_dir": os.path.expanduser(
+                str(self._host_gemini_dir.text() or "").strip()
+            ),
             "preflight_enabled": bool(self._preflight_enabled.isChecked()),
             "preflight_script": str(self._preflight_script.toPlainText() or ""),
-            "append_pixelarch_context": bool(self._append_pixelarch_context.isChecked()),
+            "append_pixelarch_context": bool(
+                self._append_pixelarch_context.isChecked()
+            ),
         }
 
     def _pick_codex_dir(self) -> None:

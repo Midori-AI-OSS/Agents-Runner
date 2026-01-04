@@ -16,7 +16,12 @@ from agents_runner.gh.git_ops import (
     is_git_repo,
 )
 from agents_runner.gh.repo_clone import ensure_github_clone
-from agents_runner.gh.task_plan import RepoPlan, commit_push_and_pr, plan_repo_task, prepare_branch_for_task
+from agents_runner.gh.task_plan import (
+    RepoPlan,
+    commit_push_and_pr,
+    plan_repo_task,
+    prepare_branch_for_task,
+)
 
 __all__ = [
     "GhManagementError",
@@ -37,7 +42,9 @@ __all__ = [
 ]
 
 
-def _delete_checkout_dir(dest_dir: str, *, on_log: Callable[[str], None] | None = None) -> None:
+def _delete_checkout_dir(
+    dest_dir: str, *, on_log: Callable[[str], None] | None = None
+) -> None:
     path = os.path.abspath(os.path.expanduser((dest_dir or "").strip()))
     if not path:
         raise GhManagementError("missing destination directory")
@@ -75,7 +82,9 @@ def prepare_github_repo_for_task(
     if dest_dir:
         lock_file = os.path.join(dest_dir, ".git", "index.lock")
         if os.path.exists(lock_file):
-            _log("[gh] WARNING: found .git/index.lock - another git operation may be in progress")
+            _log(
+                "[gh] WARNING: found .git/index.lock - another git operation may be in progress"
+            )
             _log(f"[gh] If this is a stale lock, remove it: rm {lock_file}")
 
     for attempt in range(2):
@@ -108,7 +117,11 @@ def prepare_github_repo_for_task(
                 branch=plan.branch,
                 base_branch=plan.base_branch,
             )
-            return {"repo_root": plan.repo_root, "base_branch": resolved_base_branch, "branch": branch}
+            return {
+                "repo_root": plan.repo_root,
+                "base_branch": resolved_base_branch,
+                "branch": branch,
+            }
         except GhManagementError as exc:
             if attempt == 0 and recreate_if_needed:
                 _log(f"[gh] repo prep failed; recloning fresh: {exc}")

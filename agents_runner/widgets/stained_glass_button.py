@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractAnimation, QEvent, QEasingCurve, Property, QPropertyAnimation, Qt
+from PySide6.QtCore import (
+    QAbstractAnimation,
+    QEvent,
+    QEasingCurve,
+    Property,
+    QPropertyAnimation,
+    Qt,
+)
 from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath
 from PySide6.QtWidgets import QPushButton, QWidget
 
@@ -52,7 +59,10 @@ class StainedGlassButton(QPushButton):
 
     def set_glass_enabled(self, enabled: bool) -> None:
         self._glass_enabled = bool(enabled)
-        if not self._glass_enabled and self._pulse_anim.state() == QAbstractAnimation.State.Running:
+        if (
+            not self._glass_enabled
+            and self._pulse_anim.state() == QAbstractAnimation.State.Running
+        ):
             self._pulse_anim.stop()
         elif (
             self._glass_enabled
@@ -72,7 +82,11 @@ class StainedGlassButton(QPushButton):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        if self._glass_enabled and self.isEnabled() and self._pulse_anim.state() != QAbstractAnimation.State.Running:
+        if (
+            self._glass_enabled
+            and self.isEnabled()
+            and self._pulse_anim.state() != QAbstractAnimation.State.Running
+        ):
             self._pulse_anim.start()
 
     def hideEvent(self, event) -> None:
@@ -84,7 +98,10 @@ class StainedGlassButton(QPushButton):
         super().changeEvent(event)
         if event.type() == QEvent.Type.EnabledChange:
             if self._glass_enabled and self.isEnabled():
-                if self.isVisible() and self._pulse_anim.state() != QAbstractAnimation.State.Running:
+                if (
+                    self.isVisible()
+                    and self._pulse_anim.state() != QAbstractAnimation.State.Running
+                ):
                     self._pulse_anim.start()
             else:
                 if self._pulse_anim.state() == QAbstractAnimation.State.Running:
@@ -157,11 +174,15 @@ class StainedGlassButton(QPushButton):
                 fill_alpha = min(135, fill_alpha + 18)
             if self.isDown():
                 fill_alpha = max(55, fill_alpha - 16)
-            painter.fillPath(path, QColor(tinted.red(), tinted.green(), tinted.blue(), fill_alpha))
+            painter.fillPath(
+                path, QColor(tinted.red(), tinted.green(), tinted.blue(), fill_alpha)
+            )
 
             grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
             grad.setColorAt(0.0, QColor(255, 255, 255, 14 + int(10 * pulse)))
-            grad.setColorAt(0.55, QColor(env.red(), env.green(), env.blue(), 16 + int(10 * pulse)))
+            grad.setColorAt(
+                0.55, QColor(env.red(), env.green(), env.blue(), 16 + int(10 * pulse))
+            )
             grad.setColorAt(1.0, QColor(0, 0, 0, 24))
             painter.fillPath(path, QBrush(grad))
 
@@ -171,15 +192,26 @@ class StainedGlassButton(QPushButton):
             x0 = rect.left()
             y0 = rect.top()
 
-            shard_color = QColor(env.red(), env.green(), env.blue(), 22 + int(12 * pulse))
-            shard_color_2 = QColor(*_blend_rgb(env, QColor(255, 255, 255), 0.25).getRgb()[:3], 16 + int(10 * pulse))
+            shard_color = QColor(
+                env.red(), env.green(), env.blue(), 22 + int(12 * pulse)
+            )
+            shard_color_2 = QColor(
+                *_blend_rgb(env, QColor(255, 255, 255), 0.25).getRgb()[:3],
+                16 + int(10 * pulse),
+            )
             edge = QColor(255, 255, 255, 12 + int(6 * pulse))
 
             shards = [
                 (shard_color, [(0.00, 0.10), (0.30, 0.00), (0.55, 0.28), (0.18, 0.40)]),
-                (shard_color_2, [(0.56, 0.00), (1.00, 0.18), (0.88, 0.52), (0.56, 0.36)]),
+                (
+                    shard_color_2,
+                    [(0.56, 0.00), (1.00, 0.18), (0.88, 0.52), (0.56, 0.36)],
+                ),
                 (shard_color, [(0.05, 0.62), (0.28, 0.44), (0.56, 0.72), (0.22, 0.96)]),
-                (shard_color_2, [(0.62, 0.58), (0.92, 0.44), (1.00, 0.88), (0.76, 1.00)]),
+                (
+                    shard_color_2,
+                    [(0.62, 0.58), (0.92, 0.44), (1.00, 0.88), (0.76, 1.00)],
+                ),
             ]
 
             for color, points in shards:

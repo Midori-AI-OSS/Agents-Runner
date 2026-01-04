@@ -50,7 +50,9 @@ def ensure_github_clone(
     if prefer_gh and is_gh_available():
         proc = _run(["gh", "repo", "clone", repo, dest_dir], timeout_s=300.0)
     else:
-        proc = subprocess.CompletedProcess(args=["gh"], returncode=127, stdout="", stderr="gh not found")
+        proc = subprocess.CompletedProcess(
+            args=["gh"], returncode=127, stdout="", stderr="gh not found"
+        )
     if proc.returncode != 0:
         proc = _run(["git", "clone", repo, dest_dir], timeout_s=300.0)
     _require_ok(proc, args=["clone", repo, dest_dir])

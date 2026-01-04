@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QFocusEvent
 from PySide6.QtWidgets import QCheckBox
@@ -13,16 +12,16 @@ from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
-from agents_runner.environments import Environment
 from agents_runner.environments.model import PromptConfig
 
 
 class FocusOutPlainTextEdit(QPlainTextEdit):
     """QPlainTextEdit that emits a signal when focus is lost.
-    
+
     Emits focusLost signal when the widget loses focus, allowing consumers
     to delay processing until the user finishes editing.
     """
+
     focusLost = Signal()
 
     def focusOutEvent(self, event: QFocusEvent) -> None:
@@ -49,7 +48,9 @@ class PromptsTabWidget(QWidget):
         unlock_row = QHBoxLayout()
         unlock_row.setSpacing(10)
         self._unlock_btn = QPushButton("Unlock Prompts")
-        self._unlock_btn.setToolTip("Enable custom prompt injection for this environment")
+        self._unlock_btn.setToolTip(
+            "Enable custom prompt injection for this environment"
+        )
         self._unlock_btn.clicked.connect(self._on_unlock_clicked)
         unlock_row.addWidget(self._unlock_btn)
         unlock_row.addStretch(1)
@@ -98,7 +99,7 @@ class PromptsTabWidget(QWidget):
         result = QMessageBox.warning(
             self,
             "Warning: Unlock Prompts",
-            "Using bad prompts lowers the agent's skill level and will end up with wasted time and effort.\n\n"
+            "Poorly constructed prompts can lead to suboptimal agent output, resulting in wasted time and effort.\n\n"
             "Only edit if you really know what you're doing.\n\n"
             "Do you want to proceed?",
             QMessageBox.Yes | QMessageBox.No,
@@ -109,7 +110,9 @@ class PromptsTabWidget(QWidget):
             self._unlocked = True
             self._unlock_btn.setEnabled(False)
             self._unlock_btn.setText("Prompts Unlocked")
-            self._warning_label.setText("✓ Prompts are unlocked. Configure up to 20 custom prompts below.")
+            self._warning_label.setText(
+                "✓ Prompts are unlocked. Configure up to 20 custom prompts below."
+            )
             self._warning_label.setStyleSheet("color: rgba(80, 250, 123, 200);")
             self._tabs.setVisible(True)
             self._sync_visible_tabs()
@@ -157,13 +160,17 @@ class PromptsTabWidget(QWidget):
         if unlocked:
             self._unlock_btn.setEnabled(False)
             self._unlock_btn.setText("Prompts Unlocked")
-            self._warning_label.setText("✓ Prompts are unlocked. Configure up to 20 custom prompts below.")
+            self._warning_label.setText(
+                "✓ Prompts are unlocked. Configure up to 20 custom prompts below."
+            )
             self._warning_label.setStyleSheet("color: rgba(80, 250, 123, 200);")
             self._tabs.setVisible(True)
         else:
             self._unlock_btn.setEnabled(True)
             self._unlock_btn.setText("Unlock Prompts")
-            self._warning_label.setText("⚠️  Prompts are locked. Click 'Unlock Prompts' to enable.")
+            self._warning_label.setText(
+                "⚠️  Prompts are locked. Click 'Unlock Prompts' to enable."
+            )
             self._warning_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
             self._tabs.setVisible(False)
 
@@ -191,8 +198,5 @@ class PromptsTabWidget(QWidget):
         for tab, enabled_cb, text_edit in self._prompt_tabs:
             text = text_edit.toPlainText().strip()
             if text:
-                prompts.append(PromptConfig(
-                    enabled=enabled_cb.isChecked(),
-                    text=text
-                ))
+                prompts.append(PromptConfig(enabled=enabled_cb.isChecked(), text=text))
         return prompts, self._unlocked

@@ -15,10 +15,10 @@ def build_git_clone_command(
     """Build git clone command with optional gh CLI fallback."""
     if prefer_gh_cli:
         return (
-            f'(command -v gh >/dev/null 2>&1 && gh repo clone {quoted_repo} {quoted_dest}) || '
-            f'git clone {quoted_repo} {quoted_dest}'
+            f"(command -v gh >/dev/null 2>&1 && gh repo clone {quoted_repo} {quoted_dest}) || "
+            f"git clone {quoted_repo} {quoted_dest}"
         )
-    return f'git clone {quoted_repo} {quoted_dest}'
+    return f"git clone {quoted_repo} {quoted_dest}"
 
 
 def build_git_clone_or_update_snippet(
@@ -33,7 +33,7 @@ def build_git_clone_or_update_snippet(
 ) -> str:
     """
     Build shell snippet for git clone/update with branch management.
-    
+
     Args:
         gh_repo: Repository URL or identifier
         host_workdir: Host path to workdir (for display)
@@ -44,20 +44,20 @@ def build_git_clone_or_update_snippet(
         is_locked_env: If True, updates existing repo instead of cloning
     """
     quoted_repo = shlex.quote(gh_repo)
-    
+
     parts = [f'echo "[host] preparing {gh_repo} -> {host_workdir}"']
-    
+
     if is_locked_env:
         # Locked environment: update existing repo
         update_step = (
-            f'if [ -d {quoted_dest}/.git ]; then '
-            f'cd {quoted_dest} && '
+            f"if [ -d {quoted_dest}/.git ]; then "
+            f"cd {quoted_dest} && "
             f'echo "[host] updating locked repo" && '
-            f'git fetch origin; '
-            f'else '
+            f"git fetch origin; "
+            f"else "
             f'echo "[host] error: locked environment requires existing repo at {host_workdir}"; '
-            f'exit 1; '
-            f'fi'
+            f"exit 1; "
+            f"fi"
         )
         parts.append(update_step)
     else:
@@ -69,42 +69,42 @@ def build_git_clone_or_update_snippet(
             prefer_gh_cli=prefer_gh_cli,
         )
         clone_step = (
-            f'if [ -d {quoted_dest} ] && [ -d {quoted_dest}/.git ]; then '
+            f"if [ -d {quoted_dest} ] && [ -d {quoted_dest}/.git ]; then "
             f'echo "[host] repo already exists, skipping clone"; '
-            f'else {clone_cmd} || {{ '
+            f"else {clone_cmd} || {{ "
             f'STATUS=$?; echo "[host] git clone failed (exit $STATUS)"; '
             f'write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; '
-            f'}}; fi'
+            f"}}; fi"
         )
         parts.append(clone_step)
-    
+
     # Checkout base branch if specified
     if desired_base:
         quoted_base = shlex.quote(desired_base)
         base_step = (
-            f'cd {quoted_dest} && '
+            f"cd {quoted_dest} && "
             f'echo "[host] checking out base branch {desired_base}" && '
-            f'git fetch origin && '
-            f'(git checkout {quoted_base} 2>/dev/null || '
-            f'git checkout -b {quoted_base} origin/{quoted_base} 2>/dev/null || '
+            f"git fetch origin && "
+            f"(git checkout {quoted_base} 2>/dev/null || "
+            f"git checkout -b {quoted_base} origin/{quoted_base} 2>/dev/null || "
             f'echo "[host] warning: could not checkout {desired_base}, using default branch")'
         )
         parts.append(base_step)
-    
+
     # Create task branch if task_id is provided
     if task_id:
         branch_name = f"agents-runner-{task_id}"
         quoted_branch = shlex.quote(branch_name)
         branch_step = (
-            f'cd {quoted_dest} && '
+            f"cd {quoted_dest} && "
             f'echo "[host] creating task branch {branch_name}" && '
-            f'(git checkout -b {quoted_branch} 2>/dev/null || '
-            f'git checkout {quoted_branch} 2>/dev/null || '
+            f"(git checkout -b {quoted_branch} 2>/dev/null || "
+            f"git checkout {quoted_branch} 2>/dev/null || "
             f'echo "[host] warning: could not create branch {branch_name}")'
         )
         parts.append(branch_step)
         parts.append(f'echo "[host] ready on branch {branch_name}"')
     else:
-        parts.append(f'echo "[host] repo ready"')
-    
+        parts.append('echo "[host] repo ready"')
+
     return " ; ".join(parts)

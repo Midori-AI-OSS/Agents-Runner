@@ -103,9 +103,16 @@ class GlassRoot(QWidget):
             else:
                 vx = vy = 0.0
 
-            orbs.append(_BackgroundOrb(
-                x=x, y=y, vx=vx, vy=vy, radius=radius, color=colors[idx % len(colors)]
-            ))
+            orbs.append(
+                _BackgroundOrb(
+                    x=x,
+                    y=y,
+                    vx=vx,
+                    vy=vy,
+                    radius=radius,
+                    color=colors[idx % len(colors)],
+                )
+            )
 
         self._orbs = orbs
         self._constrain_orbs()
@@ -172,7 +179,9 @@ class GlassRoot(QWidget):
                 grad = QRadialGradient(center, float(r))
                 c = orb.color
                 grad.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), alpha))
-                grad.setColorAt(0.55, QColor(c.red(), c.green(), c.blue(), int(alpha * 0.30)))
+                grad.setColorAt(
+                    0.55, QColor(c.red(), c.green(), c.blue(), int(alpha * 0.30))
+                )
                 grad.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
                 painter.setBrush(grad)
                 painter.drawEllipse(center, float(r), float(r))
@@ -191,11 +200,26 @@ class GlassRoot(QWidget):
         w = max(1, self.width())
         h = max(1, self.height())
         shards = [
-            (QColor(56, 189, 248, 38), [(0.00, 0.10), (0.38, 0.00), (0.55, 0.23), (0.22, 0.34)]),
-            (QColor(16, 185, 129, 34), [(0.62, 0.00), (1.00, 0.14), (0.88, 0.42), (0.58, 0.28)]),
-            (QColor(139, 92, 246, 28), [(0.08, 0.48), (0.28, 0.38), (0.52, 0.64), (0.20, 0.80)]),
-            (QColor(244, 63, 94, 22), [(0.62, 0.56), (0.94, 0.46), (1.00, 0.82), (0.76, 1.00)]),
-            (QColor(245, 158, 11, 18), [(0.00, 0.78), (0.20, 0.64), (0.40, 1.00), (0.00, 1.00)]),
+            (
+                QColor(56, 189, 248, 38),
+                [(0.00, 0.10), (0.38, 0.00), (0.55, 0.23), (0.22, 0.34)],
+            ),
+            (
+                QColor(16, 185, 129, 34),
+                [(0.62, 0.00), (1.00, 0.14), (0.88, 0.42), (0.58, 0.28)],
+            ),
+            (
+                QColor(139, 92, 246, 28),
+                [(0.08, 0.48), (0.28, 0.38), (0.52, 0.64), (0.20, 0.80)],
+            ),
+            (
+                QColor(244, 63, 94, 22),
+                [(0.62, 0.56), (0.94, 0.46), (1.00, 0.82), (0.76, 1.00)],
+            ),
+            (
+                QColor(245, 158, 11, 18),
+                [(0.00, 0.78), (0.20, 0.64), (0.40, 1.00), (0.00, 1.00)],
+            ),
         ]
 
         for color, points in shards:

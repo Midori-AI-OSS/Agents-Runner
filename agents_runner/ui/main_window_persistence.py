@@ -62,7 +62,6 @@ class _MainWindowPersistenceMixin:
     def _schedule_save(self) -> None:
         self._save_timer.start()
 
-
     def _save_state(self) -> None:
         environments = [serialize_environment(env) for env in self._environment_list()]
         payload = {"settings": dict(self._settings_data), "environments": environments}
@@ -74,7 +73,6 @@ class _MainWindowPersistenceMixin:
                 archived=self._should_archive_task(task),
             )
 
-
     def _load_state(self) -> None:
         try:
             payload = load_state(self._state_path)
@@ -83,18 +81,40 @@ class _MainWindowPersistenceMixin:
         settings = payload.get("settings")
         if isinstance(settings, dict):
             self._settings_data.update(settings)
-        self._settings_data["use"] = normalize_agent(str(self._settings_data.get("use") or "codex"))
+        self._settings_data["use"] = normalize_agent(
+            str(self._settings_data.get("use") or "codex")
+        )
         try:
-            self._settings_data["max_agents_running"] = int(str(self._settings_data.get("max_agents_running", -1)).strip())
+            self._settings_data["max_agents_running"] = int(
+                str(self._settings_data.get("max_agents_running", -1)).strip()
+            )
         except Exception:
             self._settings_data["max_agents_running"] = -1
-        self._settings_data.setdefault("host_claude_dir", os.path.expanduser("~/.claude"))
-        self._settings_data.setdefault("host_copilot_dir", os.path.expanduser("~/.copilot"))
-        self._settings_data.setdefault("host_gemini_dir", os.path.expanduser("~/.gemini"))
-        self._settings_data.setdefault("interactive_command_claude", "--add-dir /home/midori-ai/workspace")
-        self._settings_data.setdefault("interactive_command_copilot", "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace")
-        self._settings_data.setdefault("interactive_command_gemini", "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace")
-        host_codex_dir = os.path.normpath(os.path.expanduser(str(self._settings_data.get("host_codex_dir") or "").strip()))
+        self._settings_data.setdefault(
+            "host_claude_dir", os.path.expanduser("~/.claude")
+        )
+        self._settings_data.setdefault(
+            "host_copilot_dir", os.path.expanduser("~/.copilot")
+        )
+        self._settings_data.setdefault(
+            "host_gemini_dir", os.path.expanduser("~/.gemini")
+        )
+        self._settings_data.setdefault(
+            "interactive_command_claude", "--add-dir /home/midori-ai/workspace"
+        )
+        self._settings_data.setdefault(
+            "interactive_command_copilot",
+            "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace",
+        )
+        self._settings_data.setdefault(
+            "interactive_command_gemini",
+            "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace",
+        )
+        host_codex_dir = os.path.normpath(
+            os.path.expanduser(
+                str(self._settings_data.get("host_codex_dir") or "").strip()
+            )
+        )
         if host_codex_dir == os.path.expanduser("~/.midoriai"):
             self._settings_data["host_codex_dir"] = os.path.expanduser("~/.codex")
         if not str(self._settings_data.get("host_codex_dir") or "").strip():
@@ -107,11 +127,18 @@ class _MainWindowPersistenceMixin:
             self._settings_data["host_copilot_dir"] = os.path.expanduser("~/.copilot")
         if not str(self._settings_data.get("host_gemini_dir") or "").strip():
             self._settings_data["host_gemini_dir"] = os.path.expanduser("~/.gemini")
-        for key in ("interactive_command", "interactive_command_claude", "interactive_command_copilot", "interactive_command_gemini"):
+        for key in (
+            "interactive_command",
+            "interactive_command_claude",
+            "interactive_command_copilot",
+            "interactive_command_gemini",
+        ):
             raw = str(self._settings_data.get(key) or "").strip()
             if not raw:
                 continue
-            self._settings_data[key] = self._sanitize_interactive_command_value(key, raw)
+            self._settings_data[key] = self._sanitize_interactive_command_value(
+                key, raw
+            )
 
         items = load_active_task_payloads(self._state_path)
         loaded: list[Task] = []
@@ -122,7 +149,11 @@ class _MainWindowPersistenceMixin:
             if not task.task_id:
                 continue
             if task.logs:
-                task.logs = [prettify_log_line(line) for line in task.logs if isinstance(line, str)]
+                task.logs = [
+                    prettify_log_line(line)
+                    for line in task.logs
+                    if isinstance(line, str)
+                ]
             status = (task.status or "").lower()
             synced = False
             if status != "queued":

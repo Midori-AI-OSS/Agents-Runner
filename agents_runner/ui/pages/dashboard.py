@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QFontMetrics
@@ -9,7 +8,6 @@ from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
-from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QScrollArea
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QStyle
@@ -20,9 +18,7 @@ from PySide6.QtWidgets import QWidget
 from agents_runner.environments import ALLOWED_STAINS
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import _task_display_status
-from agents_runner.ui.utils import _format_duration
 from agents_runner.ui.utils import _rgba
-from agents_runner.ui.utils import _stain_color
 from agents_runner.ui.utils import _status_color
 from agents_runner.widgets import BouncingLoadingBar
 from agents_runner.widgets import GlassCard
@@ -46,7 +42,9 @@ class ElidedLabel(QLabel):
 
     def _update_elide(self) -> None:
         metrics = QFontMetrics(self.font())
-        elided = metrics.elidedText(self._full_text, Qt.ElideRight, max(10, self.width() - 4))
+        elided = metrics.elidedText(
+            self._full_text, Qt.ElideRight, max(10, self.width() - 4)
+        )
         super().setText(elided)
 
 
@@ -103,7 +101,9 @@ class TaskRow(QWidget):
         self._btn_discard.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_discard.setToolTip("Discard task")
         self._btn_discard.setCursor(Qt.PointingHandCursor)
-        self._btn_discard.setIconSize(self._btn_discard.iconSize().expandedTo(self._glyph.size()))
+        self._btn_discard.setIconSize(
+            self._btn_discard.iconSize().expandedTo(self._glyph.size())
+        )
         self._btn_discard.clicked.connect(self._on_discard_clicked)
 
         layout.addWidget(self._task, 5)
@@ -319,7 +319,9 @@ class DashboardPage(QWidget):
             return stains[(stains.index(current) + 1) % len(stains)]
         return stains[0]
 
-    def upsert_task(self, task: Task, stain: str | None = None, spinner_color: QColor | None = None) -> None:
+    def upsert_task(
+        self, task: Task, stain: str | None = None, spinner_color: QColor | None = None
+    ) -> None:
         row = self._rows.get(task.task_id)
         if row is None:
             row = TaskRow()
