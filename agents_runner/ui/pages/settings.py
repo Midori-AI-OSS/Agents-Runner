@@ -67,6 +67,7 @@ class SettingsPage(QWidget):
         self._use.addItem("Codex", "codex")
         self._use.addItem("Claude", "claude")
         self._use.addItem("GitHub Copilot", "copilot")
+        self._use.addItem("Gemini", "gemini")
 
         self._shell = QComboBox()
         for label, value in [
@@ -96,6 +97,12 @@ class SettingsPage(QWidget):
         browse_copilot.setFixedWidth(100)
         browse_copilot.clicked.connect(self._pick_copilot_dir)
 
+        self._host_gemini_dir = QLineEdit()
+        self._host_gemini_dir.setPlaceholderText(os.path.expanduser("~/.gemini"))
+        browse_gemini = QPushButton("Browse…")
+        browse_gemini.setFixedWidth(100)
+        browse_gemini.clicked.connect(self._pick_gemini_dir)
+
         self._preflight_enabled = QCheckBox("Enable settings preflight bash (runs on all envs, before env preflight)")
         self._append_pixelarch_context = QCheckBox("Append PixelArch context")
         self._append_pixelarch_context.setToolTip(
@@ -122,6 +129,7 @@ class SettingsPage(QWidget):
         codex_label = QLabel("Codex Config folder")
         claude_label = QLabel("Claude Config folder")
         copilot_label = QLabel("Copilot Config folder")
+        gemini_label = QLabel("Gemini Config folder")
 
         grid.addWidget(codex_label, 1, 0)
         grid.addWidget(self._host_codex_dir, 1, 1, 1, 2)
@@ -132,13 +140,17 @@ class SettingsPage(QWidget):
         grid.addWidget(copilot_label, 3, 0)
         grid.addWidget(self._host_copilot_dir, 3, 1, 1, 2)
         grid.addWidget(browse_copilot, 3, 3)
-        grid.addWidget(self._preflight_enabled, 4, 0, 1, 4)
-        grid.addWidget(self._append_pixelarch_context, 5, 0, 1, 4)
+        grid.addWidget(gemini_label, 4, 0)
+        grid.addWidget(self._host_gemini_dir, 4, 1, 1, 2)
+        grid.addWidget(browse_gemini, 4, 3)
+        grid.addWidget(self._preflight_enabled, 5, 0, 1, 4)
+        grid.addWidget(self._append_pixelarch_context, 6, 0, 1, 4)
 
         self._agent_config_widgets: dict[str, tuple[QWidget, ...]] = {
             "codex": (codex_label, self._host_codex_dir, browse_codex),
             "claude": (claude_label, self._host_claude_dir, browse_claude),
             "copilot": (copilot_label, self._host_copilot_dir, browse_copilot),
+            "gemini": (gemini_label, self._host_gemini_dir, browse_gemini),
         }
         self._use.currentIndexChanged.connect(self._sync_agent_config_widgets)
         self._sync_agent_config_widgets()
@@ -182,6 +194,9 @@ class SettingsPage(QWidget):
         host_copilot_dir = os.path.expanduser(str(settings.get("host_copilot_dir") or "").strip())
         self._host_copilot_dir.setText(host_copilot_dir)
 
+        host_gemini_dir = os.path.expanduser(str(settings.get("host_gemini_dir") or "").strip())
+        self._host_gemini_dir.setText(host_gemini_dir)
+
         enabled = bool(settings.get("preflight_enabled") or False)
         self._preflight_enabled.setChecked(enabled)
         self._preflight_script.setEnabled(enabled)
@@ -196,6 +211,7 @@ class SettingsPage(QWidget):
             "host_codex_dir": os.path.expanduser(str(self._host_codex_dir.text() or "").strip()),
             "host_claude_dir": os.path.expanduser(str(self._host_claude_dir.text() or "").strip()),
             "host_copilot_dir": os.path.expanduser(str(self._host_copilot_dir.text() or "").strip()),
+            "host_gemini_dir": os.path.expanduser(str(self._host_gemini_dir.text() or "").strip()),
             "preflight_enabled": bool(self._preflight_enabled.isChecked()),
             "preflight_script": str(self._preflight_script.toPlainText() or ""),
             "append_pixelarch_context": bool(self._append_pixelarch_context.isChecked()),
@@ -227,6 +243,15 @@ class SettingsPage(QWidget):
         )
         if path:
             self._host_copilot_dir.setText(path)
+
+    def _pick_gemini_dir(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "Select Host Gemini Config folder",
+            self._host_gemini_dir.text() or os.path.expanduser("~/.gemini"),
+        )
+        if path:
+            self._host_gemini_dir.setText(path)
 
     def _on_save(self) -> None:
         self.try_autosave()

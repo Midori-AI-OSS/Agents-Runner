@@ -4,7 +4,7 @@ import shlex
 from pathlib import Path
 
 
-SUPPORTED_AGENTS = ("codex", "claude", "copilot")
+SUPPORTED_AGENTS = ("codex", "claude", "copilot", "gemini")
 CONTAINER_HOME = "/home/midori-ai"
 CONTAINER_WORKDIR = "/home/midori-ai/workspace"
 
@@ -20,6 +20,8 @@ def container_config_dir(agent: str) -> str:
         return f"{CONTAINER_HOME}/.claude"
     if agent == "copilot":
         return f"{CONTAINER_HOME}/.copilot"
+    if agent == "gemini":
+        return f"{CONTAINER_HOME}/.gemini"
     return f"{CONTAINER_HOME}/.codex"
 
 
@@ -86,6 +88,17 @@ def build_noninteractive_cmd(
             "--allow-all-tools",
             "--allow-all-paths",
             "--add-dir",
+            container_workdir,
+            *extra_args,
+            "-p",
+            prompt,
+        ]
+        return args
+
+    if agent == "gemini":
+        args = [
+            "gemini",
+            "--include-directories",
             container_workdir,
             *extra_args,
             "-p",

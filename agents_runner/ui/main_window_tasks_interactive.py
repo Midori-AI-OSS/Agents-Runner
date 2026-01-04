@@ -183,6 +183,17 @@ class _MainWindowTasksInteractiveMixin:
                     _move_flag_value_to_end(cmd_parts, {"-p", "--prompt"})
                 elif not has_interactive:
                     cmd_parts.extend(["-i", prompt])
+        elif cmd_parts[0] == "gemini":
+            if agent_cli_args:
+                cmd_parts.extend(agent_cli_args)
+            if "--include-directories" not in cmd_parts:
+                cmd_parts[1:1] = ["--include-directories", "/home/midori-ai/workspace"]
+            if prompt:
+                has_prompt = "-p" in cmd_parts or "--prompt" in cmd_parts
+                if has_prompt:
+                    _move_flag_value_to_end(cmd_parts, {"-p", "--prompt"})
+                else:
+                    cmd_parts.extend(["-p", prompt])
 
         image = PIXELARCH_EMERALD_IMAGE
 
@@ -400,7 +411,7 @@ class _MainWindowTasksInteractiveMixin:
 
             target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
             verify_clause = ""
-            if cmd_parts[0] in {"codex", "claude", "copilot"}:
+            if cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
                 verify_clause = verify_cli_clause(cmd_parts[0])
 
             container_script = "set -euo pipefail; " f"{preflight_clause}{verify_clause}{target_cmd}"
