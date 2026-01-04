@@ -420,8 +420,8 @@ class NewTaskPage(QWidget):
 
     def set_agent_info(self, agent: str, next_agent: str = "") -> None:
         """Set tooltip info showing current and next agent."""
-        agent = str(agent or "").strip().title()
-        next_agent = str(next_agent or "").strip().title()
+        agent = str(agent or "").strip()
+        next_agent = str(next_agent or "").strip()
         
         if next_agent and next_agent != agent:
             tooltip = f"Using: {agent} | Next: {next_agent}"

@@ -9,7 +9,6 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import verify_cli_clause
-from agents_runner.agent_cli import SUPPORTED_AGENTS
 from agents_runner.ui.utils import _looks_like_agent_help_command
 from agents_runner.environments import Environment
 
@@ -126,36 +125,22 @@ class _MainWindowSettingsMixin:
         env: Environment | None,
         settings: dict[str, object],
     ) -> str:
-        """Resolve config directory for a given agent.
+        """Resolve a host config directory for an agent CLI.
 
-        This helper method encapsulates the common logic for determining the
-        config directory for an agent, following this precedence:
-
-        1. Environment-specific agent_selection.agent_config_dirs (normalized keys)
-        2. Global per-agent settings (host_claude_dir, host_copilot_dir, host_codex_dir)
-        3. Legacy env.host_codex_dir override (deprecated, backwards compatibility)
-
-        Args:
-            agent_cli: The normalized agent name (e.g., "codex", "claude", "copilot")
-            env: Optional environment with potential overrides
-            settings: The settings dictionary containing global agent config
-
-        Returns:
-            The resolved config directory path (with ~ expanded)
+        Precedence:
+        1. Environment agent_selection (first matching agent instance with config_dir)
+        2. Global per-agent settings (host_*_dir)
+        3. Legacy env.host_codex_dir override (deprecated)
         """
-        # Check environment agent_selection for per-agent config directory
-        if env and env.agent_selection and env.agent_selection.agent_config_dirs:
-            # Normalize keys to handle case sensitivity issues
-            # Note: We normalize on each call rather than caching because:
-            # 1. This is a lightweight operation (dict comprehension over small dict)
-            # 2. Environments can change between calls
-            # 3. Caching would add complexity with minimal performance benefit
-            normalized_dirs = {
-                normalize_agent(str(name)): path
-                for name, path in env.agent_selection.agent_config_dirs.items()
-            }
-            if agent_cli in normalized_dirs:
-                return os.path.expanduser(str(normalized_dirs[agent_cli] or "").strip())
+        agent_cli = normalize_agent(agent_cli)
+
+        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            for inst in env.agent_selection.agents or []:
+                if normalize_agent(getattr(inst, "agent_cli", "")) != agent_cli:
+                    continue
+                inst_dir = os.path.expanduser(str(getattr(inst, "config_dir", "") or "").strip())
+                if inst_dir:
+                    return inst_dir
 
         # Fall back to global settings-based config dir
         config_dir = ""
@@ -175,11 +160,70 @@ class _MainWindowSettingsMixin:
 
         return os.path.expanduser(str(config_dir or "").strip())
 
+
+    def _select_agent_instance_for_env(
+        self,
+        *,
+        env: Environment,
+        settings: dict[str, object],
+        advance_round_robin: bool,
+    ) -> tuple[str, str, str]:
+        agents = list(getattr(env.agent_selection, "agents", []) or [])
+        if not agents:
+            agent_cli = normalize_agent(str(settings.get("use") or "codex"))
+            config_dir = self._resolve_config_dir_for_agent(agent_cli=agent_cli, env=env, settings=settings)
+            return agent_cli, config_dir, ""
+
+        mode = str(getattr(env.agent_selection, "selection_mode", "") or "round-robin").strip().lower()
+        env_id = str(getattr(env, "env_id", "") or "")
+
+        if not hasattr(self, "_agent_selection_round_robin_cursor"):
+            self._agent_selection_round_robin_cursor = {}
+
+        chosen = agents[0]
+        if mode == "round-robin":
+            cursor = int(getattr(self, "_agent_selection_round_robin_cursor", {}).get(env_id, 0))
+            idx = cursor % len(agents)
+            chosen = agents[idx]
+            if advance_round_robin:
+                getattr(self, "_agent_selection_round_robin_cursor", {})[env_id] = idx + 1
+        elif mode == "least-used":
+            counts: dict[str, int] = {}
+            tasks = getattr(self, "_tasks", {}) or {}
+            for task in tasks.values():
+                if getattr(task, "environment_id", "") != env_id:
+                    continue
+                if not getattr(task, "is_active", lambda: False)():
+                    continue
+                agent_instance_id = str(getattr(task, "agent_instance_id", "") or "").strip()
+                if not agent_instance_id:
+                    continue
+                counts[agent_instance_id] = counts.get(agent_instance_id, 0) + 1
+
+            def _score(inst: object) -> tuple[int, int]:
+                inst_id = str(getattr(inst, "agent_id", "") or "").strip()
+                return counts.get(inst_id, 0), agents.index(inst)
+
+            chosen = min(agents, key=_score)
+
+        agent_cli = normalize_agent(str(getattr(chosen, "agent_cli", "") or "codex"))
+        agent_id = str(getattr(chosen, "agent_id", "") or "").strip()
+
+        config_dir = os.path.expanduser(str(getattr(chosen, "config_dir", "") or "").strip())
+        if not config_dir:
+            config_dir = self._resolve_config_dir_for_agent(agent_cli=agent_cli, env=env, settings=settings)
+        if env and env.host_codex_dir:
+            config_dir = os.path.expanduser(str(env.host_codex_dir or "").strip())
+
+        return agent_cli, config_dir, agent_id
+
+
     def _effective_agent_and_config(
         self,
         *,
         env: Environment | None,
         settings: dict[str, object] | None = None,
+        advance_round_robin: bool = False,
     ) -> tuple[str, str]:
         """Return the effective ``(agent_cli, config_dir)`` for a launch.
 
@@ -187,16 +231,15 @@ class _MainWindowSettingsMixin:
 
         1. Environment ``agent_selection`` override
 
-           * If ``env`` is provided and ``env.agent_selection.enabled_agents`` is
-             non-empty, the first enabled agent is used as ``agent_cli``.
-           * If that agent has an explicit config directory in
-             ``env.agent_selection.agent_config_dirs[agent_cli]`` (with normalized
-             keys), that path is used.
+           * If ``env`` is provided and ``env.agent_selection.agents`` is non-empty,
+             an agent instance is selected based on ``selection_mode``.
+           * If the selected instance has an explicit ``config_dir``, that path is
+             used; otherwise it falls back to global settings.
 
         2. Global UI settings
 
            * If no environment-specific agent is found, the agent is taken from
-             ``settings["use"]`` (defaulting to ``"codex"``) and normalized via
+            ``settings["use"]`` (defaulting to ``"codex"``) and normalized via
              :func:`normalize_agent`.
            * The config directory is then derived from the corresponding
              ``host_*_dir`` entry:
@@ -224,28 +267,16 @@ class _MainWindowSettingsMixin:
             A tuple of (agent_cli, config_dir) where agent_cli is normalized
         """
         settings = settings or self._settings_data
+        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            agent_cli, config_dir, _agent_id = self._select_agent_instance_for_env(
+                env=env,
+                settings=settings,
+                advance_round_robin=advance_round_robin,
+            )
+            return agent_cli, config_dir
+
         agent_cli = normalize_agent(str(settings.get("use") or "codex"))
-
-        # Check if environment has agent_selection override
-        if env and env.agent_selection and env.agent_selection.enabled_agents:
-            # Use first enabled agent from environment
-            original_agent = env.agent_selection.enabled_agents[0]
-            agent_cli = normalize_agent(original_agent)
-            
-            # Log warning if the original agent specification was invalid
-            if original_agent.strip().lower() not in SUPPORTED_AGENTS:
-                logger.warning(
-                    f"Environment agent_selection specified invalid agent '{original_agent}', "
-                    f"using '{agent_cli}' instead. Valid agents: {', '.join(SUPPORTED_AGENTS)}"
-                )
-
-        # Use helper method to resolve config directory
-        config_dir = self._resolve_config_dir_for_agent(
-            agent_cli=agent_cli,
-            env=env,
-            settings=settings,
-        )
-
+        config_dir = self._resolve_config_dir_for_agent(agent_cli=agent_cli, env=env, settings=settings)
         return agent_cli, config_dir
 
     def _effective_host_config_dir(
@@ -259,9 +290,9 @@ class _MainWindowSettingsMixin:
 
         The directory is resolved using the following precedence order:
 
-        1. If an ``env`` is provided and it has an ``agent_selection`` entry with a
-           config directory for this (normalized) ``agent_cli``, that directory is used.
-           Keys in ``agent_config_dirs`` are normalized to handle case sensitivity.
+        1. If an ``env`` is provided and it has an ``agent_selection`` entry with an
+           agent instance matching this (normalized) ``agent_cli`` and a non-empty
+           ``config_dir``, that directory is used.
         2. Otherwise, per-agent settings are consulted:
 
            * ``host_claude_dir`` when ``agent_cli == "claude"``
@@ -317,41 +348,62 @@ class _MainWindowSettingsMixin:
         return True
 
     def _get_next_agent_info(self, *, env: Environment | None) -> tuple[str, str]:
-        """Return (current_agent, next_agent) based on environment configuration.
-        
-        For round-robin mode: next agent in the cycle
-        For least-used mode: agent with lowest usage count
-        For fallback mode: fallback agent from mapping
-        For single agent: empty string for next
-        """
+        """Return (current, next) labels for Run button tooltips."""
         agent_cli, _ = self._effective_agent_and_config(env=env)
-        
-        if not env or not env.agent_selection or not env.agent_selection.enabled_agents:
+
+        if not env or not env.agent_selection or not getattr(env.agent_selection, "agents", None):
             return agent_cli, ""
-        
-        enabled = env.agent_selection.enabled_agents
-        if len(enabled) <= 1:
-            return agent_cli, ""
-        
-        selection_mode = env.agent_selection.selection_mode or "round-robin"
-        
-        if selection_mode == "fallback":
-            # Get fallback from mapping
-            fallback = env.agent_selection.agent_fallbacks.get(agent_cli, "")
-            return agent_cli, fallback
-        
-        if selection_mode == "round-robin":
-            # Find current agent index and get next
-            try:
-                current_idx = enabled.index(agent_cli)
-                next_idx = (current_idx + 1) % len(enabled)
-                return agent_cli, enabled[next_idx]
-            except (ValueError, IndexError):
-                return agent_cli, enabled[0] if enabled else ""
-        
-        if selection_mode == "least-used":
-            # For now, just show the second agent as a placeholder
-            # In a full implementation, this would track usage counts
-            return agent_cli, enabled[1] if len(enabled) > 1 else ""
-        
-        return agent_cli, ""
+
+        agents = list(env.agent_selection.agents or [])
+        if len(agents) <= 1:
+            inst = agents[0] if agents else None
+            if inst is None:
+                return agent_cli, ""
+            return self._format_agent_label(inst), ""
+
+        mode = str(getattr(env.agent_selection, "selection_mode", "") or "round-robin").strip().lower()
+        env_id = str(getattr(env, "env_id", "") or "")
+        cursor_map = getattr(self, "_agent_selection_round_robin_cursor", {}) if hasattr(self, "_agent_selection_round_robin_cursor") else {}
+        cursor = int(cursor_map.get(env_id, 0))
+        current_idx = 0 if mode != "round-robin" else (cursor % len(agents))
+        current = agents[current_idx]
+
+        if mode == "fallback":
+            fallbacks = dict(getattr(env.agent_selection, "agent_fallbacks", {}) or {})
+            wanted_id = str(fallbacks.get(str(getattr(current, "agent_id", "") or "").strip(), "") or "").strip()
+            next_inst = next((a for a in agents if str(getattr(a, "agent_id", "") or "").strip() == wanted_id), None)
+            return self._format_agent_label(current), (self._format_agent_label(next_inst) if next_inst else "")
+
+        if mode == "least-used":
+            tasks = getattr(self, "_tasks", {}) or {}
+            counts: dict[str, int] = {}
+            for task in tasks.values():
+                if getattr(task, "environment_id", "") != env_id:
+                    continue
+                if not getattr(task, "is_active", lambda: False)():
+                    continue
+                inst_id = str(getattr(task, "agent_instance_id", "") or "").strip()
+                if inst_id:
+                    counts[inst_id] = counts.get(inst_id, 0) + 1
+            ordered = sorted(
+                agents,
+                key=lambda a: (counts.get(str(getattr(a, "agent_id", "") or "").strip(), 0), agents.index(a)),
+            )
+            now = ordered[0] if ordered else current
+            nxt = ordered[1] if len(ordered) > 1 else None
+            return self._format_agent_label(now), (self._format_agent_label(nxt) if nxt else "")
+
+        # round-robin (default)
+        next_idx = (current_idx + 1) % len(agents)
+        return self._format_agent_label(current), self._format_agent_label(agents[next_idx])
+
+
+    @staticmethod
+    def _format_agent_label(inst: object | None) -> str:
+        if inst is None:
+            return ""
+        agent_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or "codex"))
+        agent_id = str(getattr(inst, "agent_id", "") or "").strip()
+        if agent_id and agent_id != agent_cli:
+            return f"{agent_cli} ({agent_id})"
+        return agent_cli
