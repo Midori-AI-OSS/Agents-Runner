@@ -121,7 +121,7 @@ class TaskDetailsPage(QWidget):
         self._btn_freeze.setAutoRaise(True)
         self._btn_freeze.setIcon(self.style().standardIcon(QStyle.SP_MediaPause))
         self._btn_freeze.setIconSize(QSize(16, 16))
-        self._btn_freeze.setToolTip("frz (pause container)")
+        self._btn_freeze.setToolTip("Freeze (pause container)")
         self._btn_freeze.clicked.connect(lambda: self._emit_container_action("freeze"))
 
         self._btn_unfreeze = QToolButton()
@@ -129,7 +129,7 @@ class TaskDetailsPage(QWidget):
         self._btn_unfreeze.setAutoRaise(True)
         self._btn_unfreeze.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
         self._btn_unfreeze.setIconSize(QSize(16, 16))
-        self._btn_unfreeze.setToolTip("unfrz (unpause container)")
+        self._btn_unfreeze.setToolTip("Unfreeze (unpause container)")
         self._btn_unfreeze.clicked.connect(lambda: self._emit_container_action("unfreeze"))
 
         self._btn_stop = QToolButton()
@@ -137,15 +137,15 @@ class TaskDetailsPage(QWidget):
         self._btn_stop.setAutoRaise(True)
         self._btn_stop.setIcon(self.style().standardIcon(QStyle.SP_MediaStop))
         self._btn_stop.setIconSize(QSize(16, 16))
-        self._btn_stop.setToolTip("stop container")
+        self._btn_stop.setToolTip("Stop container")
         self._btn_stop.clicked.connect(lambda: self._emit_container_action("stop"))
 
         self._btn_kill = QToolButton()
         self._btn_kill.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_kill.setAutoRaise(True)
-        self._btn_kill.setIcon(self.style().standardIcon(QStyle.SP_MessageBoxCritical))
+        self._btn_kill.setIcon(self.style().standardIcon(QStyle.SP_TitleBarCloseButton))
         self._btn_kill.setIconSize(QSize(16, 16))
-        self._btn_kill.setToolTip("kill container")
+        self._btn_kill.setToolTip("Kill container (force stop)")
         self._btn_kill.clicked.connect(lambda: self._emit_container_action("kill"))
 
         title_row = QHBoxLayout()
