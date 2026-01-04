@@ -33,4 +33,4 @@ uv run main.py
 
 - **State**: `~/.midoriai/agents-runner/state.json`
 - **Environments**: `~/.midoriai/agents-runner/environment-*.json`
-- **Agent Config**: `~/.codex`, `~/.claude`, or `~/.copilot` → `/home/midori-ai/.{agent}` (override: `AGENTS_RUNNER_STATE_PATH`)
+- **Agent Config**: `~/.codex`, `~/.claude`, `~/.gemini` or `~/.copilot` → `/home/midori-ai/.{agent}` (override: `AGENTS_RUNNER_STATE_PATH`)
