@@ -357,7 +357,8 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
     def _on_env_selected(self, index: int) -> None:
         old_env_id = self._current_env_id
-        if not self.try_autosave():
+        new_env_id = str(self._env_select.currentData() or "")
+        if not self.try_autosave(preferred_env_id=new_env_id):
             # Autosave failed, revert dropdown selection
             if old_env_id:
                 self._env_select.blockSignals(True)

@@ -172,7 +172,7 @@ class _EnvironmentsPageActionsMixin:
     def _on_save(self) -> None:
         self.try_autosave()
 
-    def try_autosave(self) -> bool:
+    def try_autosave(self, *, preferred_env_id: str | None = None) -> bool:
         env_id = self._current_env_id
         if not env_id:
             return True
@@ -232,7 +232,7 @@ class _EnvironmentsPageActionsMixin:
             agent_selection=agent_selection,
         )
         save_environment(env)
-        self.updated.emit(env_id)
+        self.updated.emit(preferred_env_id if preferred_env_id is not None else env_id)
         return True
 
     def selected_environment_id(self) -> str:
@@ -300,4 +300,3 @@ class _EnvironmentsPageActionsMixin:
         if env is None:
             return
         self.test_preflight_requested.emit(env)
-
