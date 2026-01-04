@@ -138,7 +138,7 @@ class AgentsTabWidget(QWidget):
         browse_btn = QToolButton()
         browse_btn.setText("...")
         browse_btn.setFixedWidth(30)
-        browse_btn.clicked.connect(lambda checked, r=row: self._browse_config_dir(r))
+        browse_btn.clicked.connect(self._on_browse_clicked)
         
         config_layout.addWidget(config_edit)
         config_layout.addWidget(browse_btn)
@@ -154,12 +154,12 @@ class AgentsTabWidget(QWidget):
         up_btn = QToolButton()
         up_btn.setText("↑")
         up_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        up_btn.clicked.connect(lambda checked, r=row: self._move_agent_up(r))
+        up_btn.clicked.connect(self._on_up_clicked)
 
         down_btn = QToolButton()
         down_btn.setText("↓")
         down_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        down_btn.clicked.connect(lambda checked, r=row: self._move_agent_down(r))
+        down_btn.clicked.connect(self._on_down_clicked)
 
         priority_layout.addWidget(up_btn)
         priority_layout.addWidget(down_btn)
@@ -182,7 +182,7 @@ class AgentsTabWidget(QWidget):
         remove_btn = QToolButton()
         remove_btn.setText("Remove")
         remove_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        remove_btn.clicked.connect(lambda checked, r=row: self._remove_agent(r))
+        remove_btn.clicked.connect(self._on_remove_clicked)
         
         actions_layout.addWidget(remove_btn)
         actions_layout.addStretch(1)
@@ -195,6 +195,56 @@ class AgentsTabWidget(QWidget):
         self._update_fallback_options()
         self._refresh_fallback_visibility()
         self.agents_changed.emit()
+
+    def _find_button_row(self, button: QWidget) -> int:
+        """Find the row containing the given button widget."""
+        for row in range(self._agent_table.rowCount()):
+            for col in range(self._agent_table.columnCount()):
+                cell_widget = self._agent_table.cellWidget(row, col)
+                if cell_widget and self._widget_contains_button(cell_widget, button):
+                    return row
+        return -1
+
+    def _widget_contains_button(self, parent: QWidget, button: QWidget) -> bool:
+        """Check if parent widget contains the button (recursively)."""
+        if parent == button:
+            return True
+        for child in parent.findChildren(QWidget):
+            if child == button:
+                return True
+        return False
+
+    def _on_browse_clicked(self) -> None:
+        """Handle browse button click by finding which row it's in."""
+        sender = self.sender()
+        if sender:
+            row = self._find_button_row(sender)
+            if row >= 0:
+                self._browse_config_dir(row)
+
+    def _on_up_clicked(self) -> None:
+        """Handle up arrow click by finding which row it's in."""
+        sender = self.sender()
+        if sender:
+            row = self._find_button_row(sender)
+            if row >= 0:
+                self._move_agent_up(row)
+
+    def _on_down_clicked(self) -> None:
+        """Handle down arrow click by finding which row it's in."""
+        sender = self.sender()
+        if sender:
+            row = self._find_button_row(sender)
+            if row >= 0:
+                self._move_agent_down(row)
+
+    def _on_remove_clicked(self) -> None:
+        """Handle remove button click by finding which row it's in."""
+        sender = self.sender()
+        if sender:
+            row = self._find_button_row(sender)
+            if row >= 0:
+                self._remove_agent(row)
 
     def _remove_agent(self, row: int) -> None:
         """Remove an agent instance from the table."""
@@ -387,7 +437,7 @@ class AgentsTabWidget(QWidget):
             browse_btn = QToolButton()
             browse_btn.setText("...")
             browse_btn.setFixedWidth(30)
-            browse_btn.clicked.connect(lambda checked, r=row: self._browse_config_dir(r))
+            browse_btn.clicked.connect(self._on_browse_clicked)
             
             config_layout.addWidget(config_edit)
             config_layout.addWidget(browse_btn)
@@ -403,12 +453,12 @@ class AgentsTabWidget(QWidget):
             up_btn = QToolButton()
             up_btn.setText("↑")
             up_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-            up_btn.clicked.connect(lambda checked, r=row: self._move_agent_up(r))
+            up_btn.clicked.connect(self._on_up_clicked)
 
             down_btn = QToolButton()
             down_btn.setText("↓")
             down_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-            down_btn.clicked.connect(lambda checked, r=row: self._move_agent_down(r))
+            down_btn.clicked.connect(self._on_down_clicked)
 
             priority_layout.addWidget(up_btn)
             priority_layout.addWidget(down_btn)
@@ -431,7 +481,7 @@ class AgentsTabWidget(QWidget):
             remove_btn = QToolButton()
             remove_btn.setText("Remove")
             remove_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-            remove_btn.clicked.connect(lambda checked, r=row: self._remove_agent(r))
+            remove_btn.clicked.connect(self._on_remove_clicked)
             
             actions_layout.addWidget(remove_btn)
             actions_layout.addStretch(1)
