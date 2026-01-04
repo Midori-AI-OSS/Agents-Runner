@@ -154,8 +154,8 @@ class _MainWindowSettingsMixin:
                 or os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex"))
             )
 
-        # Legacy: check env.host_codex_dir override (deprecated)
-        if env and env.host_codex_dir:
+        # Legacy: check env.host_codex_dir override (deprecated) — only apply for codex
+        if agent_cli == "codex" and env and env.host_codex_dir:
             config_dir = env.host_codex_dir
 
         return os.path.expanduser(str(config_dir or "").strip())
@@ -372,7 +372,10 @@ class _MainWindowSettingsMixin:
             fallbacks = dict(getattr(env.agent_selection, "agent_fallbacks", {}) or {})
             wanted_id = str(fallbacks.get(str(getattr(current, "agent_id", "") or "").strip(), "") or "").strip()
             next_inst = next((a for a in agents if str(getattr(a, "agent_id", "") or "").strip() == wanted_id), None)
-            return self._format_agent_label(current), (self._format_agent_label(next_inst) if next_inst else "")
+            next_label = (self._format_agent_label(next_inst) if next_inst else "")
+            if next_label:
+                next_label = f"Fallback: {next_label}"
+            return self._format_agent_label(current), next_label
 
         if mode == "least-used":
             tasks = getattr(self, "_tasks", {}) or {}

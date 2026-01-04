@@ -424,7 +424,10 @@ class NewTaskPage(QWidget):
         next_agent = str(next_agent or "").strip()
         
         if next_agent and next_agent != agent:
-            tooltip = f"Using: {agent} | Next: {next_agent}"
+            if str(next_agent).startswith("Fallback:"):
+                tooltip = f"Using: {agent} | {next_agent}"
+            else:
+                tooltip = f"Using: {agent} | Next: {next_agent}"
         elif agent:
             tooltip = f"Using: {agent}"
         else:
