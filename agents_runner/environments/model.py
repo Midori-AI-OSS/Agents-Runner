@@ -66,12 +66,24 @@ class AgentSelection:
         """Auto-populate legacy fields from agent_instances if needed."""
         if self.agent_instances and not self.enabled_agents:
             # Build legacy format from new format for backwards compatibility
-            self.enabled_agents = [inst.agent_type for inst in self.agent_instances]
-            self.agent_config_dirs = {
-                inst.agent_type: inst.config_dir 
-                for inst in self.agent_instances 
-                if inst.config_dir
-            }
+            # NOTE: Legacy format doesn't support multiple instances of the same type.
+            # If multiple instances exist, only the first of each type is represented.
+            # This is acceptable since:
+            # 1. Legacy code only sees the first instance anyway
+            # 2. New code uses agent_instances directly
+            # 3. Saving always uses the new format
+            
+            seen_types = set()
+            self.enabled_agents = []
+            self.agent_config_dirs = {}
+            
+            for inst in self.agent_instances:
+                if inst.agent_type not in seen_types:
+                    seen_types.add(inst.agent_type)
+                    self.enabled_agents.append(inst.agent_type)
+                    if inst.config_dir:
+                        self.agent_config_dirs[inst.agent_type] = inst.config_dir
+            
             # Build fallback mapping by resolving instance IDs to agent types
             instance_map = {inst.instance_id: inst.agent_type for inst in self.agent_instances}
             self.agent_fallbacks = {
