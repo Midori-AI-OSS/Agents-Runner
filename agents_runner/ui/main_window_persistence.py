@@ -88,13 +88,21 @@ class _MainWindowPersistenceMixin:
             self._settings_data["max_agents_running"] = int(str(self._settings_data.get("max_agents_running", -1)).strip())
         except Exception:
             self._settings_data["max_agents_running"] = -1
-        self._settings_data.setdefault("host_claude_dir", "")
-        self._settings_data.setdefault("host_copilot_dir", "")
+        self._settings_data.setdefault("host_claude_dir", os.path.expanduser("~/.claude"))
+        self._settings_data.setdefault("host_copilot_dir", os.path.expanduser("~/.copilot"))
         self._settings_data.setdefault("interactive_command_claude", "--add-dir /home/midori-ai/workspace")
         self._settings_data.setdefault("interactive_command_copilot", "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace")
         host_codex_dir = os.path.normpath(os.path.expanduser(str(self._settings_data.get("host_codex_dir") or "").strip()))
         if host_codex_dir == os.path.expanduser("~/.midoriai"):
             self._settings_data["host_codex_dir"] = os.path.expanduser("~/.codex")
+        if not str(self._settings_data.get("host_codex_dir") or "").strip():
+            self._settings_data["host_codex_dir"] = os.environ.get(
+                "CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")
+            )
+        if not str(self._settings_data.get("host_claude_dir") or "").strip():
+            self._settings_data["host_claude_dir"] = os.path.expanduser("~/.claude")
+        if not str(self._settings_data.get("host_copilot_dir") or "").strip():
+            self._settings_data["host_copilot_dir"] = os.path.expanduser("~/.copilot")
         for key in ("interactive_command", "interactive_command_claude", "interactive_command_copilot"):
             raw = str(self._settings_data.get(key) or "").strip()
             if not raw:

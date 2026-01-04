@@ -36,8 +36,15 @@ class _MainWindowSettingsMixin:
             host_codex_dir = os.path.expanduser("~/.codex")
         merged["host_codex_dir"] = host_codex_dir
 
-        merged["host_claude_dir"] = os.path.expanduser(str(merged.get("host_claude_dir") or "").strip())
-        merged["host_copilot_dir"] = os.path.expanduser(str(merged.get("host_copilot_dir") or "").strip())
+        host_claude_dir = os.path.expanduser(str(merged.get("host_claude_dir") or "").strip())
+        if not host_claude_dir:
+            host_claude_dir = os.path.expanduser("~/.claude")
+        merged["host_claude_dir"] = host_claude_dir
+
+        host_copilot_dir = os.path.expanduser(str(merged.get("host_copilot_dir") or "").strip())
+        if not host_copilot_dir:
+            host_copilot_dir = os.path.expanduser("~/.copilot")
+        merged["host_copilot_dir"] = host_copilot_dir
 
         merged["preflight_enabled"] = bool(merged.get("preflight_enabled") or False)
         merged["preflight_script"] = str(merged.get("preflight_script") or "")
@@ -212,7 +219,10 @@ class _MainWindowSettingsMixin:
         config_dir = os.path.expanduser(str(getattr(chosen, "config_dir", "") or "").strip())
         if not config_dir:
             config_dir = self._resolve_config_dir_for_agent(agent_cli=agent_cli, env=env, settings=settings)
-        if env and env.host_codex_dir:
+        # Legacy: env.host_codex_dir was historically used as a global config-dir
+        # override. Preserve backwards compatibility for Codex only; other agents
+        # have their own per-agent settings (e.g. host_copilot_dir).
+        if agent_cli == "codex" and env and env.host_codex_dir:
             config_dir = os.path.expanduser(str(env.host_codex_dir or "").strip())
 
         return agent_cli, config_dir, agent_id
@@ -300,8 +310,8 @@ class _MainWindowSettingsMixin:
            * ``host_codex_dir`` for all other agents; if unset, falls back to the
              ``CODEX_HOST_CODEX_DIR`` environment variable, then to ``~/.codex``.
         3. Finally, for legacy/backwards compatibility, if ``env`` defines
-           ``host_codex_dir``, that value overrides whichever directory was selected
-           earlier (even for non-codex agents).
+           ``host_codex_dir`` and ``agent_cli == "codex"``, that value overrides
+           whichever directory was selected earlier.
 
         The returned path is normalized with :func:`os.path.expanduser`.
 
