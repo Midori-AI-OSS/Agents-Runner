@@ -98,12 +98,15 @@ def build_noninteractive_cmd(
     if agent == "gemini":
         args = [
             "gemini",
+            "--no-sandbox",
+            "--approval-mode",
+            "yolo",
             "--include-directories",
             container_workdir,
             *extra_args,
-            "-p",
-            prompt,
         ]
+        if prompt:
+            args.append(prompt)
         return args
 
     # codex
@@ -122,4 +125,3 @@ def build_noninteractive_cmd(
 
 def _is_git_repo_root(path: str) -> bool:
     return os.path.exists(os.path.join(path, ".git"))
-

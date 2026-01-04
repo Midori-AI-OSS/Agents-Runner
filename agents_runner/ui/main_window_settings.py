@@ -104,7 +104,7 @@ class _MainWindowSettingsMixin:
         if agent_cli == "copilot":
             return "--add-dir /home/midori-ai/workspace"
         if agent_cli == "gemini":
-            return "--include-directories /home/midori-ai/workspace"
+            return "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace"
         return "--sandbox danger-full-access"
 
 

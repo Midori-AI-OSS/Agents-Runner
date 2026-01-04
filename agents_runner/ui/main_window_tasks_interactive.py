@@ -188,12 +188,19 @@ class _MainWindowTasksInteractiveMixin:
                 cmd_parts.extend(agent_cli_args)
             if "--include-directories" not in cmd_parts:
                 cmd_parts[1:1] = ["--include-directories", "/home/midori-ai/workspace"]
+            if "--sandbox" not in cmd_parts and "--no-sandbox" not in cmd_parts and "-s" not in cmd_parts:
+                cmd_parts[1:1] = ["--no-sandbox"]
+            if "--approval-mode" not in cmd_parts:
+                cmd_parts[1:1] = ["--approval-mode", "yolo"]
             if prompt:
+                has_interactive_prompt = "-i" in cmd_parts or "--prompt-interactive" in cmd_parts
                 has_prompt = "-p" in cmd_parts or "--prompt" in cmd_parts
-                if has_prompt:
+                if has_interactive_prompt:
+                    _move_flag_value_to_end(cmd_parts, {"-i", "--prompt-interactive"})
+                elif has_prompt:
                     _move_flag_value_to_end(cmd_parts, {"-p", "--prompt"})
                 else:
-                    cmd_parts.extend(["-p", prompt])
+                    cmd_parts.extend(["-i", prompt])
 
         image = PIXELARCH_EMERALD_IMAGE
 
