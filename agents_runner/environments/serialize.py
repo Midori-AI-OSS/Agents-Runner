@@ -76,10 +76,17 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
             else:
                 agent_config_dirs = {}
             
+            agent_fallbacks = agent_selection_data.get("agent_fallbacks", {})
+            if isinstance(agent_fallbacks, dict):
+                agent_fallbacks = {str(k): str(v) for k, v in agent_fallbacks.items()}
+            else:
+                agent_fallbacks = {}
+            
             agent_selection = AgentSelection(
                 enabled_agents=enabled_agents,
                 selection_mode=selection_mode,
-                agent_config_dirs=agent_config_dirs
+                agent_config_dirs=agent_config_dirs,
+                agent_fallbacks=agent_fallbacks
             )
 
     return Environment(
@@ -133,6 +140,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
             "enabled_agents": env.agent_selection.enabled_agents,
             "selection_mode": env.agent_selection.selection_mode,
             "agent_config_dirs": dict(env.agent_selection.agent_config_dirs),
+            "agent_fallbacks": dict(env.agent_selection.agent_fallbacks),
         } if env.agent_selection else None,
     }
 

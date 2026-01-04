@@ -418,6 +418,21 @@ class NewTaskPage(QWidget):
             if idx >= 0:
                 self._terminal.setCurrentIndex(idx)
 
+    def set_agent_info(self, agent: str, next_agent: str = "") -> None:
+        """Set tooltip info showing current and next agent."""
+        agent = str(agent or "").strip().title()
+        next_agent = str(next_agent or "").strip().title()
+        
+        if next_agent and next_agent != agent:
+            tooltip = f"Using: {agent} | Next: {next_agent}"
+        elif agent:
+            tooltip = f"Using: {agent}"
+        else:
+            tooltip = ""
+        
+        self._run_interactive.setToolTip(tooltip)
+        self._run_agent.setToolTip(tooltip)
+
     def reset_for_new_run(self) -> None:
         self._prompt.setPlainText("")
         self._prompt.setFocus(Qt.OtherFocusReason)

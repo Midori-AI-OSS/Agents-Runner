@@ -315,3 +315,43 @@ class _MainWindowSettingsMixin:
             QMessageBox.warning(self, "Invalid config folder", str(exc))
             return False
         return True
+
+    def _get_next_agent_info(self, *, env: Environment | None) -> tuple[str, str]:
+        """Return (current_agent, next_agent) based on environment configuration.
+        
+        For round-robin mode: next agent in the cycle
+        For least-used mode: agent with lowest usage count
+        For fallback mode: fallback agent from mapping
+        For single agent: empty string for next
+        """
+        agent_cli, _ = self._effective_agent_and_config(env=env)
+        
+        if not env or not env.agent_selection or not env.agent_selection.enabled_agents:
+            return agent_cli, ""
+        
+        enabled = env.agent_selection.enabled_agents
+        if len(enabled) <= 1:
+            return agent_cli, ""
+        
+        selection_mode = env.agent_selection.selection_mode or "round-robin"
+        
+        if selection_mode == "fallback":
+            # Get fallback from mapping
+            fallback = env.agent_selection.agent_fallbacks.get(agent_cli, "")
+            return agent_cli, fallback
+        
+        if selection_mode == "round-robin":
+            # Find current agent index and get next
+            try:
+                current_idx = enabled.index(agent_cli)
+                next_idx = (current_idx + 1) % len(enabled)
+                return agent_cli, enabled[next_idx]
+            except (ValueError, IndexError):
+                return agent_cli, enabled[0] if enabled else ""
+        
+        if selection_mode == "least-used":
+            # For now, just show the second agent as a placeholder
+            # In a full implementation, this would track usage counts
+            return agent_cli, enabled[1] if len(enabled) > 1 else ""
+        
+        return agent_cli, ""

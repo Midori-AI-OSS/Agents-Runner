@@ -48,6 +48,7 @@ class AgentSelection:
     enabled_agents: list[str] = field(default_factory=list)
     selection_mode: str = "round-robin"
     agent_config_dirs: dict[str, str] = field(default_factory=dict)
+    agent_fallbacks: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
