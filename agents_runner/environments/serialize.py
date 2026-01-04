@@ -7,6 +7,7 @@ from .model import Environment
 from .model import normalize_gh_management_mode
 from .model import PromptConfig
 from .model import AgentSelection
+from .model import AgentInstance
 
 
 def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
@@ -61,33 +62,79 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     agent_selection_data = payload.get("agent_selection")
     agent_selection = None
     if isinstance(agent_selection_data, dict):
-        enabled_agents = agent_selection_data.get("enabled_agents", [])
-        if isinstance(enabled_agents, list):
-            enabled_agents = [str(a) for a in enabled_agents if str(a).strip()]
-        else:
-            enabled_agents = []
+        # Try to load new format first (agent_instances)
+        agent_instances_data = agent_selection_data.get("agent_instances", [])
+        agent_instances = []
         
-        if enabled_agents:
-            selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
+        if isinstance(agent_instances_data, list) and agent_instances_data:
+            # New format with agent instances
+            for inst_data in agent_instances_data:
+                if isinstance(inst_data, dict):
+                    instance_id = str(inst_data.get("instance_id", "")).strip()
+                    agent_type = str(inst_data.get("agent_type", "")).strip()
+                    if instance_id and agent_type:
+                        agent_instances.append(AgentInstance(
+                            instance_id=instance_id,
+                            agent_type=agent_type,
+                            config_dir=str(inst_data.get("config_dir", "")).strip(),
+                            fallback_instance_id=str(inst_data.get("fallback_instance_id", "")).strip()
+                        ))
             
-            agent_config_dirs = agent_selection_data.get("agent_config_dirs", {})
-            if isinstance(agent_config_dirs, dict):
-                agent_config_dirs = {str(k): str(v) for k, v in agent_config_dirs.items()}
+            if agent_instances:
+                selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
+                agent_selection = AgentSelection(
+                    agent_instances=agent_instances,
+                    selection_mode=selection_mode,
+                )
+        else:
+            # Legacy format with enabled_agents list
+            enabled_agents = agent_selection_data.get("enabled_agents", [])
+            if isinstance(enabled_agents, list):
+                enabled_agents = [str(a) for a in enabled_agents if str(a).strip()]
             else:
-                agent_config_dirs = {}
+                enabled_agents = []
             
-            agent_fallbacks = agent_selection_data.get("agent_fallbacks", {})
-            if isinstance(agent_fallbacks, dict):
-                agent_fallbacks = {str(k): str(v) for k, v in agent_fallbacks.items()}
-            else:
-                agent_fallbacks = {}
-            
-            agent_selection = AgentSelection(
-                enabled_agents=enabled_agents,
-                selection_mode=selection_mode,
-                agent_config_dirs=agent_config_dirs,
-                agent_fallbacks=agent_fallbacks
-            )
+            if enabled_agents:
+                selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
+                
+                agent_config_dirs = agent_selection_data.get("agent_config_dirs", {})
+                if isinstance(agent_config_dirs, dict):
+                    agent_config_dirs = {str(k): str(v) for k, v in agent_config_dirs.items()}
+                else:
+                    agent_config_dirs = {}
+                
+                agent_fallbacks = agent_selection_data.get("agent_fallbacks", {})
+                if isinstance(agent_fallbacks, dict):
+                    agent_fallbacks = {str(k): str(v) for k, v in agent_fallbacks.items()}
+                else:
+                    agent_fallbacks = {}
+                
+                # Convert legacy format to new format
+                agent_instances = []
+                for i, agent_type in enumerate(enabled_agents):
+                    instance_id = f"agent-{agent_type}-{i}"
+                    config_dir = agent_config_dirs.get(agent_type, "")
+                    fallback_agent_type = agent_fallbacks.get(agent_type, "")
+                    fallback_instance_id = ""
+                    if fallback_agent_type and fallback_agent_type in enabled_agents:
+                        fallback_idx = enabled_agents.index(fallback_agent_type)
+                        fallback_instance_id = f"agent-{fallback_agent_type}-{fallback_idx}"
+                    
+                    agent_instances.append(AgentInstance(
+                        instance_id=instance_id,
+                        agent_type=agent_type,
+                        config_dir=config_dir,
+                        fallback_instance_id=fallback_instance_id
+                    ))
+                
+                agent_selection = AgentSelection(
+                    agent_instances=agent_instances,
+                    selection_mode=selection_mode,
+                    # Keep legacy fields for backwards compatibility
+                    enabled_agents=enabled_agents,
+                    agent_config_dirs=agent_config_dirs,
+                    agent_fallbacks=agent_fallbacks
+                )
 
     return Environment(
         env_id=env_id,
@@ -137,10 +184,16 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "prompts": [{"enabled": p.enabled, "text": p.text} for p in (env.prompts or [])],
         "prompts_unlocked": bool(env.prompts_unlocked),
         "agent_selection": {
-            "enabled_agents": env.agent_selection.enabled_agents,
+            "agent_instances": [
+                {
+                    "instance_id": inst.instance_id,
+                    "agent_type": inst.agent_type,
+                    "config_dir": inst.config_dir,
+                    "fallback_instance_id": inst.fallback_instance_id,
+                }
+                for inst in env.agent_selection.agent_instances
+            ],
             "selection_mode": env.agent_selection.selection_mode,
-            "agent_config_dirs": dict(env.agent_selection.agent_config_dirs),
-            "agent_fallbacks": dict(env.agent_selection.agent_fallbacks),
         } if env.agent_selection else None,
     }
 

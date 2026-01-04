@@ -6,6 +6,8 @@ from agents_runner.environments.model import GH_MANAGEMENT_LOCAL
 from agents_runner.environments.model import GH_MANAGEMENT_NONE
 from agents_runner.environments.model import SYSTEM_ENV_ID
 from agents_runner.environments.model import SYSTEM_ENV_NAME
+from agents_runner.environments.model import AgentInstance
+from agents_runner.environments.model import AgentSelection
 from agents_runner.environments.model import Environment
 from agents_runner.environments.model import normalize_gh_management_mode
 from agents_runner.environments.parse import parse_env_vars_text
@@ -26,6 +28,8 @@ __all__ = [
     "GH_MANAGEMENT_GITHUB",
     "GH_MANAGEMENT_LOCAL",
     "GH_MANAGEMENT_NONE",
+    "AgentInstance",
+    "AgentSelection",
     "Environment",
     "default_data_dir",
     "delete_environment",

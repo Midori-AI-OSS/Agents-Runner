@@ -44,11 +44,41 @@ class PromptConfig:
 
 
 @dataclass
+class AgentInstance:
+    """Represents a configured agent instance with a unique ID."""
+    instance_id: str  # Unique ID for this instance (e.g., "agent-abc123")
+    agent_type: str  # Type: "codex", "claude", or "copilot"
+    config_dir: str = ""  # Config directory for this instance
+    fallback_instance_id: str = ""  # ID of fallback agent instance
+
+
+@dataclass
 class AgentSelection:
-    enabled_agents: list[str] = field(default_factory=list)
+    agent_instances: list[AgentInstance] = field(default_factory=list)
     selection_mode: str = "round-robin"
+    
+    # Legacy fields for backwards compatibility (populated on load, not used for save)
+    enabled_agents: list[str] = field(default_factory=list)
     agent_config_dirs: dict[str, str] = field(default_factory=dict)
     agent_fallbacks: dict[str, str] = field(default_factory=dict)
+    
+    def __post_init__(self) -> None:
+        """Auto-populate legacy fields from agent_instances if needed."""
+        if self.agent_instances and not self.enabled_agents:
+            # Build legacy format from new format for backwards compatibility
+            self.enabled_agents = [inst.agent_type for inst in self.agent_instances]
+            self.agent_config_dirs = {
+                inst.agent_type: inst.config_dir 
+                for inst in self.agent_instances 
+                if inst.config_dir
+            }
+            # Build fallback mapping by resolving instance IDs to agent types
+            instance_map = {inst.instance_id: inst.agent_type for inst in self.agent_instances}
+            self.agent_fallbacks = {
+                inst.agent_type: instance_map.get(inst.fallback_instance_id, "")
+                for inst in self.agent_instances
+                if inst.fallback_instance_id and inst.fallback_instance_id in instance_map
+            }
 
 
 @dataclass
