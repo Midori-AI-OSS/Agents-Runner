@@ -82,7 +82,15 @@ class _MainWindowTasksAgentMixin:
         env = self._environments.get(env_id)
 
         # Get effective agent and config dir (environment agent_selection overrides settings)
-        agent_cli, auto_config_dir = self._effective_agent_and_config(env=env)
+        agent_instance_id = ""
+        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            agent_cli, auto_config_dir, agent_instance_id = self._select_agent_instance_for_env(
+                env=env,
+                settings=self._settings_data,
+                advance_round_robin=True,
+            )
+        else:
+            agent_cli, auto_config_dir = self._effective_agent_and_config(env=env, advance_round_robin=True)
 
         gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) if env else GH_MANAGEMENT_NONE
         effective_workdir, ready, message = self._new_task_workspace(env)
@@ -135,6 +143,7 @@ class _MainWindowTasksAgentMixin:
             status="queued",
             gh_management_mode=gh_mode,
             agent_cli=agent_cli,
+            agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
         )
         self._tasks[task_id] = task

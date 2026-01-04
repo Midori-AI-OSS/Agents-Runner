@@ -80,6 +80,34 @@ TEMPLATE_BASE = """
         padding: 8px 10px;
     }
 
+    QTableWidget {
+        background-color: rgba(18, 20, 28, 120);
+        border: 1px solid rgba(255, 255, 255, 14);
+        border-radius: 0px;
+        gridline-color: rgba(255, 255, 255, 10);
+        selection-background-color: rgba(56, 189, 248, 85);
+        outline: 0px;
+    }
+
+    QTableWidget::item {
+        padding: 6px 8px;
+        border-radius: 0px;
+    }
+
+    QHeaderView::section {
+        background-color: rgba(18, 20, 28, 190);
+        border: 1px solid rgba(255, 255, 255, 14);
+        padding: 8px 10px;
+        font-weight: 650;
+        border-radius: 0px;
+    }
+
+    QTableCornerButton::section {
+        background-color: rgba(18, 20, 28, 190);
+        border: 1px solid rgba(255, 255, 255, 14);
+        border-radius: 0px;
+    }
+
     QPlainTextEdit {
         border-radius: 0px;
     }
@@ -245,4 +273,3 @@ TEMPLATE_BASE = """
         border: 1px solid rgba(56, 189, 248, 140);
     }
 """
-

@@ -44,10 +44,23 @@ class PromptConfig:
 
 
 @dataclass
+class AgentInstance:
+    """A single, ordered agent entry for an environment.
+
+    ``agent_id`` must be unique within the environment so it can be referenced by
+    fallback mappings and UI controls.
+    """
+
+    agent_id: str
+    agent_cli: str
+    config_dir: str = ""
+
+
+@dataclass
 class AgentSelection:
-    enabled_agents: list[str] = field(default_factory=list)
+    agents: list[AgentInstance] = field(default_factory=list)
     selection_mode: str = "round-robin"
-    agent_config_dirs: dict[str, str] = field(default_factory=dict)
+    agent_fallbacks: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

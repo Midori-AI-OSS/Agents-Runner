@@ -33,6 +33,7 @@ class Task:
     gh_pr_url: str = ""
     gh_pr_metadata_path: str = ""
     agent_cli: str = ""
+    agent_instance_id: str = ""
     agent_cli_args: str = ""
 
     def last_nonblank_log_line(self) -> str:
