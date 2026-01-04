@@ -222,6 +222,7 @@ def serialize_task(task) -> dict[str, Any]:
         "gh_pr_url": getattr(task, "gh_pr_url", ""),
         "gh_pr_metadata_path": getattr(task, "gh_pr_metadata_path", ""),
         "agent_cli": getattr(task, "agent_cli", ""),
+        "agent_instance_id": getattr(task, "agent_instance_id", ""),
         "agent_cli_args": getattr(task, "agent_cli_args", ""),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
@@ -252,6 +253,7 @@ def deserialize_task(task_cls, data: dict[str, Any]):
         gh_pr_url=str(data.get("gh_pr_url") or ""),
         gh_pr_metadata_path=str(data.get("gh_pr_metadata_path") or ""),
         agent_cli=str(data.get("agent_cli") or ""),
+        agent_instance_id=str(data.get("agent_instance_id") or ""),
         agent_cli_args=str(data.get("agent_cli_args") or ""),
         logs=list(data.get("logs") or []),
     )

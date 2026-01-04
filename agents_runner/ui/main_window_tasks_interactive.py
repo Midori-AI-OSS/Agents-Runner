@@ -86,7 +86,15 @@ class _MainWindowTasksInteractiveMixin:
         desired_base = str(base_branch or "").strip()
 
         # Get effective agent and config dir (environment agent_selection overrides settings)
-        agent_cli, auto_config_dir = self._effective_agent_and_config(env=env)
+        agent_instance_id = ""
+        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            agent_cli, auto_config_dir, agent_instance_id = self._select_agent_instance_for_env(
+                env=env,
+                settings=self._settings_data,
+                advance_round_robin=True,
+            )
+        else:
+            agent_cli, auto_config_dir = self._effective_agent_and_config(env=env, advance_round_robin=True)
         if not host_codex:
             host_codex = auto_config_dir
         if not self._ensure_agent_config_dir(agent_cli, host_codex):
@@ -204,6 +212,7 @@ class _MainWindowTasksInteractiveMixin:
             gh_management_mode=gh_mode,
             gh_use_host_cli=bool(getattr(env, "gh_use_host_cli", True)) if env else True,
             agent_cli=agent_cli,
+            agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
         )
         self._tasks[task_id] = task

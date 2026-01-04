@@ -7,6 +7,24 @@ from .model import Environment
 from .model import normalize_gh_management_mode
 from .model import PromptConfig
 from .model import AgentSelection
+from .model import AgentInstance
+
+
+def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) -> str:
+    base = (desired or "").strip()
+    if not base:
+        base = fallback_prefix
+    base = base.strip()
+    if base not in existing:
+        existing.add(base)
+        return base
+    i = 2
+    while True:
+        candidate = f"{base}-{i}"
+        if candidate not in existing:
+            existing.add(candidate)
+            return candidate
+        i += 1
 
 
 def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
@@ -61,32 +79,80 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     agent_selection_data = payload.get("agent_selection")
     agent_selection = None
     if isinstance(agent_selection_data, dict):
-        enabled_agents = agent_selection_data.get("enabled_agents", [])
-        if isinstance(enabled_agents, list):
-            enabled_agents = [str(a) for a in enabled_agents if str(a).strip()]
-        else:
-            enabled_agents = []
-        
-        if enabled_agents:
-            selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
-            
+        selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
+
+        agents_payload = agent_selection_data.get("agents")
+        agents: list[AgentInstance] = []
+        seen_ids: set[str] = set()
+
+        if isinstance(agents_payload, list):
+            for raw in agents_payload:
+                if not isinstance(raw, dict):
+                    continue
+                agent_cli = str(raw.get("agent_cli") or "").strip()
+                agent_id = str(raw.get("agent_id") or "").strip()
+                config_dir = str(raw.get("config_dir") or "").strip()
+                if not agent_cli:
+                    continue
+                unique_id = _unique_agent_id(seen_ids, agent_id, fallback_prefix=agent_cli.lower())
+                agents.append(AgentInstance(agent_id=unique_id, agent_cli=agent_cli, config_dir=config_dir))
+
+        # Legacy format: enabled_agents + agent_config_dirs
+        if not agents:
+            enabled_agents = agent_selection_data.get("enabled_agents", [])
+            if isinstance(enabled_agents, list):
+                enabled_agents = [str(a) for a in enabled_agents if str(a).strip()]
+            else:
+                enabled_agents = []
+
             agent_config_dirs = agent_selection_data.get("agent_config_dirs", {})
             if isinstance(agent_config_dirs, dict):
                 agent_config_dirs = {str(k): str(v) for k, v in agent_config_dirs.items()}
             else:
                 agent_config_dirs = {}
-            
-            agent_fallbacks = agent_selection_data.get("agent_fallbacks", {})
-            if isinstance(agent_fallbacks, dict):
-                agent_fallbacks = {str(k): str(v) for k, v in agent_fallbacks.items()}
-            else:
-                agent_fallbacks = {}
-            
+            normalized_config_dirs = {str(k).strip().lower(): str(v) for k, v in agent_config_dirs.items()}
+
+            for a in enabled_agents:
+                agent_cli = str(a).strip()
+                if not agent_cli:
+                    continue
+                unique_id = _unique_agent_id(seen_ids, agent_cli.strip().lower(), fallback_prefix=agent_cli.strip().lower())
+                agents.append(
+                    AgentInstance(
+                        agent_id=unique_id,
+                        agent_cli=agent_cli,
+                        config_dir=str(normalized_config_dirs.get(agent_cli.strip().lower(), "") or "").strip(),
+                    )
+                )
+
+        agent_fallbacks = agent_selection_data.get("agent_fallbacks", {})
+        if isinstance(agent_fallbacks, dict):
+            agent_fallbacks = {str(k): str(v) for k, v in agent_fallbacks.items()}
+        else:
+            agent_fallbacks = {}
+
+        # Drop fallbacks pointing to missing agents.
+        known_ids = {a.agent_id for a in agents}
+        known_by_lower = {a.agent_id.lower(): a.agent_id for a in agents}
+
+        def _resolve_id(value: str) -> str:
+            raw = str(value or "").strip()
+            if raw in known_ids:
+                return raw
+            return known_by_lower.get(raw.lower(), "")
+
+        cleaned_fallbacks: dict[str, str] = {}
+        for k, v in agent_fallbacks.items():
+            kk = _resolve_id(str(k or ""))
+            vv = _resolve_id(str(v or ""))
+            if kk and vv and kk != vv:
+                cleaned_fallbacks[kk] = vv
+
+        if agents:
             agent_selection = AgentSelection(
-                enabled_agents=enabled_agents,
+                agents=agents,
                 selection_mode=selection_mode,
-                agent_config_dirs=agent_config_dirs,
-                agent_fallbacks=agent_fallbacks
+                agent_fallbacks=cleaned_fallbacks,
             )
 
     return Environment(
@@ -113,6 +179,34 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
 
 def serialize_environment(env: Environment) -> dict[str, Any]:
+    selection_payload: dict[str, Any] | None = None
+    if env.agent_selection and env.agent_selection.agents:
+        agents_list = [
+            {
+                "agent_id": a.agent_id,
+                "agent_cli": a.agent_cli,
+                "config_dir": a.config_dir,
+            }
+            for a in (env.agent_selection.agents or [])
+        ]
+
+        # Legacy fields for backwards compatibility with older builds.
+        enabled_agents = [str(a.agent_cli or "").strip() for a in (env.agent_selection.agents or []) if str(a.agent_cli or "").strip()]
+        legacy_config_dirs: dict[str, str] = {}
+        for a in env.agent_selection.agents or []:
+            cli = str(a.agent_cli or "").strip()
+            cfg = str(a.config_dir or "").strip()
+            if cli and cfg and cli not in legacy_config_dirs:
+                legacy_config_dirs[cli] = cfg
+
+        selection_payload = {
+            "agents": agents_list,
+            "enabled_agents": enabled_agents,
+            "selection_mode": env.agent_selection.selection_mode,
+            "agent_config_dirs": legacy_config_dirs,
+            "agent_fallbacks": dict(env.agent_selection.agent_fallbacks),
+        }
+
     return {
         "version": ENVIRONMENT_VERSION,
         "env_id": env.env_id,
@@ -136,11 +230,5 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gh_pr_metadata_enabled": bool(env.gh_pr_metadata_enabled),
         "prompts": [{"enabled": p.enabled, "text": p.text} for p in (env.prompts or [])],
         "prompts_unlocked": bool(env.prompts_unlocked),
-        "agent_selection": {
-            "enabled_agents": env.agent_selection.enabled_agents,
-            "selection_mode": env.agent_selection.selection_mode,
-            "agent_config_dirs": dict(env.agent_selection.agent_config_dirs),
-            "agent_fallbacks": dict(env.agent_selection.agent_fallbacks),
-        } if env.agent_selection else None,
+        "agent_selection": selection_payload,
     }
-
