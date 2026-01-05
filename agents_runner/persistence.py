@@ -189,6 +189,66 @@ def load_active_task_payloads(state_path: str) -> list[dict[str, Any]]:
     return payloads
 
 
+def load_task_payload(state_path: str, task_id: str, *, archived: bool) -> dict[str, Any] | None:
+    task_id = str(task_id or "").strip()
+    if not task_id:
+        return None
+    path = task_path(state_path, task_id, archived=archived)
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def load_done_task_payloads(state_path: str, *, offset: int = 0, limit: int = 10) -> list[dict[str, Any]]:
+    try:
+        offset = max(0, int(offset))
+    except Exception:
+        offset = 0
+    try:
+        limit = max(1, int(limit))
+    except Exception:
+        limit = 10
+
+    done = tasks_done_dir(state_path)
+    if not os.path.isdir(done):
+        return []
+
+    names: list[str] = []
+    try:
+        for name in os.listdir(done):
+            if name.endswith(".json"):
+                names.append(name)
+    except OSError:
+        return []
+
+    def _mtime(name: str) -> float:
+        try:
+            return float(os.path.getmtime(os.path.join(done, name)))
+        except OSError:
+            return 0.0
+
+    names.sort(key=_mtime, reverse=True)
+
+    payloads: list[dict[str, Any]] = []
+    for name in names[offset : offset + limit]:
+        path = os.path.join(done, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            payloads.append(payload)
+    return payloads
+
+
 def serialize_task(task) -> dict[str, Any]:
     runner_config = getattr(task, "_runner_config", None)
     runner_config_payload: dict[str, Any] | None = None
