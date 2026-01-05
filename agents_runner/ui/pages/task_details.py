@@ -11,6 +11,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtGui import QPainter
 from PySide6.QtGui import QPixmap
 from PySide6.QtGui import QPolygon
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
@@ -299,6 +300,11 @@ class TaskDetailsPage(QWidget):
         self._ticker.start()
 
         self._last_task: Task | None = None
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if self._tabs.currentIndex() == getattr(self, "_task_tab_index", -1):
+            QTimer.singleShot(0, self._scroll_logs_to_bottom)
 
     def _on_tab_changed(self, index: int) -> None:
         if index == getattr(self, "_task_tab_index", -1):
