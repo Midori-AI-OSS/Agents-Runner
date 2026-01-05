@@ -115,10 +115,10 @@ class MainWindow(
         self._dashboard_ticker.timeout.connect(self._tick_dashboard_elapsed)
         self._dashboard_ticker.start()
 
-        root = GlassRoot()
-        self.setCentralWidget(root)
+        self._root = GlassRoot()
+        self.setCentralWidget(self._root)
 
-        outer = QVBoxLayout(root)
+        outer = QVBoxLayout(self._root)
         outer.setContentsMargins(18, 18, 18, 18)
         outer.setSpacing(14)
 
