@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from PySide6.QtCore import QPoint
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QComboBox
@@ -10,6 +11,7 @@ from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
+from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QSizePolicy
@@ -28,6 +30,7 @@ from agents_runner.widgets import StainedGlassButton
 
 class NewTaskPage(QWidget):
     requested_run = Signal(str, str, str, str)
+    requested_run_cloud = Signal(str, str, str, str)
     requested_launch = Signal(str, str, str, str, str, str, str)
     back_requested = Signal()
     environment_changed = Signal(str)
@@ -143,13 +146,34 @@ class NewTaskPage(QWidget):
         self._run_interactive = StainedGlassButton("Run Interactive")
         self._run_interactive.set_glass_enabled(False)
         self._run_interactive.clicked.connect(self._on_launch)
+
+        self._run_agent_menu = QMenu(self)
+        self._run_agent_menu.addAction("Local Agent").triggered.connect(self._on_run)
+        cloud_action = self._run_agent_menu.addAction("Cloud Agent")
+        cloud_action.triggered.connect(self._on_run_cloud)
+
         self._run_agent = StainedGlassButton("Run Agent")
         self._run_agent.set_glass_enabled(False)
         self._run_agent.clicked.connect(self._on_run)
+
+        self._run_agent_menu_btn = StainedGlassButton("▾")
+        self._run_agent_menu_btn.setFixedWidth(34)
+        self._run_agent_menu_btn.set_glass_enabled(False)
+        self._run_agent_menu_btn.clicked.connect(self._show_run_agent_menu)
+        self._run_agent_menu_btn.setVisible(False)
+
+        run_agent_wrap = QWidget()
+        run_agent_layout = QHBoxLayout(run_agent_wrap)
+        run_agent_layout.setContentsMargins(0, 0, 0, 0)
+        run_agent_layout.setSpacing(0)
+        run_agent_layout.addWidget(self._run_agent)
+        run_agent_layout.addWidget(self._run_agent_menu_btn)
+
         self._run_interactive.setEnabled(False)
         self._run_agent.setEnabled(False)
+        self._run_agent_menu_btn.setEnabled(False)
         buttons.addWidget(self._run_interactive)
-        buttons.addWidget(self._run_agent)
+        buttons.addWidget(run_agent_wrap)
 
         card_layout.addWidget(prompt_title)
         card_layout.addWidget(self._prompt, 1)
@@ -171,6 +195,7 @@ class NewTaskPage(QWidget):
     def _update_run_buttons(self) -> None:
         has_terminal = bool(str(self._terminal.currentData() or "").strip())
         self._run_agent.setEnabled(self._workspace_ready)
+        self._run_agent_menu_btn.setEnabled(self._workspace_ready)
         self._run_interactive.setEnabled(self._workspace_ready and has_terminal)
         self._get_agent_help.setEnabled(self._workspace_ready and has_terminal)
 
@@ -220,6 +245,34 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
         self.requested_run.emit(prompt, host_codex, env_id, base_branch)
+
+    def _on_run_cloud(self) -> None:
+        prompt = (self._prompt.toPlainText() or "").strip()
+        if not prompt:
+            QMessageBox.warning(self, "Missing prompt", "Enter a prompt first.")
+            return
+        prompt = sanitize_prompt(prompt)
+
+        if not self._workspace_ready:
+            QMessageBox.warning(
+                self,
+                "Workspace not configured",
+                self._workspace_error or "Pick an environment with a local folder or GitHub repo configured.",
+            )
+            return
+
+        host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
+
+        env_id = str(self._environment.currentData() or "")
+        base_branch = str(self._base_branch.currentData() or "")
+        self.requested_run_cloud.emit(prompt, host_codex, env_id, base_branch)
+
+    def _show_run_agent_menu(self) -> None:
+        if not self._run_agent_menu_btn.isVisible():
+            return
+        anchor = self._run_agent_menu_btn
+        pos = anchor.mapToGlobal(QPoint(0, anchor.height()))
+        self._run_agent_menu.popup(pos)
 
     def _on_get_agent_help(self) -> None:
         if not self._workspace_ready:
@@ -335,6 +388,7 @@ class NewTaskPage(QWidget):
             self._get_agent_help.set_tint_color(None)
             self._run_interactive.set_tint_color(None)
             self._run_agent.set_tint_color(None)
+            self._run_agent_menu_btn.set_tint_color(None)
             return
 
         _apply_environment_combo_tint(self._environment, stain)
@@ -343,6 +397,7 @@ class NewTaskPage(QWidget):
         self._get_agent_help.set_tint_color(tint)
         self._run_interactive.set_tint_color(tint)
         self._run_agent.set_tint_color(tint)
+        self._run_agent_menu_btn.set_tint_color(tint)
 
     def set_environment_stains(self, stains: dict[str, str]) -> None:
         self._env_stains = {str(k): str(v) for k, v in (stains or {}).items()}
@@ -435,6 +490,10 @@ class NewTaskPage(QWidget):
         
         self._run_interactive.setToolTip(tooltip)
         self._run_agent.setToolTip(tooltip)
+        self._run_agent_menu_btn.setToolTip(tooltip)
+
+        is_copilot = agent.lower().startswith("copilot")
+        self._run_agent_menu_btn.setVisible(is_copilot)
 
     def reset_for_new_run(self) -> None:
         self._prompt.setPlainText("")

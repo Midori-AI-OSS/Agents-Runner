@@ -166,6 +166,15 @@ class MainWindow(
         self._dashboard.task_discard_requested.connect(self._discard_task_from_ui)
         self._new_task = NewTaskPage()
         self._new_task.requested_run.connect(self._start_task_from_ui)
+        self._new_task.requested_run_cloud.connect(
+            lambda prompt, host_codex, env_id, base_branch: self._start_task_from_ui(
+                prompt,
+                host_codex,
+                env_id,
+                base_branch,
+                True,
+            )
+        )
         self._new_task.requested_launch.connect(self._start_interactive_task_from_ui)
         self._new_task.environment_changed.connect(self._on_new_task_env_changed)
         self._new_task.back_requested.connect(self._show_dashboard)

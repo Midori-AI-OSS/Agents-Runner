@@ -67,6 +67,7 @@ class _MainWindowTasksAgentMixin:
         host_codex: str,
         env_id: str,
         base_branch: str,
+        copilot_cloud: bool = False,
     ) -> None:
         if shutil.which("docker") is None:
             QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
@@ -219,6 +220,9 @@ class _MainWindowTasksAgentMixin:
             gh_recreate_if_needed=True,
             gh_base_branch=desired_base or None,
         )
+        if copilot_cloud and normalize_agent(agent_cli) == "copilot":
+            runner_prompt = f"/delegate {runner_prompt.strip()}"
+
         task._runner_config = config
         task._runner_prompt = runner_prompt
 
