@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractAnimation, QEvent, QEasingCurve, Property, QPropertyAnimation, Qt
-from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath
-from PySide6.QtWidgets import QPushButton, QWidget
+from PySide6.QtCore import QAbstractAnimation, QEvent, QEasingCurve, Property, QPropertyAnimation, QRect, QSize, Qt
+from PySide6.QtGui import QBrush, QColor, QLinearGradient, QMouseEvent, QPainter, QPainterPath
+from PySide6.QtWidgets import QMenu, QPushButton, QWidget
 
 
 def _clamp_u8(value: int) -> int:
@@ -39,6 +39,8 @@ class StainedGlassButton(QPushButton):
         self._tint_color: QColor | None = None
         self._glass_enabled = True
         self._pulse = 0.0
+        self._menu: QMenu | None = None
+        self._menu_width = 22
 
         anim = QPropertyAnimation(self, b"pulse", self)
         anim.setDuration(24000)
@@ -70,6 +72,27 @@ class StainedGlassButton(QPushButton):
             self._tint_color = QColor(color.red(), color.green(), color.blue(), 255)
         self.update()
 
+    def set_menu(self, menu: QMenu | None) -> None:
+        self._menu = menu
+        self.update()
+
+    def _menu_rect(self, rect) -> QRect:
+        if self._menu is None:
+            return QRect()
+        w = int(self._menu_width)
+        return QRect(rect.right() - w + 1, rect.top(), w, rect.height())
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if (
+            self._menu is not None
+            and self.isEnabled()
+            and event.button() == Qt.MouseButton.LeftButton
+            and self._menu_rect(self.rect().adjusted(1, 1, -1, -1)).contains(event.position().toPoint())
+        ):
+            self._menu.exec(event.globalPosition().toPoint())
+            return
+        super().mouseReleaseEvent(event)
+
     def showEvent(self, event) -> None:
         super().showEvent(event)
         if self._glass_enabled and self.isEnabled() and self._pulse_anim.state() != QAbstractAnimation.State.Running:
@@ -99,6 +122,14 @@ class StainedGlassButton(QPushButton):
         self.update()
 
     pulse = Property(float, get_pulse, set_pulse)
+
+    def sizeHint(self) -> QSize:
+        base = super().sizeHint()
+        return QSize(base.width() + 24, base.height())
+
+    def minimumSizeHint(self) -> QSize:
+        base = super().minimumSizeHint()
+        return QSize(base.width() + 24, base.height())
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -134,7 +165,13 @@ class StainedGlassButton(QPushButton):
             painter.setPen(border)
             painter.drawRect(rect)
             painter.setPen(text_color)
-            painter.drawText(rect.adjusted(10, 0, -10, 0), Qt.AlignCenter, self.text())
+            menu_rect = self._menu_rect(rect)
+            text_rect = rect.adjusted(10, 0, -10, 0)
+            if not menu_rect.isNull():
+                text_rect = text_rect.adjusted(0, 0, -menu_rect.width(), 0)
+            painter.drawText(text_rect, Qt.AlignCenter, self.text())
+            if not menu_rect.isNull():
+                painter.drawText(menu_rect, Qt.AlignCenter, "▾")
             return
 
         base = QColor(18, 20, 28)
@@ -209,4 +246,10 @@ class StainedGlassButton(QPushButton):
         else:
             text_color = QColor(237, 239, 245, 240)
         painter.setPen(text_color)
-        painter.drawText(rect.adjusted(10, 0, -10, 0), Qt.AlignCenter, self.text())
+        menu_rect = self._menu_rect(rect)
+        text_rect = rect.adjusted(10, 0, -10, 0)
+        if not menu_rect.isNull():
+            text_rect = text_rect.adjusted(0, 0, -menu_rect.width(), 0)
+        painter.drawText(text_rect, Qt.AlignCenter, self.text())
+        if not menu_rect.isNull():
+            painter.drawText(menu_rect, Qt.AlignCenter, "▾")

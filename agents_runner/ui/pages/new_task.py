@@ -149,12 +149,7 @@ class NewTaskPage(QWidget):
         self._run_interactive_menu = QMenu(self)
         self._run_interactive_desktop = self._run_interactive_menu.addAction("With desktop")
         self._run_interactive_desktop.triggered.connect(self._on_launch_with_desktop)
-        self._run_interactive_more = QToolButton()
-        self._run_interactive_more.setText("▾")
-        self._run_interactive_more.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self._run_interactive_more.setMenu(self._run_interactive_menu)
-        self._run_interactive_more.setPopupMode(QToolButton.InstantPopup)
-        self._run_interactive_more.setVisible(False)
+        self._run_interactive.set_menu(None)
 
         self._run_agent = StainedGlassButton("Run Agent")
         self._run_agent.set_glass_enabled(False)
@@ -162,7 +157,6 @@ class NewTaskPage(QWidget):
         self._run_interactive.setEnabled(False)
         self._run_agent.setEnabled(False)
         buttons.addWidget(self._run_interactive)
-        buttons.addWidget(self._run_interactive_more)
         buttons.addWidget(self._run_agent)
 
         card_layout.addWidget(prompt_title)
@@ -187,7 +181,6 @@ class NewTaskPage(QWidget):
         can_launch = bool(self._workspace_ready and has_terminal)
         self._run_agent.setEnabled(self._workspace_ready)
         self._run_interactive.setEnabled(can_launch)
-        self._run_interactive_more.setEnabled(can_launch)
         self._get_agent_help.setEnabled(can_launch)
 
     def _refresh_terminals(self) -> None:
@@ -313,7 +306,7 @@ class NewTaskPage(QWidget):
 
     def _sync_interactive_options(self) -> None:
         env_id = str(self._environment.currentData() or "")
-        self._run_interactive_more.setVisible(bool(env_id and env_id in self._gh_locked_envs))
+        self._run_interactive.set_menu(self._run_interactive_menu if (env_id and env_id in self._gh_locked_envs) else None)
 
     def _emit_interactive_launch(self, *, extra_preflight_script: str = "") -> None:
         prompt = sanitize_prompt((self._prompt.toPlainText() or "").strip())
