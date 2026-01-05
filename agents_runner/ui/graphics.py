@@ -124,7 +124,7 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
     if agent_cli == "gemini":
         return _AgentTheme(
             name="gemini",
-            base=QColor(255, 255, 255),  # #FFFFFF
+            base=QColor(18, 20, 28),  # #12141C (avoid white flash)
             orb_colors=(
                 QColor(66, 133, 244),   # #4285F4
                 QColor(234, 67, 53),    # #EA4335
