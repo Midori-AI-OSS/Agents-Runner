@@ -226,7 +226,6 @@ def serialize_task(task) -> dict[str, Any]:
         "agent_cli_args": getattr(task, "agent_cli_args", ""),
         "headless_desktop_enabled": bool(getattr(task, "headless_desktop_enabled", False)),
         "novnc_url": getattr(task, "novnc_url", ""),
-        "vnc_password": getattr(task, "vnc_password", ""),
         "desktop_display": getattr(task, "desktop_display", ""),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
@@ -261,7 +260,7 @@ def deserialize_task(task_cls, data: dict[str, Any]):
         agent_cli_args=str(data.get("agent_cli_args") or ""),
         headless_desktop_enabled=bool(data.get("headless_desktop_enabled") or False),
         novnc_url=str(data.get("novnc_url") or ""),
-        vnc_password=str(data.get("vnc_password") or ""),
+        vnc_password="",
         desktop_display=str(data.get("desktop_display") or ""),
         logs=list(data.get("logs") or []),
     )

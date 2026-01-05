@@ -270,12 +270,10 @@ class _MainWindowTaskEventsMixin:
 
         if "DesktopEnabled" in state:
             task.headless_desktop_enabled = bool(state.get("DesktopEnabled") or False)
+            task.vnc_password = ""
         novnc_url = str(state.get("NoVncUrl") or "").strip()
         if novnc_url:
             task.novnc_url = novnc_url
-        vnc_password = str(state.get("VncPassword") or "").strip()
-        if vnc_password:
-            task.vnc_password = vnc_password
         desktop_display = str(state.get("DesktopDisplay") or "").strip()
         if desktop_display:
             task.desktop_display = desktop_display
