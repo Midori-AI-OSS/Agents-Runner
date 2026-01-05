@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from PySide6.QtCore import Property
+from PySide6.QtCore import QAbstractAnimation
+from PySide6.QtCore import QEasingCurve
+from PySide6.QtCore import QParallelAnimationGroup
+from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
@@ -13,10 +18,13 @@ from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QScrollArea
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QStyle
-from PySide6.QtWidgets import QTabWidget
+from PySide6.QtWidgets import QFrame
+from PySide6.QtWidgets import QStackedWidget
+from PySide6.QtWidgets import QTabBar
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QGraphicsOpacityEffect
 
 from agents_runner.environments import ALLOWED_STAINS
 from agents_runner.ui.task_model import Task
@@ -26,7 +34,6 @@ from agents_runner.ui.utils import _rgba
 from agents_runner.ui.utils import _stain_color
 from agents_runner.ui.utils import _status_color
 from agents_runner.widgets import BouncingLoadingBar
-from agents_runner.widgets import GlassCard
 from agents_runner.widgets import StatusGlyph
 
 
@@ -61,11 +68,15 @@ class TaskRow(QWidget):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._task_id: str | None = None
         self._last_task: Task | None = None
+        self._content_offset = 0.0
+        self._entrance_anim: QParallelAnimationGroup | None = None
         self.setObjectName("TaskRow")
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setProperty("selected", False)
 
-        layout = QHBoxLayout(self)
+        self._content = QWidget(self)
+
+        layout = QHBoxLayout(self._content)
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(12)
 
@@ -123,6 +134,89 @@ class TaskRow(QWidget):
 
     def set_task_id(self, task_id: str) -> None:
         self._task_id = task_id
+
+    def _apply_content_geometry(self) -> None:
+        self._content.setGeometry(self.rect().translated(int(self._content_offset), 0))
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._apply_content_geometry()
+
+    def _get_content_offset(self) -> float:
+        return float(self._content_offset)
+
+    def _set_content_offset(self, value: float) -> None:
+        value = float(value)
+        if self._content_offset == value:
+            return
+        self._content_offset = value
+        self._apply_content_geometry()
+
+    contentOffset = Property(float, _get_content_offset, _set_content_offset)
+
+    def prepare_entrance(self, *, distance: int = 36) -> None:
+        effect = self.graphicsEffect()
+        if not isinstance(effect, QGraphicsOpacityEffect):
+            effect = QGraphicsOpacityEffect(self)
+            self.setGraphicsEffect(effect)
+        effect.setOpacity(0.0)
+        self._set_content_offset(float(distance))
+
+    def play_entrance(
+        self,
+        *,
+        distance: int = 36,
+        fade_ms: int = 130,
+        move_ms: int = 230,
+        delay_ms: int = 0,
+    ) -> None:
+        if self._entrance_anim is not None:
+            self._entrance_anim.stop()
+            self._entrance_anim = None
+
+        def _start() -> None:
+            self.prepare_entrance(distance=distance)
+
+            effect = self.graphicsEffect()
+            if not isinstance(effect, QGraphicsOpacityEffect):
+                return
+
+            fade_anim = QPropertyAnimation(effect, b"opacity", self)
+            fade_anim.setDuration(int(max(0, fade_ms)))
+            fade_anim.setStartValue(0.0)
+            fade_anim.setEndValue(1.0)
+            fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+            slide_anim = QPropertyAnimation(self, b"contentOffset", self)
+            slide_anim.setDuration(int(max(0, move_ms)))
+            slide_anim.setStartValue(float(distance))
+            slide_anim.setEndValue(0.0)
+            slide_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+            group = QParallelAnimationGroup(self)
+            group.addAnimation(fade_anim)
+            group.addAnimation(slide_anim)
+            group.finished.connect(self._on_entrance_finished)
+            self._entrance_anim = group
+            group.start(QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
+
+        if delay_ms > 0:
+            QTimer.singleShot(int(delay_ms), _start)
+        else:
+            _start()
+
+    def _on_entrance_finished(self) -> None:
+        self._entrance_anim = None
+        self._set_content_offset(0.0)
+        effect = self.graphicsEffect()
+        if isinstance(effect, QGraphicsOpacityEffect):
+            effect.setOpacity(1.0)
+
+    def cancel_entrance(self) -> None:
+        if self._entrance_anim is not None:
+            self._entrance_anim.stop()
+            self._entrance_anim = None
+        self._on_entrance_finished()
 
     def _on_discard_clicked(self) -> None:
         if self._task_id:
@@ -204,19 +298,23 @@ class DashboardPage(QWidget):
         super().__init__(parent)
         self._selected_task_id: str | None = None
         self._filter_text_tokens: list[str] = []
+        self._past_entrance_queue: list[TaskRow] = []
+        self._past_entrance_timer = QTimer(self)
+        self._past_entrance_timer.setSingleShot(True)
+        self._past_entrance_timer.timeout.connect(self._play_next_past_entrance)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
 
-        table = GlassCard()
+        table = QWidget()
         table_layout = QVBoxLayout(table)
-        table_layout.setContentsMargins(12, 12, 12, 12)
-        table_layout.setSpacing(10)
+        table_layout.setContentsMargins(0, 12, 0, 12)
+        table_layout.setSpacing(0)
 
         filters = QWidget()
         filters_layout = QHBoxLayout(filters)
-        filters_layout.setContentsMargins(8, 0, 8, 0)
+        filters_layout.setContentsMargins(0, 0, 0, 0)
         filters_layout.setSpacing(10)
 
         self._filter_text = QLineEdit()
@@ -260,7 +358,7 @@ class DashboardPage(QWidget):
 
         columns = QWidget()
         columns_layout = QHBoxLayout(columns)
-        columns_layout.setContentsMargins(8, 0, 8, 0)
+        columns_layout.setContentsMargins(0, 0, 0, 0)
         columns_layout.setSpacing(12)
         c1 = QLabel("Task")
         c1.setStyleSheet("color: rgba(237, 239, 245, 150); font-weight: 650;")
@@ -275,12 +373,30 @@ class DashboardPage(QWidget):
         columns_layout.addWidget(c3, 4)
         columns_layout.addSpacing(self._btn_clean_old.sizeHint().width())
 
-        self._tabs = QTabWidget()
+        self._tabs = QTabBar()
+        self._tabs.setObjectName("DashboardTabs")
         self._tabs.setDocumentMode(True)
+        self._tabs.addTab("Active Tasks")
+        self._tabs.addTab("Past Tasks")
         self._tabs.currentChanged.connect(self._on_tab_changed)
 
-        active_tab = QWidget()
-        active_layout = QVBoxLayout(active_tab)
+        tabs_row = QWidget()
+        tabs_row_layout = QHBoxLayout(tabs_row)
+        tabs_row_layout.setContentsMargins(0, 0, 0, 0)
+        tabs_row_layout.setSpacing(0)
+        tabs_row_layout.addWidget(self._tabs, 1)
+
+        pane = QFrame()
+        pane.setObjectName("TaskTabPane")
+        pane.setAttribute(Qt.WA_StyledBackground, True)
+        pane_layout = QVBoxLayout(pane)
+        pane_layout.setContentsMargins(0, 8, 0, 0)
+        pane_layout.setSpacing(10)
+
+        self._stack = QStackedWidget()
+
+        active_page = QWidget()
+        active_layout = QVBoxLayout(active_page)
         active_layout.setContentsMargins(0, 0, 0, 0)
         active_layout.setSpacing(0)
 
@@ -299,8 +415,8 @@ class DashboardPage(QWidget):
         self._scroll_active.setWidget(self._list_active)
         active_layout.addWidget(self._scroll_active, 1)
 
-        past_tab = QWidget()
-        past_layout = QVBoxLayout(past_tab)
+        past_page = QWidget()
+        past_layout = QVBoxLayout(past_page)
         past_layout.setContentsMargins(0, 0, 0, 0)
         past_layout.setSpacing(10)
 
@@ -325,12 +441,15 @@ class DashboardPage(QWidget):
         past_layout.addWidget(self._scroll_past, 1)
         past_layout.addWidget(self._btn_load_more, 0, Qt.AlignRight)
 
-        self._tabs.addTab(active_tab, "Active Tasks")
-        self._tabs.addTab(past_tab, "Past Tasks")
+        self._stack.addWidget(active_page)
+        self._stack.addWidget(past_page)
 
-        table_layout.addWidget(filters)
-        table_layout.addWidget(columns)
-        table_layout.addWidget(self._tabs, 1)
+        pane_layout.addWidget(filters)
+        pane_layout.addWidget(columns)
+        pane_layout.addWidget(self._stack, 1)
+
+        table_layout.addWidget(tabs_row, 0)
+        table_layout.addWidget(pane, 1)
         layout.addWidget(table, 1)
 
         self._rows_active: dict[str, TaskRow] = {}
@@ -383,19 +502,44 @@ class DashboardPage(QWidget):
 
     def upsert_past_task(self, task: Task, stain: str | None = None) -> None:
         row = self._rows_past.get(task.task_id)
+        created = False
         if row is None:
             row = TaskRow(discard_enabled=False)
             row.set_task_id(task.task_id)
             row.set_stain(stain or self._pick_new_row_stain(self._list_layout_past))
             row.clicked.connect(self._on_row_clicked)
             self._rows_past[task.task_id] = row
-            self._list_layout_past.insertWidget(0, row)
+            self._list_layout_past.insertWidget(max(0, self._list_layout_past.count() - 1), row)
+            created = True
         elif stain:
             row.set_stain(stain)
 
         row.set_selected(self._selected_task_id == task.task_id)
         row.update_from_task(task)
         row.setVisible(self._row_visible_for_task(task))
+        if created and row.isVisible() and self._stack.currentIndex() == 1:
+            self._queue_past_entrance(row)
+
+    def _queue_past_entrance(self, row: TaskRow) -> None:
+        if row in self._past_entrance_queue:
+            return
+        row.prepare_entrance(distance=36)
+        self._past_entrance_queue.append(row)
+        if not self._past_entrance_timer.isActive():
+            self._past_entrance_timer.start(0)
+
+    def _play_next_past_entrance(self) -> None:
+        while self._past_entrance_queue:
+            row = self._past_entrance_queue.pop(0)
+            if row is None or row.parent() is None:
+                continue
+            if not row.isVisible():
+                row.cancel_entrance()
+                continue
+            row.play_entrance(distance=36, fade_ms=120, move_ms=220)
+            break
+        if self._past_entrance_queue:
+            self._past_entrance_timer.start(65)
 
     def set_environment_filter_options(self, envs: list[tuple[str, str]]) -> None:
         current = str(self._filter_environment.currentData() or "")
@@ -498,6 +642,8 @@ class DashboardPage(QWidget):
         self.past_load_more_requested.emit(len(self._rows_past))
 
     def _on_tab_changed(self, index: int) -> None:
+        if index >= 0:
+            self._stack.setCurrentIndex(index)
         if index != 1:
             return
         if self._rows_past:
