@@ -43,14 +43,39 @@ class _AgentTheme:
     base: QColor
     orb_colors: tuple[QColor, ...]
     shard_colors: tuple[QColor, ...]
+    shard_points: tuple[tuple[tuple[float, float], ...], ...]
 
 
-_SHARD_POINTS: tuple[tuple[tuple[float, float], ...], ...] = (
+_SHARD_POINTS_CODEX: tuple[tuple[tuple[float, float], ...], ...] = (
     ((0.00, 0.10), (0.38, 0.00), (0.55, 0.23), (0.22, 0.34)),
     ((0.62, 0.00), (1.00, 0.14), (0.88, 0.42), (0.58, 0.28)),
     ((0.08, 0.48), (0.28, 0.38), (0.52, 0.64), (0.20, 0.80)),
     ((0.62, 0.56), (0.94, 0.46), (1.00, 0.82), (0.76, 1.00)),
     ((0.00, 0.78), (0.20, 0.64), (0.40, 1.00), (0.00, 1.00)),
+)
+
+_SHARD_POINTS_COPILOT: tuple[tuple[tuple[float, float], ...], ...] = (
+    ((0.00, 0.04), (0.30, 0.00), (0.44, 0.18), (0.16, 0.28)),
+    ((0.54, 0.00), (1.00, 0.06), (0.86, 0.34), (0.62, 0.20)),
+    ((0.30, 0.38), (0.58, 0.30), (0.72, 0.56), (0.40, 0.66)),
+    ((0.70, 0.64), (1.00, 0.56), (1.00, 1.00), (0.80, 1.00)),
+    ((0.00, 0.70), (0.22, 0.56), (0.46, 0.86), (0.14, 1.00), (0.00, 1.00)),
+)
+
+_SHARD_POINTS_CLAUDE: tuple[tuple[tuple[float, float], ...], ...] = (
+    ((0.00, 0.08), (0.18, 0.00), (0.30, 0.12), (0.10, 0.24)),
+    ((0.30, 0.00), (0.52, 0.00), (0.44, 0.34), (0.24, 0.26)),
+    ((0.54, 0.18), (0.74, 0.08), (0.82, 0.40), (0.56, 0.48)),
+    ((0.72, 0.56), (0.92, 0.48), (1.00, 0.78), (0.84, 0.90)),
+    ((0.00, 0.64), (0.22, 0.48), (0.38, 0.72), (0.18, 1.00), (0.00, 1.00)),
+)
+
+_SHARD_POINTS_GEMINI: tuple[tuple[tuple[float, float], ...], ...] = (
+    ((0.00, 0.00), (0.34, 0.00), (0.14, 0.26)),
+    ((0.66, 0.00), (1.00, 0.00), (0.88, 0.30), (0.70, 0.18)),
+    ((0.10, 0.44), (0.34, 0.34), (0.24, 0.70), (0.00, 0.62)),
+    ((0.62, 0.42), (0.92, 0.34), (1.00, 0.56), (0.74, 0.66)),
+    ((0.32, 0.84), (0.62, 0.74), (0.84, 1.00), (0.18, 1.00)),
 )
 
 
@@ -74,6 +99,7 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
                 QColor(80, 29, 175, 18),
                 QColor(139, 148, 158, 14),
             ),
+            shard_points=_SHARD_POINTS_COPILOT,
         )
     if agent_cli == "claude":
         return _AgentTheme(
@@ -93,6 +119,7 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
                 QColor(107, 106, 104, 10),
                 QColor(26, 26, 24, 8),
             ),
+            shard_points=_SHARD_POINTS_CLAUDE,
         )
     if agent_cli == "gemini":
         return _AgentTheme(
@@ -112,6 +139,7 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
                 QColor(52, 168, 83, 12),
                 QColor(154, 160, 166, 10),
             ),
+            shard_points=_SHARD_POINTS_GEMINI,
         )
 
     # codex / ChatGPT neutral
@@ -132,6 +160,7 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
             QColor(92, 99, 112, 10),
             QColor(240, 240, 240, 8),
         ),
+        shard_points=_SHARD_POINTS_CODEX,
     )
 
 
@@ -326,7 +355,7 @@ class GlassRoot(QWidget):
         h = max(1, self.height())
         outline = QColor(0, 0, 0, 12) if theme.base.lightnessF() > 0.6 else QColor(255, 255, 255, 10)
 
-        for color, points in zip(theme.shard_colors, _SHARD_POINTS, strict=False):
+        for color, points in zip(theme.shard_colors, theme.shard_points, strict=False):
             path = QPainterPath()
             x0, y0 = points[0]
             path.moveTo(int(x0 * w), int(y0 * h))
