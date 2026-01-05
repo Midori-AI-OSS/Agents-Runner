@@ -155,6 +155,12 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         grid.addWidget(QLabel("Agent CLI Flags"), 3, 0)
         grid.addWidget(self._agent_cli_args, 3, 1, 1, 2)
 
+        self._headless_desktop_enabled = QCheckBox("Enable headless desktop (noVNC) for this environment")
+        self._headless_desktop_enabled.setToolTip(
+            "When enabled, agent runs for this environment will start a noVNC desktop.\n"
+            "Settings → Force headless desktop overrides this setting."
+        )
+
         self._gh_pr_metadata_enabled = QCheckBox("Allow agent to set PR title/body (non-interactive only)")
         self._gh_pr_metadata_enabled.setToolTip(
             "When enabled and Workspace is a GitHub repo (clone), a per-task JSON file is mounted into the container.\n"
@@ -172,6 +178,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         grid.addWidget(QLabel("Max agents running"), 4, 0)
         grid.addWidget(max_agents_row, 4, 1, 1, 2)
+        grid.addWidget(self._headless_desktop_enabled, 6, 0, 1, 3)
 
         self._gh_pr_metadata_label = QLabel("PR title/body")
         self._gh_pr_metadata_row = QWidget(general_tab)
@@ -306,6 +313,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._host_codex_dir.setText("")
             self._agent_cli_args.setText("")
             self._max_agents_running.setText("-1")
+            self._headless_desktop_enabled.setChecked(False)
             self._gh_pr_metadata_enabled.setChecked(False)
             self._gh_pr_metadata_enabled.setEnabled(False)
             self._gh_pr_metadata_label.setVisible(False)
@@ -329,6 +337,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._host_codex_dir.setText(env.host_codex_dir)
         self._agent_cli_args.setText(env.agent_cli_args)
         self._max_agents_running.setText(str(int(getattr(env, "max_agents_running", -1))))
+        self._headless_desktop_enabled.setChecked(bool(getattr(env, "headless_desktop_enabled", False)))
         is_github_env = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) == GH_MANAGEMENT_GITHUB
         self._gh_pr_metadata_enabled.setChecked(bool(getattr(env, "gh_pr_metadata_enabled", False)))
         self._gh_pr_metadata_enabled.setEnabled(is_github_env)

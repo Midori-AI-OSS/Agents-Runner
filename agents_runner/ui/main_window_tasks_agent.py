@@ -132,7 +132,9 @@ class _MainWindowTasksAgentMixin:
         if env and env.preflight_enabled and (env.preflight_script or "").strip():
             environment_preflight_script = env.preflight_script
 
-        headless_desktop_enabled = bool(self._settings_data.get("headless_desktop_enabled") or False)
+        force_headless_desktop = bool(self._settings_data.get("headless_desktop_enabled") or False)
+        env_headless_desktop = bool(getattr(env, "headless_desktop_enabled", False)) if env else False
+        headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
 
         task = Task(
             task_id=task_id,
