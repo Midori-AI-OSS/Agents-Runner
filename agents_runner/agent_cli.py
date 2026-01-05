@@ -4,7 +4,7 @@ import shlex
 from pathlib import Path
 
 
-SUPPORTED_AGENTS = ("codex", "claude", "copilot")
+SUPPORTED_AGENTS = ("codex", "claude", "copilot", "gemini")
 CONTAINER_HOME = "/home/midori-ai"
 CONTAINER_WORKDIR = "/home/midori-ai/workspace"
 
@@ -20,6 +20,8 @@ def container_config_dir(agent: str) -> str:
         return f"{CONTAINER_HOME}/.claude"
     if agent == "copilot":
         return f"{CONTAINER_HOME}/.copilot"
+    if agent == "gemini":
+        return f"{CONTAINER_HOME}/.gemini"
     return f"{CONTAINER_HOME}/.codex"
 
 
@@ -93,6 +95,20 @@ def build_noninteractive_cmd(
         ]
         return args
 
+    if agent == "gemini":
+        args = [
+            "gemini",
+            "--no-sandbox",
+            "--approval-mode",
+            "yolo",
+            "--include-directories",
+            container_workdir,
+            *extra_args,
+        ]
+        if prompt:
+            args.append(prompt)
+        return args
+
     # codex
     args = [
         "codex",
@@ -109,4 +125,3 @@ def build_noninteractive_cmd(
 
 def _is_git_repo_root(path: str) -> bool:
     return os.path.exists(os.path.join(path, ".git"))
-

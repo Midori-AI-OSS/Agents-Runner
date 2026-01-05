@@ -33,6 +33,69 @@ class _MainWindowTaskEventsMixin:
         self._show_task_details()
 
 
+    def _on_task_container_action(self, task_id: str, action: str) -> None:
+        task_id = str(task_id or "").strip()
+        action = str(action or "").strip().lower()
+        task = self._tasks.get(task_id)
+        if task is None:
+            return
+
+        bridge = self._bridges.get(task_id)
+        container_id = task.container_id or (bridge.container_id if bridge is not None else None)
+        container_id = str(container_id or "").strip()
+        if not container_id:
+            QMessageBox.information(self, "No container", "This task does not have a container ID yet.")
+            return
+
+        docker_args: list[str]
+        timeout_s = 10.0
+        if action == "freeze":
+            docker_args = ["pause", container_id]
+        elif action == "unfreeze":
+            docker_args = ["unpause", container_id]
+        elif action == "stop":
+            docker_args = ["stop", "-t", "1", container_id]
+            timeout_s = 20.0
+        elif action == "kill":
+            msg = (
+                f"Kill container {container_id} for task {task_id}?\n\n"
+                f"{task.prompt_one_line()}\n\n"
+                "This can interrupt the agent immediately."
+            )
+            if QMessageBox.question(self, "Kill container?", msg) != QMessageBox.StandardButton.Yes:
+                return
+            docker_args = ["kill", container_id]
+        else:
+            return
+
+        self._on_task_log(task_id, f"[docker] docker {' '.join(docker_args)}")
+        try:
+            completed = subprocess.run(
+                ["docker", *docker_args],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+            )
+        except Exception as exc:
+            self._on_task_log(task_id, f"[docker] ERROR: {exc}")
+            QMessageBox.warning(self, "Docker command failed", str(exc))
+            return
+
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip() or f"docker exited {completed.returncode}"
+            self._on_task_log(task_id, f"[docker] ERROR: {detail}")
+            QMessageBox.warning(self, "Docker command failed", detail)
+
+        self._try_sync_container_state(task)
+        env = self._environments.get(task.environment_id)
+        stain = env.color if env else None
+        spinner = _stain_color(env.color) if env else None
+        self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+        self._details.update_task(task)
+        self._schedule_save()
+
+
     def _discard_task_from_ui(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         task = self._tasks.get(task_id)
@@ -204,6 +267,16 @@ class _MainWindowTaskEventsMixin:
                 task.exit_code = int(exit_code)
             except Exception:
                 pass
+
+        if "DesktopEnabled" in state:
+            task.headless_desktop_enabled = bool(state.get("DesktopEnabled") or False)
+            task.vnc_password = ""
+        novnc_url = str(state.get("NoVncUrl") or "").strip()
+        if novnc_url:
+            task.novnc_url = novnc_url
+        desktop_display = str(state.get("DesktopDisplay") or "").strip()
+        if desktop_display:
+            task.desktop_display = desktop_display
 
         if current not in {"done", "failed"}:
             if incoming in {"exited", "dead"} and task.exit_code is not None:

@@ -35,6 +35,10 @@ class Task:
     agent_cli: str = ""
     agent_instance_id: str = ""
     agent_cli_args: str = ""
+    headless_desktop_enabled: bool = False
+    novnc_url: str = ""
+    vnc_password: str = ""
+    desktop_display: str = ""
 
     def last_nonblank_log_line(self) -> str:
         for line in reversed(self.logs):

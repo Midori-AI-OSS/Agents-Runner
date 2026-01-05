@@ -13,6 +13,7 @@ uv run main.py
 - **OpenAI Codex** - [Install](https://github.com/openai/codex/blob/main/README.md)
 - **Claude Code** - [Install](https://code.claude.com/docs/en/overview) # May not be fully supported, open a issue if you run into bugs
 - **GitHub Copilot** - [Install](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) # May not be fully supported, open a issue if you run into bugs
+- **Google Gemini** - [Install](https://ai.google.dev/docs/gemini_api_overview) # May not be fully supported, open a issue if you run into bugs
 
 ## Features
 
@@ -32,4 +33,4 @@ uv run main.py
 
 - **State**: `~/.midoriai/agents-runner/state.json`
 - **Environments**: `~/.midoriai/agents-runner/environment-*.json`
-- **Agent Config**: `~/.codex`, `~/.claude`, or `~/.copilot` → `/home/midori-ai/.{agent}` (override: `AGENTS_RUNNER_STATE_PATH`)
+- **Agent Config**: `~/.codex`, `~/.claude`, `~/.gemini` or `~/.copilot` → `/home/midori-ai/.{agent}` (override: `AGENTS_RUNNER_STATE_PATH`)

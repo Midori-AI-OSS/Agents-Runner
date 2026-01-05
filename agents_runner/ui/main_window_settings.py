@@ -46,14 +46,26 @@ class _MainWindowSettingsMixin:
             host_copilot_dir = os.path.expanduser("~/.copilot")
         merged["host_copilot_dir"] = host_copilot_dir
 
+        host_gemini_dir = os.path.expanduser(str(merged.get("host_gemini_dir") or "").strip())
+        if not host_gemini_dir:
+            host_gemini_dir = os.path.expanduser("~/.gemini")
+        merged["host_gemini_dir"] = host_gemini_dir
+
         merged["preflight_enabled"] = bool(merged.get("preflight_enabled") or False)
         merged["preflight_script"] = str(merged.get("preflight_script") or "")
         merged["interactive_command"] = str(merged.get("interactive_command") or "--sandbox danger-full-access")
         merged["interactive_command_claude"] = str(merged.get("interactive_command_claude") or "")
         merged["interactive_command_copilot"] = str(merged.get("interactive_command_copilot") or "")
-        for key in ("interactive_command", "interactive_command_claude", "interactive_command_copilot"):
+        merged["interactive_command_gemini"] = str(merged.get("interactive_command_gemini") or "")
+        for key in (
+            "interactive_command",
+            "interactive_command_claude",
+            "interactive_command_copilot",
+            "interactive_command_gemini",
+        ):
             merged[key] = self._sanitize_interactive_command_value(key, merged.get(key))
         merged["append_pixelarch_context"] = bool(merged.get("append_pixelarch_context") or False)
+        merged["headless_desktop_enabled"] = bool(merged.get("headless_desktop_enabled") or False)
 
         try:
             merged["max_agents_running"] = int(str(merged.get("max_agents_running", -1)).strip())
@@ -70,6 +82,8 @@ class _MainWindowSettingsMixin:
             return "interactive_command_claude"
         if agent_cli == "copilot":
             return "interactive_command_copilot"
+        if agent_cli == "gemini":
+            return "interactive_command_gemini"
         return "interactive_command"
 
 
@@ -79,6 +93,8 @@ class _MainWindowSettingsMixin:
             return "host_claude_dir"
         if agent_cli == "copilot":
             return "host_copilot_dir"
+        if agent_cli == "gemini":
+            return "host_gemini_dir"
         return "host_codex_dir"
 
 
@@ -88,6 +104,8 @@ class _MainWindowSettingsMixin:
             return "--add-dir /home/midori-ai/workspace"
         if agent_cli == "copilot":
             return "--add-dir /home/midori-ai/workspace"
+        if agent_cli == "gemini":
+            return "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace"
         return "--sandbox danger-full-access"
 
 
@@ -100,7 +118,7 @@ class _MainWindowSettingsMixin:
             cmd_parts = shlex.split(value)
         except ValueError:
             cmd_parts = []
-        if cmd_parts and cmd_parts[0] in {"codex", "claude", "copilot"}:
+        if cmd_parts and cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
             head = cmd_parts.pop(0)
             if head == "codex" and cmd_parts and cmd_parts[0] == "exec":
                 cmd_parts.pop(0)
@@ -112,6 +130,8 @@ class _MainWindowSettingsMixin:
                 agent_cli = "claude"
             elif str(key or "").endswith("_copilot"):
                 agent_cli = "copilot"
+            elif str(key or "").endswith("_gemini"):
+                agent_cli = "gemini"
             return self._default_interactive_command(agent_cli)
 
         return value
@@ -155,6 +175,8 @@ class _MainWindowSettingsMixin:
             config_dir = str(settings.get("host_claude_dir") or "")
         elif agent_cli == "copilot":
             config_dir = str(settings.get("host_copilot_dir") or "")
+        elif agent_cli == "gemini":
+            config_dir = str(settings.get("host_gemini_dir") or "")
         else:
             config_dir = str(
                 settings.get("host_codex_dir")
@@ -256,6 +278,7 @@ class _MainWindowSettingsMixin:
 
                - ``"claude"``  -> ``settings["host_claude_dir"]``
                - ``"copilot"`` -> ``settings["host_copilot_dir"]``
+               - ``"gemini"``  -> ``settings["host_gemini_dir"]``
                - ``"codex"``   -> ``settings["host_codex_dir"]`` or, if unset,
                  ``$CODEX_HOST_CODEX_DIR`` or ``~/.codex``.
 
@@ -307,6 +330,7 @@ class _MainWindowSettingsMixin:
 
            * ``host_claude_dir`` when ``agent_cli == "claude"``
            * ``host_copilot_dir`` when ``agent_cli == "copilot"``
+           * ``host_gemini_dir`` when ``agent_cli == "gemini"``
            * ``host_codex_dir`` for all other agents; if unset, falls back to the
              ``CODEX_HOST_CODEX_DIR`` environment variable, then to ``~/.codex``.
         3. Finally, for legacy/backwards compatibility, if ``env`` defines
@@ -337,8 +361,8 @@ class _MainWindowSettingsMixin:
     def _ensure_agent_config_dir(self, agent_cli: str, host_config_dir: str) -> bool:
         agent_cli = normalize_agent(agent_cli)
         host_config_dir = os.path.expanduser(str(host_config_dir or "").strip())
-        if agent_cli in {"claude", "copilot"} and not host_config_dir:
-            agent_label = "Claude" if agent_cli == "claude" else "Copilot"
+        if agent_cli in {"claude", "copilot", "gemini"} and not host_config_dir:
+            agent_label = "Claude" if agent_cli == "claude" else ("Copilot" if agent_cli == "copilot" else "Gemini")
             QMessageBox.warning(
                 self,
                 "Missing config folder",

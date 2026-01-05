@@ -27,6 +27,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - `~/.codex`: Codex agent config folder (read-only)
 - `~/.copilot`: Copilot config folder (read-only)
 - `~/.claude`: Claude agent config folder (read-only)
+- `~/.gemini`: Gemini CLI config folder (read-only)
 
 ---
 

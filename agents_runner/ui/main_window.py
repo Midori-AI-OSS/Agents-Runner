@@ -78,15 +78,18 @@ class MainWindow(
             "host_codex_dir": os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")),
             "host_claude_dir": os.path.expanduser("~/.claude"),
             "host_copilot_dir": os.path.expanduser("~/.copilot"),
+            "host_gemini_dir": os.path.expanduser("~/.gemini"),
             "active_environment_id": "default",
             "interactive_terminal_id": "",
             "interactive_command": "--sandbox danger-full-access",
             "interactive_command_claude": "--add-dir /home/midori-ai/workspace",
             "interactive_command_copilot": "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace",
+            "interactive_command_gemini": "--include-directories /home/midori-ai/workspace",
             "window_w": 1280,
             "window_h": 720,
             "max_agents_running": -1,
             "append_pixelarch_context": False,
+            "headless_desktop_enabled": False,
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False
@@ -113,10 +116,10 @@ class MainWindow(
         self._dashboard_ticker.timeout.connect(self._tick_dashboard_elapsed)
         self._dashboard_ticker.start()
 
-        root = GlassRoot()
-        self.setCentralWidget(root)
+        self._root = GlassRoot()
+        self.setCentralWidget(self._root)
 
-        outer = QVBoxLayout(root)
+        outer = QVBoxLayout(self._root)
         outer.setContentsMargins(18, 18, 18, 18)
         outer.setSpacing(14)
 
@@ -169,6 +172,7 @@ class MainWindow(
         self._details = TaskDetailsPage()
         self._details.back_requested.connect(self._show_dashboard)
         self._details.pr_requested.connect(self._on_task_pr_requested)
+        self._details.container_action_requested.connect(self._on_task_container_action)
         self._envs_page = EnvironmentsPage()
         self._envs_page.back_requested.connect(self._show_dashboard)
         self._envs_page.updated.connect(self._reload_environments, Qt.QueuedConnection)

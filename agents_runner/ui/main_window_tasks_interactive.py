@@ -115,7 +115,10 @@ class _MainWindowTasksInteractiveMixin:
             if not raw_command:
                 raw_command = self._default_interactive_command(agent_cli)
         command = raw_command
-        is_help_launch = self._is_agent_help_interactive_launch(prompt=prompt, command=command)
+        is_help_launch = bool(str(extra_preflight_script or "").strip()) or self._is_agent_help_interactive_launch(
+            prompt=prompt, command=command
+        )
+        help_repos_dir = "/home/midori-ai/.agent-help/repos"
         if is_help_launch:
             prompt = "\n".join(
                 [
@@ -162,6 +165,15 @@ class _MainWindowTasksInteractiveMixin:
                 cmd_parts.pop(1)
             if agent_cli_args:
                 cmd_parts.extend(agent_cli_args)
+            if is_help_launch:
+                found_sandbox = False
+                for idx in range(len(cmd_parts) - 1):
+                    if cmd_parts[idx] != "--sandbox":
+                        continue
+                    cmd_parts[idx + 1] = "danger-full-access"
+                    found_sandbox = True
+                if not found_sandbox:
+                    cmd_parts[1:1] = ["--sandbox", "danger-full-access"]
             if prompt:
                 _move_positional_to_end(cmd_parts, prompt)
         elif cmd_parts[0] == "claude":
@@ -169,6 +181,11 @@ class _MainWindowTasksInteractiveMixin:
                 cmd_parts.extend(agent_cli_args)
             if "--add-dir" not in cmd_parts:
                 cmd_parts[1:1] = ["--add-dir", "/home/midori-ai/workspace"]
+            if is_help_launch:
+                if "--permission-mode" not in cmd_parts:
+                    cmd_parts[1:1] = ["--permission-mode", "bypassPermissions"]
+                if help_repos_dir not in cmd_parts:
+                    cmd_parts[1:1] = ["--add-dir", help_repos_dir]
             if prompt:
                 _move_positional_to_end(cmd_parts, prompt)
         elif cmd_parts[0] == "copilot":
@@ -176,12 +193,49 @@ class _MainWindowTasksInteractiveMixin:
                 cmd_parts.extend(agent_cli_args)
             if "--add-dir" not in cmd_parts:
                 cmd_parts[1:1] = ["--add-dir", "/home/midori-ai/workspace"]
+            if is_help_launch:
+                if "--allow-all-tools" not in cmd_parts:
+                    cmd_parts[1:1] = ["--allow-all-tools"]
+                if "--allow-all-paths" not in cmd_parts:
+                    cmd_parts[1:1] = ["--allow-all-paths"]
+                if help_repos_dir not in cmd_parts:
+                    cmd_parts[1:1] = ["--add-dir", help_repos_dir]
             if prompt:
                 has_interactive = "-i" in cmd_parts or "--interactive" in cmd_parts
                 has_prompt = "-p" in cmd_parts or "--prompt" in cmd_parts
                 if has_prompt:
                     _move_flag_value_to_end(cmd_parts, {"-p", "--prompt"})
                 elif not has_interactive:
+                    cmd_parts.extend(["-i", prompt])
+        elif cmd_parts[0] == "gemini":
+            if agent_cli_args:
+                cmd_parts.extend(agent_cli_args)
+            if "--include-directories" not in cmd_parts:
+                cmd_parts[1:1] = ["--include-directories", "/home/midori-ai/workspace"]
+            if is_help_launch:
+                if help_repos_dir not in cmd_parts:
+                    cmd_parts[1:1] = ["--include-directories", help_repos_dir]
+                if "--sandbox" in cmd_parts:
+                    idx = cmd_parts.index("--sandbox")
+                    cmd_parts.pop(idx)
+                    if idx < len(cmd_parts) and not cmd_parts[idx].startswith("-"):
+                        cmd_parts.pop(idx)
+                if "-s" in cmd_parts:
+                    cmd_parts.remove("-s")
+                if "--no-sandbox" not in cmd_parts:
+                    cmd_parts[1:1] = ["--no-sandbox"]
+            if "--sandbox" not in cmd_parts and "--no-sandbox" not in cmd_parts and "-s" not in cmd_parts:
+                cmd_parts[1:1] = ["--no-sandbox"]
+            if "--approval-mode" not in cmd_parts:
+                cmd_parts[1:1] = ["--approval-mode", "yolo"]
+            if prompt:
+                has_interactive_prompt = "-i" in cmd_parts or "--prompt-interactive" in cmd_parts
+                has_prompt = "-p" in cmd_parts or "--prompt" in cmd_parts
+                if has_interactive_prompt:
+                    _move_flag_value_to_end(cmd_parts, {"-i", "--prompt-interactive"})
+                elif has_prompt:
+                    _move_flag_value_to_end(cmd_parts, {"-p", "--prompt"})
+                else:
                     cmd_parts.extend(["-i", prompt])
 
         image = PIXELARCH_EMERALD_IMAGE
@@ -400,7 +454,7 @@ class _MainWindowTasksInteractiveMixin:
 
             target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
             verify_clause = ""
-            if cmd_parts[0] in {"codex", "claude", "copilot"}:
+            if cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
                 verify_clause = verify_cli_clause(cmd_parts[0])
 
             container_script = "set -euo pipefail; " f"{preflight_clause}{verify_clause}{target_cmd}"
