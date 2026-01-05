@@ -5,6 +5,7 @@ from PySide6.QtCore import QPoint
 from PySide6.QtCore import QSize
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
+from PySide6.QtCore import QUrl
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QIcon
 from PySide6.QtGui import QPainter
@@ -19,6 +20,12 @@ from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QStackedWidget
+
+try:
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+except Exception:  # pragma: no cover
+    QWebEngineView = None
 
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import normalize_gh_management_mode
@@ -111,8 +118,9 @@ class TaskDetailsPage(QWidget):
         left_layout.setContentsMargins(18, 16, 18, 16)
         left_layout.setSpacing(10)
 
-        ptitle = QLabel("Prompt")
-        ptitle.setStyleSheet("font-size: 14px; font-weight: 650;")
+        self._left_title = QLabel("Prompt")
+        self._left_title.setStyleSheet("font-size: 14px; font-weight: 650;")
+
         self._prompt = QPlainTextEdit()
         self._prompt.setReadOnly(True)
         self._prompt.setMaximumBlockCount(2000)
@@ -135,9 +143,49 @@ class TaskDetailsPage(QWidget):
         cfg.addWidget(QLabel("Container ID"), 2, 0)
         cfg.addWidget(self._container, 2, 1)
 
-        left_layout.addWidget(ptitle)
-        left_layout.addWidget(self._prompt, 1)
-        left_layout.addLayout(cfg)
+        prompt_page = QWidget()
+        prompt_layout = QVBoxLayout(prompt_page)
+        prompt_layout.setContentsMargins(0, 0, 0, 0)
+        prompt_layout.setSpacing(10)
+        prompt_layout.addWidget(self._prompt, 1)
+        prompt_layout.addLayout(cfg)
+
+        self._desktop_loaded_url = ""
+        self._desktop_url = QLabel("—")
+        self._desktop_password = QLabel("—")
+        self._desktop_display = QLabel("—")
+        for label in (self._desktop_url, self._desktop_password, self._desktop_display):
+            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        desktop_cfg = QGridLayout()
+        desktop_cfg.setHorizontalSpacing(10)
+        desktop_cfg.setVerticalSpacing(8)
+        desktop_cfg.addWidget(QLabel("noVNC URL"), 0, 0)
+        desktop_cfg.addWidget(self._desktop_url, 0, 1)
+        desktop_cfg.addWidget(QLabel("VNC password"), 1, 0)
+        desktop_cfg.addWidget(self._desktop_password, 1, 1)
+        desktop_cfg.addWidget(QLabel("DISPLAY"), 2, 0)
+        desktop_cfg.addWidget(self._desktop_display, 2, 1)
+
+        desktop_page = QWidget()
+        desktop_layout = QVBoxLayout(desktop_page)
+        desktop_layout.setContentsMargins(0, 0, 0, 0)
+        desktop_layout.setSpacing(10)
+
+        if QWebEngineView is not None:
+            self._desktop_view = QWebEngineView()
+        else:
+            self._desktop_view = QLabel("QtWebEngine not available; open the noVNC URL externally.")
+            self._desktop_view.setWordWrap(True)
+        desktop_layout.addWidget(self._desktop_view, 1)
+        desktop_layout.addLayout(desktop_cfg)
+
+        self._left_stack = QStackedWidget()
+        self._left_stack.addWidget(prompt_page)
+        self._left_stack.addWidget(desktop_page)
+
+        left_layout.addWidget(self._left_title)
+        left_layout.addWidget(self._left_stack, 1)
         mid.addWidget(left, 3)
 
         right = GlassCard()
@@ -289,6 +337,7 @@ class TaskDetailsPage(QWidget):
         self._workdir.setText(task.host_workdir)
         self._codexdir.setText(task.host_codex_dir)
         self._container.setText(task.container_id or "—")
+        self._sync_desktop(task)
         self._sync_container_actions(task)
         self._logs.setPlainText("\n".join(task.logs[-5000:]))
         QTimer.singleShot(0, self._scroll_logs_to_bottom)
@@ -309,11 +358,35 @@ class TaskDetailsPage(QWidget):
             return
         self._last_task = task
         self._container.setText(task.container_id or "—")
+        self._sync_desktop(task)
         self._sync_container_actions(task)
         self._exit.setText("—" if task.exit_code is None else str(task.exit_code))
         self._apply_status(task)
         self._tick_uptime()
         self._sync_review_menu(task)
+
+    def _sync_desktop(self, task: Task) -> None:
+        should_show = bool(task.is_active() and task.headless_desktop_enabled)
+        if not hasattr(self, "_left_stack"):
+            return
+
+        if should_show:
+            self._left_title.setText("Desktop")
+            self._left_stack.setCurrentIndex(1)
+            url = str(task.novnc_url or "").strip()
+            self._desktop_url.setText(url or "(starting…)")
+            self._desktop_password.setText(str(task.vnc_password or "—"))
+            self._desktop_display.setText(str(task.desktop_display or ":1"))
+            if QWebEngineView is not None and url and url != self._desktop_loaded_url:
+                self._desktop_loaded_url = url
+                try:
+                    self._desktop_view.setUrl(QUrl(url))
+                except Exception:
+                    pass
+            return
+
+        self._left_title.setText("Prompt")
+        self._left_stack.setCurrentIndex(0)
 
     def _apply_status(self, task: Task) -> None:
         status = _task_display_status(task)

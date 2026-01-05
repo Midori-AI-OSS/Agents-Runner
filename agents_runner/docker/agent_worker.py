@@ -1,4 +1,5 @@
 import os
+import secrets
 import time
 import uuid
 import shlex
@@ -173,8 +174,43 @@ class DockerAgentWorker:
                 agent_cli_args=list(self._config.agent_cli_args or []),
             )
             agent_cmd = " ".join(shlex.quote(part) for part in agent_args)
+
+            desktop_enabled = bool(self._config.headless_desktop_enabled)
+            desktop_display = ":1"
+            desktop_password = secrets.token_hex(8) if desktop_enabled else ""
+            desktop_state: dict[str, Any] = {}
+            port_args: list[str] = []
+
             preflight_clause = ""
             preflight_mounts: list[str] = []
+            if desktop_enabled:
+                port_args.extend(["-p", "127.0.0.1::6080", "-p", "127.0.0.1::5901"])
+                preflight_clause += (
+                    'echo "[desktop] starting headless desktop (noVNC)"; '
+                    f'export DISPLAY={desktop_display}; '
+                    'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
+                    'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
+                    'mkdir -p "${XDG_RUNTIME_DIR}"; '
+                    'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
+                    'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
+                    'if command -v yay >/dev/null 2>&1; then '
+                    '  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify xorg-xauth ttf-dejavu xorg-fonts-misc >/dev/null || true; '
+                    'fi; '
+                    'PASS_FILE="${RUNTIME_BASE}/config/vnc.pass"; '
+                    'printf "%s\\n" "${AGENTS_RUNNER_VNC_PASSWORD:-}" | vncpasswd -f > "${PASS_FILE}"; '
+                    'chmod 600 "${PASS_FILE}"; '
+                    'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes VncAuth -PasswordFile "${PASS_FILE}" -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & '
+                    'sleep 0.25; '
+                    '(fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true; '
+                    '(xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true; '
+                    'NOVNC_WEB="/usr/share/novnc"; '
+                    'if [ ! -d "${NOVNC_WEB}" ]; then NOVNC_WEB="/usr/share/noVNC"; fi; '
+                    'websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
+                    'echo "[desktop] ready"; '
+                    'echo "[desktop] DISPLAY=${DISPLAY}"; '
+                    'echo "[desktop] VNC password: ${AGENTS_RUNNER_VNC_PASSWORD:-}"; '
+                    'echo "[desktop] screenshot: import -display :1 -window root ${RUNTIME_BASE}/out/screenshot.png"; '
+                )
             if settings_preflight_tmp_path is not None:
                 self._on_log(
                     f"[host] settings preflight enabled; mounting -> {settings_container_path} (ro)"
@@ -227,6 +263,25 @@ class DockerAgentWorker:
                     docker_env["GITHUB_TOKEN"] = token
                     env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
 
+            if desktop_enabled:
+                env_args.extend(
+                    [
+                        "-e",
+                        f"AGENTS_RUNNER_TASK_ID={task_token}",
+                        "-e",
+                        f"AGENTS_RUNNER_VNC_PASSWORD={desktop_password}",
+                        "-e",
+                        f"DISPLAY={desktop_display}",
+                    ]
+                )
+                desktop_state.update(
+                    {
+                        "DesktopEnabled": True,
+                        "DesktopDisplay": desktop_display,
+                        "VncPassword": desktop_password,
+                    }
+                )
+
             extra_mount_args: list[str] = []
             for mount in (self._config.extra_mounts or []):
                 m = str(mount).strip()
@@ -252,6 +307,7 @@ class DockerAgentWorker:
                 *extra_mount_args,
                 *preflight_mounts,
                 *env_args,
+                *port_args,
                 "-w",
                 self._config.container_workdir,
                 self._config.image,
@@ -263,8 +319,28 @@ class DockerAgentWorker:
                 f"exec {agent_cmd}",
             ]
             self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
+
+            if desktop_enabled and self._container_id:
+                try:
+                    mapping = _run_docker(
+                        ["port", self._container_id, "6080/tcp"],
+                        timeout_s=10.0,
+                        env=docker_env,
+                    )
+                    first = (mapping or "").strip().splitlines()[0] if (mapping or "").strip() else ""
+                    host_port = first.rsplit(":", 1)[-1].strip() if ":" in first else ""
+                    if host_port.isdigit():
+                        desktop_state["NoVncUrl"] = f"http://127.0.0.1:{host_port}/vnc.html"
+                        self._on_log(f"[desktop] noVNC URL: {desktop_state['NoVncUrl']}")
+                except Exception as exc:
+                    self._on_log(f"[desktop] ERROR: {exc}")
+
             try:
-                self._on_state(_inspect_state(self._container_id))
+                state = _inspect_state(self._container_id)
+                if desktop_state:
+                    state = dict(state)
+                    state.update(desktop_state)
+                self._on_state(state)
             except Exception:
                 pass
 
@@ -290,6 +366,9 @@ class DockerAgentWorker:
                         except Exception:
                             state = {}
                         if state:
+                            if desktop_state:
+                                state = dict(state)
+                                state.update(desktop_state)
                             self._on_state(state)
                         status = (state.get("Status") or "").lower()
                         if status in {"exited", "dead"}:
@@ -318,6 +397,9 @@ class DockerAgentWorker:
                 final_state = _inspect_state(self._container_id)
             except Exception:
                 final_state = {}
+            if desktop_state and final_state:
+                final_state = dict(final_state)
+                final_state.update(desktop_state)
             self._on_state(final_state)
             exit_code = int(final_state.get("ExitCode") or 0)
 

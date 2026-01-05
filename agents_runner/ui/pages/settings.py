@@ -109,6 +109,7 @@ class SettingsPage(QWidget):
             "When enabled, appends a short note to the end of the prompt passed to Run Agent.\n"
             "This never affects Run Interactive."
         )
+        self._headless_desktop_enabled = QCheckBox("Enable headless desktop (noVNC) for agents")
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
@@ -145,6 +146,7 @@ class SettingsPage(QWidget):
         grid.addWidget(browse_gemini, 4, 3)
         grid.addWidget(self._preflight_enabled, 5, 0, 1, 4)
         grid.addWidget(self._append_pixelarch_context, 6, 0, 1, 4)
+        grid.addWidget(self._headless_desktop_enabled, 7, 0, 1, 4)
 
         self._agent_config_widgets: dict[str, tuple[QWidget, ...]] = {
             "codex": (codex_label, self._host_codex_dir, browse_codex),
@@ -203,6 +205,7 @@ class SettingsPage(QWidget):
         self._preflight_script.setPlainText(str(settings.get("preflight_script") or ""))
 
         self._append_pixelarch_context.setChecked(bool(settings.get("append_pixelarch_context") or False))
+        self._headless_desktop_enabled.setChecked(bool(settings.get("headless_desktop_enabled") or False))
 
     def get_settings(self) -> dict:
         return {
@@ -215,6 +218,7 @@ class SettingsPage(QWidget):
             "preflight_enabled": bool(self._preflight_enabled.isChecked()),
             "preflight_script": str(self._preflight_script.toPlainText() or ""),
             "append_pixelarch_context": bool(self._append_pixelarch_context.isChecked()),
+            "headless_desktop_enabled": bool(self._headless_desktop_enabled.isChecked()),
         }
 
     def _pick_codex_dir(self) -> None:

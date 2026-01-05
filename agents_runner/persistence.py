@@ -224,6 +224,10 @@ def serialize_task(task) -> dict[str, Any]:
         "agent_cli": getattr(task, "agent_cli", ""),
         "agent_instance_id": getattr(task, "agent_instance_id", ""),
         "agent_cli_args": getattr(task, "agent_cli_args", ""),
+        "headless_desktop_enabled": bool(getattr(task, "headless_desktop_enabled", False)),
+        "novnc_url": getattr(task, "novnc_url", ""),
+        "vnc_password": getattr(task, "vnc_password", ""),
+        "desktop_display": getattr(task, "desktop_display", ""),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
         "logs": list(task.logs[-2000:]),
@@ -255,6 +259,10 @@ def deserialize_task(task_cls, data: dict[str, Any]):
         agent_cli=str(data.get("agent_cli") or ""),
         agent_instance_id=str(data.get("agent_instance_id") or ""),
         agent_cli_args=str(data.get("agent_cli_args") or ""),
+        headless_desktop_enabled=bool(data.get("headless_desktop_enabled") or False),
+        novnc_url=str(data.get("novnc_url") or ""),
+        vnc_password=str(data.get("vnc_password") or ""),
+        desktop_display=str(data.get("desktop_display") or ""),
         logs=list(data.get("logs") or []),
     )
     runner_prompt = data.get("runner_prompt")
@@ -312,6 +320,7 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> obje
             settings_preflight_script=str(payload.get("settings_preflight_script") or "").strip() or None,
             environment_preflight_script=str(payload.get("environment_preflight_script") or "").strip()
             or None,
+            headless_desktop_enabled=bool(payload.get("headless_desktop_enabled") or False),
             container_settings_preflight_path=str(
                 payload.get("container_settings_preflight_path") or "/tmp/agents-runner-preflight-settings-{task_id}.sh"
             ),

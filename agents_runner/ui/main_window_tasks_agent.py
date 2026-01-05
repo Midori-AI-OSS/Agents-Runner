@@ -132,6 +132,8 @@ class _MainWindowTasksAgentMixin:
         if env and env.preflight_enabled and (env.preflight_script or "").strip():
             environment_preflight_script = env.preflight_script
 
+        headless_desktop_enabled = bool(self._settings_data.get("headless_desktop_enabled") or False)
+
         task = Task(
             task_id=task_id,
             prompt=prompt,
@@ -145,6 +147,7 @@ class _MainWindowTasksAgentMixin:
             agent_cli=agent_cli,
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
+            headless_desktop_enabled=headless_desktop_enabled,
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -205,6 +208,7 @@ class _MainWindowTasksAgentMixin:
             pull_before_run=True,
             settings_preflight_script=settings_preflight_script,
             environment_preflight_script=environment_preflight_script,
+            headless_desktop_enabled=headless_desktop_enabled,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             agent_cli_args=agent_cli_args,

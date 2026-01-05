@@ -268,6 +268,18 @@ class _MainWindowTaskEventsMixin:
             except Exception:
                 pass
 
+        if "DesktopEnabled" in state:
+            task.headless_desktop_enabled = bool(state.get("DesktopEnabled") or False)
+        novnc_url = str(state.get("NoVncUrl") or "").strip()
+        if novnc_url:
+            task.novnc_url = novnc_url
+        vnc_password = str(state.get("VncPassword") or "").strip()
+        if vnc_password:
+            task.vnc_password = vnc_password
+        desktop_display = str(state.get("DesktopDisplay") or "").strip()
+        if desktop_display:
+            task.desktop_display = desktop_display
+
         if current not in {"done", "failed"}:
             if incoming in {"exited", "dead"} and task.exit_code is not None:
                 task.status = "done" if (incoming == "exited" and task.exit_code == 0) else "failed"

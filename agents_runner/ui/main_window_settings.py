@@ -65,6 +65,7 @@ class _MainWindowSettingsMixin:
         ):
             merged[key] = self._sanitize_interactive_command_value(key, merged.get(key))
         merged["append_pixelarch_context"] = bool(merged.get("append_pixelarch_context") or False)
+        merged["headless_desktop_enabled"] = bool(merged.get("headless_desktop_enabled") or False)
 
         try:
             merged["max_agents_running"] = int(str(merged.get("max_agents_running", -1)).strip())
