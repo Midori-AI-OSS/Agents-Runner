@@ -109,7 +109,10 @@ class SettingsPage(QWidget):
             "When enabled, appends a short note to the end of the prompt passed to Run Agent.\n"
             "This never affects Run Interactive."
         )
-        self._headless_desktop_enabled = QCheckBox("Enable headless desktop (noVNC) for agents")
+        self._headless_desktop_enabled = QCheckBox("Force headless desktop (noVNC) for all environments")
+        self._headless_desktop_enabled.setToolTip(
+            "When enabled, this overrides the per-environment headless desktop setting."
+        )
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
