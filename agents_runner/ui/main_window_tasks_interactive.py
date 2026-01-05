@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
@@ -115,9 +116,10 @@ class _MainWindowTasksInteractiveMixin:
             if not raw_command:
                 raw_command = self._default_interactive_command(agent_cli)
         command = raw_command
-        is_help_launch = bool(str(extra_preflight_script or "").strip()) or self._is_agent_help_interactive_launch(
-            prompt=prompt, command=command
-        )
+        extra_preflight_script = str(extra_preflight_script or "")
+        is_help_launch = self._is_agent_help_interactive_launch(prompt=prompt, command=command)
+        if extra_preflight_script.strip() and "clone_repo" in extra_preflight_script:
+            is_help_launch = True
         help_repos_dir = "/home/midori-ai/.agent-help/repos"
         if is_help_launch:
             prompt = "\n".join(
@@ -440,6 +442,24 @@ class _MainWindowTasksInteractiveMixin:
                     continue
                 env_args.extend(["-e", f"{k}={value}"])
 
+            desktop_enabled = "websockify" in extra_preflight_script or "noVNC" in extra_preflight_script or "[desktop]" in extra_preflight_script
+            port_args: list[str] = []
+            if desktop_enabled:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                try:
+                    s.bind(("127.0.0.1", 0))
+                    host_port = int(s.getsockname()[1])
+                finally:
+                    s.close()
+                port_args = ["-p", f"127.0.0.1:{host_port}:6080"]
+                env_args.extend(["-e", f"AGENTS_RUNNER_TASK_ID={task_token}"])
+                task.headless_desktop_enabled = True
+                task.desktop_display = ":1"
+                task.novnc_url = f"http://127.0.0.1:{host_port}/vnc.html"
+                self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+                self._details.update_task(task)
+                self._schedule_save()
+
             extra_mount_args: list[str] = []
             for mount in (env.extra_mounts or []) if env else []:
                 m = str(mount).strip()
@@ -479,6 +499,7 @@ class _MainWindowTasksInteractiveMixin:
                 *extra_mount_args,
                 *preflight_mounts,
                 *env_args,
+                *port_args,
                 *docker_env_passthrough,
                 "-w",
                 container_workdir,

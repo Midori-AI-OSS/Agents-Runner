@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
+from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QSizePolicy
@@ -35,6 +36,7 @@ class NewTaskPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
+        self._gh_locked_envs: set[str] = set()
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
@@ -143,6 +145,12 @@ class NewTaskPage(QWidget):
         self._run_interactive = StainedGlassButton("Run Interactive")
         self._run_interactive.set_glass_enabled(False)
         self._run_interactive.clicked.connect(self._on_launch)
+
+        self._run_interactive_menu = QMenu(self)
+        self._run_interactive_desktop = self._run_interactive_menu.addAction("With desktop")
+        self._run_interactive_desktop.triggered.connect(self._on_launch_with_desktop)
+        self._run_interactive.set_menu(None)
+
         self._run_agent = StainedGlassButton("Run Agent")
         self._run_agent.set_glass_enabled(False)
         self._run_agent.clicked.connect(self._on_run)
@@ -170,9 +178,10 @@ class NewTaskPage(QWidget):
 
     def _update_run_buttons(self) -> None:
         has_terminal = bool(str(self._terminal.currentData() or "").strip())
+        can_launch = bool(self._workspace_ready and has_terminal)
         self._run_agent.setEnabled(self._workspace_ready)
-        self._run_interactive.setEnabled(self._workspace_ready and has_terminal)
-        self._get_agent_help.setEnabled(self._workspace_ready and has_terminal)
+        self._run_interactive.setEnabled(can_launch)
+        self._get_agent_help.setEnabled(can_launch)
 
     def _refresh_terminals(self) -> None:
         current = str(self._terminal.currentData() or "")
@@ -295,7 +304,11 @@ class NewTaskPage(QWidget):
             helpme_script,
         )
 
-    def _on_launch(self) -> None:
+    def _sync_interactive_options(self) -> None:
+        env_id = str(self._environment.currentData() or "")
+        self._run_interactive.set_menu(self._run_interactive_menu if (env_id and env_id in self._gh_locked_envs) else None)
+
+    def _emit_interactive_launch(self, *, extra_preflight_script: str = "") -> None:
         prompt = sanitize_prompt((self._prompt.toPlainText() or "").strip())
         command = (self._command.text() or "").strip()
 
@@ -320,10 +333,25 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
-        self.requested_launch.emit(prompt, command, host_codex, env_id, terminal_id, base_branch, "")
+        self.requested_launch.emit(prompt, command, host_codex, env_id, terminal_id, base_branch, extra_preflight_script)
+
+    def _on_launch(self) -> None:
+        self._emit_interactive_launch(extra_preflight_script="")
+
+    def _on_launch_with_desktop(self) -> None:
+        desktop_path = Path(__file__).resolve().parent.parent.parent / "preflights" / "headless_desktop_novnc.sh"
+        try:
+            desktop_script = desktop_path.read_text(encoding="utf-8")
+        except Exception:
+            desktop_script = ""
+        if not desktop_script.strip():
+            QMessageBox.warning(self, "Missing preflight", f"Could not load {desktop_path}")
+            return
+        self._emit_interactive_launch(extra_preflight_script=desktop_script)
 
     def _on_environment_changed(self, index: int) -> None:
         self._apply_environment_tints()
+        self._sync_interactive_options()
         self.environment_changed.emit(str(self._environment.currentData() or ""))
 
     def _apply_environment_tints(self) -> None:
@@ -348,6 +376,10 @@ class NewTaskPage(QWidget):
         self._env_stains = {str(k): str(v) for k, v in (stains or {}).items()}
         self._apply_environment_tints()
 
+    def set_gh_locked_envs(self, env_ids: set[str]) -> None:
+        self._gh_locked_envs = {str(e) for e in (env_ids or set()) if str(e).strip()}
+        self._sync_interactive_options()
+
     def set_environments(self, envs: list[tuple[str, str]], active_id: str) -> None:
         current = str(self._environment.currentData() or "")
         self._environment.blockSignals(True)
@@ -362,6 +394,7 @@ class NewTaskPage(QWidget):
         finally:
             self._environment.blockSignals(False)
         self._apply_environment_tints()
+        self._sync_interactive_options()
 
     def set_environment_id(self, env_id: str) -> None:
         idx = self._environment.findData(env_id)

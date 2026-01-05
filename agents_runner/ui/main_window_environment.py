@@ -142,6 +142,7 @@ class _MainWindowEnvironmentMixin:
         stains = {e.env_id: e.color for e in envs}
 
         self._new_task.set_environment_stains(stains)
+        self._new_task.set_gh_locked_envs({e.env_id for e in envs if bool(getattr(e, "gh_management_locked", False))})
         self._dashboard.set_environment_filter_options([(e.env_id, e.name or e.env_id) for e in envs])
 
         self._syncing_environment = True
