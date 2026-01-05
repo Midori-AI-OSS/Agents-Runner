@@ -89,6 +89,7 @@ class MainWindow(
             "window_h": 720,
             "max_agents_running": -1,
             "append_pixelarch_context": False,
+            "headless_desktop_enabled": False,
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False

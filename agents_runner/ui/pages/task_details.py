@@ -5,6 +5,7 @@ from PySide6.QtCore import QPoint
 from PySide6.QtCore import QSize
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
+from PySide6.QtCore import QUrl
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QIcon
 from PySide6.QtGui import QPainter
@@ -16,9 +17,15 @@ from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QStyle
+from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
+
+try:
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+except Exception:  # pragma: no cover
+    QWebEngineView = None
 
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import normalize_gh_management_mode
@@ -102,17 +109,27 @@ class TaskDetailsPage(QWidget):
         header_layout.addWidget(back, 0, Qt.AlignRight)
         layout.addWidget(header)
 
+        self._tabs = QTabWidget()
+        self._tabs.setDocumentMode(True)
+        self._tabs.currentChanged.connect(self._on_tab_changed)
+
+        task_tab = QWidget()
+        task_layout = QVBoxLayout(task_tab)
+        task_layout.setContentsMargins(0, 0, 0, 0)
+        task_layout.setSpacing(14)
+
         mid = QHBoxLayout()
         mid.setSpacing(14)
-        layout.addLayout(mid, 2)
+        task_layout.addLayout(mid, 2)
 
         left = GlassCard()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(18, 16, 18, 16)
         left_layout.setSpacing(10)
 
-        ptitle = QLabel("Prompt")
-        ptitle.setStyleSheet("font-size: 14px; font-weight: 650;")
+        left_title = QLabel("Prompt")
+        left_title.setStyleSheet("font-size: 14px; font-weight: 650;")
+
         self._prompt = QPlainTextEdit()
         self._prompt.setReadOnly(True)
         self._prompt.setMaximumBlockCount(2000)
@@ -135,9 +152,15 @@ class TaskDetailsPage(QWidget):
         cfg.addWidget(QLabel("Container ID"), 2, 0)
         cfg.addWidget(self._container, 2, 1)
 
-        left_layout.addWidget(ptitle)
-        left_layout.addWidget(self._prompt, 1)
-        left_layout.addLayout(cfg)
+        prompt_page = QWidget()
+        prompt_layout = QVBoxLayout(prompt_page)
+        prompt_layout.setContentsMargins(0, 0, 0, 0)
+        prompt_layout.setSpacing(10)
+        prompt_layout.addWidget(self._prompt, 1)
+        prompt_layout.addLayout(cfg)
+
+        left_layout.addWidget(left_title)
+        left_layout.addWidget(prompt_page, 1)
         mid.addWidget(left, 3)
 
         right = GlassCard()
@@ -232,7 +255,42 @@ class TaskDetailsPage(QWidget):
         self._log_highlighter = LogHighlighter(self._logs.document())
         logs_layout.addWidget(ltitle)
         logs_layout.addWidget(self._logs, 1)
-        layout.addWidget(logs, 2)
+        task_layout.addWidget(logs, 2)
+
+        desktop_tab = QWidget()
+        desktop_layout = QVBoxLayout(desktop_tab)
+        desktop_layout.setContentsMargins(0, 0, 0, 0)
+        desktop_layout.setSpacing(10)
+
+        self._desktop_loaded_url = ""
+        self._desktop_url = QLabel("—")
+        self._desktop_display = QLabel("—")
+        for label in (self._desktop_url, self._desktop_display):
+            label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        self._desktop_view: QWidget
+        if QWebEngineView is not None:
+            self._desktop_view = QWebEngineView()
+        else:
+            desktop_label = QLabel("QtWebEngine not available; open the noVNC URL externally.")
+            desktop_label.setWordWrap(True)
+            self._desktop_view = desktop_label
+
+        desktop_cfg = QGridLayout()
+        desktop_cfg.setHorizontalSpacing(10)
+        desktop_cfg.setVerticalSpacing(8)
+        desktop_cfg.addWidget(QLabel("noVNC URL"), 0, 0)
+        desktop_cfg.addWidget(self._desktop_url, 0, 1)
+        desktop_cfg.addWidget(QLabel("DISPLAY"), 1, 0)
+        desktop_cfg.addWidget(self._desktop_display, 1, 1)
+
+        desktop_layout.addWidget(self._desktop_view, 1)
+        desktop_layout.addLayout(desktop_cfg)
+
+        self._task_tab_index = self._tabs.addTab(task_tab, "Task")
+        self._desktop_tab_index = self._tabs.addTab(desktop_tab, "Desktop")
+        self._tabs.setTabEnabled(self._desktop_tab_index, False)
+        layout.addWidget(self._tabs, 1)
 
         self._ticker = QTimer(self)
         self._ticker.setInterval(1000)
@@ -240,6 +298,10 @@ class TaskDetailsPage(QWidget):
         self._ticker.start()
 
         self._last_task: Task | None = None
+
+    def _on_tab_changed(self, index: int) -> None:
+        if index == getattr(self, "_task_tab_index", -1):
+            QTimer.singleShot(0, self._scroll_logs_to_bottom)
 
     def _on_pr_triggered(self) -> None:
         task_id = str(self._current_task_id or "").strip()
@@ -289,6 +351,8 @@ class TaskDetailsPage(QWidget):
         self._workdir.setText(task.host_workdir)
         self._codexdir.setText(task.host_codex_dir)
         self._container.setText(task.container_id or "—")
+        self._tabs.setCurrentIndex(self._task_tab_index)
+        self._sync_desktop(task)
         self._sync_container_actions(task)
         self._logs.setPlainText("\n".join(task.logs[-5000:]))
         QTimer.singleShot(0, self._scroll_logs_to_bottom)
@@ -309,11 +373,41 @@ class TaskDetailsPage(QWidget):
             return
         self._last_task = task
         self._container.setText(task.container_id or "—")
+        self._sync_desktop(task)
         self._sync_container_actions(task)
         self._exit.setText("—" if task.exit_code is None else str(task.exit_code))
         self._apply_status(task)
         self._tick_uptime()
         self._sync_review_menu(task)
+
+    def _sync_desktop(self, task: Task) -> None:
+        should_enable = bool(task.is_active() and task.headless_desktop_enabled)
+        if not hasattr(self, "_tabs"):
+            return
+
+        self._tabs.setTabEnabled(self._desktop_tab_index, should_enable)
+        if not should_enable:
+            if self._tabs.currentIndex() == self._desktop_tab_index:
+                self._tabs.setCurrentIndex(self._task_tab_index)
+            self._desktop_loaded_url = ""
+            self._desktop_url.setText("—")
+            self._desktop_display.setText("—")
+            if QWebEngineView is not None:
+                try:
+                    self._desktop_view.setUrl(QUrl("about:blank"))
+                except Exception:
+                    pass
+            return
+
+        url = str(task.novnc_url or "").strip()
+        self._desktop_url.setText(url or "(starting…)")
+        self._desktop_display.setText(str(task.desktop_display or ":1"))
+        if QWebEngineView is not None and url and url != self._desktop_loaded_url:
+            self._desktop_loaded_url = url
+            try:
+                self._desktop_view.setUrl(QUrl(url))
+            except Exception:
+                pass
 
     def _apply_status(self, task: Task) -> None:
         status = _task_display_status(task)

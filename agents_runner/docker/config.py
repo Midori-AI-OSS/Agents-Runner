@@ -15,6 +15,7 @@ class DockerRunnerConfig:
     pull_before_run: bool = True
     settings_preflight_script: str | None = None
     environment_preflight_script: str | None = None
+    headless_desktop_enabled: bool = False
     # Use a task-specific filename by default to avoid collisions when multiple
     # runs share a container or temp directory.
     container_settings_preflight_path: str = "/tmp/agents-runner-preflight-settings-{task_id}.sh"
