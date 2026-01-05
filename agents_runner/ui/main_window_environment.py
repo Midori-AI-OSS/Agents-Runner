@@ -156,6 +156,11 @@ class _MainWindowEnvironmentMixin:
         env = self._environments.get(self._active_environment_id())
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_cli, host_codex = self._effective_agent_and_config(env=env)
+        if hasattr(self, "_root"):
+            try:
+                self._root.set_agent_theme(agent_cli)
+            except Exception:
+                pass
         current_agent, next_agent = self._get_next_agent_info(env=env)
         workdir, ready, message = self._new_task_workspace(env)
         self._new_task.set_defaults(host_codex=host_codex)
