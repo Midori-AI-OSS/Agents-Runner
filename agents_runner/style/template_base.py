@@ -113,20 +113,22 @@ TEMPLATE_BASE = """
     }
 
     QPushButton {
-        background-color: rgba(56, 189, 248, 165);
-        border: 1px solid rgba(255, 255, 255, 24);
+        color: rgba(237, 239, 245, 235);
+        background-color: rgba(18, 20, 28, 135);
+        border: 1px solid rgba(255, 255, 255, 22);
         border-radius: 0px;
-        padding: 10px 14px;
+        padding: 9px 12px;
         font-weight: 600;
     }
 
     QPushButton:hover {
-        background-color: rgba(56, 189, 248, 205);
-        border: 1px solid rgba(255, 255, 255, 35);
+        background-color: rgba(56, 189, 248, 30);
+        border: 1px solid rgba(56, 189, 248, 80);
     }
 
     QPushButton:pressed {
-        background-color: rgba(56, 189, 248, 140);
+        background-color: rgba(56, 189, 248, 70);
+        border: 1px solid rgba(56, 189, 248, 100);
     }
 
     QPushButton:focus {
@@ -134,8 +136,9 @@ TEMPLATE_BASE = """
     }
 
     QPushButton:disabled {
-        background-color: rgba(100, 116, 139, 90);
+        background-color: rgba(18, 20, 28, 90);
         color: rgba(237, 239, 245, 130);
+        border: 1px solid rgba(255, 255, 255, 14);
     }
 
     QToolButton {
