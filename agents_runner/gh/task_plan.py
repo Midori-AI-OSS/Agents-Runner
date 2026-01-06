@@ -1,5 +1,4 @@
 import re
-import time
 
 from dataclasses import dataclass
 
@@ -234,7 +233,8 @@ def commit_push_and_pr(
         _require_ok(create_proc, args=["git", "branch"])
 
     def _checkout_branch_for_commit() -> None:
-        if git_current_branch(repo_root) == branch:
+        current = git_current_branch(repo_root)
+        if current == branch:
             return
 
         _ensure_local_branch()
@@ -245,42 +245,46 @@ def commit_push_and_pr(
             )
             return
 
-        # Preserve a dirty worktree without relying on patch-based stash apply
-        # (which can conflict even for non-overlapping edits when the target
-        # branch diverged). Instead, checkpoint the work on a temporary branch,
-        # then cherry-pick onto the target branch.
-        temp_branch = _sanitize_branch(f"midoriaiagents/_wip/{time.time_ns()}")
-        _require_ok(
-            _run(["git", "-C", repo_root, "checkout", "-b", temp_branch], timeout_s=20.0),
-            args=["git", "checkout", "-b"],
-        )
-        _require_ok(
-            _run(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0),
-            args=["git", "add"],
-        )
-        commit_proc = _run(
-            ["git", "-C", repo_root, "commit", "-m", title], timeout_s=60.0
-        )
-        _require_ok(commit_proc, args=["git", "commit"])
+        # Common case: the repo is dirty on the base branch. If the task branch
+        # has no unique commits yet, reset it to the current HEAD so we can
+        # switch branches without overwriting local changes.
+        if current == base_branch:
+            ahead_proc = _run(
+                ["git", "-C", repo_root, "rev-list", "--count", f"{base_branch}..{branch}"],
+                timeout_s=10.0,
+            )
+            ahead = None
+            if ahead_proc.returncode == 0:
+                try:
+                    ahead = int((ahead_proc.stdout or "").strip() or "0")
+                except ValueError:
+                    ahead = None
+            if ahead == 0:
+                _require_ok(
+                    _run(
+                        ["git", "-C", repo_root, "checkout", "-B", branch, "HEAD"],
+                        timeout_s=20.0,
+                    ),
+                    args=["git", "checkout", "-B"],
+                )
+                return
 
-        _require_ok(
-            _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
-            args=["git", "checkout"],
+        merge_proc = _run(
+            ["git", "-C", repo_root, "checkout", "--merge", branch], timeout_s=20.0
         )
-        cherry_proc = _run(
-            ["git", "-C", repo_root, "cherry-pick", temp_branch], timeout_s=180.0
-        )
-        if cherry_proc.returncode != 0:
-            _run(["git", "-C", repo_root, "cherry-pick", "--abort"], timeout_s=30.0)
-            combined = (
-                (cherry_proc.stdout or "") + "\n" + (cherry_proc.stderr or "")
-            ).strip()
+        if merge_proc.returncode != 0:
+            combined = ((merge_proc.stdout or "") + "\n" + (merge_proc.stderr or "")).strip()
             raise GhManagementError(
-                "failed to apply local changes onto the PR branch; "
-                "resolve conflicts and rerun PR creation.\n"
+                "failed to switch to PR branch while preserving local changes; "
+                "commit/stash your work (or switch back to the base branch) and rerun PR creation.\n"
                 f"{combined}".rstrip()
             )
-        _run(["git", "-C", repo_root, "branch", "-D", temp_branch], timeout_s=8.0)
+        unmerged_proc = _run(["git", "-C", repo_root, "ls-files", "-u"], timeout_s=8.0)
+        _require_ok(unmerged_proc, args=["git", "ls-files", "-u"])
+        if (unmerged_proc.stdout or "").strip():
+            raise GhManagementError(
+                "switching branches resulted in merge conflicts; resolve them and rerun PR creation."
+            )
 
     _checkout_branch_for_commit()
 
