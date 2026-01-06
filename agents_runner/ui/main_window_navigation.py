@@ -40,24 +40,38 @@ class _MainWindowNavigationMixin:
             effect_in = QGraphicsOpacityEffect(target_page)
             target_page.setGraphicsEffect(effect_in)
         effect_in.setOpacity(0.0)
-        
-        anim_out = QPropertyAnimation(effect_out, b"opacity")
-        anim_out.setDuration(150)
-        anim_out.setStartValue(1.0)
-        anim_out.setEndValue(0.0)
-        
-        def start_fade_in():
-            current_page.hide()
-            target_page.show()
-            anim_in.start()
-        
-        anim_out.finished.connect(start_fade_in)
-        
-        anim_in = QPropertyAnimation(effect_in, b"opacity")
+
+        anim_in = QPropertyAnimation(effect_in, b"opacity", self)
         anim_in.setDuration(200)
         anim_in.setStartValue(0.0)
         anim_in.setEndValue(1.0)
-        
+
+        anim_out = QPropertyAnimation(effect_out, b"opacity", self)
+        anim_out.setDuration(150)
+        anim_out.setStartValue(1.0)
+        anim_out.setEndValue(0.0)
+
+        def _cleanup_effects() -> None:
+            if current_page.graphicsEffect() is effect_out:
+                current_page.setGraphicsEffect(None)
+            if target_page.graphicsEffect() is effect_in:
+                target_page.setGraphicsEffect(None)
+            animations = getattr(self, "_page_animations", None)
+            if isinstance(animations, list):
+                for anim in (anim_out, anim_in):
+                    try:
+                        animations.remove(anim)
+                    except ValueError:
+                        pass
+
+        def start_fade_in() -> None:
+            current_page.hide()
+            target_page.show()
+            anim_in.start()
+
+        anim_out.finished.connect(start_fade_in)
+        anim_in.finished.connect(_cleanup_effects)
+
         anim_out.start()
         
         if not hasattr(self, "_page_animations"):

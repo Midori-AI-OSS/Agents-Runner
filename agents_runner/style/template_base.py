@@ -251,6 +251,12 @@ TEMPLATE_BASE = """
         border-radius: 0px;
     }
 
+    QFrame#TaskTabPane {
+        border: none;
+        background: transparent;
+        margin-top: 0px;
+    }
+
     QTabBar::tab {
         background-color: rgba(18, 20, 28, 135);
         border: 1px solid rgba(255, 255, 255, 18);

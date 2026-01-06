@@ -33,6 +33,20 @@ from agents_runner.docker.process import _run_docker
 from agents_runner.docker.utils import _write_preflight_script
 
 
+def _headless_desktop_prompt_instructions(*, display: str) -> str:
+    display = str(display or "").strip() or ":1"
+    return (
+        "\n\n"
+        "DESKTOP (non-interactive only)\n"
+        "- A headless desktop session is running inside the container (noVNC).\n"
+        f"- X11 display: {display} (env var `DISPLAY` is set).\n"
+        "- You may run GUI apps that require a display.\n"
+        "- To capture a screenshot for debugging, run:\n"
+        "  - `import -display ${DISPLAY} -window root /tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}/out/screenshot.png`\n"
+        "- The noVNC URL is shown in the task UI (Desktop tab) and is also logged as `[desktop] noVNC URL:`.\n"
+    )
+
+
 class DockerAgentWorker:
     def __init__(
         self,
@@ -165,17 +179,25 @@ class DockerAgentWorker:
             if agent_cli == "codex" and not _is_git_repo_root(self._config.host_workdir):
                 self._on_log("[host] .git missing in workdir; adding --skip-git-repo-check")
 
+            desktop_enabled = bool(self._config.headless_desktop_enabled)
+            desktop_display = ":1"
+
+            prompt_for_agent = self._prompt
+            if desktop_enabled:
+                prompt_for_agent = sanitize_prompt(
+                    f"{prompt_for_agent.rstrip()}{_headless_desktop_prompt_instructions(display=desktop_display)}"
+                )
+                self._on_log("[desktop] added desktop context to prompt (non-interactive)")
+
             agent_args = build_noninteractive_cmd(
                 agent=agent_cli,
-                prompt=self._prompt,
+                prompt=prompt_for_agent,
                 host_workdir=self._config.host_workdir,
                 container_workdir=self._config.container_workdir,
                 agent_cli_args=list(self._config.agent_cli_args or []),
             )
             agent_cmd = " ".join(shlex.quote(part) for part in agent_args)
 
-            desktop_enabled = bool(self._config.headless_desktop_enabled)
-            desktop_display = ":1"
             desktop_state: dict[str, Any] = {}
             port_args: list[str] = []
 

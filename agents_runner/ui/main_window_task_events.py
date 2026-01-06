@@ -16,6 +16,8 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.log_format import prettify_log_line
+from agents_runner.persistence import deserialize_task
+from agents_runner.persistence import load_task_payload
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.bridges import TaskRunnerBridge
@@ -26,9 +28,19 @@ from agents_runner.ui.utils import _stain_color
 
 class _MainWindowTaskEventsMixin:
     def _open_task_details(self, task_id: str) -> None:
-        task = self._tasks.get(task_id)
-        if not task:
+        task_id = str(task_id or "").strip()
+        if not task_id:
             return
+
+        task = self._tasks.get(task_id)
+        if task is None:
+            payload = load_task_payload(self._state_path, task_id, archived=True)
+            if not isinstance(payload, dict):
+                return
+            task = deserialize_task(Task, payload)
+            if task.logs:
+                task.logs = [prettify_log_line(line) for line in task.logs if isinstance(line, str)]
+
         self._details.show_task(task)
         self._show_task_details()
 
