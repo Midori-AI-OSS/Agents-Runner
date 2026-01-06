@@ -10,6 +10,7 @@ mkdir -p "${XDG_RUNTIME_DIR}"
 
 RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"
 mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}
+mkdir -p "/tmp/agents-artifacts"
 
 if command -v yay >/dev/null 2>&1; then
   yay -S --noconfirm --needed \
@@ -21,10 +22,13 @@ if command -v yay >/dev/null 2>&1; then
     xcb-util-cursor \
     novnc \
     websockify \
+    wmctrl \
+    xdotool \
+    xorg-xprop \
     xorg-xauth \
     ttf-dejavu \
     xorg-fonts-misc \
-    >/dev/null || true
+    || true
 fi
 
 Xvnc "${DISPLAY}" \
@@ -55,4 +59,4 @@ websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.
 
 echo "[desktop] ready"
 echo "[desktop] DISPLAY=${DISPLAY}"
-echo "[desktop] screenshot: import -display ${DISPLAY} -window root ${RUNTIME_BASE}/out/screenshot.png"
+echo "[desktop] screenshot: import -display ${DISPLAY} -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"

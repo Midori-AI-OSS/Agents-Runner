@@ -41,8 +41,13 @@ def _headless_desktop_prompt_instructions(*, display: str) -> str:
         "- A headless desktop session is running inside the container (noVNC).\n"
         f"- X11 display: {display} (env var `DISPLAY` is set).\n"
         "- You may run GUI apps that require a display.\n"
+        "- To automate basic GUI actions (close windows / type), use `wmctrl` + `xdotool`:\n"
+        "  - List windows: `DISPLAY=${DISPLAY} wmctrl -lG`\n"
+        "  - Close window by id: `DISPLAY=${DISPLAY} wmctrl -ic 0x01234567`\n"
+        "  - Click + type: `DISPLAY=${DISPLAY} xdotool mousemove X Y click 1 type 'text' key Return`\n"
+        "- Write screenshots and other artifacts under `/tmp/agents-artifacts`.\n"
         "- To capture a screenshot for debugging, run:\n"
-        "  - `import -display ${DISPLAY} -window root /tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}/out/screenshot.png`\n"
+        "  - `mkdir -p /tmp/agents-artifacts && import -display ${DISPLAY} -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png`\n"
         "- The noVNC URL is shown in the task UI (Desktop tab) and is also logged as `[desktop] noVNC URL:`.\n"
     )
 
@@ -227,8 +232,9 @@ class DockerAgentWorker:
                     'mkdir -p "${XDG_RUNTIME_DIR}"; '
                     'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
                     'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
+                    'mkdir -p "/tmp/agents-artifacts"; '
                     "if command -v yay >/dev/null 2>&1; then "
-                    "  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify xorg-xauth ttf-dejavu xorg-fonts-misc >/dev/null || true; "
+                    "  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify wmctrl xdotool xorg-xprop xorg-xauth ttf-dejavu xorg-fonts-misc || true; "
                     "fi; "
                     'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & '
                     "sleep 0.25; "
@@ -245,7 +251,7 @@ class DockerAgentWorker:
                     "fi; "
                     'echo "[desktop] ready"; '
                     'echo "[desktop] DISPLAY=${DISPLAY}"; '
-                    'echo "[desktop] screenshot: import -display :1 -window root ${RUNTIME_BASE}/out/screenshot.png"; '
+                    'echo "[desktop] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
                 )
             if settings_preflight_tmp_path is not None:
                 self._on_log(

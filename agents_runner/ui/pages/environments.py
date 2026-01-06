@@ -319,9 +319,12 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._tint_overlay.raise_()
 
     def _apply_environment_tints(self) -> None:
-        env_id = str(self._env_select.currentData() or "")
-        env = self._environments.get(env_id)
-        stain = (env.normalized_color() if env else "").strip().lower()
+        stain = str(self._color.currentData() or "").strip().lower()
+        if not stain:
+            env_id = str(self._env_select.currentData() or "")
+            env = self._environments.get(env_id)
+            stain = (env.normalized_color() if env else "").strip().lower()
+
         if not stain:
             self._env_select.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
