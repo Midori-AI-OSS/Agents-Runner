@@ -53,6 +53,7 @@ Use these mode guides from `.codex/modes/` when working on specific tasks:
 - **Task Master Mode** (`.codex/modes/TASKMASTER.md`): Managing work items
 - **Manager Mode** (`.codex/modes/MANAGER.md`): Planning and coordination
 - **Auditor Mode** (`.codex/modes/AUDITOR.md`): Code and security audits
+- **QA Mode** (`.codex/modes/QA.md`): Ensuring correctness and reliability
 
 ---
 
