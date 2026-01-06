@@ -133,7 +133,15 @@ class _MainWindowEnvironmentMixin:
         cleaned = [str(b or "").strip() for b in branches]
         cleaned = [b for b in cleaned if b]
         self._new_task.set_repo_controls_visible(True)
-        self._new_task.set_repo_branches(cleaned)
+        
+        # Restore last selected branch for locked environments
+        selected_branch = None
+        if env and env.gh_management_locked:
+            last_branch = str(getattr(env, "gh_last_base_branch", "") or "").strip()
+            if last_branch and last_branch in cleaned:
+                selected_branch = last_branch
+        
+        self._new_task.set_repo_branches(cleaned, selected=selected_branch)
 
 
     def _populate_environment_pickers(self) -> None:

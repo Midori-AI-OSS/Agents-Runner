@@ -21,6 +21,7 @@ from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.pr_metadata import ensure_pr_metadata_file
@@ -162,6 +163,11 @@ class _MainWindowTasksAgentMixin:
         task.gh_use_host_cli = use_host_gh
 
         desired_base = str(base_branch or "").strip()
+        
+        # Save the selected branch for locked environments
+        if env and env.gh_management_locked and desired_base and gh_mode == GH_MANAGEMENT_GITHUB:
+            env.gh_last_base_branch = desired_base
+            save_environment(env)
 
         runner_prompt = prompt
         if bool(self._settings_data.get("append_pixelarch_context") or False):
