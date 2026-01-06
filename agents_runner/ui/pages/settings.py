@@ -19,6 +19,18 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.widgets import GlassCard
+from agents_runner.ui.constants import (
+    MAIN_LAYOUT_MARGINS,
+    MAIN_LAYOUT_SPACING,
+    HEADER_MARGINS,
+    HEADER_SPACING,
+    CARD_MARGINS,
+    CARD_SPACING,
+    GRID_HORIZONTAL_SPACING,
+    GRID_VERTICAL_SPACING,
+    BUTTON_ROW_SPACING,
+    STANDARD_BUTTON_WIDTH,
+)
 
 
 class SettingsPage(QWidget):
@@ -30,13 +42,13 @@ class SettingsPage(QWidget):
         super().__init__(parent)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setContentsMargins(*MAIN_LAYOUT_MARGINS)
+        layout.setSpacing(MAIN_LAYOUT_SPACING)
 
         header = GlassCard()
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(18, 16, 18, 16)
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(*HEADER_MARGINS)
+        header_layout.setSpacing(HEADER_SPACING)
 
         title = QLabel("Settings")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
@@ -55,12 +67,12 @@ class SettingsPage(QWidget):
 
         card = GlassCard()
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(18, 16, 18, 16)
-        card_layout.setSpacing(12)
+        card_layout.setContentsMargins(*CARD_MARGINS)
+        card_layout.setSpacing(CARD_SPACING)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(10)
+        grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
         grid.setColumnStretch(1, 1)
 
         self._use = QComboBox()
@@ -82,25 +94,25 @@ class SettingsPage(QWidget):
         self._host_codex_dir = QLineEdit()
         self._host_codex_dir.setPlaceholderText(os.path.expanduser("~/.codex"))
         browse_codex = QPushButton("Browse…")
-        browse_codex.setFixedWidth(100)
+        browse_codex.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_codex.clicked.connect(self._pick_codex_dir)
 
         self._host_claude_dir = QLineEdit()
         self._host_claude_dir.setPlaceholderText(os.path.expanduser("~/.claude"))
         browse_claude = QPushButton("Browse…")
-        browse_claude.setFixedWidth(100)
+        browse_claude.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_claude.clicked.connect(self._pick_claude_dir)
 
         self._host_copilot_dir = QLineEdit()
         self._host_copilot_dir.setPlaceholderText(os.path.expanduser("~/.copilot"))
         browse_copilot = QPushButton("Browse…")
-        browse_copilot.setFixedWidth(100)
+        browse_copilot.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_copilot.clicked.connect(self._pick_copilot_dir)
 
         self._host_gemini_dir = QLineEdit()
         self._host_gemini_dir.setPlaceholderText(os.path.expanduser("~/.gemini"))
         browse_gemini = QPushButton("Browse…")
-        browse_gemini.setFixedWidth(100)
+        browse_gemini.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_gemini.clicked.connect(self._pick_gemini_dir)
 
         self._preflight_enabled = QCheckBox("Enable settings preflight bash (runs on all envs, before env preflight)")
@@ -161,7 +173,7 @@ class SettingsPage(QWidget):
         self._sync_agent_config_widgets()
 
         buttons = QHBoxLayout()
-        buttons.setSpacing(10)
+        buttons.setSpacing(BUTTON_ROW_SPACING)
         save = QToolButton()
         save.setText("Save")
         save.setToolButtonStyle(Qt.ToolButtonTextOnly)

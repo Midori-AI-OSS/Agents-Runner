@@ -15,6 +15,11 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import Environment
 from agents_runner.environments.model import PromptConfig
+from agents_runner.ui.constants import (
+    TAB_CONTENT_MARGINS,
+    TAB_CONTENT_SPACING,
+    BUTTON_ROW_SPACING,
+)
 
 
 class FocusOutPlainTextEdit(QPlainTextEdit):
@@ -43,11 +48,11 @@ class PromptsTabWidget(QWidget):
         self._current_visible_count = 0
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 16, 0, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(*TAB_CONTENT_MARGINS)
+        layout.setSpacing(TAB_CONTENT_SPACING)
 
         unlock_row = QHBoxLayout()
-        unlock_row.setSpacing(10)
+        unlock_row.setSpacing(BUTTON_ROW_SPACING)
         self._unlock_btn = QPushButton("Unlock Prompts")
         self._unlock_btn.setToolTip("Enable custom prompt injection for this environment")
         self._unlock_btn.clicked.connect(self._on_unlock_clicked)
@@ -72,8 +77,8 @@ class PromptsTabWidget(QWidget):
         for i in range(self.MAX_PROMPTS):
             tab = QWidget()
             tab_layout = QVBoxLayout(tab)
-            tab_layout.setContentsMargins(0, 10, 0, 0)
-            tab_layout.setSpacing(10)
+            tab_layout.setContentsMargins(0, TAB_CONTENT_SPACING, 0, 0)
+            tab_layout.setSpacing(TAB_CONTENT_SPACING)
 
             enabled_cb = QCheckBox(f"Enable Prompt {i + 1}")
             enabled_cb.toggled.connect(self._on_prompt_changed)
