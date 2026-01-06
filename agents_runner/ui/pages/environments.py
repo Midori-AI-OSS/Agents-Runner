@@ -164,6 +164,12 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             "Settings → Force headless desktop overrides this setting."
         )
 
+        self._tor_enabled = QCheckBox("Enable Tor proxy (anonymous routing)")
+        self._tor_enabled.setToolTip(
+            "When enabled, routes all agent traffic through Tor for anonymous routing.\n"
+            "Settings → Enable Tor proxy overrides this setting."
+        )
+
         self._gh_pr_metadata_enabled = QCheckBox(
             "Allow agent to set PR title/body (non-interactive only)"
         )
@@ -188,10 +194,19 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         headless_desktop_layout.addWidget(self._headless_desktop_enabled)
         headless_desktop_layout.addStretch(1)
 
+        tor_row = QWidget(general_tab)
+        tor_layout = QHBoxLayout(tor_row)
+        tor_layout.setContentsMargins(0, 0, 0, 0)
+        tor_layout.setSpacing(BUTTON_ROW_SPACING)
+        tor_layout.addWidget(self._tor_enabled)
+        tor_layout.addStretch(1)
+
         grid.addWidget(QLabel("Max agents running"), 3, 0)
         grid.addWidget(max_agents_row, 3, 1, 1, 2)
         grid.addWidget(QLabel("Headless desktop"), 5, 0)
         grid.addWidget(headless_desktop_row, 5, 1, 1, 2)
+        grid.addWidget(QLabel("Tor proxy"), 6, 0)
+        grid.addWidget(tor_row, 6, 1, 1, 2)
 
         self._gh_pr_metadata_label = QLabel("PR title/body")
         self._gh_pr_metadata_row = QWidget(general_tab)
@@ -368,6 +383,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._name.setText("")
             self._max_agents_running.setText("-1")
             self._headless_desktop_enabled.setChecked(False)
+            self._tor_enabled.setChecked(False)
             self._gh_pr_metadata_enabled.setChecked(False)
             self._gh_pr_metadata_enabled.setEnabled(False)
             self._gh_pr_metadata_label.setVisible(False)
@@ -394,6 +410,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._headless_desktop_enabled.setChecked(
             bool(getattr(env, "headless_desktop_enabled", False))
         )
+        self._tor_enabled.setChecked(bool(getattr(env, "tor_enabled", False)))
         is_github_env = (
             normalize_gh_management_mode(
                 str(env.gh_management_mode or GH_MANAGEMENT_NONE)
