@@ -5,8 +5,6 @@ import shlex
 import shutil
 import time
 
-from datetime import datetime
-from datetime import timezone
 from uuid import uuid4
 
 from PySide6.QtCore import Qt
@@ -14,11 +12,7 @@ from PySide6.QtCore import QThread
 
 from PySide6.QtWidgets import QMessageBox
 
-from agents_runner.agent_cli import additional_config_mounts
-from agents_runner.agent_cli import normalize_agent
-from agents_runner.environments import Environment
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import save_environment
@@ -61,7 +55,6 @@ class _MainWindowTasksAgentMixin:
             self._dashboard_log_refresh_s.pop(task_id, None)
         self._schedule_save()
 
-
     def _start_task_from_ui(
         self,
         prompt: str,
@@ -70,14 +63,18 @@ class _MainWindowTasksAgentMixin:
         base_branch: str,
     ) -> None:
         if shutil.which("docker") is None:
-            QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
+            QMessageBox.critical(
+                self, "Docker not found", "Could not find `docker` in PATH."
+            )
             return
         prompt = sanitize_prompt((prompt or "").strip())
 
         task_id = uuid4().hex[:10]
         env_id = str(env_id or "").strip() or self._active_environment_id()
         if env_id not in self._environments:
-            QMessageBox.warning(self, "Unknown environment", "Pick an environment first.")
+            QMessageBox.warning(
+                self, "Unknown environment", "Pick an environment first."
+            )
             return
         self._settings_data["active_environment_id"] = env_id
         env = self._environments.get(env_id)
@@ -85,15 +82,25 @@ class _MainWindowTasksAgentMixin:
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
-            agent_cli, auto_config_dir, agent_instance_id = self._select_agent_instance_for_env(
-                env=env,
-                settings=self._settings_data,
-                advance_round_robin=True,
+            agent_cli, auto_config_dir, agent_instance_id = (
+                self._select_agent_instance_for_env(
+                    env=env,
+                    settings=self._settings_data,
+                    advance_round_robin=True,
+                )
             )
         else:
-            agent_cli, auto_config_dir = self._effective_agent_and_config(env=env, advance_round_robin=True)
+            agent_cli, auto_config_dir = self._effective_agent_and_config(
+                env=env, advance_round_robin=True
+            )
 
-        gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) if env else GH_MANAGEMENT_NONE
+        gh_mode = (
+            normalize_gh_management_mode(
+                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
+            )
+            if env
+            else GH_MANAGEMENT_NONE
+        )
         effective_workdir, ready, message = self._new_task_workspace(env)
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
@@ -126,15 +133,24 @@ class _MainWindowTasksAgentMixin:
                 return
 
         settings_preflight_script: str | None = None
-        if self._settings_data.get("preflight_enabled") and str(self._settings_data.get("preflight_script") or "").strip():
-            settings_preflight_script = str(self._settings_data.get("preflight_script") or "")
+        if (
+            self._settings_data.get("preflight_enabled")
+            and str(self._settings_data.get("preflight_script") or "").strip()
+        ):
+            settings_preflight_script = str(
+                self._settings_data.get("preflight_script") or ""
+            )
 
         environment_preflight_script: str | None = None
         if env and env.preflight_enabled and (env.preflight_script or "").strip():
             environment_preflight_script = env.preflight_script
 
-        force_headless_desktop = bool(self._settings_data.get("headless_desktop_enabled") or False)
-        env_headless_desktop = bool(getattr(env, "headless_desktop_enabled", False)) if env else False
+        force_headless_desktop = bool(
+            self._settings_data.get("headless_desktop_enabled") or False
+        )
+        env_headless_desktop = (
+            bool(getattr(env, "headless_desktop_enabled", False)) if env else False
+        )
         headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
 
         task = Task(
@@ -163,9 +179,14 @@ class _MainWindowTasksAgentMixin:
         task.gh_use_host_cli = use_host_gh
 
         desired_base = str(base_branch or "").strip()
-        
+
         # Save the selected branch for locked environments
-        if env and env.gh_management_locked and desired_base and gh_mode == GH_MANAGEMENT_GITHUB:
+        if (
+            env
+            and env.gh_management_locked
+            and desired_base
+            and gh_mode == GH_MANAGEMENT_GITHUB
+        ):
             env.gh_last_base_branch = desired_base
             save_environment(env)
             # Update in-memory copy to persist across tab changes and reloads
@@ -177,14 +198,16 @@ class _MainWindowTasksAgentMixin:
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
-            for p in (getattr(env, "prompts", None) or []):
+            for p in getattr(env, "prompts", None) or []:
                 text = str(getattr(p, "text", "") or "").strip()
                 if not text or not bool(getattr(p, "enabled", False)):
                     continue
                 enabled_env_prompts.append(sanitize_prompt(text))
 
         if enabled_env_prompts:
-            runner_prompt = f"{runner_prompt.rstrip()}\n\n" + "\n\n".join(enabled_env_prompts)
+            runner_prompt = f"{runner_prompt.rstrip()}\n\n" + "\n\n".join(
+                enabled_env_prompts
+            )
             self._on_task_log(
                 task_id,
                 f"[env] appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)",
@@ -205,18 +228,26 @@ class _MainWindowTasksAgentMixin:
             and gh_mode == GH_MANAGEMENT_GITHUB
             and bool(getattr(env, "gh_pr_metadata_enabled", False))
         ):
-            host_path = pr_metadata_host_path(os.path.dirname(self._state_path), task_id)
+            host_path = pr_metadata_host_path(
+                os.path.dirname(self._state_path), task_id
+            )
             container_path = pr_metadata_container_path(task_id)
             try:
                 ensure_pr_metadata_file(host_path, task_id=task_id)
             except Exception as exc:
-                self._on_task_log(task_id, f"[gh] failed to prepare PR metadata file: {exc}")
+                self._on_task_log(
+                    task_id, f"[gh] failed to prepare PR metadata file: {exc}"
+                )
             else:
                 task.gh_pr_metadata_path = host_path
                 extra_mounts_for_task.append(f"{host_path}:{container_path}:rw")
                 env_vars_for_task.setdefault("CODEX_PR_METADATA_PATH", container_path)
-                runner_prompt = f"{runner_prompt}{pr_metadata_prompt_instructions(container_path)}"
-                self._on_task_log(task_id, f"[gh] PR metadata enabled; mounted -> {container_path}")
+                runner_prompt = (
+                    f"{runner_prompt}{pr_metadata_prompt_instructions(container_path)}"
+                )
+                self._on_task_log(
+                    task_id, f"[gh] PR metadata enabled; mounted -> {container_path}"
+                )
 
         # Build config with GitHub repo info if needed
         gh_repo: str | None = None
@@ -254,7 +285,6 @@ class _MainWindowTasksAgentMixin:
 
         self._show_dashboard()
         self._new_task.reset_for_new_run()
-
 
     def _actually_start_task(self, task: Task) -> None:
         config = getattr(task, "_runner_config", None)

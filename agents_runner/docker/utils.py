@@ -25,4 +25,3 @@ def _write_preflight_script(
         raise
     preflight_tmp_paths.append(tmp_path)
     return tmp_path
-

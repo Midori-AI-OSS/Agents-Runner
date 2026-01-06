@@ -25,4 +25,3 @@ def parse_mounts_text(text: str) -> list[str]:
             continue
         mounts.append(line)
     return mounts
-

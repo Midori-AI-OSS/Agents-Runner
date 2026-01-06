@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QPropertyAnimation
-from PySide6.QtWidgets import QGraphicsOpacityEffect, QMessageBox
+from PySide6.QtWidgets import QGraphicsOpacityEffect
 
 
 class _MainWindowNavigationMixin:
@@ -17,24 +17,30 @@ class _MainWindowNavigationMixin:
 
     def _transition_to_page(self, target_page) -> None:
         """Smooth cross-fade transition between pages."""
-        pages = [self._dashboard, self._new_task, self._details, self._envs_page, self._settings]
+        pages = [
+            self._dashboard,
+            self._new_task,
+            self._details,
+            self._envs_page,
+            self._settings,
+        ]
         current_page = None
-        
+
         for page in pages:
             if page.isVisible() and page != target_page:
                 current_page = page
                 break
-        
+
         if current_page is None:
             target_page.show()
             return
-        
+
         effect_out = current_page.graphicsEffect()
         if not isinstance(effect_out, QGraphicsOpacityEffect):
             effect_out = QGraphicsOpacityEffect(current_page)
             current_page.setGraphicsEffect(effect_out)
         effect_out.setOpacity(1.0)
-        
+
         effect_in = target_page.graphicsEffect()
         if not isinstance(effect_in, QGraphicsOpacityEffect):
             effect_in = QGraphicsOpacityEffect(target_page)
@@ -73,18 +79,16 @@ class _MainWindowNavigationMixin:
         anim_in.finished.connect(_cleanup_effects)
 
         anim_out.start()
-        
+
         if not hasattr(self, "_page_animations"):
             self._page_animations = []
         self._page_animations.append(anim_out)
         self._page_animations.append(anim_in)
 
-
     def _show_dashboard(self) -> None:
         if not self._try_autosave_before_navigation():
             return
         self._transition_to_page(self._dashboard)
-
 
     def _show_new_task(self) -> None:
         if not self._try_autosave_before_navigation():
@@ -92,12 +96,10 @@ class _MainWindowNavigationMixin:
         self._new_task.focus_prompt()
         self._transition_to_page(self._new_task)
 
-
     def _show_task_details(self) -> None:
         if not self._try_autosave_before_navigation():
             return
         self._transition_to_page(self._details)
-
 
     def _show_environments(self) -> None:
         if self._envs_page.isVisible():
@@ -105,11 +107,12 @@ class _MainWindowNavigationMixin:
         if not self._try_autosave_before_navigation():
             return
         active_id = self._active_environment_id()
-        if hasattr(self, "_is_internal_environment_id") and self._is_internal_environment_id(active_id):
+        if hasattr(
+            self, "_is_internal_environment_id"
+        ) and self._is_internal_environment_id(active_id):
             active_id = "default"
         self._envs_page.set_environments(self._user_environment_map(), active_id)
         self._transition_to_page(self._envs_page)
-
 
     def _show_settings(self) -> None:
         if self._settings.isVisible():
@@ -118,7 +121,6 @@ class _MainWindowNavigationMixin:
             return
         self._settings.set_settings(self._settings_data)
         self._transition_to_page(self._settings)
-
 
     def _try_autosave_before_navigation(self) -> bool:
         if self._envs_page.isVisible() and not self._envs_page.try_autosave():

@@ -4,7 +4,9 @@ import subprocess
 from typing import Any
 
 
-def _run_docker(args: list[str], timeout_s: float = 30.0, *, env: dict[str, str] | None = None) -> str:
+def _run_docker(
+    args: list[str], timeout_s: float = 30.0, *, env: dict[str, str] | None = None
+) -> str:
     completed = subprocess.run(
         ["docker", *args],
         capture_output=True,
@@ -47,7 +49,10 @@ def _has_platform_image(image: str, platform_value: str) -> bool:
 
     try:
         actual_arch = (
-            _run_docker(["image", "inspect", image, "--format", "{{.Architecture}}"], timeout_s=10.0)
+            _run_docker(
+                ["image", "inspect", image, "--format", "{{.Architecture}}"],
+                timeout_s=10.0,
+            )
             .strip()
             .lower()
         )
@@ -58,4 +63,3 @@ def _has_platform_image(image: str, platform_value: str) -> bool:
 
 def _pull_image(image: str, *, platform_args: list[str]) -> None:
     _run_docker(["pull", *list(platform_args or []), image], timeout_s=600.0)
-

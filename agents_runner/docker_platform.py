@@ -26,7 +26,9 @@ def _mac_hardware_is_apple_silicon() -> bool:
 def docker_platform_for_pixelarch() -> str | None:
     system = platform.system()
     machine = platform.machine().lower()
-    if system == "Darwin" and (machine in {"arm64", "aarch64"} or _mac_hardware_is_apple_silicon()):
+    if system == "Darwin" and (
+        machine in {"arm64", "aarch64"} or _mac_hardware_is_apple_silicon()
+    ):
         return "linux/amd64"
     return None
 

@@ -31,9 +31,7 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect
 from agents_runner.environments import ALLOWED_STAINS
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import _task_display_status
-from agents_runner.ui.utils import _format_duration
 from agents_runner.ui.utils import _rgba
-from agents_runner.ui.utils import _stain_color
 from agents_runner.ui.utils import _status_color
 from agents_runner.widgets import BouncingLoadingBar
 from agents_runner.widgets import StatusGlyph
@@ -56,7 +54,9 @@ class ElidedLabel(QLabel):
 
     def _update_elide(self) -> None:
         metrics = QFontMetrics(self.font())
-        elided = metrics.elidedText(self._full_text, Qt.ElideRight, max(10, self.width() - 4))
+        elided = metrics.elidedText(
+            self._full_text, Qt.ElideRight, max(10, self.width() - 4)
+        )
         super().setText(elided)
 
 
@@ -64,7 +64,9 @@ class TaskRow(QWidget):
     clicked = Signal()
     discard_requested = Signal(str)
 
-    def __init__(self, parent: QWidget | None = None, *, discard_enabled: bool = True) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, discard_enabled: bool = True
+    ) -> None:
         super().__init__(parent)
         self.setFixedHeight(52)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -117,7 +119,9 @@ class TaskRow(QWidget):
         self._btn_discard.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_discard.setToolTip("Discard task")
         self._btn_discard.setCursor(Qt.PointingHandCursor)
-        self._btn_discard.setIconSize(self._btn_discard.iconSize().expandedTo(self._glyph.size()))
+        self._btn_discard.setIconSize(
+            self._btn_discard.iconSize().expandedTo(self._glyph.size())
+        )
         self._btn_discard.clicked.connect(self._on_discard_clicked)
         self._btn_discard.setVisible(bool(discard_enabled))
         self._btn_discard.setEnabled(bool(discard_enabled))
@@ -311,7 +315,9 @@ class DashboardPage(QWidget):
         self._past_visible_scan_reset_pending = False
         self._past_visible_scan_timer = QTimer(self)
         self._past_visible_scan_timer.setSingleShot(True)
-        self._past_visible_scan_timer.timeout.connect(self._queue_visible_past_entrances)
+        self._past_visible_scan_timer.timeout.connect(
+            self._queue_visible_past_entrances
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -448,7 +454,9 @@ class DashboardPage(QWidget):
         self._btn_load_more.setCursor(Qt.PointingHandCursor)
         self._btn_load_more.clicked.connect(self._request_more_past_tasks)
 
-        self._scroll_past.verticalScrollBar().valueChanged.connect(self._on_past_scroll_value_changed)
+        self._scroll_past.verticalScrollBar().valueChanged.connect(
+            self._on_past_scroll_value_changed
+        )
 
         past_layout.addWidget(self._scroll_past, 1)
         past_layout.addWidget(self._btn_load_more, 0, Qt.AlignRight)
@@ -514,7 +522,9 @@ class DashboardPage(QWidget):
             return stains[(stains.index(current) + 1) % len(stains)]
         return stains[0]
 
-    def upsert_task(self, task: Task, stain: str | None = None, spinner_color: QColor | None = None) -> None:
+    def upsert_task(
+        self, task: Task, stain: str | None = None, spinner_color: QColor | None = None
+    ) -> None:
         row = self._rows_active.get(task.task_id)
         if row is None:
             row = TaskRow()
@@ -540,7 +550,9 @@ class DashboardPage(QWidget):
             row.set_stain(stain or self._pick_new_row_stain(self._list_layout_past))
             row.clicked.connect(self._on_row_clicked)
             self._rows_past[task.task_id] = row
-            self._list_layout_past.insertWidget(max(0, self._list_layout_past.count() - 1), row)
+            self._list_layout_past.insertWidget(
+                max(0, self._list_layout_past.count() - 1), row
+            )
             created = True
         elif stain:
             row.set_stain(stain)
@@ -696,7 +708,9 @@ class DashboardPage(QWidget):
         for rows in (self._rows_active, self._rows_past):
             for row in rows.values():
                 task = row.last_task()
-                row.setVisible(True if task is None else self._row_visible_for_task(task))
+                row.setVisible(
+                    True if task is None else self._row_visible_for_task(task)
+                )
 
     def _on_row_clicked(self) -> None:
         row = self.sender()
@@ -714,7 +728,9 @@ class DashboardPage(QWidget):
                 if self._selected_task_id == task_id:
                     self._selected_task_id = None
 
-    def set_past_load_more_enabled(self, enabled: bool, label: str | None = None) -> None:
+    def set_past_load_more_enabled(
+        self, enabled: bool, label: str | None = None
+    ) -> None:
         self._btn_load_more.setEnabled(bool(enabled))
         if label is not None:
             self._btn_load_more.setText(str(label))

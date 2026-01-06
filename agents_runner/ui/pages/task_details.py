@@ -186,7 +186,9 @@ class TaskDetailsPage(QWidget):
         self._btn_unfreeze.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
         self._btn_unfreeze.setIconSize(QSize(16, 16))
         self._btn_unfreeze.setToolTip("Unfreeze (unpause container)")
-        self._btn_unfreeze.clicked.connect(lambda: self._emit_container_action("unfreeze"))
+        self._btn_unfreeze.clicked.connect(
+            lambda: self._emit_container_action("unfreeze")
+        )
 
         self._btn_stop = QToolButton()
         self._btn_stop.setToolButtonStyle(Qt.ToolButtonIconOnly)
@@ -273,7 +275,9 @@ class TaskDetailsPage(QWidget):
         self._desktop_web: QWebEngineView | None = None
 
         desktop_label = QLabel(
-            "Select the Desktop tab to load the noVNC session." if QWebEngineView is not None else "QtWebEngine not available; open the noVNC URL externally."
+            "Select the Desktop tab to load the noVNC session."
+            if QWebEngineView is not None
+            else "QtWebEngine not available; open the noVNC URL externally."
         )
         desktop_label.setWordWrap(True)
         self._desktop_view: QWidget = desktop_label
@@ -321,7 +325,9 @@ class TaskDetailsPage(QWidget):
 
     def _sync_review_menu(self, task: Task) -> None:
         gh_mode = normalize_gh_management_mode(str(task.gh_management_mode or ""))
-        can_pr = bool(gh_mode == GH_MANAGEMENT_GITHUB and task.gh_repo_root and task.gh_branch)
+        can_pr = bool(
+            gh_mode == GH_MANAGEMENT_GITHUB and task.gh_repo_root and task.gh_branch
+        )
         pr_url = str(task.gh_pr_url or "").strip()
         self._review_pr.setVisible(can_pr)
         self._review_pr.setEnabled(can_pr and not task.is_active())
@@ -397,7 +403,9 @@ class TaskDetailsPage(QWidget):
         if self._desktop_web is None:
             self._desktop_web = QWebEngineView()
             try:
-                self._desktop_layout.replaceWidget(self._desktop_view, self._desktop_web)
+                self._desktop_layout.replaceWidget(
+                    self._desktop_view, self._desktop_web
+                )
                 self._desktop_view.setParent(None)
             except Exception:
                 pass

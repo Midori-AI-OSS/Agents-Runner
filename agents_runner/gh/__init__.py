@@ -10,7 +10,12 @@ from .git_ops import (
     is_git_repo,
 )
 from .repo_clone import ensure_github_clone
-from .task_plan import RepoPlan, commit_push_and_pr, plan_repo_task, prepare_branch_for_task
+from .task_plan import (
+    RepoPlan,
+    commit_push_and_pr,
+    plan_repo_task,
+    prepare_branch_for_task,
+)
 
 __all__ = [
     "GhManagementError",

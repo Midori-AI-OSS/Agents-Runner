@@ -54,6 +54,7 @@ class AgentInstance:
     agent_id: str
     agent_cli: str
     config_dir: str = ""
+    cli_flags: str = ""
 
 
 @dataclass

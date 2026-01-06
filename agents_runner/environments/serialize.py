@@ -43,7 +43,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     color = str(payload.get("color") or "slate").strip().lower()
     host_workdir = str(payload.get("host_workdir") or "").strip()
     host_codex_dir = str(payload.get("host_codex_dir") or "").strip()
-    agent_cli_args = str(payload.get("agent_cli_args") or payload.get("codex_extra_args") or "").strip()
+    agent_cli_args = str(
+        payload.get("agent_cli_args") or payload.get("codex_extra_args") or ""
+    ).strip()
 
     try:
         max_agents_running = int(str(payload.get("max_agents_running", -1)).strip())
@@ -60,7 +62,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     extra_mounts = payload.get("extra_mounts", [])
     extra_mounts = extra_mounts if isinstance(extra_mounts, list) else []
 
-    gh_management_mode = normalize_gh_management_mode(str(payload.get("gh_management_mode") or ""))
+    gh_management_mode = normalize_gh_management_mode(
+        str(payload.get("gh_management_mode") or "")
+    )
     gh_management_target = str(payload.get("gh_management_target") or "").strip()
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
@@ -72,10 +76,12 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     if isinstance(prompts_data, list):
         for p in prompts_data:
             if isinstance(p, dict):
-                prompts.append(PromptConfig(
-                    enabled=bool(p.get("enabled", False)),
-                    text=str(p.get("text", ""))
-                ))
+                prompts.append(
+                    PromptConfig(
+                        enabled=bool(p.get("enabled", False)),
+                        text=str(p.get("text", "")),
+                    )
+                )
     prompts_unlocked = bool(payload.get("prompts_unlocked", False))
 
     agent_selection_data = payload.get("agent_selection")
@@ -94,10 +100,20 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
                 agent_cli = str(raw.get("agent_cli") or "").strip()
                 agent_id = str(raw.get("agent_id") or "").strip()
                 config_dir = str(raw.get("config_dir") or "").strip()
+                cli_flags = str(raw.get("cli_flags") or "").strip()
                 if not agent_cli:
                     continue
-                unique_id = _unique_agent_id(seen_ids, agent_id, fallback_prefix=agent_cli.lower())
-                agents.append(AgentInstance(agent_id=unique_id, agent_cli=agent_cli, config_dir=config_dir))
+                unique_id = _unique_agent_id(
+                    seen_ids, agent_id, fallback_prefix=agent_cli.lower()
+                )
+                agents.append(
+                    AgentInstance(
+                        agent_id=unique_id,
+                        agent_cli=agent_cli,
+                        config_dir=config_dir,
+                        cli_flags=cli_flags,
+                    )
+                )
 
         # Legacy format: enabled_agents + agent_config_dirs
         if not agents:
@@ -109,21 +125,33 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
             agent_config_dirs = agent_selection_data.get("agent_config_dirs", {})
             if isinstance(agent_config_dirs, dict):
-                agent_config_dirs = {str(k): str(v) for k, v in agent_config_dirs.items()}
+                agent_config_dirs = {
+                    str(k): str(v) for k, v in agent_config_dirs.items()
+                }
             else:
                 agent_config_dirs = {}
-            normalized_config_dirs = {str(k).strip().lower(): str(v) for k, v in agent_config_dirs.items()}
+            normalized_config_dirs = {
+                str(k).strip().lower(): str(v) for k, v in agent_config_dirs.items()
+            }
 
             for a in enabled_agents:
                 agent_cli = str(a).strip()
                 if not agent_cli:
                     continue
-                unique_id = _unique_agent_id(seen_ids, agent_cli.strip().lower(), fallback_prefix=agent_cli.strip().lower())
+                unique_id = _unique_agent_id(
+                    seen_ids,
+                    agent_cli.strip().lower(),
+                    fallback_prefix=agent_cli.strip().lower(),
+                )
                 agents.append(
                     AgentInstance(
                         agent_id=unique_id,
                         agent_cli=agent_cli,
-                        config_dir=str(normalized_config_dirs.get(agent_cli.strip().lower(), "") or "").strip(),
+                        config_dir=str(
+                            normalized_config_dirs.get(agent_cli.strip().lower(), "")
+                            or ""
+                        ).strip(),
+                        cli_flags="",
                     )
                 )
 
@@ -190,12 +218,17 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
                 "agent_id": a.agent_id,
                 "agent_cli": a.agent_cli,
                 "config_dir": a.config_dir,
+                "cli_flags": a.cli_flags,
             }
             for a in (env.agent_selection.agents or [])
         ]
 
         # Legacy fields for backwards compatibility with older builds.
-        enabled_agents = [str(a.agent_cli or "").strip() for a in (env.agent_selection.agents or []) if str(a.agent_cli or "").strip()]
+        enabled_agents = [
+            str(a.agent_cli or "").strip()
+            for a in (env.agent_selection.agents or [])
+            if str(a.agent_cli or "").strip()
+        ]
         legacy_config_dirs: dict[str, str] = {}
         for a in env.agent_selection.agents or []:
             cli = str(a.agent_cli or "").strip()
@@ -223,7 +256,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "agent_cli_args": env.agent_cli_args,
         "codex_extra_args": env.agent_cli_args,
         "max_agents_running": int(env.max_agents_running),
-        "headless_desktop_enabled": bool(getattr(env, "headless_desktop_enabled", False)),
+        "headless_desktop_enabled": bool(
+            getattr(env, "headless_desktop_enabled", False)
+        ),
         "preflight_enabled": bool(env.preflight_enabled),
         "preflight_script": env.preflight_script,
         "env_vars": dict(env.env_vars),
@@ -231,10 +266,14 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gh_management_mode": normalize_gh_management_mode(env.gh_management_mode),
         "gh_management_target": str(env.gh_management_target or "").strip(),
         "gh_management_locked": bool(env.gh_management_locked),
-        "gh_last_base_branch": str(getattr(env, "gh_last_base_branch", "") or "").strip(),
+        "gh_last_base_branch": str(
+            getattr(env, "gh_last_base_branch", "") or ""
+        ).strip(),
         "gh_use_host_cli": bool(env.gh_use_host_cli),
         "gh_pr_metadata_enabled": bool(env.gh_pr_metadata_enabled),
-        "prompts": [{"enabled": p.enabled, "text": p.text} for p in (env.prompts or [])],
+        "prompts": [
+            {"enabled": p.enabled, "text": p.text} for p in (env.prompts or [])
+        ],
         "prompts_unlocked": bool(env.prompts_unlocked),
         "agent_selection": selection_payload,
     }

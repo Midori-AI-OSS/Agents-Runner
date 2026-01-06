@@ -29,7 +29,12 @@ def ensure_pr_metadata_file(path: str, *, task_id: str) -> None:
     if not path:
         raise ValueError("missing PR metadata path")
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    payload = {"version": PR_METADATA_VERSION, "task_id": str(task_id or ""), "title": "", "body": ""}
+    payload = {
+        "version": PR_METADATA_VERSION,
+        "task_id": str(task_id or ""),
+        "title": "",
+        "body": "",
+    }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
         f.write("\n")
@@ -89,4 +94,3 @@ def _safe_task_token(task_id: str) -> str:
     raw = str(task_id or "").strip()
     safe = "".join(ch for ch in raw if ch.isalnum() or ch in {"-", "_"})
     return safe or "task"
-

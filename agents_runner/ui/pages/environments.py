@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
-from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QTabWidget
@@ -46,6 +45,9 @@ from agents_runner.ui.constants import (
 from agents_runner.ui.pages.environments_actions import _EnvironmentsPageActionsMixin
 from agents_runner.ui.pages.environments_prompts import PromptsTabWidget
 from agents_runner.ui.pages.environments_agents import AgentsTabWidget
+from agents_runner.ui.graphics import _EnvironmentTintOverlay
+from agents_runner.ui.utils import _apply_environment_combo_tint
+from agents_runner.ui.utils import _stain_color
 
 
 class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
@@ -138,13 +140,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._color = QComboBox()
         for stain in ALLOWED_STAINS:
             self._color.addItem(stain.title(), stain)
-
-        self._host_codex_dir = QLineEdit()
-        self._agent_cli_args = QLineEdit()
-        self._agent_cli_args.setPlaceholderText("--model … (optional)")
-        self._agent_cli_args.setToolTip(
-            "Extra CLI flags appended to the agent command inside the container."
-        )
+        self._color.currentIndexChanged.connect(self._apply_environment_tints)
 
         self._max_agents_running = QLineEdit()
         self._max_agents_running.setPlaceholderText("-1 (unlimited)")
@@ -155,27 +151,22 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._max_agents_running.setValidator(QIntValidator(-1, 10_000_000, self))
         self._max_agents_running.setMaximumWidth(150)
 
-        browse_codex = QPushButton("Browse…")
-        browse_codex.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        browse_codex.clicked.connect(self._pick_codex_dir)
-
         grid.addWidget(QLabel("Name"), 0, 0)
         grid.addWidget(self._name, 0, 1, 1, 2)
         grid.addWidget(QLabel("Color"), 1, 0)
         grid.addWidget(self._color, 1, 1, 1, 2)
-        grid.addWidget(QLabel("Default Host Config folder"), 2, 0)
-        grid.addWidget(self._host_codex_dir, 2, 1)
-        grid.addWidget(browse_codex, 2, 2)
-        grid.addWidget(QLabel("Agent CLI Flags"), 3, 0)
-        grid.addWidget(self._agent_cli_args, 3, 1, 1, 2)
 
-        self._headless_desktop_enabled = QCheckBox("Enable headless desktop (noVNC) for this environment")
+        self._headless_desktop_enabled = QCheckBox(
+            "Enable headless desktop (noVNC) for this environment"
+        )
         self._headless_desktop_enabled.setToolTip(
             "When enabled, agent runs for this environment will start a noVNC desktop.\n"
             "Settings → Force headless desktop overrides this setting."
         )
 
-        self._gh_pr_metadata_enabled = QCheckBox("Allow agent to set PR title/body (non-interactive only)")
+        self._gh_pr_metadata_enabled = QCheckBox(
+            "Allow agent to set PR title/body (non-interactive only)"
+        )
         self._gh_pr_metadata_enabled.setToolTip(
             "When enabled and Workspace is a GitHub repo (clone), a per-task JSON file is mounted into the container.\n"
             "The agent is prompted to update it with a PR title/body, which will be used when opening the PR."
@@ -190,9 +181,17 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         max_agents_row_layout.addWidget(self._max_agents_running)
         max_agents_row_layout.addStretch(1)
 
-        grid.addWidget(QLabel("Max agents running"), 4, 0)
-        grid.addWidget(max_agents_row, 4, 1, 1, 2)
-        grid.addWidget(self._headless_desktop_enabled, 6, 0, 1, 3)
+        headless_desktop_row = QWidget(general_tab)
+        headless_desktop_layout = QHBoxLayout(headless_desktop_row)
+        headless_desktop_layout.setContentsMargins(0, 0, 0, 0)
+        headless_desktop_layout.setSpacing(BUTTON_ROW_SPACING)
+        headless_desktop_layout.addWidget(self._headless_desktop_enabled)
+        headless_desktop_layout.addStretch(1)
+
+        grid.addWidget(QLabel("Max agents running"), 3, 0)
+        grid.addWidget(max_agents_row, 3, 1, 1, 2)
+        grid.addWidget(QLabel("Headless desktop"), 5, 0)
+        grid.addWidget(headless_desktop_row, 5, 1, 1, 2)
 
         self._gh_pr_metadata_label = QLabel("PR title/body")
         self._gh_pr_metadata_row = QWidget(general_tab)
@@ -204,25 +203,37 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         self._gh_pr_metadata_label.setVisible(False)
         self._gh_pr_metadata_row.setVisible(False)
-        grid.addWidget(self._gh_pr_metadata_label, 5, 0)
-        grid.addWidget(self._gh_pr_metadata_row, 5, 1, 1, 2)
+        grid.addWidget(self._gh_pr_metadata_label, 4, 0)
+        grid.addWidget(self._gh_pr_metadata_row, 4, 1, 1, 2)
 
         self._gh_management_mode = QComboBox(general_tab)
         self._gh_management_mode.addItem("Use Settings workdir", GH_MANAGEMENT_NONE)
         self._gh_management_mode.addItem("Lock to local folder", GH_MANAGEMENT_LOCAL)
-        self._gh_management_mode.addItem("Lock to GitHub repo (clone)", GH_MANAGEMENT_GITHUB)
-        self._gh_management_mode.currentIndexChanged.connect(self._sync_gh_management_controls)
+        self._gh_management_mode.addItem(
+            "Lock to GitHub repo (clone)", GH_MANAGEMENT_GITHUB
+        )
+        self._gh_management_mode.currentIndexChanged.connect(
+            self._sync_gh_management_controls
+        )
 
         self._gh_management_target = QLineEdit(general_tab)
-        self._gh_management_target.setPlaceholderText("owner/repo, https://github.com/owner/repo, or /path/to/folder")
-        self._gh_management_target.textChanged.connect(self._sync_gh_management_controls)
+        self._gh_management_target.setPlaceholderText(
+            "owner/repo, https://github.com/owner/repo, or /path/to/folder"
+        )
+        self._gh_management_target.textChanged.connect(
+            self._sync_gh_management_controls
+        )
 
         self._gh_management_browse = QPushButton("Browse…", general_tab)
         self._gh_management_browse.setFixedWidth(STANDARD_BUTTON_WIDTH)
         self._gh_management_browse.clicked.connect(self._pick_gh_management_folder)
 
-        self._gh_use_host_cli = QCheckBox("Use host `gh` for clone/PR (if installed)", general_tab)
-        self._gh_use_host_cli.setToolTip("When disabled, cloning uses `git` and PR creation is skipped.")
+        self._gh_use_host_cli = QCheckBox(
+            "Use host `gh` for clone/PR (if installed)", general_tab
+        )
+        self._gh_use_host_cli.setToolTip(
+            "When disabled, cloning uses `git` and PR creation is skipped."
+        )
         self._gh_use_host_cli.setVisible(False)
 
         self._gh_management_hint = QLabel(
@@ -239,7 +250,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         general_layout.addLayout(grid)
         general_layout.addStretch(1)
 
-        self._preflight_enabled = QCheckBox("Enable environment preflight bash (runs after Settings preflight)")
+        self._preflight_enabled = QCheckBox(
+            "Enable environment preflight bash (runs after Settings preflight)"
+        )
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
@@ -297,6 +310,29 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         layout.addWidget(card, 1)
 
+        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
+        self._tint_overlay.raise_()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._tint_overlay.setGeometry(self.rect())
+        self._tint_overlay.raise_()
+
+    def _apply_environment_tints(self) -> None:
+        env_id = str(self._env_select.currentData() or "")
+        env = self._environments.get(env_id)
+        stain = (env.normalized_color() if env else "").strip().lower()
+        if not stain:
+            self._env_select.setStyleSheet("")
+            self._tint_overlay.set_tint_color(None)
+            self._color.setStyleSheet("")
+            return
+
+        _apply_environment_combo_tint(self._env_select, stain)
+        tint = _stain_color(stain)
+        self._tint_overlay.set_tint_color(tint)
+        _apply_environment_combo_tint(self._color, stain)
+
     def set_environments(self, envs: dict[str, Environment], active_id: str) -> None:
         self._environments = dict(envs)
         current = str(self._env_select.currentData() or "")
@@ -304,7 +340,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._env_select.blockSignals(True)
         try:
             self._env_select.clear()
-            ordered = sorted(self._environments.values(), key=lambda e: (e.name or e.env_id).lower())
+            ordered = sorted(
+                self._environments.values(), key=lambda e: (e.name or e.env_id).lower()
+            )
             for env in ordered:
                 self._env_select.addItem(env.name or env.env_id, env.env_id)
             desired = active_id or current
@@ -317,6 +355,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._env_select.blockSignals(False)
 
         self._load_selected()
+        self._apply_environment_tints()
 
     def _load_selected(self) -> None:
         env_id = str(self._env_select.currentData() or "")
@@ -324,8 +363,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._current_env_id = env_id if env else None
         if not env:
             self._name.setText("")
-            self._host_codex_dir.setText("")
-            self._agent_cli_args.setText("")
             self._max_agents_running.setText("-1")
             self._headless_desktop_enabled.setChecked(False)
             self._gh_pr_metadata_enabled.setChecked(False)
@@ -348,16 +385,27 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         idx = self._color.findData(env.color)
         if idx >= 0:
             self._color.setCurrentIndex(idx)
-        self._host_codex_dir.setText(env.host_codex_dir)
-        self._agent_cli_args.setText(env.agent_cli_args)
-        self._max_agents_running.setText(str(int(getattr(env, "max_agents_running", -1))))
-        self._headless_desktop_enabled.setChecked(bool(getattr(env, "headless_desktop_enabled", False)))
-        is_github_env = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) == GH_MANAGEMENT_GITHUB
-        self._gh_pr_metadata_enabled.setChecked(bool(getattr(env, "gh_pr_metadata_enabled", False)))
+        self._max_agents_running.setText(
+            str(int(getattr(env, "max_agents_running", -1)))
+        )
+        self._headless_desktop_enabled.setChecked(
+            bool(getattr(env, "headless_desktop_enabled", False))
+        )
+        is_github_env = (
+            normalize_gh_management_mode(
+                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
+            )
+            == GH_MANAGEMENT_GITHUB
+        )
+        self._gh_pr_metadata_enabled.setChecked(
+            bool(getattr(env, "gh_pr_metadata_enabled", False))
+        )
         self._gh_pr_metadata_enabled.setEnabled(is_github_env)
         self._gh_pr_metadata_label.setVisible(is_github_env)
         self._gh_pr_metadata_row.setVisible(is_github_env)
-        idx = self._gh_management_mode.findData(normalize_gh_management_mode(env.gh_management_mode))
+        idx = self._gh_management_mode.findData(
+            normalize_gh_management_mode(env.gh_management_mode)
+        )
         if idx >= 0:
             self._gh_management_mode.setCurrentIndex(idx)
         self._gh_management_target.setText(str(env.gh_management_target or ""))
@@ -393,11 +441,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
                     self._env_select.blockSignals(False)
             return
         self._load_selected()
-
-    def _pick_codex_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(self, "Select default host Config folder", self._host_codex_dir.text())
-        if path:
-            self._host_codex_dir.setText(path)
+        self._apply_environment_tints()
 
     def _pick_gh_management_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(

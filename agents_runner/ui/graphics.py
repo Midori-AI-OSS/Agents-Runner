@@ -5,7 +5,14 @@ import random
 import time
 from dataclasses import dataclass
 
-from PySide6.QtCore import QEasingCurve, QPointF, Property, QPropertyAnimation, Qt, QTimer
+from PySide6.QtCore import (
+    QEasingCurve,
+    QPointF,
+    Property,
+    QPropertyAnimation,
+    Qt,
+    QTimer,
+)
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QPainter
 from PySide6.QtGui import QPainterPath
@@ -87,8 +94,8 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
             base=QColor(13, 17, 23),  # #0D1117
             orb_colors=(
                 QColor(192, 110, 255),  # #C06EFF
-                QColor(95, 237, 131),   # #5FED83
-                QColor(80, 29, 175),    # #501DAF
+                QColor(95, 237, 131),  # #5FED83
+                QColor(80, 29, 175),  # #501DAF
                 QColor(88, 166, 255),
                 QColor(139, 148, 158),
             ),
@@ -106,10 +113,10 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
             name="claude",
             base=QColor(245, 245, 240),  # #F5F5F0
             orb_colors=(
-                QColor(174, 86, 48),    # #AE5630
+                QColor(174, 86, 48),  # #AE5630
                 QColor(221, 217, 206),  # #DDD9CE
                 QColor(107, 106, 104),  # #6B6A68
-                QColor(196, 99, 58),    # #C4633A
+                QColor(196, 99, 58),  # #C4633A
                 QColor(26, 26, 24),
             ),
             shard_colors=(
@@ -126,10 +133,10 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
             name="gemini",
             base=QColor(18, 20, 28),  # #12141C (avoid white flash)
             orb_colors=(
-                QColor(66, 133, 244),   # #4285F4
-                QColor(234, 67, 53),    # #EA4335
-                QColor(251, 188, 4),    # #FBBC04
-                QColor(52, 168, 83),    # #34A853
+                QColor(66, 133, 244),  # #4285F4
+                QColor(234, 67, 53),  # #EA4335
+                QColor(251, 188, 4),  # #FBBC04
+                QColor(52, 168, 83),  # #34A853
                 QColor(154, 160, 166),  # #9AA0A6
             ),
             shard_colors=(
@@ -148,7 +155,7 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
         base=QColor(12, 13, 15),
         orb_colors=(
             QColor(31, 117, 254),  # #1F75FE
-            QColor(0, 165, 90),    # #00A55A
+            QColor(0, 165, 90),  # #00A55A
             QColor(178, 186, 194),
             QColor(92, 99, 112),
             QColor(240, 240, 240),
@@ -267,14 +274,16 @@ class GlassRoot(QWidget):
             else:
                 vx = vy = 0.0
 
-            orbs.append(_BackgroundOrb(
-                x=x,
-                y=y,
-                vx=vx,
-                vy=vy,
-                radius=radius,
-                color_idx=idx,
-            ))
+            orbs.append(
+                _BackgroundOrb(
+                    x=x,
+                    y=y,
+                    vx=vx,
+                    vy=vy,
+                    radius=radius,
+                    color_idx=idx,
+                )
+            )
 
         self._orbs = orbs
         self._constrain_orbs()
@@ -346,7 +355,9 @@ class GlassRoot(QWidget):
                 center = QPointF(float(orb.x), float(orb.y))
                 grad = QRadialGradient(center, float(r))
                 grad.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), alpha))
-                grad.setColorAt(0.55, QColor(c.red(), c.green(), c.blue(), int(alpha * 0.30)))
+                grad.setColorAt(
+                    0.55, QColor(c.red(), c.green(), c.blue(), int(alpha * 0.30))
+                )
                 grad.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
                 painter.setBrush(grad)
                 painter.drawEllipse(center, float(r), float(r))
@@ -361,7 +372,11 @@ class GlassRoot(QWidget):
 
         w = max(1, self.width())
         h = max(1, self.height())
-        outline = QColor(0, 0, 0, 12) if theme.base.lightnessF() > 0.6 else QColor(255, 255, 255, 10)
+        outline = (
+            QColor(0, 0, 0, 12)
+            if theme.base.lightnessF() > 0.6
+            else QColor(255, 255, 255, 10)
+        )
 
         for color, points in zip(theme.shard_colors, theme.shard_points, strict=False):
             path = QPainterPath()
@@ -379,11 +394,15 @@ class GlassRoot(QWidget):
         painter.setRenderHint(QPainter.Antialiasing, True)
 
         self._paint_theme(painter, self._theme)
-        painter.fillRect(self.rect(), QColor(0, 0, 0, self._darken_overlay_alpha(self._theme)))
+        painter.fillRect(
+            self.rect(), QColor(0, 0, 0, self._darken_overlay_alpha(self._theme))
+        )
 
         if self._theme_to is not None and self._theme_blend > 0.0:
             painter.save()
             painter.setOpacity(float(self._theme_blend))
             self._paint_theme(painter, self._theme_to)
-            painter.fillRect(self.rect(), QColor(0, 0, 0, self._darken_overlay_alpha(self._theme_to)))
+            painter.fillRect(
+                self.rect(), QColor(0, 0, 0, self._darken_overlay_alpha(self._theme_to))
+            )
             painter.restore()

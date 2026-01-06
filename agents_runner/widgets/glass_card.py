@@ -8,7 +8,9 @@ from PySide6.QtWidgets import QWidget
 
 
 class GlassCard(QFrame):
-    def __init__(self, parent: QWidget | None = None, animate_entrance: bool = False) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, animate_entrance: bool = False
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("GlassCard")
         self.setFrameShape(QFrame.NoFrame)
@@ -21,19 +23,19 @@ class GlassCard(QFrame):
         if self._animate_entrance and not self._entrance_shown:
             self._entrance_shown = True
             QTimer.singleShot(10, self._play_entrance_animation)
-    
+
     def _play_entrance_animation(self) -> None:
         effect = QGraphicsOpacityEffect(self)
         self.setGraphicsEffect(effect)
         effect.setOpacity(0.0)
-        
+
         anim = QPropertyAnimation(effect, b"opacity")
         anim.setDuration(300)
         anim.setStartValue(0.0)
         anim.setEndValue(1.0)
         anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         anim.start()
-        
+
         self._entrance_anim = anim
 
     def paintEvent(self, event) -> None:

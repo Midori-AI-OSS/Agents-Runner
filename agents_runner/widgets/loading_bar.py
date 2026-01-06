@@ -56,7 +56,9 @@ class BouncingLoadingBar(QWidget):
             duration_s = base_duration_s * (0.78 + 0.52 * f2)
             alpha_scale = 0.55 + 0.45 * f3
             width_scale = 0.85 + 0.30 * ((i * 0.27777777777) % 1.0)
-            lines.append(_DottedLine(phase_offset, duration_s, alpha_scale, width_scale))
+            lines.append(
+                _DottedLine(phase_offset, duration_s, alpha_scale, width_scale)
+            )
 
         self._dotted_lines = lines
         self._dotted_line_count = line_count
@@ -141,7 +143,9 @@ class BouncingLoadingBar(QWidget):
         if self._mode == "pulse_full":
             pulse = 0.5 * (1.0 + math.sin(self._phase))
             alpha = int(110 + pulse * 105)
-            chunk = QColor(self._color.red(), self._color.green(), self._color.blue(), alpha)
+            chunk = QColor(
+                self._color.red(), self._color.green(), self._color.blue(), alpha
+            )
             painter.setPen(Qt.NoPen)
             painter.setBrush(chunk)
             painter.drawRect(inner)
@@ -159,7 +163,9 @@ class BouncingLoadingBar(QWidget):
             r, g, b = self._color.red(), self._color.green(), self._color.blue()
             painter.setPen(Qt.NoPen)
             for line in self._dotted_lines:
-                phase = (self._dotted_time_s / max(0.25, line.duration_s) + line.phase_offset) % 1.0
+                phase = (
+                    self._dotted_time_s / max(0.25, line.duration_s) + line.phase_offset
+                ) % 1.0
                 eased = 0.5 - 0.5 * math.cos(math.pi * phase)
                 fade = max(0.0, math.sin(math.pi * phase))
 
@@ -169,7 +175,9 @@ class BouncingLoadingBar(QWidget):
                 if alpha <= 0:
                     continue
                 painter.setBrush(QColor(r, g, b, alpha))
-                painter.drawRect(int(x), int(inner.top()), int(line_w), int(inner.height()))
+                painter.drawRect(
+                    int(x), int(inner.top()), int(line_w), int(inner.height())
+                )
             return
 
         chunk = QColor(self._color.red(), self._color.green(), self._color.blue(), 215)

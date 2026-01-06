@@ -24,7 +24,9 @@ def _load_legacy_environments(data_dir: str) -> dict[str, Environment]:
         return {}
     envs: dict[str, Environment] = {}
     for name in sorted(os.listdir(data_dir)):
-        if not name.startswith(ENVIRONMENT_FILENAME_PREFIX) or not name.endswith(".json"):
+        if not name.startswith(ENVIRONMENT_FILENAME_PREFIX) or not name.endswith(
+            ".json"
+        ):
             continue
         path = os.path.join(data_dir, name)
         try:
@@ -49,7 +51,9 @@ def load_environments(data_dir: str | None = None) -> dict[str, Environment]:
     settings = state.get("settings")
     if isinstance(settings, dict):
         try:
-            default_max_agents_running = int(str(settings.get("max_agents_running", -1)).strip())
+            default_max_agents_running = int(
+                str(settings.get("max_agents_running", -1)).strip()
+            )
         except Exception:
             default_max_agents_running = -1
     raw = state.get("environments")
@@ -71,7 +75,9 @@ def load_environments(data_dir: str | None = None) -> dict[str, Environment]:
     legacy_envs = _load_legacy_environments(data_dir)
     if legacy_envs:
         state = dict(state)
-        state["environments"] = [serialize_environment(env) for env in legacy_envs.values()]
+        state["environments"] = [
+            serialize_environment(env) for env in legacy_envs.values()
+        ]
         save_state(state_path, state)
     return legacy_envs
 
@@ -131,4 +137,3 @@ def delete_environment(env_id: str, data_dir: str | None = None) -> None:
             os.unlink(path)
     except Exception:
         pass
-

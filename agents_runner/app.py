@@ -4,6 +4,7 @@ import os
 import sys
 from pathlib import Path
 
+
 def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
     tokens: list[str] = []
     existing = (existing or "").strip()
@@ -15,6 +16,7 @@ def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
             tokens.append(flag)
             existing_set.add(flag)
     return " ".join(tokens).strip()
+
 
 def _configure_qtwebengine_runtime() -> None:
     fontconfig_file = os.environ.get("FONTCONFIG_FILE")

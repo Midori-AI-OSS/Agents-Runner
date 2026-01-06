@@ -45,11 +45,21 @@ def _dt_from_str(value: str | None) -> datetime | None:
 
 def load_state(path: str) -> dict[str, Any]:
     if not os.path.exists(path):
-        return {"version": STATE_VERSION, "tasks": [], "settings": {}, "environments": []}
+        return {
+            "version": STATE_VERSION,
+            "tasks": [],
+            "settings": {},
+            "environments": [],
+        }
     with open(path, "r", encoding="utf-8") as f:
         payload = json.load(f)
     if not isinstance(payload, dict):
-        return {"version": STATE_VERSION, "tasks": [], "settings": {}, "environments": []}
+        return {
+            "version": STATE_VERSION,
+            "tasks": [],
+            "settings": {},
+            "environments": [],
+        }
     version = payload.get("version")
     if isinstance(version, int) and version != STATE_VERSION:
         backup_path = f"{path}.bak-{time.time_ns()}"
@@ -57,7 +67,12 @@ def load_state(path: str) -> dict[str, Any]:
             os.replace(path, backup_path)
         except OSError:
             pass
-        return {"version": STATE_VERSION, "tasks": [], "settings": {}, "environments": []}
+        return {
+            "version": STATE_VERSION,
+            "tasks": [],
+            "settings": {},
+            "environments": [],
+        }
     payload.setdefault("version", STATE_VERSION)
     payload.setdefault("tasks", [])
     payload.setdefault("settings", {})
@@ -76,7 +91,9 @@ def save_state(path: str, payload: dict[str, Any]) -> None:
     payload = dict(payload)
     payload["version"] = STATE_VERSION
 
-    fd, tmp_path = tempfile.mkstemp(prefix="state-", suffix=".json", dir=os.path.dirname(path))
+    fd, tmp_path = tempfile.mkstemp(
+        prefix="state-", suffix=".json", dir=os.path.dirname(path)
+    )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
@@ -106,7 +123,9 @@ def ensure_task_dirs(state_path: str) -> tuple[str, str]:
 
 
 def _safe_task_filename(task_id: str) -> str:
-    cleaned = "".join(ch for ch in str(task_id or "") if ch.isalnum() or ch in {"-", "_"}).strip()
+    cleaned = "".join(
+        ch for ch in str(task_id or "") if ch.isalnum() or ch in {"-", "_"}
+    ).strip()
     if not cleaned:
         cleaned = f"task-{time.time_ns()}"
     return f"{cleaned}.json"
@@ -158,7 +177,9 @@ def _archive_active_task_file_if_present(state_path: str, task_id: str) -> None:
         pass
 
 
-def save_task_payload(state_path: str, payload: dict[str, Any], *, archived: bool) -> None:
+def save_task_payload(
+    state_path: str, payload: dict[str, Any], *, archived: bool
+) -> None:
     task_id = str(payload.get("task_id") or "").strip()
     if not task_id:
         return
@@ -189,7 +210,9 @@ def load_active_task_payloads(state_path: str) -> list[dict[str, Any]]:
     return payloads
 
 
-def load_task_payload(state_path: str, task_id: str, *, archived: bool) -> dict[str, Any] | None:
+def load_task_payload(
+    state_path: str, task_id: str, *, archived: bool
+) -> dict[str, Any] | None:
     task_id = str(task_id or "").strip()
     if not task_id:
         return None
@@ -204,7 +227,9 @@ def load_task_payload(state_path: str, task_id: str, *, archived: bool) -> dict[
     return payload if isinstance(payload, dict) else None
 
 
-def load_done_task_payloads(state_path: str, *, offset: int = 0, limit: int = 10) -> list[dict[str, Any]]:
+def load_done_task_payloads(
+    state_path: str, *, offset: int = 0, limit: int = 10
+) -> list[dict[str, Any]]:
     try:
         offset = max(0, int(offset))
     except Exception:
@@ -284,7 +309,9 @@ def serialize_task(task) -> dict[str, Any]:
         "agent_cli": getattr(task, "agent_cli", ""),
         "agent_instance_id": getattr(task, "agent_instance_id", ""),
         "agent_cli_args": getattr(task, "agent_cli_args", ""),
-        "headless_desktop_enabled": bool(getattr(task, "headless_desktop_enabled", False)),
+        "headless_desktop_enabled": bool(
+            getattr(task, "headless_desktop_enabled", False)
+        ),
         "novnc_url": getattr(task, "novnc_url", ""),
         "desktop_display": getattr(task, "desktop_display", ""),
         "runner_prompt": runner_prompt,
@@ -309,7 +336,9 @@ def deserialize_task(task_cls, data: dict[str, Any]):
         started_at=_dt_from_str(data.get("started_at")),
         finished_at=_dt_from_str(data.get("finished_at")),
         gh_management_mode=str(data.get("gh_management_mode") or ""),
-        gh_use_host_cli=bool(data.get("gh_use_host_cli") if "gh_use_host_cli" in data else True),
+        gh_use_host_cli=bool(
+            data.get("gh_use_host_cli") if "gh_use_host_cli" in data else True
+        ),
         gh_repo_root=str(data.get("gh_repo_root") or ""),
         gh_base_branch=str(data.get("gh_base_branch") or ""),
         gh_branch=str(data.get("gh_branch") or ""),
@@ -332,7 +361,9 @@ def deserialize_task(task_cls, data: dict[str, Any]):
             pass
     raw_runner_config = data.get("runner_config")
     if isinstance(raw_runner_config, dict):
-        runner_config = _deserialize_runner_config(raw_runner_config, task_id=str(task.task_id or ""))
+        runner_config = _deserialize_runner_config(
+            raw_runner_config, task_id=str(task.task_id or "")
+        )
         if runner_config is not None:
             try:
                 task._runner_config = runner_config
@@ -341,7 +372,9 @@ def deserialize_task(task_cls, data: dict[str, Any]):
     return task
 
 
-def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> object | None:
+def _deserialize_runner_config(
+    payload: dict[str, Any], *, task_id: str
+) -> object | None:
     try:
         from agents_runner.docker_runner import DockerRunnerConfig
     except Exception:
@@ -372,19 +405,36 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> obje
             host_codex_dir=str(payload.get("host_codex_dir") or ""),
             host_workdir=str(payload.get("host_workdir") or ""),
             agent_cli=str(payload.get("agent_cli") or "codex"),
-            container_codex_dir=str(payload.get("container_codex_dir") or "/home/midori-ai/.codex"),
-            container_workdir=str(payload.get("container_workdir") or "/home/midori-ai/workspace"),
-            auto_remove=bool(payload.get("auto_remove") if "auto_remove" in payload else True),
-            pull_before_run=bool(payload.get("pull_before_run") if "pull_before_run" in payload else True),
-            settings_preflight_script=str(payload.get("settings_preflight_script") or "").strip() or None,
-            environment_preflight_script=str(payload.get("environment_preflight_script") or "").strip()
+            container_codex_dir=str(
+                payload.get("container_codex_dir") or "/home/midori-ai/.codex"
+            ),
+            container_workdir=str(
+                payload.get("container_workdir") or "/home/midori-ai/workspace"
+            ),
+            auto_remove=bool(
+                payload.get("auto_remove") if "auto_remove" in payload else True
+            ),
+            pull_before_run=bool(
+                payload.get("pull_before_run") if "pull_before_run" in payload else True
+            ),
+            settings_preflight_script=str(
+                payload.get("settings_preflight_script") or ""
+            ).strip()
             or None,
-            headless_desktop_enabled=bool(payload.get("headless_desktop_enabled") or False),
+            environment_preflight_script=str(
+                payload.get("environment_preflight_script") or ""
+            ).strip()
+            or None,
+            headless_desktop_enabled=bool(
+                payload.get("headless_desktop_enabled") or False
+            ),
             container_settings_preflight_path=str(
-                payload.get("container_settings_preflight_path") or "/tmp/agents-runner-preflight-settings-{task_id}.sh"
+                payload.get("container_settings_preflight_path")
+                or "/tmp/agents-runner-preflight-settings-{task_id}.sh"
             ),
             container_environment_preflight_path=str(
-                payload.get("container_environment_preflight_path") or "/tmp/agents-runner-preflight-environment-{task_id}.sh"
+                payload.get("container_environment_preflight_path")
+                or "/tmp/agents-runner-preflight-environment-{task_id}.sh"
             ),
             env_vars=env_vars,
             extra_mounts=extra_mounts,

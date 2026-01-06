@@ -132,14 +132,20 @@ class DockerAgentWorker:
                     )
             agent_cli = normalize_agent(self._config.agent_cli)
             config_container_dir = container_config_dir(agent_cli)
-            config_extra_mounts = additional_config_mounts(agent_cli, self._config.host_codex_dir)
+            config_extra_mounts = additional_config_mounts(
+                agent_cli, self._config.host_codex_dir
+            )
             container_name = f"agents-runner-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
-            settings_container_path = self._config.container_settings_preflight_path.replace(
-                "{task_id}", task_token
+            settings_container_path = (
+                self._config.container_settings_preflight_path.replace(
+                    "{task_id}", task_token
+                )
             )
-            environment_container_path = self._config.container_environment_preflight_path.replace(
-                "{task_id}", task_token
+            environment_container_path = (
+                self._config.container_environment_preflight_path.replace(
+                    "{task_id}", task_token
+                )
             )
 
             settings_preflight_tmp_path: str | None = None
@@ -165,7 +171,9 @@ class DockerAgentWorker:
                 self._on_log(f"[host] docker pull {self._config.image}")
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
-            elif forced_platform and not _has_platform_image(self._config.image, forced_platform):
+            elif forced_platform and not _has_platform_image(
+                self._config.image, forced_platform
+            ):
                 self._on_state({"Status": "pulling"})
                 self._on_log(f"[host] image missing; docker pull {self._config.image}")
                 _pull_image(self._config.image, platform_args=platform_args)
@@ -176,8 +184,12 @@ class DockerAgentWorker:
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
 
-            if agent_cli == "codex" and not _is_git_repo_root(self._config.host_workdir):
-                self._on_log("[host] .git missing in workdir; adding --skip-git-repo-check")
+            if agent_cli == "codex" and not _is_git_repo_root(
+                self._config.host_workdir
+            ):
+                self._on_log(
+                    "[host] .git missing in workdir; adding --skip-git-repo-check"
+                )
 
             desktop_enabled = bool(self._config.headless_desktop_enabled)
             desktop_display = ":1"
@@ -187,7 +199,9 @@ class DockerAgentWorker:
                 prompt_for_agent = sanitize_prompt(
                     f"{prompt_for_agent.rstrip()}{_headless_desktop_prompt_instructions(display=desktop_display)}"
                 )
-                self._on_log("[desktop] added desktop context to prompt (non-interactive)")
+                self._on_log(
+                    "[desktop] added desktop context to prompt (non-interactive)"
+                )
 
             agent_args = build_noninteractive_cmd(
                 agent=agent_cli,
@@ -207,28 +221,28 @@ class DockerAgentWorker:
                 port_args.extend(["-p", "127.0.0.1::6080"])
                 preflight_clause += (
                     'echo "[desktop] starting headless desktop (noVNC)"; '
-                    f'export DISPLAY={desktop_display}; '
+                    f"export DISPLAY={desktop_display}; "
                     'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
                     'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
                     'mkdir -p "${XDG_RUNTIME_DIR}"; '
                     'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
                     'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
-                    'if command -v yay >/dev/null 2>&1; then '
-                    '  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify xorg-xauth ttf-dejavu xorg-fonts-misc >/dev/null || true; '
-                    'fi; '
+                    "if command -v yay >/dev/null 2>&1; then "
+                    "  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify xorg-xauth ttf-dejavu xorg-fonts-misc >/dev/null || true; "
+                    "fi; "
                     'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & '
-                    'sleep 0.25; '
+                    "sleep 0.25; "
                     '(fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true; '
                     '(xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true; '
                     'NOVNC_WEB=""; '
                     'for candidate in "/usr/share/webapps/novnc" "/usr/share/novnc" "/usr/share/noVNC"; do '
                     '  if [ -d "${candidate}" ]; then NOVNC_WEB="${candidate}"; break; fi; '
-                    'done; '
+                    "done; "
                     'if [ -z "${NOVNC_WEB}" ]; then '
                     '  echo "[desktop] ERROR: noVNC web root not found" >&2; '
-                    'else '
+                    "else "
                     '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
-                    'fi; '
+                    "fi; "
                     'echo "[desktop] ready"; '
                     'echo "[desktop] DISPLAY=${DISPLAY}"; '
                     'echo "[desktop] screenshot: import -display :1 -window root ${RUNTIME_BASE}/out/screenshot.png"; '
@@ -244,7 +258,7 @@ class DockerAgentWorker:
                     ]
                 )
                 preflight_clause += (
-                    f'PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; '
+                    f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
                     'echo "[preflight] settings: running"; '
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
                     'echo "[preflight] settings: done"; '
@@ -261,7 +275,7 @@ class DockerAgentWorker:
                     ]
                 )
                 preflight_clause += (
-                    f'PREFLIGHT_ENV={shlex.quote(environment_container_path)}; '
+                    f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
                     'echo "[preflight] environment: running"; '
                     '/bin/bash "${PREFLIGHT_ENV}"; '
                     'echo "[preflight] environment: done"; '
@@ -276,10 +290,14 @@ class DockerAgentWorker:
 
             if agent_cli == "copilot":
                 token = resolve_github_token()
-                if token and "GH_TOKEN" not in (self._config.env_vars or {}) and "GITHUB_TOKEN" not in (
-                    self._config.env_vars or {}
+                if (
+                    token
+                    and "GH_TOKEN" not in (self._config.env_vars or {})
+                    and "GITHUB_TOKEN" not in (self._config.env_vars or {})
                 ):
-                    self._on_log("[auth] forwarding GitHub token from host -> container")
+                    self._on_log(
+                        "[auth] forwarding GitHub token from host -> container"
+                    )
                     docker_env = dict(os.environ)
                     docker_env["GH_TOKEN"] = token
                     docker_env["GITHUB_TOKEN"] = token
@@ -302,7 +320,7 @@ class DockerAgentWorker:
                 )
 
             extra_mount_args: list[str] = []
-            for mount in (self._config.extra_mounts or []):
+            for mount in self._config.extra_mounts or []:
                 m = str(mount).strip()
                 if not m:
                     continue
@@ -346,11 +364,19 @@ class DockerAgentWorker:
                         timeout_s=10.0,
                         env=docker_env,
                     )
-                    first = (mapping or "").strip().splitlines()[0] if (mapping or "").strip() else ""
+                    first = (
+                        (mapping or "").strip().splitlines()[0]
+                        if (mapping or "").strip()
+                        else ""
+                    )
                     host_port = first.rsplit(":", 1)[-1].strip() if ":" in first else ""
                     if host_port.isdigit():
-                        desktop_state["NoVncUrl"] = f"http://127.0.0.1:{host_port}/vnc.html"
-                        self._on_log(f"[desktop] noVNC URL: {desktop_state['NoVncUrl']}")
+                        desktop_state["NoVncUrl"] = (
+                            f"http://127.0.0.1:{host_port}/vnc.html"
+                        )
+                        self._on_log(
+                            f"[desktop] noVNC URL: {desktop_state['NoVncUrl']}"
+                        )
                 except Exception as exc:
                     self._on_log(f"[desktop] ERROR: {exc}")
 
