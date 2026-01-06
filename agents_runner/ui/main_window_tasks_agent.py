@@ -183,10 +183,6 @@ class _MainWindowTasksAgentMixin:
         )
         headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
 
-        force_tor = bool(self._settings_data.get("tor_enabled") or False)
-        env_tor = bool(getattr(env, "tor_enabled", False)) if env else False
-        tor_enabled = bool(force_tor or env_tor)
-
         task = Task(
             task_id=task_id,
             prompt=prompt,
@@ -300,7 +296,6 @@ class _MainWindowTasksAgentMixin:
             settings_preflight_script=settings_preflight_script,
             environment_preflight_script=environment_preflight_script,
             headless_desktop_enabled=headless_desktop_enabled,
-            tor_enabled=tor_enabled,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             agent_cli_args=agent_cli_args,
