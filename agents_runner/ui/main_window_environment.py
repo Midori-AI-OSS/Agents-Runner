@@ -61,7 +61,9 @@ class _MainWindowEnvironmentMixin:
             return workdir
         return fallback
 
-    def _new_task_workspace(self, env: Environment | None) -> tuple[str, bool, str]:
+    def _new_task_workspace(
+        self, env: Environment | None, task_id: str | None = None
+    ) -> tuple[str, bool, str]:
         if env is None:
             return "—", False, "Pick an environment first."
 
@@ -78,7 +80,9 @@ class _MainWindowEnvironmentMixin:
 
         if gh_mode == GH_MANAGEMENT_GITHUB:
             path = managed_repo_checkout_path(
-                env.env_id, data_dir=os.path.dirname(self._state_path)
+                env.env_id,
+                data_dir=os.path.dirname(self._state_path),
+                task_id=task_id,
             )
             target = str(env.gh_management_target or "").strip()
             if not target:

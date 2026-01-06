@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import shutil
@@ -16,6 +17,7 @@ from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import save_environment
+from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.gh_management import is_gh_available
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.pr_metadata import ensure_pr_metadata_file
@@ -31,6 +33,8 @@ from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _stain_color
 
+logger = logging.getLogger(__name__)
+
 
 class _MainWindowTasksAgentMixin:
     def _clean_old_tasks(self) -> None:
@@ -41,11 +45,29 @@ class _MainWindowTasksAgentMixin:
                 to_remove.add(task_id)
         if not to_remove:
             return
+
+        # Archive tasks and clean up workspaces
+        data_dir = os.path.dirname(self._state_path)
         for task_id in sorted(to_remove):
             task = self._tasks.get(task_id)
             if task is None:
                 continue
+            status = (task.status or "").lower()
             save_task_payload(self._state_path, serialize_task(task), archived=True)
+
+            # Clean up task workspace (if using GitHub management)
+            gh_mode = normalize_gh_management_mode(task.gh_management_mode)
+            if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+                # Keep failed task repos for debugging (unless status is "done")
+                keep_on_error = status in {"failed", "error"}
+                if not keep_on_error:
+                    cleanup_task_workspace(
+                        env_id=task.environment_id,
+                        task_id=task_id,
+                        data_dir=data_dir,
+                        on_log=None,  # Silent cleanup
+                    )
+
         self._dashboard.remove_tasks(to_remove)
         for task_id in to_remove:
             self._tasks.pop(task_id, None)
@@ -101,15 +123,23 @@ class _MainWindowTasksAgentMixin:
             if env
             else GH_MANAGEMENT_NONE
         )
-        effective_workdir, ready, message = self._new_task_workspace(env)
+        effective_workdir, ready, message = self._new_task_workspace(
+            env, task_id=task_id
+        )
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
             return
         if gh_mode == GH_MANAGEMENT_GITHUB:
             try:
                 os.makedirs(effective_workdir, exist_ok=True)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.error(f"Failed to create directory {effective_workdir}: {exc}")
+                QMessageBox.warning(
+                    self,
+                    "Directory Creation Failed",
+                    f"Could not create workspace directory: {exc}",
+                )
+                return
         elif not os.path.isdir(effective_workdir):
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return

@@ -74,6 +74,10 @@ class _MainWindowTasksInteractiveMixin:
             )
             return
         env = self._environments.get(env_id)
+
+        task_id = uuid4().hex[:10]
+        task_token = f"interactive-{task_id}"
+
         gh_mode = (
             normalize_gh_management_mode(
                 str(env.gh_management_mode or GH_MANAGEMENT_NONE)
@@ -81,13 +85,11 @@ class _MainWindowTasksInteractiveMixin:
             if env
             else GH_MANAGEMENT_NONE
         )
-        host_workdir, ready, message = self._new_task_workspace(env)
+        host_workdir, ready, message = self._new_task_workspace(env, task_id=task_id)
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
             return
 
-        task_id = uuid4().hex[:10]
-        task_token = f"interactive-{task_id}"
         if gh_mode != GH_MANAGEMENT_GITHUB and not os.path.isdir(host_workdir):
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return

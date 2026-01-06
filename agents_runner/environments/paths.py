@@ -16,6 +16,14 @@ def _safe_env_id(env_id: str) -> str:
     return safe or "default"
 
 
+def _safe_task_id(task_id: str) -> str:
+    """Sanitize task_id for filesystem use."""
+    safe = "".join(
+        ch for ch in (task_id or "").strip() if ch.isalnum() or ch in {"-", "_"}
+    )
+    return safe or "default"
+
+
 def environment_path(env_id: str, data_dir: str | None = None) -> str:
     data_dir = data_dir or default_data_dir()
     return os.path.join(
@@ -28,5 +36,25 @@ def managed_repos_dir(data_dir: str | None = None) -> str:
     return os.path.join(data_dir, "managed-repos")
 
 
-def managed_repo_checkout_path(env_id: str, data_dir: str | None = None) -> str:
-    return os.path.join(managed_repos_dir(data_dir=data_dir), _safe_env_id(env_id))
+def managed_repo_checkout_path(
+    env_id: str, data_dir: str | None = None, task_id: str | None = None
+) -> str:
+    """
+    Get the checkout path for a managed repository.
+
+    Args:
+        env_id: Environment identifier
+        data_dir: Optional data directory path
+        task_id: Optional task identifier for task-specific isolation
+
+    Returns:
+        Path to the checkout directory:
+        - With task_id: managed-repos/{env_id}/tasks/{task_id}/
+        - Without task_id: managed-repos/{env_id}/ (backward compatible)
+    """
+    base = os.path.join(managed_repos_dir(data_dir=data_dir), _safe_env_id(env_id))
+    if task_id:
+        # Task-specific isolation: managed-repos/{env_id}/tasks/{task_id}/
+        return os.path.join(base, "tasks", _safe_task_id(task_id))
+    # Fallback for single-task or legacy: managed-repos/{env_id}/
+    return base
