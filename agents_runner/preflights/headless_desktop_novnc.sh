@@ -12,39 +12,38 @@ RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"
 mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}
 mkdir -p "/tmp/agents-artifacts"
 
-if command -v yay >/dev/null 2>&1; then
-  echo "[desktop] Synchronizing package database..."
-  if ! yay -Sy --noconfirm; then
-    echo "[desktop] ERROR: Failed to sync package database" >&2
-    exit 1
-  fi
-  
-  echo "[desktop] Installing official repository packages..."
-  if ! yay -S --noconfirm --needed \
-    tigervnc \
-    fluxbox \
-    xterm \
-    imagemagick \
-    xorg-xwininfo \
-    xcb-util-cursor \
-    websockify \
-    wmctrl \
-    xdotool \
-    xorg-xprop \
-    xorg-xauth \
-    ttf-dejavu \
-    xorg-fonts-misc; then
-    echo "[desktop] ERROR: Failed to install required official packages" >&2
-    echo "[desktop] Cannot continue without desktop environment" >&2
-    exit 1
-  fi
-  
-  echo "[desktop] Installing AUR packages..."
-  if ! yay -S --noconfirm --needed novnc; then
-    echo "[desktop] ERROR: Failed to install novnc from AUR" >&2
-    echo "[desktop] Desktop web interface will not be available" >&2
-    exit 1
-  fi
+echo "[desktop] Synchronizing package database..."
+if ! yay -Syu --noconfirm; then
+  echo "[desktop] ERROR: Failed to sync package database" >&2
+  exit 1
+fi
+
+echo "[desktop] Installing official repository packages..."
+if ! yay -S --noconfirm --needed \
+  tigervnc \
+  fluxbox \
+  xterm \
+  imagemagick \
+  xorg-xwininfo \
+  xcb-util-cursor \
+  websockify \
+  wmctrl \
+  xdotool \
+  xorg-xprop \
+  xorg-xauth \
+  ttf-dejavu \
+  xorg-fonts-misc; then
+  echo "[desktop] ERROR: Failed to install required official packages" >&2
+  echo "[desktop] Cannot continue without desktop environment" >&2
+  exit 1
+fi
+
+echo "[desktop] Installing AUR packages..."
+if ! yay -S --noconfirm --needed novnc; then
+  echo "[desktop] ERROR: Failed to install novnc from AUR" >&2
+  echo "[desktop] Desktop web interface will not be available" >&2
+  exit 1
+fi
 else
   echo "[desktop] ERROR: yay package manager not found" >&2
   exit 1
