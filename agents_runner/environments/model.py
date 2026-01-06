@@ -80,6 +80,7 @@ class Environment:
     gh_management_mode: str = GH_MANAGEMENT_NONE
     gh_management_target: str = ""
     gh_management_locked: bool = False
+    gh_last_base_branch: str = ""
     gh_use_host_cli: bool = True
     gh_pr_metadata_enabled: bool = False
     prompts: list[PromptConfig] = field(default_factory=list)

@@ -63,6 +63,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     gh_management_mode = normalize_gh_management_mode(str(payload.get("gh_management_mode") or ""))
     gh_management_target = str(payload.get("gh_management_target") or "").strip()
     gh_management_locked = bool(payload.get("gh_management_locked", False))
+    gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
     gh_pr_metadata_enabled = bool(payload.get("gh_pr_metadata_enabled", False))
 
@@ -172,6 +173,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         gh_management_mode=gh_management_mode,
         gh_management_target=gh_management_target,
         gh_management_locked=gh_management_locked,
+        gh_last_base_branch=gh_last_base_branch,
         gh_use_host_cli=gh_use_host_cli,
         gh_pr_metadata_enabled=gh_pr_metadata_enabled,
         prompts=prompts,
@@ -229,6 +231,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gh_management_mode": normalize_gh_management_mode(env.gh_management_mode),
         "gh_management_target": str(env.gh_management_target or "").strip(),
         "gh_management_locked": bool(env.gh_management_locked),
+        "gh_last_base_branch": str(getattr(env, "gh_last_base_branch", "") or "").strip(),
         "gh_use_host_cli": bool(env.gh_use_host_cli),
         "gh_pr_metadata_enabled": bool(env.gh_pr_metadata_enabled),
         "prompts": [{"enabled": p.enabled, "text": p.text} for p in (env.prompts or [])],
