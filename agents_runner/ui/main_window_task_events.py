@@ -206,7 +206,7 @@ class _MainWindowTaskEventsMixin:
         if isinstance(bridge, TaskRunnerBridge):
             self._on_task_log(bridge.task_id, line)
 
-    def _on_bridge_done(self, exit_code: int, error: object) -> None:
+    def _on_bridge_done(self, exit_code: int, error: object, artifacts: list) -> None:
         bridge = self.sender()
         if isinstance(bridge, TaskRunnerBridge):
             # Capture GitHub repo info from the worker if available
@@ -218,6 +218,9 @@ class _MainWindowTaskEventsMixin:
                     task.gh_base_branch = bridge.gh_base_branch
                 if bridge.gh_branch:
                     task.gh_branch = bridge.gh_branch
+                # Store collected artifacts
+                if artifacts:
+                    task.artifacts = list(artifacts)
             self._on_task_done(bridge.task_id, exit_code, error)
 
     def _on_host_log(self, task_id: str, line: str) -> None:

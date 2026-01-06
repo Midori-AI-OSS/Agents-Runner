@@ -28,6 +28,8 @@ try:
 except Exception:  # pragma: no cover
     QWebEngineView = None
 
+from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
+
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.ui.task_model import Task
@@ -293,9 +295,15 @@ class TaskDetailsPage(QWidget):
         desktop_layout.addWidget(self._desktop_view, 1)
         desktop_layout.addLayout(desktop_cfg)
 
+        # Artifacts tab
+        artifacts_tab = ArtifactsTab()
+        self._artifacts_tab = artifacts_tab
+
         self._task_tab_index = self._tabs.addTab(task_tab, "Task")
         self._desktop_tab_index = self._tabs.addTab(desktop_tab, "Desktop")
+        self._artifacts_tab_index = self._tabs.addTab(artifacts_tab, "Artifacts")
         self._tabs.setTabEnabled(self._desktop_tab_index, False)
+        self._tabs.setTabEnabled(self._artifacts_tab_index, False)
         layout.addWidget(self._tabs, 1)
 
         self._ticker = QTimer(self)
@@ -317,6 +325,10 @@ class TaskDetailsPage(QWidget):
 
         if index == getattr(self, "_desktop_tab_index", -1):
             QTimer.singleShot(0, self._maybe_load_desktop)
+            return
+
+        if index == getattr(self, "_artifacts_tab_index", -1):
+            QTimer.singleShot(0, self._load_artifacts)
 
     def _on_pr_triggered(self) -> None:
         task_id = str(self._current_task_id or "").strip()
@@ -370,6 +382,7 @@ class TaskDetailsPage(QWidget):
         self._container.setText(task.container_id or "—")
         self._tabs.setCurrentIndex(self._task_tab_index)
         self._sync_desktop(task)
+        self._sync_artifacts(task)
         self._sync_container_actions(task)
         self._logs.setPlainText("\n".join(task.logs[-5000:]))
         QTimer.singleShot(0, self._scroll_logs_to_bottom)
@@ -451,6 +464,14 @@ class TaskDetailsPage(QWidget):
         self._desktop_display.setText(str(task.desktop_display or ":1"))
         if self._tabs.currentIndex() == self._desktop_tab_index:
             self._maybe_load_desktop()
+
+    def _sync_artifacts(self, task: Task) -> None:
+        has_artifacts = bool(task.artifacts)
+        self._tabs.setTabEnabled(self._artifacts_tab_index, has_artifacts)
+
+    def _load_artifacts(self) -> None:
+        if self._last_task:
+            self._artifacts_tab.set_task(self._last_task)
 
     def _apply_status(self, task: Task) -> None:
         status = _task_display_status(task)

@@ -260,6 +260,7 @@ class _MainWindowTasksAgentMixin:
             host_codex_dir=host_codex,
             host_workdir=effective_workdir,
             agent_cli=agent_cli,
+            environment_id=env_id,
             auto_remove=True,
             pull_before_run=True,
             settings_preflight_script=settings_preflight_script,
