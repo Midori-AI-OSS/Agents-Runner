@@ -129,6 +129,11 @@ class SettingsPage(QWidget):
         self._headless_desktop_enabled.setToolTip(
             "When enabled, this overrides the per-environment headless desktop setting."
         )
+        self._tor_enabled = QCheckBox("Enable Tor proxy (anonymous routing)")
+        self._tor_enabled.setToolTip(
+            "When enabled, routes all agent traffic through Tor for anonymous routing.\n"
+            "This overrides the per-environment Tor setting."
+        )
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
@@ -166,6 +171,7 @@ class SettingsPage(QWidget):
         grid.addWidget(self._preflight_enabled, 5, 0, 1, 4)
         grid.addWidget(self._append_pixelarch_context, 6, 0, 1, 4)
         grid.addWidget(self._headless_desktop_enabled, 7, 0, 1, 4)
+        grid.addWidget(self._tor_enabled, 8, 0, 1, 4)
 
         self._agent_config_widgets: dict[str, tuple[QWidget, ...]] = {
             "codex": (codex_label, self._host_codex_dir, browse_codex),
@@ -237,6 +243,7 @@ class SettingsPage(QWidget):
         self._headless_desktop_enabled.setChecked(
             bool(settings.get("headless_desktop_enabled") or False)
         )
+        self._tor_enabled.setChecked(bool(settings.get("tor_enabled") or False))
 
     def get_settings(self) -> dict:
         return {
@@ -262,6 +269,7 @@ class SettingsPage(QWidget):
             "headless_desktop_enabled": bool(
                 self._headless_desktop_enabled.isChecked()
             ),
+            "tor_enabled": bool(self._tor_enabled.isChecked()),
         }
 
     def _pick_codex_dir(self) -> None:

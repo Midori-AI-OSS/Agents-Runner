@@ -200,6 +200,7 @@ class DockerAgentWorker:
 
             desktop_enabled = bool(self._config.headless_desktop_enabled)
             desktop_display = ":1"
+            tor_enabled = bool(self._config.tor_enabled)
 
             prompt_for_agent = self._prompt
             if desktop_enabled:
@@ -218,6 +219,10 @@ class DockerAgentWorker:
                 agent_cli_args=list(self._config.agent_cli_args or []),
             )
             agent_cmd = " ".join(shlex.quote(part) for part in agent_args)
+            
+            # Wrap agent command with torsocks if Tor is enabled
+            if tor_enabled:
+                agent_cmd = f"torsocks {agent_cmd}"
 
             desktop_state: dict[str, Any] = {}
             port_args: list[str] = []
@@ -255,6 +260,20 @@ class DockerAgentWorker:
                     'echo "[desktop] DISPLAY=${DISPLAY}"; '
                     'echo "[desktop] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
                 )
+            
+            # Add Tor setup to preflight if enabled
+            if tor_enabled:
+                preflight_clause += (
+                    'echo "[tor] installing and starting Tor daemon"; '
+                    "if command -v yay >/dev/null 2>&1; then "
+                    "  yay -S --noconfirm --needed tor torsocks || true; "
+                    "fi; "
+                    "sudo tor & "
+                    "sleep 2; "
+                    'echo "[tor] Tor daemon started"; '
+                )
+                self._on_log("[tor] Tor proxy enabled for this task")
+            
             if settings_preflight_tmp_path is not None:
                 self._on_log(
                     f"[host] settings preflight enabled; mounting -> {settings_container_path} (ro)"
