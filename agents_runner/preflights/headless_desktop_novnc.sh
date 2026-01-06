@@ -44,10 +44,6 @@ if ! yay -S --noconfirm --needed novnc; then
   echo "[desktop] Desktop web interface will not be available" >&2
   exit 1
 fi
-else
-  echo "[desktop] ERROR: yay package manager not found" >&2
-  exit 1
-fi
 
 echo "[desktop] Validating installed components..."
 REQUIRED_BINS=(Xvnc fluxbox xterm websockify)
