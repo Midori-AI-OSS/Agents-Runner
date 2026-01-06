@@ -28,6 +28,20 @@ from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.gh_management import is_gh_available
 from agents_runner.widgets import GlassCard
+from agents_runner.ui.constants import (
+    MAIN_LAYOUT_MARGINS,
+    MAIN_LAYOUT_SPACING,
+    HEADER_MARGINS,
+    HEADER_SPACING,
+    CARD_MARGINS,
+    CARD_SPACING,
+    GRID_HORIZONTAL_SPACING,
+    GRID_VERTICAL_SPACING,
+    BUTTON_ROW_SPACING,
+    STANDARD_BUTTON_WIDTH,
+    TAB_CONTENT_MARGINS,
+    TAB_CONTENT_SPACING,
+)
 
 from agents_runner.ui.pages.environments_actions import _EnvironmentsPageActionsMixin
 from agents_runner.ui.pages.environments_prompts import PromptsTabWidget
@@ -46,13 +60,13 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._current_env_id: str | None = None
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setContentsMargins(*MAIN_LAYOUT_MARGINS)
+        layout.setSpacing(MAIN_LAYOUT_SPACING)
 
         header = GlassCard()
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(18, 16, 18, 16)
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(*HEADER_MARGINS)
+        header_layout.setSpacing(HEADER_SPACING)
 
         title = QLabel("Environments")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
@@ -71,11 +85,11 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         card = GlassCard()
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(18, 16, 18, 16)
-        card_layout.setSpacing(12)
+        card_layout.setContentsMargins(*CARD_MARGINS)
+        card_layout.setSpacing(CARD_SPACING)
 
         top_row = QHBoxLayout()
-        top_row.setSpacing(10)
+        top_row.setSpacing(BUTTON_ROW_SPACING)
         self._env_select = QComboBox()
         self._env_select.currentIndexChanged.connect(self._on_env_selected)
 
@@ -112,12 +126,12 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         general_tab = QWidget()
         general_layout = QVBoxLayout(general_tab)
-        general_layout.setContentsMargins(0, 16, 0, 12)
-        general_layout.setSpacing(10)
+        general_layout.setContentsMargins(*TAB_CONTENT_MARGINS)
+        general_layout.setSpacing(TAB_CONTENT_SPACING)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(10)
+        grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
         grid.setContentsMargins(0, 0, 0, 0)
 
         self._name = QLineEdit()
@@ -142,7 +156,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._max_agents_running.setMaximumWidth(150)
 
         browse_codex = QPushButton("Browse…")
-        browse_codex.setFixedWidth(100)
+        browse_codex.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_codex.clicked.connect(self._pick_codex_dir)
 
         grid.addWidget(QLabel("Name"), 0, 0)
@@ -172,7 +186,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         max_agents_row = QWidget(general_tab)
         max_agents_row_layout = QHBoxLayout(max_agents_row)
         max_agents_row_layout.setContentsMargins(0, 0, 0, 0)
-        max_agents_row_layout.setSpacing(10)
+        max_agents_row_layout.setSpacing(BUTTON_ROW_SPACING)
         max_agents_row_layout.addWidget(self._max_agents_running)
         max_agents_row_layout.addStretch(1)
 
@@ -184,7 +198,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._gh_pr_metadata_row = QWidget(general_tab)
         gh_pr_metadata_layout = QHBoxLayout(self._gh_pr_metadata_row)
         gh_pr_metadata_layout.setContentsMargins(0, 0, 0, 0)
-        gh_pr_metadata_layout.setSpacing(10)
+        gh_pr_metadata_layout.setSpacing(BUTTON_ROW_SPACING)
         gh_pr_metadata_layout.addWidget(self._gh_pr_metadata_enabled)
         gh_pr_metadata_layout.addStretch(1)
 
@@ -204,7 +218,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._gh_management_target.textChanged.connect(self._sync_gh_management_controls)
 
         self._gh_management_browse = QPushButton("Browse…", general_tab)
-        self._gh_management_browse.setFixedWidth(100)
+        self._gh_management_browse.setFixedWidth(STANDARD_BUTTON_WIDTH)
         self._gh_management_browse.clicked.connect(self._pick_gh_management_folder)
 
         self._gh_use_host_cli = QCheckBox("Use host `gh` for clone/PR (if installed)", general_tab)
@@ -240,8 +254,8 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         preflight_tab = QWidget()
         preflight_layout = QVBoxLayout(preflight_tab)
-        preflight_layout.setSpacing(10)
-        preflight_layout.setContentsMargins(0, 16, 0, 12)
+        preflight_layout.setSpacing(TAB_CONTENT_SPACING)
+        preflight_layout.setContentsMargins(*TAB_CONTENT_MARGINS)
         preflight_layout.addWidget(self._preflight_enabled)
         preflight_layout.addWidget(QLabel("Preflight script"))
         preflight_layout.addWidget(self._preflight_script, 1)
@@ -251,8 +265,8 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._env_vars.setTabChangesFocus(True)
         env_vars_tab = QWidget()
         env_vars_layout = QVBoxLayout(env_vars_tab)
-        env_vars_layout.setSpacing(10)
-        env_vars_layout.setContentsMargins(0, 16, 0, 12)
+        env_vars_layout.setSpacing(TAB_CONTENT_SPACING)
+        env_vars_layout.setContentsMargins(*TAB_CONTENT_MARGINS)
         env_vars_layout.addWidget(QLabel("Container env vars"))
         env_vars_layout.addWidget(self._env_vars, 1)
 
@@ -261,8 +275,8 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._mounts.setTabChangesFocus(True)
         mounts_tab = QWidget()
         mounts_layout = QVBoxLayout(mounts_tab)
-        mounts_layout.setSpacing(10)
-        mounts_layout.setContentsMargins(0, 16, 0, 12)
+        mounts_layout.setSpacing(TAB_CONTENT_SPACING)
+        mounts_layout.setContentsMargins(*TAB_CONTENT_MARGINS)
         mounts_layout.addWidget(QLabel("Extra bind mounts"))
         mounts_layout.addWidget(self._mounts, 1)
 

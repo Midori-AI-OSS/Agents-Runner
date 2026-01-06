@@ -21,6 +21,14 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import SUPPORTED_AGENTS
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
+from agents_runner.ui.constants import (
+    TAB_CONTENT_MARGINS,
+    TAB_CONTENT_SPACING,
+    BUTTON_ROW_SPACING,
+    TABLE_ROW_HEIGHT,
+    AGENT_COMBO_WIDTH,
+    STANDARD_BUTTON_WIDTH,
+)
 
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -35,8 +43,6 @@ class AgentsTabWidget(QWidget):
     _COL_CONFIG = 3
     _COL_FALLBACK = 4
     _COL_REMOVE = 5
-    _ROW_HEIGHT_PX = 56
-    _AGENT_COL_WIDTH_PX = 170
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -45,8 +51,8 @@ class AgentsTabWidget(QWidget):
         self._fallbacks: dict[str, str] = {}
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 16, 0, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(*TAB_CONTENT_MARGINS)
+        layout.setSpacing(TAB_CONTENT_SPACING)
 
         header_label = QLabel(
             "Override the Settings agent configuration for this environment.\n"
@@ -56,7 +62,7 @@ class AgentsTabWidget(QWidget):
         layout.addWidget(header_label)
 
         add_row = QHBoxLayout()
-        add_row.setSpacing(10)
+        add_row.setSpacing(BUTTON_ROW_SPACING)
         add_row.addWidget(QLabel("Add agent"))
         self._add_agent_cli = QComboBox()
         for agent in SUPPORTED_AGENTS:
@@ -76,14 +82,14 @@ class AgentsTabWidget(QWidget):
         self._agent_table.setHorizontalHeaderLabels(["Priority", "Agent", "ID", "Config folder", "Fallback", ""])
         self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_PRIORITY, QHeaderView.ResizeToContents)
         self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_AGENT, QHeaderView.Interactive)
-        self._agent_table.setColumnWidth(self._COL_AGENT, self._AGENT_COL_WIDTH_PX)
+        self._agent_table.setColumnWidth(self._COL_AGENT, AGENT_COMBO_WIDTH)
         self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_ID, QHeaderView.ResizeToContents)
         self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_CONFIG, QHeaderView.Stretch)
         self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_FALLBACK, QHeaderView.ResizeToContents)
         self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeToContents)
         self._agent_table.verticalHeader().setVisible(False)
-        self._agent_table.verticalHeader().setMinimumSectionSize(self._ROW_HEIGHT_PX)
-        self._agent_table.verticalHeader().setDefaultSectionSize(self._ROW_HEIGHT_PX)
+        self._agent_table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
+        self._agent_table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
         self._agent_table.setSelectionMode(QTableWidget.NoSelection)
         self._agent_table.setFocusPolicy(Qt.NoFocus)
         layout.addWidget(self._agent_table)
@@ -92,7 +98,7 @@ class AgentsTabWidget(QWidget):
         layout.addWidget(self._selection_mode_label)
 
         mode_row = QHBoxLayout()
-        mode_row.setSpacing(10)
+        mode_row.setSpacing(BUTTON_ROW_SPACING)
         self._selection_mode = QComboBox()
         self._selection_mode.addItem("Round-robin", "round-robin")
         self._selection_mode.addItem("Least used (active tasks)", "least-used")
@@ -148,7 +154,7 @@ class AgentsTabWidget(QWidget):
         self._agent_table.setMinimumHeight(1)
 
         for row_index, inst in enumerate(self._rows):
-            self._agent_table.setRowHeight(row_index, self._ROW_HEIGHT_PX)
+            self._agent_table.setRowHeight(row_index, TABLE_ROW_HEIGHT)
             self._agent_table.setCellWidget(row_index, self._COL_PRIORITY, self._priority_widget(row_index))
             self._agent_table.setCellWidget(row_index, self._COL_AGENT, self._agent_cli_widget(row_index, inst))
             self._agent_table.setCellWidget(row_index, self._COL_ID, self._agent_id_widget(row_index, inst))
