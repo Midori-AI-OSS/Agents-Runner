@@ -98,7 +98,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
 
         # Get task info for cleanup
         task = self._tasks.get(task_id)
-        env_id = task.environment_id if task else ""
+        env_id = str(task.environment_id or "").strip() if task and hasattr(task, "environment_id") else ""
         
         try:
             prompt_line = (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
@@ -170,9 +170,17 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             # Clean up task-specific repo after PR creation (or failure)
             # This ensures each task gets a fresh clone and prevents git conflicts
             if env_id and task_id:
-                self.host_log.emit(task_id, "[gh] cleaning up task workspace")
                 try:
-                    data_dir = os.path.dirname(self._state_path)
+                    # Validate state_path before using
+                    state_path = getattr(self, "_state_path", "")
+                    if not state_path:
+                        self.host_log.emit(
+                            task_id, "[gh] cleanup skipped: state path not available"
+                        )
+                        return
+                    
+                    self.host_log.emit(task_id, "[gh] cleaning up task workspace")
+                    data_dir = os.path.dirname(state_path)
                     cleanup_success = cleanup_task_workspace(
                         env_id=env_id,
                         task_id=task_id,
