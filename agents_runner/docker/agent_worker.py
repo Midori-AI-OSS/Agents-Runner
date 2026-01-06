@@ -22,6 +22,7 @@ from agents_runner.docker_platform import has_rosetta
 from agents_runner.github_token import resolve_github_token
 from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.gh_management import GhManagementError
+from agents_runner.artifacts import collect_artifacts_from_container
 
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.paths import _is_git_repo_root
@@ -59,7 +60,7 @@ class DockerAgentWorker:
         prompt: str,
         on_state: Callable[[dict[str, Any]], None],
         on_log: Callable[[str], None],
-        on_done: Callable[[int, str | None], None],
+        on_done: Callable[[int, str | None, list[str]], None],
     ) -> None:
         self._config = config
         self._prompt = sanitize_prompt((prompt or "").strip())
@@ -71,6 +72,7 @@ class DockerAgentWorker:
         self._gh_repo_root: str | None = None
         self._gh_base_branch: str | None = None
         self._gh_branch: str | None = None
+        self._collected_artifacts: list[str] = []
 
     @property
     def container_id(self) -> str | None:
@@ -122,7 +124,7 @@ class DockerAgentWorker:
                         self._on_log(f"[gh] ready on branch {self._gh_branch}")
                 except (GhManagementError, Exception) as exc:
                     self._on_log(f"[gh] ERROR: {exc}")
-                    self._on_done(1, str(exc))
+                    self._on_done(1, str(exc), [])
                     return
 
             os.makedirs(self._config.host_codex_dir, exist_ok=True)
@@ -454,15 +456,35 @@ class DockerAgentWorker:
             self._on_state(final_state)
             exit_code = int(final_state.get("ExitCode") or 0)
 
+            # Collect artifacts before removing container
+            if self._container_id:
+                try:
+                    self._on_log("[host] collecting artifacts from container...")
+                    task_dict = {
+                        "task_id": self._config.task_id,
+                        "image": self._config.image,
+                        "agent_cli": agent_cli,
+                        "created_at": time.time(),
+                    }
+                    self._collected_artifacts = collect_artifacts_from_container(
+                        self._container_id, task_dict, self._config.environment_id
+                    )
+                    if self._collected_artifacts:
+                        self._on_log(
+                            f"[host] collected {len(self._collected_artifacts)} artifact(s)"
+                        )
+                except Exception as e:
+                    self._on_log(f"[host] artifact collection failed: {e}")
+
             if self._config.auto_remove:
                 try:
                     _run_docker(["rm", "-f", self._container_id], timeout_s=30.0)
                 except Exception:
                     pass
 
-            self._on_done(exit_code, None)
+            self._on_done(exit_code, None, self._collected_artifacts)
         except Exception as exc:
-            self._on_done(1, str(exc))
+            self._on_done(1, str(exc), self._collected_artifacts)
         finally:
             for tmp_path in preflight_tmp_paths:
                 try:
