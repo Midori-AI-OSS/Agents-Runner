@@ -12,8 +12,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
+from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_task_payload
@@ -181,6 +183,15 @@ class _MainWindowTaskEventsMixin:
                 daemon=True,
             ).start()
 
+        # Clean up task workspace (if using GitHub management)
+        gh_mode = normalize_gh_management_mode(task.gh_management_mode)
+        if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+            threading.Thread(
+                target=self._cleanup_task_workspace_async,
+                args=(task_id, task.environment_id),
+                daemon=True,
+            ).start()
+
     def _force_remove_container(self, container_id: str) -> None:
         container_id = str(container_id or "").strip()
         if not container_id:
@@ -195,6 +206,18 @@ class _MainWindowTaskEventsMixin:
             )
         except Exception:
             pass
+
+    def _cleanup_task_workspace_async(self, task_id: str, env_id: str) -> None:
+        """Clean up task workspace in background thread."""
+        import os
+
+        data_dir = os.path.dirname(self._state_path)
+        cleanup_task_workspace(
+            env_id=env_id,
+            task_id=task_id,
+            data_dir=data_dir,
+            on_log=None,  # Silent cleanup (no UI updates)
+        )
 
     def _on_bridge_state(self, state: dict) -> None:
         bridge = self.sender()
