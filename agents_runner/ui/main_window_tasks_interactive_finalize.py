@@ -96,9 +96,11 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         if not repo_root or not branch:
             return
 
-        # Get task info for cleanup
+        # Get task info for cleanup - extract environment_id safely
         task = self._tasks.get(task_id)
-        env_id = str(task.environment_id or "").strip() if task and hasattr(task, "environment_id") else ""
+        env_id = ""
+        if task and hasattr(task, "environment_id"):
+            env_id = str(task.environment_id or "").strip()
         
         try:
             prompt_line = (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
@@ -177,18 +179,17 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                         self.host_log.emit(
                             task_id, "[gh] cleanup skipped: state path not available"
                         )
-                        return
-                    
-                    self.host_log.emit(task_id, "[gh] cleaning up task workspace")
-                    data_dir = os.path.dirname(state_path)
-                    cleanup_success = cleanup_task_workspace(
-                        env_id=env_id,
-                        task_id=task_id,
-                        data_dir=data_dir,
-                        on_log=lambda msg: self.host_log.emit(task_id, msg),
-                    )
-                    if cleanup_success:
-                        self.host_log.emit(task_id, "[gh] task workspace cleaned")
+                    else:
+                        self.host_log.emit(task_id, "[gh] cleaning up task workspace")
+                        data_dir = os.path.dirname(state_path)
+                        cleanup_success = cleanup_task_workspace(
+                            env_id=env_id,
+                            task_id=task_id,
+                            data_dir=data_dir,
+                            on_log=lambda msg: self.host_log.emit(task_id, msg),
+                        )
+                        if cleanup_success:
+                            self.host_log.emit(task_id, "[gh] task workspace cleaned")
                 except Exception as cleanup_exc:
                     self.host_log.emit(
                         task_id, f"[gh] cleanup failed: {cleanup_exc}"
