@@ -16,7 +16,6 @@ class DockerRunnerConfig:
     settings_preflight_script: str | None = None
     environment_preflight_script: str | None = None
     headless_desktop_enabled: bool = False
-    tor_enabled: bool = False
     environment_id: str = ""
     # Use a task-specific filename by default to avoid collisions when multiple
     # runs share a container or temp directory.
