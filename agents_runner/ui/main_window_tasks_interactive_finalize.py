@@ -8,6 +8,8 @@ from datetime import timezone
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
+from agents_runner.agent_display import format_agent_markdown_link
+from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.gh_management import commit_push_and_pr
@@ -90,10 +92,16 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             return
 
         prompt_line = (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
-        default_title = f"codex: {prompt_line or task_id}"
+        default_title = f"Agent Runner: {prompt_line or task_id}"
         default_title = normalize_pr_title(default_title, fallback=default_title)
+        
+        agent_display = get_agent_display_name(agent_cli) if agent_cli else "Agent"
+        agent_link = format_agent_markdown_link(agent_cli) if agent_cli else agent_display
+        runners_link = "[Agents Runner](https://github.com/Midori-AI-OSS/Agents-Runner)"
+        
         default_body = (
-            f"Automated by {APP_TITLE}.\n\n"
+            f"Automated by {runners_link}.\n\n"
+            f"Agent: {agent_link}\n\n"
             f"Task: {task_token}\n\n"
             "Prompt:\n"
             f"{(prompt_text or '').strip()}\n"

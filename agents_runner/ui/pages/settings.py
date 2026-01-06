@@ -64,10 +64,10 @@ class SettingsPage(QWidget):
         grid.setColumnStretch(1, 1)
 
         self._use = QComboBox()
-        self._use.addItem("Codex", "codex")
-        self._use.addItem("Claude", "claude")
-        self._use.addItem("GitHub Copilot", "copilot")
-        self._use.addItem("Gemini", "gemini")
+        self._use.addItem("OpenAI Codex", "codex")
+        self._use.addItem("Claude Code", "claude")
+        self._use.addItem("Github Copilot", "copilot")
+        self._use.addItem("Google Gemini", "gemini")
 
         self._shell = QComboBox()
         for label, value in [
