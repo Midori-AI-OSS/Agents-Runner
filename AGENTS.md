@@ -48,7 +48,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 Use these mode guides from `.codex/modes/` when working on specific tasks:
 
 - **Coder Mode** (`.codex/modes/CODER.md`): Implementing features and fixes
-- **Tester Mode** (`.codex/modes/TESTER.md`): Building and managing tests (only enter when requested)
+- **Tester Mode** (`.codex/modes/TESTER.md`): Building and managing tests
 - **Reviewer Mode** (`.codex/modes/REVIEWER.md`): Auditing documentation
 - **Task Master Mode** (`.codex/modes/TASKMASTER.md`): Managing work items
 - **Manager Mode** (`.codex/modes/MANAGER.md`): Planning and coordination
