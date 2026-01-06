@@ -2,6 +2,7 @@ import re
 
 from dataclasses import dataclass
 
+from ..agent_display import format_agent_markdown_link
 from .errors import GhManagementError
 from .gh_cli import is_gh_available
 from .git_ops import (
@@ -26,8 +27,16 @@ def _append_pr_attribution_footer(body: str, agent_cli: str = "", agent_cli_args
     if _PR_ATTRIBUTION_MARKER in body:
         return body + "\n"
 
-    agent_used = " ".join(part for part in (agent_cli.strip(), agent_cli_args.strip()) if part)
-    if not agent_used:
+    agent_cli_name = agent_cli.strip()
+    agent_args = agent_cli_args.strip()
+    
+    if agent_cli_name:
+        agent_link = format_agent_markdown_link(agent_cli_name)
+        if agent_args:
+            agent_used = f"{agent_link} {agent_args}"
+        else:
+            agent_used = agent_link
+    else:
         agent_used = "(unknown)"
 
     footer = (
