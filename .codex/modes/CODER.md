@@ -7,7 +7,7 @@ Coders implement, refactor, and review code. The focus is on maintainable, well-
 
 ## Project-Specific Guidelines
 - **Python 3.13+**: Use modern Python with type hints throughout
-- **UI Styling**: Keep sharp/square corners—avoid non-`0px` `border-radius` values in `codex_local_conatinerd/style/` and avoid `addRoundedRect(...)` in custom painting (for example under `codex_local_conatinerd/widgets/`)
+- **UI Styling**: Keep sharp/square corners—avoid non-`0px` `border-radius` values in `agents_runner/style/` and avoid `addRoundedRect(...)` in custom painting (for example under `agents_runner/widgets/`)
 - **Minimal diffs**: Avoid drive-by refactors; make surgical, focused changes
 - **Test locally**: Run `uv run main.py` to verify UI changes before committing
 - Write clear, well-structured code with meaningful naming and sufficient comments where intent is not obvious

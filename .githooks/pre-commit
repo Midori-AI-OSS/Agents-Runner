@@ -14,16 +14,16 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 log "Running Python bytecode compile check (compileall)"
-uv run python -m compileall -q codex_local_conatinerd main.py
+uv run python -m compileall -q agents_runner main.py
 
 log "Running import smoke test"
 uv run python - <<'PY'
 import importlib
 
 modules = [
-    "codex_local_conatinerd",
-    "codex_local_conatinerd.app",
-    "codex_local_conatinerd.ui.main_window",
+    "agents_runner",
+    "agents_runner.app",
+    "agents_runner.ui.main_window",
 ]
 
 for module in modules:
