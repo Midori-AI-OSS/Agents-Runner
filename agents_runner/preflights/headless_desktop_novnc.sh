@@ -13,6 +13,12 @@ mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}
 mkdir -p "/tmp/agents-artifacts"
 
 if command -v yay >/dev/null 2>&1; then
+  echo "[desktop] Synchronizing package database..."
+  if ! yay -Sy --noconfirm; then
+    echo "[desktop] ERROR: Failed to sync package database" >&2
+    exit 1
+  fi
+  
   echo "[desktop] Installing official repository packages..."
   if ! yay -S --noconfirm --needed \
     tigervnc \
@@ -28,15 +34,36 @@ if command -v yay >/dev/null 2>&1; then
     xorg-xauth \
     ttf-dejavu \
     xorg-fonts-misc; then
-    echo "[desktop] WARNING: Some official packages failed to install"
-    echo "[desktop] Attempting to continue with available packages..."
+    echo "[desktop] ERROR: Failed to install required official packages" >&2
+    echo "[desktop] Cannot continue without desktop environment" >&2
+    exit 1
   fi
   
   echo "[desktop] Installing AUR packages..."
   if ! yay -S --noconfirm --needed novnc; then
-    echo "[desktop] WARNING: novnc (AUR) failed to install"
-    echo "[desktop] Desktop web interface may not be available"
+    echo "[desktop] ERROR: Failed to install novnc from AUR" >&2
+    echo "[desktop] Desktop web interface will not be available" >&2
+    exit 1
   fi
+else
+  echo "[desktop] ERROR: yay package manager not found" >&2
+  exit 1
+fi
+
+echo "[desktop] Validating installed components..."
+REQUIRED_BINS=(Xvnc fluxbox xterm websockify)
+MISSING_BINS=()
+
+for bin in "${REQUIRED_BINS[@]}"; do
+  if ! command -v "${bin}" >/dev/null 2>&1; then
+    MISSING_BINS+=("${bin}")
+  fi
+done
+
+if [ ${#MISSING_BINS[@]} -gt 0 ]; then
+  echo "[desktop] ERROR: Required binaries not found: ${MISSING_BINS[*]}" >&2
+  echo "[desktop] Package installation may have failed silently" >&2
+  exit 1
 fi
 
 Xvnc "${DISPLAY}" \
@@ -59,7 +86,8 @@ for candidate in "/usr/share/webapps/novnc" "/usr/share/novnc" "/usr/share/noVNC
   fi
 done
 if [ -z "${NOVNC_WEB}" ]; then
-  echo "[desktop] ERROR: noVNC web root not found" >&2
+  echo "[desktop] ERROR: noVNC web root not found in expected locations" >&2
+  echo "[desktop] Searched: /usr/share/webapps/novnc, /usr/share/novnc, /usr/share/noVNC" >&2
   exit 1
 fi
 
