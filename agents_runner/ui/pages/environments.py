@@ -273,11 +273,11 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._agents_tab.agents_changed.connect(self._on_agents_changed)
 
         tabs.addTab(general_tab, "General")
-        tabs.addTab(preflight_tab, "Preflight")
+        tabs.addTab(self._agents_tab, "Agents")
+        tabs.addTab(self._prompts_tab, "Prompts")
         tabs.addTab(env_vars_tab, "Env Vars")
         tabs.addTab(mounts_tab, "Mounts")
-        tabs.addTab(self._prompts_tab, "Prompts")
-        tabs.addTab(self._agents_tab, "Agents")
+        tabs.addTab(preflight_tab, "Preflight")
 
         card_layout.addWidget(tabs, 1)
 

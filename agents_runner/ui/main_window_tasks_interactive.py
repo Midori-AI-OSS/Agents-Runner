@@ -91,6 +91,8 @@ class _MainWindowTasksInteractiveMixin:
         if env and env.gh_management_locked and desired_base and gh_mode == GH_MANAGEMENT_GITHUB:
             env.gh_last_base_branch = desired_base
             save_environment(env)
+            # Update in-memory copy to persist across tab changes and reloads
+            self._environments[env.env_id] = env
 
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
