@@ -4,7 +4,9 @@ from PySide6.QtCore import Property
 from PySide6.QtCore import QAbstractAnimation
 from PySide6.QtCore import QEasingCurve
 from PySide6.QtCore import QParallelAnimationGroup
+from PySide6.QtCore import QPoint
 from PySide6.QtCore import QPropertyAnimation
+from PySide6.QtCore import QRect
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
@@ -211,6 +213,9 @@ class TaskRow(QWidget):
         effect = self.graphicsEffect()
         if isinstance(effect, QGraphicsOpacityEffect):
             effect.setOpacity(1.0)
+            # Avoid stacking opacity effects (page transitions also use them) which can
+            # cause odd painting/layout behavior when navigating.
+            self.setGraphicsEffect(None)
 
     def cancel_entrance(self) -> None:
         if self._entrance_anim is not None:
@@ -299,9 +304,14 @@ class DashboardPage(QWidget):
         self._selected_task_id: str | None = None
         self._filter_text_tokens: list[str] = []
         self._past_entrance_queue: list[TaskRow] = []
+        self._past_entrance_seen: set[str] = set()
         self._past_entrance_timer = QTimer(self)
         self._past_entrance_timer.setSingleShot(True)
         self._past_entrance_timer.timeout.connect(self._play_next_past_entrance)
+        self._past_visible_scan_reset_pending = False
+        self._past_visible_scan_timer = QTimer(self)
+        self._past_visible_scan_timer.setSingleShot(True)
+        self._past_visible_scan_timer.timeout.connect(self._queue_visible_past_entrances)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -438,6 +448,8 @@ class DashboardPage(QWidget):
         self._btn_load_more.setCursor(Qt.PointingHandCursor)
         self._btn_load_more.clicked.connect(self._request_more_past_tasks)
 
+        self._scroll_past.verticalScrollBar().valueChanged.connect(self._on_past_scroll_value_changed)
+
         past_layout.addWidget(self._scroll_past, 1)
         past_layout.addWidget(self._btn_load_more, 0, Qt.AlignRight)
 
@@ -454,6 +466,25 @@ class DashboardPage(QWidget):
 
         self._rows_active: dict[str, TaskRow] = {}
         self._rows_past: dict[str, TaskRow] = {}
+
+    def _cancel_past_entrances(self) -> None:
+        self._past_visible_scan_timer.stop()
+        self._past_visible_scan_reset_pending = False
+
+        self._past_entrance_timer.stop()
+        self._past_entrance_queue.clear()
+
+        for row in self._rows_past.values():
+            row.cancel_entrance()
+
+    def hideEvent(self, event) -> None:
+        self._cancel_past_entrances()
+        super().hideEvent(event)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._stack.currentIndex() == 1:
+            self._schedule_visible_past_entrances(reset=False, delay_ms=0)
 
     def _set_selected_task_id(self, task_id: str | None) -> None:
         task_id = str(task_id or "").strip() or None
@@ -517,16 +548,71 @@ class DashboardPage(QWidget):
         row.set_selected(self._selected_task_id == task.task_id)
         row.update_from_task(task)
         row.setVisible(self._row_visible_for_task(task))
-        if created and row.isVisible() and self._stack.currentIndex() == 1:
-            self._queue_past_entrance(row)
+        if created and self._stack.currentIndex() == 1:
+            self._schedule_visible_past_entrances(reset=False, delay_ms=0)
 
-    def _queue_past_entrance(self, row: TaskRow) -> None:
+    def _queue_past_entrance(self, row: TaskRow) -> bool:
         if row in self._past_entrance_queue:
-            return
+            return False
+        if row.task_id:
+            self._past_entrance_seen.add(row.task_id)
         row.prepare_entrance(distance=36)
         self._past_entrance_queue.append(row)
         if not self._past_entrance_timer.isActive():
             self._past_entrance_timer.start(0)
+        return True
+
+    def _past_row_intersects_viewport(self, row: TaskRow) -> bool:
+        if row.parent() is None or not row.isVisible():
+            return False
+        viewport = self._scroll_past.viewport()
+        top_left = row.mapTo(viewport, QPoint(0, 0))
+        rect = QRect(top_left, row.size())
+        return viewport.rect().intersects(rect)
+
+    def _past_rows_in_viewport(self) -> list[TaskRow]:
+        rows: list[TaskRow] = []
+        for row in self._rows_past.values():
+            if self._past_row_intersects_viewport(row):
+                rows.append(row)
+        rows.sort(key=lambda r: r.y())
+        return rows
+
+    def _schedule_visible_past_entrances(self, *, reset: bool, delay_ms: int) -> None:
+        if self._stack.currentIndex() != 1:
+            return
+        if reset:
+            self._past_visible_scan_reset_pending = True
+        self._past_visible_scan_timer.start(int(max(0, delay_ms)))
+
+    def _queue_visible_past_entrances(self) -> None:
+        if self._stack.currentIndex() != 1:
+            return
+
+        if self._past_visible_scan_reset_pending:
+            self._past_visible_scan_reset_pending = False
+            self._past_entrance_seen.clear()
+            stale_queue = list(self._past_entrance_queue)
+            self._past_entrance_queue.clear()
+            self._past_entrance_timer.stop()
+            for row in stale_queue:
+                if row is None or row.parent() is None:
+                    continue
+                row.cancel_entrance()
+
+        queued = 0
+        for row in self._past_rows_in_viewport():
+            if queued >= 14:
+                break
+            task_id = row.task_id
+            if not task_id or task_id in self._past_entrance_seen:
+                continue
+            row.cancel_entrance()
+            if self._queue_past_entrance(row):
+                queued += 1
+
+    def _on_past_scroll_value_changed(self, _value: int) -> None:
+        self._schedule_visible_past_entrances(reset=False, delay_ms=35)
 
     def _play_next_past_entrance(self) -> None:
         while self._past_entrance_queue:
@@ -645,8 +731,8 @@ class DashboardPage(QWidget):
         if index >= 0:
             self._stack.setCurrentIndex(index)
         if index != 1:
+            self._cancel_past_entrances()
             return
-        if self._rows_past:
-            return
-        if self._btn_load_more.isEnabled():
+        if not self._rows_past and self._btn_load_more.isEnabled():
             self._request_more_past_tasks()
+        self._schedule_visible_past_entrances(reset=False, delay_ms=0)

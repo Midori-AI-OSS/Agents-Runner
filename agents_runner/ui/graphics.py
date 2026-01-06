@@ -198,6 +198,14 @@ class GlassRoot(QWidget):
             timer.start()
             self._orb_timer = timer
 
+    @staticmethod
+    def _darken_overlay_alpha(theme: _AgentTheme) -> int:
+        lightness = float(theme.base.lightnessF())
+        # Keep the background readable without crushing the palette into near-black.
+        # Slightly stronger darkening on light themes, lighter on dark themes.
+        alpha = int(165 + 55 * lightness)
+        return int(min(max(alpha, 0), 255))
+
     def set_agent_theme(self, agent_cli: str) -> None:
         theme = _theme_for_agent(agent_cli)
         if theme.name == self._theme.name:
@@ -371,9 +379,11 @@ class GlassRoot(QWidget):
         painter.setRenderHint(QPainter.Antialiasing, True)
 
         self._paint_theme(painter, self._theme)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, self._darken_overlay_alpha(self._theme)))
 
         if self._theme_to is not None and self._theme_blend > 0.0:
             painter.save()
             painter.setOpacity(float(self._theme_blend))
             self._paint_theme(painter, self._theme_to)
+            painter.fillRect(self.rect(), QColor(0, 0, 0, self._darken_overlay_alpha(self._theme_to)))
             painter.restore()

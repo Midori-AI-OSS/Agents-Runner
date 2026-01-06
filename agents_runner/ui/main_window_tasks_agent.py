@@ -166,6 +166,21 @@ class _MainWindowTasksAgentMixin:
         runner_prompt = prompt
         if bool(self._settings_data.get("append_pixelarch_context") or False):
             runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
+
+        enabled_env_prompts: list[str] = []
+        if env and bool(getattr(env, "prompts_unlocked", False)):
+            for p in (getattr(env, "prompts", None) or []):
+                text = str(getattr(p, "text", "") or "").strip()
+                if not text or not bool(getattr(p, "enabled", False)):
+                    continue
+                enabled_env_prompts.append(sanitize_prompt(text))
+
+        if enabled_env_prompts:
+            runner_prompt = f"{runner_prompt.rstrip()}\n\n" + "\n\n".join(enabled_env_prompts)
+            self._on_task_log(
+                task_id,
+                f"[env] appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)",
+            )
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
 
