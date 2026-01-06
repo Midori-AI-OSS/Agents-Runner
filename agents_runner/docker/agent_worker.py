@@ -31,6 +31,7 @@ from agents_runner.docker.process import _has_platform_image
 from agents_runner.docker.process import _inspect_state
 from agents_runner.docker.process import _pull_image
 from agents_runner.docker.process import _run_docker
+from agents_runner.docker.utils import _resolve_workspace_mount
 from agents_runner.docker.utils import _write_preflight_script
 
 
@@ -142,6 +143,15 @@ class DockerAgentWorker:
             config_extra_mounts = additional_config_mounts(
                 agent_cli, self._config.host_codex_dir
             )
+            host_mount, container_cwd = _resolve_workspace_mount(
+                self._config.host_workdir, container_mount=self._config.container_workdir
+            )
+            if host_mount != self._config.host_workdir:
+                self._on_log(
+                    f"[host] mounting workspace root: {host_mount} (selected {self._config.host_workdir})"
+                )
+            if container_cwd != self._config.container_workdir:
+                self._on_log(f"[host] container workdir: {container_cwd}")
             container_name = f"agents-runner-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
             settings_container_path = (
@@ -191,9 +201,7 @@ class DockerAgentWorker:
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
 
-            if agent_cli == "codex" and not _is_git_repo_root(
-                self._config.host_workdir
-            ):
+            if agent_cli == "codex" and not _is_git_repo_root(host_mount):
                 self._on_log(
                     "[host] .git missing in workdir; adding --skip-git-repo-check"
                 )
@@ -214,7 +222,7 @@ class DockerAgentWorker:
             agent_args = build_noninteractive_cmd(
                 agent=agent_cli,
                 prompt=prompt_for_agent,
-                host_workdir=self._config.host_workdir,
+                host_workdir=host_mount,
                 container_workdir=self._config.container_workdir,
                 agent_cli_args=list(self._config.agent_cli_args or []),
             )
@@ -367,13 +375,13 @@ class DockerAgentWorker:
                 "-v",
                 f"{self._config.host_codex_dir}:{config_container_dir}",
                 "-v",
-                f"{self._config.host_workdir}:{self._config.container_workdir}",
+                f"{host_mount}:{self._config.container_workdir}",
                 *extra_mount_args,
                 *preflight_mounts,
                 *env_args,
                 *port_args,
                 "-w",
-                self._config.container_workdir,
+                container_cwd,
                 self._config.image,
                 "/bin/bash",
                 "-lc",

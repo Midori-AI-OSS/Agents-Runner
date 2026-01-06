@@ -27,6 +27,7 @@ from agents_runner.docker.process import _has_platform_image
 from agents_runner.docker.process import _inspect_state
 from agents_runner.docker.process import _pull_image
 from agents_runner.docker.process import _run_docker
+from agents_runner.docker.utils import _resolve_workspace_mount
 from agents_runner.docker.utils import _write_preflight_script
 
 
@@ -98,6 +99,15 @@ class DockerPreflightWorker:
             config_extra_mounts = additional_config_mounts(
                 agent_cli, self._config.host_codex_dir
             )
+            host_mount, container_cwd = _resolve_workspace_mount(
+                self._config.host_workdir, container_mount=self._config.container_workdir
+            )
+            if host_mount != self._config.host_workdir:
+                self._on_log(
+                    f"[host] mounting workspace root: {host_mount} (selected {self._config.host_workdir})"
+                )
+            if container_cwd != self._config.container_workdir:
+                self._on_log(f"[host] container workdir: {container_cwd}")
             container_name = f"codex-preflight-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
             settings_container_path = (
@@ -224,12 +234,12 @@ class DockerPreflightWorker:
                 "-v",
                 f"{self._config.host_codex_dir}:{config_container_dir}",
                 "-v",
-                f"{self._config.host_workdir}:{self._config.container_workdir}",
+                f"{host_mount}:{self._config.container_workdir}",
                 *extra_mount_args,
                 *preflight_mounts,
                 *env_args,
                 "-w",
-                self._config.container_workdir,
+                container_cwd,
                 self._config.image,
                 "/bin/bash",
                 "-lc",
