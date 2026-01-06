@@ -1,4 +1,5 @@
 import re
+import time
 
 from dataclasses import dataclass
 
@@ -209,14 +210,81 @@ def commit_push_and_pr(
         body, agent_cli=agent_cli, agent_cli_args=agent_cli_args
     )
 
-    _require_ok(
-        _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
-        args=["git", "checkout"],
-    )
+    def _porcelain_status() -> str:
+        proc = _run(["git", "-C", repo_root, "status", "--porcelain"], timeout_s=15.0)
+        _require_ok(proc, args=["git", "status"])
+        return str(proc.stdout or "")
 
-    proc = _run(["git", "-C", repo_root, "status", "--porcelain"], timeout_s=15.0)
-    _require_ok(proc, args=["git", "status"])
-    has_worktree_changes = bool((proc.stdout or "").strip())
+    def _ensure_local_branch() -> None:
+        branch_ref = f"refs/heads/{branch}"
+        exists_proc = _run(
+            ["git", "-C", repo_root, "show-ref", "--verify", "--quiet", branch_ref],
+            timeout_s=8.0,
+        )
+        if exists_proc.returncode == 0:
+            return
+        create_proc = _run(
+            ["git", "-C", repo_root, "branch", branch, base_branch], timeout_s=20.0
+        )
+        if create_proc.returncode != 0:
+            create_proc = _run(
+                ["git", "-C", repo_root, "branch", branch, f"origin/{base_branch}"],
+                timeout_s=20.0,
+            )
+        _require_ok(create_proc, args=["git", "branch"])
+
+    def _checkout_branch_for_commit() -> None:
+        if git_current_branch(repo_root) == branch:
+            return
+
+        _ensure_local_branch()
+        if not _porcelain_status().strip():
+            _require_ok(
+                _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
+                args=["git", "checkout"],
+            )
+            return
+
+        # Preserve a dirty worktree without relying on patch-based stash apply
+        # (which can conflict even for non-overlapping edits when the target
+        # branch diverged). Instead, checkpoint the work on a temporary branch,
+        # then cherry-pick onto the target branch.
+        temp_branch = _sanitize_branch(f"midoriaiagents/_wip/{time.time_ns()}")
+        _require_ok(
+            _run(["git", "-C", repo_root, "checkout", "-b", temp_branch], timeout_s=20.0),
+            args=["git", "checkout", "-b"],
+        )
+        _require_ok(
+            _run(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0),
+            args=["git", "add"],
+        )
+        commit_proc = _run(
+            ["git", "-C", repo_root, "commit", "-m", title], timeout_s=60.0
+        )
+        _require_ok(commit_proc, args=["git", "commit"])
+
+        _require_ok(
+            _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
+            args=["git", "checkout"],
+        )
+        cherry_proc = _run(
+            ["git", "-C", repo_root, "cherry-pick", temp_branch], timeout_s=180.0
+        )
+        if cherry_proc.returncode != 0:
+            _run(["git", "-C", repo_root, "cherry-pick", "--abort"], timeout_s=30.0)
+            combined = (
+                (cherry_proc.stdout or "") + "\n" + (cherry_proc.stderr or "")
+            ).strip()
+            raise GhManagementError(
+                "failed to apply local changes onto the PR branch; "
+                "resolve conflicts and rerun PR creation.\n"
+                f"{combined}".rstrip()
+            )
+        _run(["git", "-C", repo_root, "branch", "-D", temp_branch], timeout_s=8.0)
+
+    _checkout_branch_for_commit()
+
+    has_worktree_changes = bool(_porcelain_status().strip())
 
     if has_worktree_changes:
         _require_ok(
