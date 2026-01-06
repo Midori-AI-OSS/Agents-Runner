@@ -258,75 +258,71 @@ def collect_artifacts_from_container(
     container_id: str, task_dict: dict[str, Any], env_name: str
 ) -> list[str]:
     """
-    Collect artifacts from container's /tmp/agents-artifacts directory.
-
+    Collect artifacts from task's staging directory (already mounted to container).
+    
+    The staging directory is mounted as a volume to the container at /tmp/agents-artifacts,
+    so files written by the agent are immediately available on the host. This function
+    encrypts those files and moves them to permanent encrypted storage.
+    
     Args:
-        container_id: Docker container ID
-        task_dict: Task configuration as dictionary
+        container_id: Docker container ID (unused, kept for API compatibility)
+        task_dict: Task configuration as dictionary (must contain task_id)
         env_name: Environment name
-
+    
     Returns:
-        List of artifact UUIDs that were collected
+        List of artifact UUIDs that were collected and encrypted
     """
-    import subprocess
-    import tempfile
-
     artifact_uuids: list[str] = []
-
+    
+    # Get task_id
+    task_id = str(task_dict.get("task_id") or task_dict.get("id") or "")
+    if not task_id:
+        logger.warning("No task_id in task_dict, cannot collect artifacts")
+        return []
+    
+    # Get staging directory (this was mounted to the container)
+    artifacts_staging = (
+        Path.home() / ".midoriai" / "agents-runner" / "artifacts" 
+        / task_id / "staging"
+    )
+    
+    if not artifacts_staging.exists():
+        logger.debug(f"No staging directory found: {artifacts_staging}")
+        return []
+    
     try:
-        # Check if container has artifacts directory
-        result = subprocess.run(
-            ["docker", "exec", container_id, "ls", "-1", "/tmp/agents-artifacts/"],
-            capture_output=True,
-            text=True,
-            timeout=10.0,
-        )
-
-        if result.returncode != 0:
-            logger.debug(f"No artifacts directory in container {container_id}")
-            return []
-
-        files = [f.strip() for f in result.stdout.splitlines() if f.strip()]
+        files = [f for f in artifacts_staging.iterdir() if f.is_file()]
+        
         if not files:
-            logger.debug(f"No artifacts found in container {container_id}")
+            logger.debug(f"No artifacts found in staging: {artifacts_staging}")
             return []
-
-        logger.info(f"Found {len(files)} artifacts in container {container_id}")
-
-        # Copy each file and encrypt it
-        with tempfile.TemporaryDirectory() as tmpdir:
-            for filename in files:
-                try:
-                    # Copy file from container
-                    src_path = f"/tmp/agents-artifacts/{filename}"
-                    dest_path = Path(tmpdir) / filename
-
-                    copy_result = subprocess.run(
-                        ["docker", "cp", f"{container_id}:{src_path}", str(dest_path)],
-                        capture_output=True,
-                        text=True,
-                        timeout=30.0,
-                    )
-
-                    if copy_result.returncode != 0:
-                        logger.warning(f"Failed to copy {filename}: {copy_result.stderr}")
-                        continue
-
-                    # Encrypt and store
-                    artifact_uuid = encrypt_artifact(
-                        task_dict, env_name, str(dest_path), filename
-                    )
-                    if artifact_uuid:
-                        artifact_uuids.append(artifact_uuid)
-                        logger.info(f"Collected artifact: {filename} -> {artifact_uuid}")
-
-                except Exception as e:
-                    logger.error(f"Failed to collect artifact {filename}: {e}")
-                    continue
-
-    except subprocess.TimeoutExpired:
-        logger.error(f"Timeout while collecting artifacts from container {container_id}")
+        
+        logger.info(f"Found {len(files)} artifact(s) in staging directory")
+        
+        # Encrypt each file
+        for file_path in files:
+            try:
+                artifact_uuid = encrypt_artifact(
+                    task_dict, env_name, str(file_path), file_path.name
+                )
+                if artifact_uuid:
+                    artifact_uuids.append(artifact_uuid)
+                    logger.info(f"Collected artifact: {file_path.name} -> {artifact_uuid}")
+                    # Remove from staging after successful encryption
+                    file_path.unlink()
+            except Exception as e:
+                logger.error(f"Failed to collect artifact {file_path.name}: {e}")
+                continue
+        
+        # Clean up staging directory if empty
+        try:
+            if not any(artifacts_staging.iterdir()):
+                artifacts_staging.rmdir()
+                logger.debug(f"Removed empty staging directory: {artifacts_staging}")
+        except Exception as e:
+            logger.debug(f"Could not remove staging directory: {e}")
+            
     except Exception as e:
-        logger.error(f"Failed to collect artifacts from container {container_id}: {e}")
-
+        logger.error(f"Failed to collect artifacts from staging: {e}")
+    
     return artifact_uuids

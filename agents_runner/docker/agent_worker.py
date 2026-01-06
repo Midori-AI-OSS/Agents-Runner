@@ -4,6 +4,7 @@ import uuid
 import shlex
 import selectors
 import subprocess
+from pathlib import Path
 from typing import Any
 from typing import Callable
 
@@ -154,6 +155,15 @@ class DockerAgentWorker:
                 self._on_log(f"[host] container workdir: {container_cwd}")
             container_name = f"agents-runner-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
+            
+            # Create artifacts staging directory
+            artifacts_staging_dir = (
+                Path.home() / ".midoriai" / "agents-runner" / "artifacts" 
+                / task_token / "staging"
+            )
+            artifacts_staging_dir.mkdir(parents=True, exist_ok=True)
+            self._on_log(f"[host] artifacts staging: {artifacts_staging_dir}")
+            
             settings_container_path = (
                 self._config.container_settings_preflight_path.replace(
                     "{task_id}", task_token
@@ -242,7 +252,6 @@ class DockerAgentWorker:
                     'mkdir -p "${XDG_RUNTIME_DIR}"; '
                     'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
                     'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
-                    'mkdir -p "/tmp/agents-artifacts"; '
                     "if command -v yay >/dev/null 2>&1; then "
                     "  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify wmctrl xdotool xorg-xprop xorg-xauth ttf-dejavu xorg-fonts-misc || true; "
                     "fi; "
@@ -358,6 +367,8 @@ class DockerAgentWorker:
                 f"{self._config.host_codex_dir}:{config_container_dir}",
                 "-v",
                 f"{host_mount}:{self._config.container_workdir}",
+                "-v",
+                f"{artifacts_staging_dir}:/tmp/agents-artifacts",
                 *extra_mount_args,
                 *preflight_mounts,
                 *env_args,
