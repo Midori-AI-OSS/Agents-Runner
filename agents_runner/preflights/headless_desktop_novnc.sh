@@ -13,22 +13,30 @@ mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}
 mkdir -p "/tmp/agents-artifacts"
 
 if command -v yay >/dev/null 2>&1; then
-  yay -S --noconfirm --needed \
+  echo "[desktop] Installing official repository packages..."
+  if ! yay -S --noconfirm --needed \
     tigervnc \
     fluxbox \
     xterm \
     imagemagick \
     xorg-xwininfo \
     xcb-util-cursor \
-    novnc \
     websockify \
     wmctrl \
     xdotool \
     xorg-xprop \
     xorg-xauth \
     ttf-dejavu \
-    xorg-fonts-misc \
-    || true
+    xorg-fonts-misc; then
+    echo "[desktop] WARNING: Some official packages failed to install"
+    echo "[desktop] Attempting to continue with available packages..."
+  fi
+  
+  echo "[desktop] Installing AUR packages..."
+  if ! yay -S --noconfirm --needed novnc; then
+    echo "[desktop] WARNING: novnc (AUR) failed to install"
+    echo "[desktop] Desktop web interface may not be available"
+  fi
 fi
 
 Xvnc "${DISPLAY}" \
