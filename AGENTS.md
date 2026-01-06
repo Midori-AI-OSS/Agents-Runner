@@ -10,8 +10,8 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - **UI styling:** Located in `agents_runner/style/` (Qt stylesheet builder) and `agents_runner/widgets/` (custom widgets)
 - **Design constraint:** Keep sharp/square corners (avoid non-`0px` `border-radius` values and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
-- **Docs:** Do not update the readme unless asked to
-- **Test:** Do not build tests unless asked to; place tests under `tests/` (create it if missing)
+- **Docs:** Do not update the readme unless asked to; ensure `.codex/` documentation stays current with code changes
+- **Test:** Do not build tests unless asked to; delegate testing to Tester Mode when requested
 
 ---
 
@@ -48,6 +48,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 Use these mode guides from `.codex/modes/` when working on specific tasks:
 
 - **Coder Mode** (`.codex/modes/CODER.md`): Implementing features and fixes
+- **Tester Mode** (`.codex/modes/TESTER.md`): Building and managing tests
 - **Reviewer Mode** (`.codex/modes/REVIEWER.md`): Auditing documentation
 - **Task Master Mode** (`.codex/modes/TASKMASTER.md`): Managing work items
 - **Manager Mode** (`.codex/modes/MANAGER.md`): Planning and coordination
