@@ -38,12 +38,20 @@ def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
     Returns:
         List of serialized prompt dictionaries
     """
+    import os
+    
     prompts_data = []
     for p in prompts:
-        # If text exists but no prompt_path, save to file and update path
-        if p.text and not p.prompt_path:
+        # If text exists, save to file (create new or update existing)
+        if p.text:
             try:
-                p.prompt_path = save_prompt_to_file(p.text)
+                if p.prompt_path:
+                    # Update existing file
+                    with open(p.prompt_path, "w", encoding="utf-8") as f:
+                        f.write(p.text)
+                else:
+                    # Create new file
+                    p.prompt_path = save_prompt_to_file(p.text)
             except Exception:
                 # If save fails, keep inline text
                 pass
