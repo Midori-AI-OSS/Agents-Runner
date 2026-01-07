@@ -42,21 +42,6 @@ def _headless_desktop_prompt_instructions(*, display: str) -> str:
     return load_prompt(
         "headless_desktop",
         DISPLAY=display,
-        fallback=(
-            "\n\n"
-            "DESKTOP (non-interactive only)\n"
-            "- A headless desktop session is running inside the container (noVNC).\n"
-            f"- X11 display: {display} (env var `DISPLAY` is set).\n"
-            "- You may run GUI apps that require a display.\n"
-            "- To automate basic GUI actions (close windows / type), use `wmctrl` + `xdotool`:\n"
-            "  - List windows: `DISPLAY=${DISPLAY} wmctrl -lG`\n"
-            "  - Close window by id: `DISPLAY=${DISPLAY} wmctrl -ic 0x01234567`\n"
-            "  - Click + type: `DISPLAY=${DISPLAY} xdotool mousemove X Y click 1 type 'text' key Return`\n"
-            "- Write screenshots and other artifacts under `/tmp/agents-artifacts`.\n"
-            "- To capture a screenshot for debugging, run:\n"
-            "  - `mkdir -p /tmp/agents-artifacts && import -display ${DISPLAY} -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png`\n"
-            "- The noVNC URL is shown in the task UI (Desktop tab) and is also logged as `[desktop] noVNC URL:`.\n"
-        ),
     )
 
 
