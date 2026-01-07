@@ -84,16 +84,6 @@ def pr_metadata_prompt_instructions(container_path: str) -> str:
     return load_prompt(
         "pr_metadata",
         PR_METADATA_FILE=container_path,
-        fallback=(
-            "\n\n"
-            "PR METADATA (non-interactive only)\n"
-            f"- A JSON file is mounted at: {container_path}\n"
-            "- If you make changes intended for a PR, update that file with valid JSON containing:\n"
-            '  - "title": short PR title (<= 72 chars)\n'
-            '  - "body": PR description (markdown)\n'
-            "- Keep it as strict JSON (no trailing commas).\n"
-            "- REMINDER: Don't forget to commit your code changes with `git commit`!\n"
-        ),
     )
 
 
