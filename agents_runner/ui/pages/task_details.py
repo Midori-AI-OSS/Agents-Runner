@@ -30,6 +30,7 @@ except Exception:  # pragma: no cover
 
 from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
 
+from agents_runner.artifacts import get_artifact_info
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.ui.task_model import Task
@@ -40,6 +41,10 @@ from agents_runner.ui.utils import _status_color
 from agents_runner.widgets import GlassCard
 from agents_runner.widgets import LogHighlighter
 from agents_runner.widgets import StatusGlyph
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _diamond_icon(size: int = 16, color: QColor | None = None) -> QIcon:
@@ -447,6 +452,7 @@ class TaskDetailsPage(QWidget):
         self._last_task = task
         self._container.setText(task.container_id or "—")
         self._sync_desktop(task)
+        self._sync_artifacts(task)
         self._sync_container_actions(task)
         self._exit.setText("—" if task.exit_code is None else str(task.exit_code))
         self._apply_status(task)
@@ -514,9 +520,43 @@ class TaskDetailsPage(QWidget):
             self._maybe_load_desktop()
 
     def _sync_artifacts(self, task: Task) -> None:
-        has_artifacts = bool(task.artifacts)
-        if has_artifacts:
+        """
+        Update Artifacts tab visibility based on artifact status.
+        
+        Shows tab if ANY of these are true:
+        - host_artifacts_dir exists (even if empty)
+        - file_count > 0
+        - task is running AND artifacts feature is enabled
+        
+        Dynamic behavior: checks staging directory during execution,
+        encrypted artifacts after completion.
+        """
+        # Get single source of truth
+        artifact_info = get_artifact_info(task.task_id)
+        
+        # Check encrypted artifacts (for completed tasks)
+        has_encrypted = bool(task.artifacts)
+        
+        # Determine if we should show the tab
+        should_show = (
+            artifact_info.exists or
+            artifact_info.file_count > 0 or
+            has_encrypted or
+            (task.is_active() and artifact_info.host_artifacts_dir.parent.exists())
+        )
+        
+        # Debug logging (REQUIRED)
+        logger.info(
+            f"Artifacts tab: task={task.task_id} dir={artifact_info.host_artifacts_dir} "
+            f"exists={artifact_info.exists} count={artifact_info.file_count} shown={should_show}"
+        )
+        
+        if should_show:
+            was_visible = self._artifacts_tab_visible
             self._show_artifacts_tab()
+            # Load artifacts when tab first appears
+            if not was_visible:
+                QTimer.singleShot(0, self._load_artifacts)
         else:
             self._hide_artifacts_tab()
 

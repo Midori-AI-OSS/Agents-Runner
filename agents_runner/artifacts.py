@@ -431,3 +431,49 @@ def get_staging_artifact_path(task_id: str, filename: str) -> Path | None:
         return file_path
     
     return None
+
+
+@dataclass
+class ArtifactInfo:
+    """Single source of truth for artifact locations and status."""
+    
+    host_artifacts_dir: Path
+    container_artifacts_dir: str
+    file_count: int
+    exists: bool
+
+
+def get_artifact_info(task_id: str) -> ArtifactInfo:
+    """
+    Get single source of truth for artifact status.
+    
+    Returns information about artifact storage for a task, prioritizing
+    the host staging directory as the truth during execution and encrypted
+    storage after finalization.
+    
+    Args:
+        task_id: Task identifier
+    
+    Returns:
+        ArtifactInfo with paths, counts, and existence status
+    """
+    # Host staging directory is the truth during execution
+    staging_dir = get_staging_dir(task_id)
+    
+    # Count files in staging directory
+    file_count = 0
+    exists = staging_dir.exists()
+    
+    if exists:
+        try:
+            file_count = sum(1 for f in staging_dir.iterdir() if f.is_file())
+        except Exception as e:
+            logger.debug(f"Failed to count files in {staging_dir}: {e}")
+            file_count = 0
+    
+    return ArtifactInfo(
+        host_artifacts_dir=staging_dir,
+        container_artifacts_dir="/tmp/agents-artifacts/",
+        file_count=file_count,
+        exists=exists,
+    )

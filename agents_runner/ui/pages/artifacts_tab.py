@@ -248,12 +248,18 @@ class ArtifactsTab(QWidget):
         """Update UI list widget with current artifacts."""
         self._artifact_list.clear()
         self._artifact_count.setText(f"({len(self._artifacts)})")
-    def _update_artifact_list(self) -> None:
-        """Update UI list widget with current artifacts."""
-        self._artifact_list.clear()
-        self._artifact_count.setText(f"({len(self._artifacts)})")
 
         if not self._artifacts:
+            # Update empty state message based on mode
+            if self._mode == "staging" and self._current_task:
+                from agents_runner.artifacts import get_staging_dir
+                staging_dir = get_staging_dir(self._current_task.task_id)
+                self._empty_state.setText(
+                    f"No artifacts yet\n\nWatching: {staging_dir}"
+                )
+            else:
+                self._empty_state.setText("No artifacts collected for this task")
+            
             self._empty_state.show()
             self._preview_area.hide()
             self._btn_open.setEnabled(False)
