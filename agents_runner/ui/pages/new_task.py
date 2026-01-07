@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.utils import _apply_environment_combo_tint
@@ -284,27 +285,31 @@ class NewTaskPage(QWidget):
 
         command = (self._command.text() or "").strip()
 
-        prompt = "\n".join(
-            [
-                "Agents Runner - Help Request",
-                "",
-                "Question:",
-                user_question,
-                "",
-                "You're helping a user who is using Agents Runner and its GUI.",
-                "",
-                "Environment:",
-                "- PixelArch Linux container (passwordless sudo).",
-                "- Install/update packages with `yay -Syu`.",
-                "",
-                "Repositories:",
-                "- Available under `~/.agent-help/repos/` (the preflight clones if needed).",
-                "- Includes `Agents-Runner` plus `codex`, `claude-code`, `copilot-cli`, and `gemini-cli`.",
-                "",
-                "Instructions:",
-                "- Answer the question directly; do not ask what they need help with again.",
-                "- If you need one missing detail (repo/path/version), ask one short clarifying question, then proceed.",
-            ]
+        prompt = load_prompt(
+            "help_request_template",
+            USER_QUESTION=user_question,
+            fallback="\n".join(
+                [
+                    "Agents Runner - Help Request",
+                    "",
+                    "Question:",
+                    user_question,
+                    "",
+                    "You're helping a user who is using Agents Runner and its GUI.",
+                    "",
+                    "Environment:",
+                    "- PixelArch Linux container (passwordless sudo).",
+                    "- Install/update packages with `yay -Syu`.",
+                    "",
+                    "Repositories:",
+                    "- Available under `~/.agent-help/repos/` (the preflight clones if needed).",
+                    "- Includes `Agents-Runner` plus `codex`, `claude-code`, `copilot-cli`, and `gemini-cli`.",
+                    "",
+                    "Instructions:",
+                    "- Answer the question directly; do not ask what they need help with again.",
+                    "- If you need one missing detail (repo/path/version), ask one short clarifying question, then proceed.",
+                ]
+            ),
         )
         self.requested_launch.emit(
             prompt,
