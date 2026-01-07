@@ -38,6 +38,7 @@ class NewTaskPage(QWidget):
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
         self._gh_locked_envs: set[str] = set()
+        self._env_management_modes: dict[str, str] = {}  # Track environment management modes
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
@@ -55,24 +56,30 @@ class NewTaskPage(QWidget):
         header_layout.setContentsMargins(18, 16, 18, 16)
         header_layout.setSpacing(6)
 
+        # Base branch dropdown (will be added to title bar later)
+        self._base_branch_label = QLabel("Base branch")
+        self._base_branch = QComboBox()
+        self._base_branch.setToolTip(
+            "Base branch for the per-task branch (only shown for repo environments)."
+        )
+        self.set_repo_branches([])
+        self._base_branch.setVisible(False)  # Initially hidden
+        
+        # Separator label for title bar
+        self._title_separator = QLabel("::")
+        self._title_separator.setStyleSheet("color: rgba(237, 239, 245, 160);")
+        self._title_separator.setVisible(False)  # Initially hidden
+        
         top_row = QHBoxLayout()
         top_row.setSpacing(10)
         title = QLabel("New task")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
 
-        env_label = QLabel("Environment")
-        env_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
-
-        back = QToolButton()
-        back.setText("Back")
-        back.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        back.clicked.connect(self.back_requested.emit)
-
         top_row.addWidget(title)
-        top_row.addWidget(env_label)
         top_row.addWidget(self._environment)
+        top_row.addWidget(self._title_separator)
+        top_row.addWidget(self._base_branch)
         top_row.addStretch(1)
-        top_row.addWidget(back, 0, Qt.AlignRight)
 
         header_layout.addLayout(top_row)
         layout.addWidget(header)
@@ -84,6 +91,22 @@ class NewTaskPage(QWidget):
 
         prompt_title = QLabel("Prompt")
         prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
+        
+        # Agent chain display - inline with prompt label
+        self._agent_chain = QLabel("—")
+        self._agent_chain.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._agent_chain.setStyleSheet("color: rgba(237, 239, 245, 200); margin-left: 10px;")
+        self._agent_chain.setToolTip(
+            "Agents will be used in this order for new tasks in this environment."
+        )
+        
+        # Prompt title row with agent chain
+        prompt_title_row = QHBoxLayout()
+        prompt_title_row.setSpacing(0)
+        prompt_title_row.addWidget(prompt_title)
+        prompt_title_row.addWidget(self._agent_chain)
+        prompt_title_row.addStretch(1)
+        
         self._prompt = SpellTextEdit(spellcheck_enabled=self._spellcheck_enabled)
         self._prompt.setPlaceholderText("Describe what you want the agent to do…")
         self._prompt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -106,16 +129,27 @@ class NewTaskPage(QWidget):
         self._command.setPlaceholderText(
             "Args for the Agent CLI (e.g. --sandbox danger-full-access or --add-dir …), or a full container command (e.g. bash)"
         )
+        # Hidden from UI but functionality preserved
+        self._command.setVisible(False)
 
         interactive_grid = QGridLayout()
         interactive_grid.setHorizontalSpacing(10)
         interactive_grid.setVerticalSpacing(10)
-        interactive_grid.setColumnStretch(4, 1)
+        interactive_grid.setColumnStretch(1, 1)
         interactive_grid.addWidget(QLabel("Terminal"), 0, 0)
         interactive_grid.addWidget(self._terminal, 0, 1)
         interactive_grid.addWidget(refresh_terminals, 0, 2)
-        interactive_grid.addWidget(QLabel("Container command args"), 0, 3)
-        interactive_grid.addWidget(self._command, 0, 4)
+        
+        # Workspace display for folder locked environments (shown on terminal line)
+        self._terminal_workspace_label = QLabel("Workspace")
+        self._terminal_workspace = QLabel("—")
+        self._terminal_workspace.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._terminal_workspace.setStyleSheet("color: rgba(237, 239, 245, 200);")
+        interactive_grid.addWidget(self._terminal_workspace_label, 0, 3)
+        interactive_grid.addWidget(self._terminal_workspace, 0, 4)
+        # Initially hidden, shown for folder locked environments
+        self._terminal_workspace_label.setVisible(False)
+        self._terminal_workspace.setVisible(False)
 
         cfg_grid = QGridLayout()
         cfg_grid.setHorizontalSpacing(10)
@@ -126,30 +160,10 @@ class NewTaskPage(QWidget):
         self._workspace_hint.setStyleSheet("color: rgba(237, 239, 245, 160);")
         self._workspace_hint.setWordWrap(True)
 
-        cfg_grid.addWidget(QLabel("Workspace"), 0, 0)
+        self._workspace_label = QLabel("Workspace")
+        cfg_grid.addWidget(self._workspace_label, 0, 0)
         cfg_grid.addWidget(self._workspace, 0, 1, 1, 2)
         cfg_grid.addWidget(self._workspace_hint, 1, 1, 1, 2)
-
-        self._base_branch_label = QLabel("Base branch")
-        self._base_branch = QComboBox()
-        self._base_branch.setToolTip(
-            "Base branch for the per-task branch (only shown for repo environments)."
-        )
-        self.set_repo_branches([])
-        cfg_grid.addWidget(self._base_branch_label, 2, 0)
-        cfg_grid.addWidget(self._base_branch, 2, 1, 1, 2)
-        self.set_repo_controls_visible(False)
-
-        # Agent chain display
-        self._agent_chain_label = QLabel("Agent chain")
-        self._agent_chain = QLabel("—")
-        self._agent_chain.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._agent_chain.setStyleSheet("color: rgba(237, 239, 245, 200);")
-        self._agent_chain.setToolTip(
-            "Agents will be used in this order for new tasks in this environment."
-        )
-        cfg_grid.addWidget(self._agent_chain_label, 3, 0)
-        cfg_grid.addWidget(self._agent_chain, 3, 1, 1, 2)
 
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
@@ -178,7 +192,7 @@ class NewTaskPage(QWidget):
         buttons.addWidget(self._run_interactive)
         buttons.addWidget(self._run_agent)
 
-        card_layout.addWidget(prompt_title)
+        card_layout.addLayout(prompt_title_row)
         card_layout.addWidget(self._prompt, 1)
         card_layout.addWidget(interactive_hint)
         card_layout.addLayout(interactive_grid)
@@ -378,6 +392,7 @@ class NewTaskPage(QWidget):
     def _on_environment_changed(self, index: int) -> None:
         self._apply_environment_tints()
         self._sync_interactive_options()
+        self._update_workspace_visibility()
         self.environment_changed.emit(str(self._environment.currentData() or ""))
 
     def _apply_environment_tints(self) -> None:
@@ -405,6 +420,44 @@ class NewTaskPage(QWidget):
     def set_gh_locked_envs(self, env_ids: set[str]) -> None:
         self._gh_locked_envs = {str(e) for e in (env_ids or set()) if str(e).strip()}
         self._sync_interactive_options()
+
+    def set_environment_management_modes(self, modes: dict[str, str]) -> None:
+        """Set the management modes for environments (e.g., 'github', 'local', 'none').
+        
+        Args:
+            modes: Dictionary mapping environment IDs to their management mode
+        """
+        self._env_management_modes = {str(k): str(v) for k, v in (modes or {}).items()}
+        self._update_workspace_visibility()
+
+    def _update_workspace_visibility(self) -> None:
+        """Update workspace line visibility based on environment type."""
+        env_id = str(self._environment.currentData() or "")
+        mode = self._env_management_modes.get(env_id, "").lower()
+        is_git_locked = env_id in self._gh_locked_envs
+        is_folder_locked = mode == "local"
+        
+        # Git locked environments: hide workspace line completely
+        if is_git_locked:
+            self._workspace_label.setVisible(False)
+            self._workspace.setVisible(False)
+            self._workspace_hint.setVisible(False)
+            self._terminal_workspace_label.setVisible(False)
+            self._terminal_workspace.setVisible(False)
+        # Folder locked environments: move workspace to terminal line
+        elif is_folder_locked:
+            self._workspace_label.setVisible(False)
+            self._workspace.setVisible(False)
+            self._workspace_hint.setVisible(False)
+            self._terminal_workspace_label.setVisible(True)
+            self._terminal_workspace.setVisible(True)
+        # Other environments: show in normal position
+        else:
+            self._workspace_label.setVisible(True)
+            self._workspace.setVisible(True)
+            # workspace_hint visibility is controlled by set_workspace_status
+            self._terminal_workspace_label.setVisible(False)
+            self._terminal_workspace.setVisible(False)
 
     def set_environments(self, envs: list[tuple[str, str]], active_id: str) -> None:
         current = str(self._environment.currentData() or "")
@@ -439,6 +492,7 @@ class NewTaskPage(QWidget):
 
     def set_workspace_status(self, *, path: str, ready: bool, message: str) -> None:
         self._workspace.setText(str(path or "—"))
+        self._terminal_workspace.setText(str(path or "—"))  # Also update terminal line
         self._workspace_ready = bool(ready)
         self._workspace_error = str(message or "")
 
@@ -451,10 +505,11 @@ class NewTaskPage(QWidget):
         self._workspace_hint.setVisible(bool(hint))
 
         self._update_run_buttons()
+        self._update_workspace_visibility()  # Update visibility after status change
 
     def set_repo_controls_visible(self, visible: bool) -> None:
         visible = bool(visible)
-        self._base_branch_label.setVisible(visible)
+        self._title_separator.setVisible(visible)
         self._base_branch.setVisible(visible)
 
     def set_repo_branches(
@@ -517,10 +572,16 @@ class NewTaskPage(QWidget):
             self._agent_chain.setToolTip("")
             return
 
-        # Format as: Primary → Fallback1 → Fallback2
-        chain_text = " → ".join(a.title() for a in agents)
+        # If more than 3 items, show first 2 + "..."
+        if len(agents) > 3:
+            display_agents = agents[:2]
+            chain_text = " → ".join(a.title() for a in display_agents) + " → ..."
+        else:
+            chain_text = " → ".join(a.title() for a in agents)
+        
         self._agent_chain.setText(chain_text)
 
+        # Full tooltip always shows all agents
         tooltip = "Agents will be used in this order:\n"
         for i, agent in enumerate(agents, 1):
             if i == 1:

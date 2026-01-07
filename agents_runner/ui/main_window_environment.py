@@ -170,8 +170,10 @@ class _MainWindowEnvironmentMixin:
         active_id = self._active_environment_id()
         envs = self._environment_list()
         stains = {e.env_id: e.color for e in envs}
+        management_modes = {e.env_id: str(getattr(e, "gh_management_mode", "none")) for e in envs}
 
         self._new_task.set_environment_stains(stains)
+        self._new_task.set_environment_management_modes(management_modes)
         self._new_task.set_gh_locked_envs(
             {e.env_id for e in envs if bool(getattr(e, "gh_management_locked", False))}
         )
