@@ -19,7 +19,6 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.widgets import GlassCard
-from agents_runner.widgets import HelpIcon
 from agents_runner.ui.constants import (
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
@@ -53,7 +52,7 @@ class SettingsPage(QWidget):
 
         title = QLabel("Settings")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
-        storage_help = HelpIcon(
+        title.setToolTip(
             "Settings are saved locally in:\n~/.midoriai/agents-runner/state.json"
         )
 
@@ -63,7 +62,6 @@ class SettingsPage(QWidget):
         back.clicked.connect(self.back_requested.emit)
 
         header_layout.addWidget(title)
-        header_layout.addWidget(storage_help)
         header_layout.addStretch(1)
         header_layout.addWidget(back, 0, Qt.AlignRight)
         layout.addWidget(header)

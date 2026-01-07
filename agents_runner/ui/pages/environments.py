@@ -27,7 +27,6 @@ from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.gh_management import is_gh_available
 from agents_runner.widgets import GlassCard
-from agents_runner.widgets import HelpIcon
 from agents_runner.ui.constants import (
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
@@ -74,7 +73,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         title = QLabel("Environments")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
-        storage_help = HelpIcon(
+        title.setToolTip(
             "Environments are saved locally in:\n~/.midoriai/agents-runner/state.json"
         )
 
@@ -84,7 +83,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         back.clicked.connect(self.back_requested.emit)
 
         header_layout.addWidget(title)
-        header_layout.addWidget(storage_help)
         header_layout.addStretch(1)
         header_layout.addWidget(back, 0, Qt.AlignRight)
         layout.addWidget(header)
