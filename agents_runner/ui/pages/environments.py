@@ -147,7 +147,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._color.currentIndexChanged.connect(self._apply_environment_tints)
 
         self._max_agents_running = QLineEdit()
-        self._max_agents_running.setPlaceholderText("-1 (unlimited)")
+        self._max_agents_running.setPlaceholderText("-1")
         self._max_agents_running.setToolTip(
             "Maximum agents running at the same time for this environment. Set to -1 for no limit.\n"
             "Tip: For local-folder workspaces, set this to 1 to avoid agents fighting over setup/files."
@@ -161,7 +161,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         grid.addWidget(self._color, 1, 1, 1, 2)
 
         self._headless_desktop_enabled = QCheckBox(
-            "Enable headless desktop (noVNC) for this environment"
+            "Enable headless desktop"
         )
         self._headless_desktop_enabled.setToolTip(
             "When enabled, agent runs for this environment will start a noVNC desktop.\n"
@@ -235,10 +235,11 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._gh_management_browse.clicked.connect(self._pick_gh_management_folder)
 
         self._gh_use_host_cli = QCheckBox(
-            "Use host `gh` for clone/PR (if installed)", general_tab
+            "Use host `gh` CLI", general_tab
         )
         self._gh_use_host_cli.setToolTip(
-            "When disabled, cloning uses `git` and PR creation is skipped."
+            "Use the host system's `gh` CLI for cloning and PR creation (if installed).\n"
+            "When disabled or unavailable, cloning uses `git` and PR creation is skipped."
         )
         self._gh_use_host_cli.setVisible(False)
 
