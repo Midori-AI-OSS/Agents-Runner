@@ -62,7 +62,7 @@ class PromptsTabWidget(QWidget):
         layout.addLayout(unlock_row)
 
         self._warning_label = QLabel(
-            "⚠️  Prompts are locked. Click 'Unlock Prompts' to enable."
+            "⚠️  Prompts are locked."
         )
         self._warning_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
         layout.addWidget(self._warning_label)
@@ -168,7 +168,7 @@ class PromptsTabWidget(QWidget):
             self._unlock_btn.setText("Unlock Prompts")
             self._warning_label.setVisible(True)
             self._warning_label.setText(
-                "⚠️  Prompts are locked. Click 'Unlock Prompts' to enable."
+                "⚠️  Prompts are locked."
             )
             self._warning_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
             self._tabs.setVisible(False)

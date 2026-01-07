@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.widgets import GlassCard
+from agents_runner.widgets import HelpIcon
 from agents_runner.ui.constants import (
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
@@ -52,8 +53,9 @@ class SettingsPage(QWidget):
 
         title = QLabel("Settings")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
-        subtitle = QLabel("Saved locally in ~/.midoriai/agents-runner/state.json")
-        subtitle.setStyleSheet("color: rgba(237, 239, 245, 160);")
+        storage_help = HelpIcon(
+            "Settings are saved locally in:\n~/.midoriai/agents-runner/state.json"
+        )
 
         back = QToolButton()
         back.setText("Back")
@@ -61,7 +63,8 @@ class SettingsPage(QWidget):
         back.clicked.connect(self.back_requested.emit)
 
         header_layout.addWidget(title)
-        header_layout.addWidget(subtitle, 1)
+        header_layout.addWidget(storage_help)
+        header_layout.addStretch(1)
         header_layout.addWidget(back, 0, Qt.AlignRight)
         layout.addWidget(header)
 
@@ -116,7 +119,11 @@ class SettingsPage(QWidget):
         browse_gemini.clicked.connect(self._pick_gemini_dir)
 
         self._preflight_enabled = QCheckBox(
-            "Enable settings preflight bash (runs on all envs, before env preflight)"
+            "Enable settings preflight bash"
+        )
+        self._preflight_enabled.setToolTip(
+            "Runs on all environments before environment-specific preflight.\n"
+            "Useful for global setup tasks like installing system packages."
         )
         self._append_pixelarch_context = QCheckBox("Append PixelArch context")
         self._append_pixelarch_context.setToolTip(

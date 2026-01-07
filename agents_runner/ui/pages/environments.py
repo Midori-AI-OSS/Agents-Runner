@@ -27,6 +27,7 @@ from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.gh_management import is_gh_available
 from agents_runner.widgets import GlassCard
+from agents_runner.widgets import HelpIcon
 from agents_runner.ui.constants import (
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
@@ -73,8 +74,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         title = QLabel("Environments")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
-        subtitle = QLabel("Saved locally in ~/.midoriai/agents-runner/state.json")
-        subtitle.setStyleSheet("color: rgba(237, 239, 245, 160);")
+        storage_help = HelpIcon(
+            "Environments are saved locally in:\n~/.midoriai/agents-runner/state.json"
+        )
 
         back = QToolButton()
         back.setText("Back")
@@ -82,7 +84,8 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         back.clicked.connect(self.back_requested.emit)
 
         header_layout.addWidget(title)
-        header_layout.addWidget(subtitle, 1)
+        header_layout.addWidget(storage_help)
+        header_layout.addStretch(1)
         header_layout.addWidget(back, 0, Qt.AlignRight)
         layout.addWidget(header)
 
@@ -239,22 +242,19 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         )
         self._gh_use_host_cli.setVisible(False)
 
-        self._gh_management_hint = QLabel(
-            "Creates a per-task branch (midoriaiagents/<task_id>) and can push + open a PR via `gh`.\n"
-            "Once saved, the target is locked; create a new environment to change it.",
-            general_tab,
-        )
-        self._gh_management_hint.setStyleSheet("color: rgba(237, 239, 245, 150);")
         self._gh_management_mode.setVisible(False)
         self._gh_management_target.setVisible(False)
         self._gh_management_browse.setVisible(False)
-        self._gh_management_hint.setVisible(False)
 
         general_layout.addLayout(grid)
         general_layout.addStretch(1)
 
         self._preflight_enabled = QCheckBox(
-            "Enable environment preflight bash (runs after Settings preflight)"
+            "Enable environment preflight bash"
+        )
+        self._preflight_enabled.setToolTip(
+            "Runs after Settings preflight script.\n"
+            "Use for environment-specific setup tasks."
         )
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(

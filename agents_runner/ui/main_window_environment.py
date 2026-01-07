@@ -267,8 +267,15 @@ class _MainWindowEnvironmentMixin:
                 agent_names = [
                     normalize_agent(a.agent_cli) for a in selection.agents
                 ]
+            
+            # If environment config produced no agents, fall back to default
+            if not agent_names:
+                default_agent = normalize_agent(
+                    str(self._settings_data.get("agent_cli") or "codex")
+                )
+                agent_names = [default_agent]
         else:
-            # Use default agent from settings
+            # No environment or no agents configured: use global default
             default_agent = normalize_agent(
                 str(self._settings_data.get("agent_cli") or "codex")
             )

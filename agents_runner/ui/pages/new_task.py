@@ -76,10 +76,10 @@ class NewTaskPage(QWidget):
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
 
         top_row.addWidget(title)
+        top_row.addStretch(1)
         top_row.addWidget(self._environment)
         top_row.addWidget(self._title_separator)
         top_row.addWidget(self._base_branch)
-        top_row.addStretch(1)
 
         header_layout.addLayout(top_row)
         layout.addWidget(header)
@@ -92,10 +92,14 @@ class NewTaskPage(QWidget):
         prompt_title = QLabel("Prompt")
         prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
         
+        # Separator between Prompt and agent chain
+        self._prompt_separator = QLabel("::")
+        self._prompt_separator.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
+        
         # Agent chain display - inline with prompt label
         self._agent_chain = QLabel("—")
         self._agent_chain.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._agent_chain.setStyleSheet("color: rgba(237, 239, 245, 200); margin-left: 10px;")
+        self._agent_chain.setStyleSheet("color: rgba(237, 239, 245, 200);")
         self._agent_chain.setToolTip(
             "Agents will be used in this order for new tasks in this environment."
         )
@@ -104,6 +108,7 @@ class NewTaskPage(QWidget):
         prompt_title_row = QHBoxLayout()
         prompt_title_row.setSpacing(0)
         prompt_title_row.addWidget(prompt_title)
+        prompt_title_row.addWidget(self._prompt_separator)
         prompt_title_row.addWidget(self._agent_chain)
         prompt_title_row.addStretch(1)
         
@@ -400,6 +405,7 @@ class NewTaskPage(QWidget):
         stain = (self._env_stains.get(env_id) or "").strip().lower() if env_id else ""
         if not stain:
             self._environment.setStyleSheet("")
+            self._base_branch.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
             self._get_agent_help.set_tint_color(None)
             self._run_interactive.set_tint_color(None)
@@ -407,6 +413,7 @@ class NewTaskPage(QWidget):
             return
 
         _apply_environment_combo_tint(self._environment, stain)
+        _apply_environment_combo_tint(self._base_branch, stain)
         tint = _stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
         self._get_agent_help.set_tint_color(tint)
@@ -567,10 +574,15 @@ class NewTaskPage(QWidget):
         Args:
             agents: List of agent names in priority order
         """
-        if not agents:
-            self._agent_chain.setText("—")
-            self._agent_chain.setToolTip("")
+        # Hide chain display when empty or single agent
+        if not agents or len(agents) <= 1:
+            self._agent_chain.setVisible(False)
+            self._prompt_separator.setVisible(False)
             return
+        
+        # Show chain display for multiple agents
+        self._agent_chain.setVisible(True)
+        self._prompt_separator.setVisible(True)
 
         # If more than 3 items, show first 2 + "..."
         if len(agents) > 3:

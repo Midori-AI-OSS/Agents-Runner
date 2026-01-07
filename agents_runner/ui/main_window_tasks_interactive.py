@@ -63,7 +63,7 @@ class _MainWindowTasksInteractiveMixin:
             QMessageBox.warning(
                 self,
                 "Terminal not available",
-                "The selected terminal could not be found. Click Refresh next to Terminal and pick again.",
+                "The selected terminal could not be found.",
             )
             return
 
