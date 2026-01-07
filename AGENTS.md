@@ -60,3 +60,4 @@ Use these mode guides from `.codex/modes/` when working on specific tasks:
 ## Communication
 
 Use GitHub issues/PRs/comments as the primary async communication channel. Keep commit messages and PR descriptions concise and outcome-focused.
+Do not use emoticons, emoji, or other non-text icons in commit messages, issue/PR descriptions, comments, documentation, or source code.
