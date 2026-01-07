@@ -88,7 +88,38 @@ class Environment:
     prompts: list[PromptConfig] = field(default_factory=list)
     prompts_unlocked: bool = False
     agent_selection: AgentSelection | None = None
+    _cached_is_git_repo: bool | None = None
 
     def normalized_color(self) -> str:
         value = (self.color or "").strip().lower()
         return value if value in ALLOWED_STAINS else "slate"
+    
+    def detect_git_if_folder_locked(self) -> bool:
+        """Detect if folder-locked environment is a git repository.
+        
+        This method caches the result to avoid repeated git operations.
+        Only applicable for folder-locked (local) environments.
+        
+        Returns:
+            True if folder is a git repo, False otherwise.
+            False for non-folder-locked environments.
+        """
+        # Only applies to folder-locked
+        if self.gh_management_mode != GH_MANAGEMENT_LOCAL:
+            return False
+        
+        # Return cached result if available
+        if self._cached_is_git_repo is not None:
+            return self._cached_is_git_repo
+        
+        # Detect git
+        from agents_runner.environments.git_operations import get_git_info
+        
+        folder_path = self.gh_management_target
+        if not folder_path:
+            self._cached_is_git_repo = False
+            return False
+        
+        git_info = get_git_info(folder_path)
+        self._cached_is_git_repo = git_info is not None
+        return self._cached_is_git_repo
