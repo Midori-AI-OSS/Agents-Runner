@@ -8,6 +8,9 @@ from .model import normalize_gh_management_mode
 from .model import PromptConfig
 from .model import AgentSelection
 from .model import AgentInstance
+from .prompt_storage import save_prompt_to_file
+from .prompt_storage import load_prompt_from_file
+from .prompt_storage import delete_prompt_file
 
 
 def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) -> str:
@@ -25,6 +28,60 @@ def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) 
             existing.add(candidate)
             return candidate
         i += 1
+
+
+def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
+    """Serialize prompts, managing external files.
+    
+    Handles three cases:
+    1. Empty text with existing file -> DELETE the file
+    2. Non-empty text -> SAVE/UPDATE the file
+    3. Empty text with no file -> No action needed
+    
+    Args:
+        prompts: List of PromptConfig objects to serialize
+    
+    Returns:
+        List of serialized prompt dictionaries
+    """
+    prompts_data = []
+    for p in prompts:
+        prompt_path = p.prompt_path or ""
+        text = p.text or ""
+        
+        # Case 1: Text is empty and we have a file -> DELETE the file
+        if not text and prompt_path:
+            try:
+                delete_prompt_file(prompt_path)
+            except Exception:
+                # File might not exist, or deletion failed
+                pass
+            prompt_path = ""  # Clear the path reference
+        
+        # Case 2: Text exists -> SAVE/UPDATE the file
+        elif text:
+            try:
+                if prompt_path:
+                    # Update existing file
+                    with open(prompt_path, "w", encoding="utf-8") as f:
+                        f.write(text)
+                else:
+                    # Create new file
+                    prompt_path = save_prompt_to_file(text)
+            except Exception:
+                # If save fails, keep inline text as fallback
+                pass
+        
+        # Case 3: Empty text with no file -> No action needed
+        
+        prompts_data.append({
+            "enabled": p.enabled,
+            "prompt_path": prompt_path,
+            # Keep text inline only if no file exists
+            "text": "" if prompt_path else text,
+        })
+    
+    return prompts_data
 
 
 def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
@@ -76,10 +133,30 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     if isinstance(prompts_data, list):
         for p in prompts_data:
             if isinstance(p, dict):
+                prompt_path = str(p.get("prompt_path", "")).strip()
+                text = str(p.get("text", ""))
+                
+                # If we have a prompt_path, load from file (migration case)
+                if prompt_path:
+                    try:
+                        text = load_prompt_from_file(prompt_path)
+                    except Exception:
+                        # If file doesn't exist, keep inline text as fallback
+                        pass
+                
+                # Migration: If we have inline text but no path, save to file
+                if text and not prompt_path:
+                    try:
+                        prompt_path = save_prompt_to_file(text)
+                    except Exception:
+                        # If save fails, keep inline text
+                        pass
+                
                 prompts.append(
                     PromptConfig(
                         enabled=bool(p.get("enabled", False)),
-                        text=str(p.get("text", "")),
+                        text=text,
+                        prompt_path=prompt_path,
                     )
                 )
     prompts_unlocked = bool(payload.get("prompts_unlocked", False))
@@ -271,9 +348,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         ).strip(),
         "gh_use_host_cli": bool(env.gh_use_host_cli),
         "gh_pr_metadata_enabled": bool(env.gh_pr_metadata_enabled),
-        "prompts": [
-            {"enabled": p.enabled, "text": p.text} for p in (env.prompts or [])
-        ],
+        "prompts": _serialize_prompts(env.prompts or []),
         "prompts_unlocked": bool(env.prompts_unlocked),
         "agent_selection": selection_payload,
     }

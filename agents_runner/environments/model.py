@@ -41,6 +41,7 @@ def normalize_gh_management_mode(value: str) -> str:
 class PromptConfig:
     enabled: bool = False
     text: str = ""
+    prompt_path: str = ""
 
 
 @dataclass
