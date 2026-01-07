@@ -10,6 +10,7 @@ from .model import AgentSelection
 from .model import AgentInstance
 from .prompt_storage import save_prompt_to_file
 from .prompt_storage import load_prompt_from_file
+from .prompt_storage import delete_prompt_file
 
 
 def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) -> str:
@@ -30,7 +31,12 @@ def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) 
 
 
 def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
-    """Serialize prompts, saving text to external files where needed.
+    """Serialize prompts, managing external files.
+    
+    Handles three cases:
+    1. Empty text with existing file -> DELETE the file
+    2. Non-empty text -> SAVE/UPDATE the file
+    3. Empty text with no file -> No action needed
     
     Args:
         prompts: List of PromptConfig objects to serialize
@@ -38,29 +44,41 @@ def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
     Returns:
         List of serialized prompt dictionaries
     """
-    import os
-    
     prompts_data = []
     for p in prompts:
-        # If text exists, save to file (create new or update existing)
-        if p.text:
+        prompt_path = p.prompt_path or ""
+        text = p.text or ""
+        
+        # Case 1: Text is empty and we have a file -> DELETE the file
+        if not text and prompt_path:
             try:
-                if p.prompt_path:
+                delete_prompt_file(prompt_path)
+            except Exception:
+                # File might not exist, or deletion failed
+                pass
+            prompt_path = ""  # Clear the path reference
+        
+        # Case 2: Text exists -> SAVE/UPDATE the file
+        elif text:
+            try:
+                if prompt_path:
                     # Update existing file
-                    with open(p.prompt_path, "w", encoding="utf-8") as f:
-                        f.write(p.text)
+                    with open(prompt_path, "w", encoding="utf-8") as f:
+                        f.write(text)
                 else:
                     # Create new file
-                    p.prompt_path = save_prompt_to_file(p.text)
+                    prompt_path = save_prompt_to_file(text)
             except Exception:
-                # If save fails, keep inline text
+                # If save fails, keep inline text as fallback
                 pass
+        
+        # Case 3: Empty text with no file -> No action needed
         
         prompts_data.append({
             "enabled": p.enabled,
-            "prompt_path": p.prompt_path or "",
-            # Keep "text" for backwards compatibility but empty if we have a path
-            "text": "" if p.prompt_path else p.text,
+            "prompt_path": prompt_path,
+            # Keep text inline only if no file exists
+            "text": "" if prompt_path else text,
         })
     
     return prompts_data
