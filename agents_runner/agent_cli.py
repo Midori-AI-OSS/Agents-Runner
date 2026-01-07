@@ -103,6 +103,8 @@ def build_noninteractive_cmd(
             "yolo",
             "--include-directories",
             container_workdir,
+            "--include-directories",
+            "/tmp",
             *extra_args,
         ]
         if prompt:

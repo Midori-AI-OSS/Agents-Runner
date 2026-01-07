@@ -14,16 +14,19 @@ from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
+from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
+from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh_management import is_gh_available
 from agents_runner.docker_runner import DockerRunnerConfig
-from agents_runner.pr_metadata import ensure_pr_metadata_file
-from agents_runner.pr_metadata import pr_metadata_container_path
-from agents_runner.pr_metadata import pr_metadata_host_path
-from agents_runner.pr_metadata import pr_metadata_prompt_instructions
+from agents_runner.pr_metadata import ensure_github_context_file
+from agents_runner.pr_metadata import github_context_container_path
+from agents_runner.pr_metadata import github_context_host_path
+from agents_runner.pr_metadata import github_context_prompt_instructions
+from agents_runner.pr_metadata import GitHubContext
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
@@ -323,44 +326,81 @@ class _MainWindowTasksAgentMixin:
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
 
-        # PR metadata prep (only if gh mode is enabled)
-        # Note: We prepare the PR metadata file before the task starts, even though
-        # gh_repo_root and gh_branch won't be available until after the git clone
-        # completes in the worker. This is fine because the file is created with just
-        # the task_id, and the actual branch/repo info is captured later when the
-        # worker completes (see _on_bridge_done in main_window_task_events.py).
-        # If the git clone fails, the orphaned metadata file is harmless and will be
-        # cleaned up with other temp files.
-        if (
-            env
-            and gh_mode == GH_MANAGEMENT_GITHUB
-            and bool(getattr(env, "gh_pr_metadata_enabled", False))
-        ):
-            host_path = pr_metadata_host_path(
-                os.path.dirname(self._state_path), task_id
-            )
-            container_path = pr_metadata_container_path(task_id)
-            try:
-                ensure_pr_metadata_file(host_path, task_id=task_id)
-            except Exception as exc:
-                self._on_task_log(
-                    task_id, f"[gh] failed to prepare PR metadata file: {exc}"
+        # GitHub context preparation
+        # For git-locked: Create empty file before clone, populate after clone completes
+        # For folder-locked: Detect git and populate immediately if it's a git repo
+        # For non-git: Skip gracefully (never fail the task)
+        if env and bool(getattr(env, "gh_context_enabled", False)):
+            # Detect git for folder-locked environments
+            should_generate = False
+            github_context = None
+            
+            if gh_mode == GH_MANAGEMENT_LOCAL:
+                # Folder-locked: Try to detect git repo
+                folder_path = str(env.gh_management_target or "").strip()
+                if folder_path:
+                    try:
+                        git_info = get_git_info(folder_path)
+                        if git_info:
+                            should_generate = True
+                            github_context = GitHubContext(
+                                repo_url=git_info.repo_url,
+                                repo_owner=git_info.repo_owner,
+                                repo_name=git_info.repo_name,
+                                base_branch=git_info.branch,
+                                task_branch=None,
+                                head_commit=git_info.commit_sha,
+                            )
+                            self._on_task_log(
+                                task_id, f"[gh] detected git repo: {git_info.repo_url}"
+                            )
+                        else:
+                            self._on_task_log(
+                                task_id, "[gh] folder is not a git repository; skipping context"
+                            )
+                    except Exception as exc:
+                        logger.warning(f"[gh] git detection failed: {exc}")
+                        self._on_task_log(
+                            task_id, f"[gh] git detection failed: {exc}; continuing without context"
+                        )
+            elif gh_mode == GH_MANAGEMENT_GITHUB:
+                # Git-locked: Will populate after clone
+                should_generate = True
+            
+            # Create GitHub context file
+            if should_generate:
+                host_path = github_context_host_path(
+                    os.path.dirname(self._state_path), task_id
                 )
-            else:
-                task.gh_pr_metadata_path = host_path
-                extra_mounts_for_task.append(f"{host_path}:{container_path}:rw")
-                env_vars_for_task.setdefault("CODEX_PR_METADATA_PATH", container_path)
-                runner_prompt = (
-                    f"{runner_prompt}{pr_metadata_prompt_instructions(container_path)}"
-                )
-                self._on_task_log(
-                    task_id, f"[gh] PR metadata enabled; mounted -> {container_path}"
-                )
+                container_path = github_context_container_path(task_id)
+                try:
+                    ensure_github_context_file(
+                        host_path, 
+                        task_id=task_id,
+                        github_context=github_context,
+                    )
+                except Exception as exc:
+                    logger.error(f"[gh] failed to create GitHub context file: {exc}")
+                    self._on_task_log(
+                        task_id, f"[gh] failed to create GitHub context file: {exc}; continuing without context"
+                    )
+                else:
+                    task.gh_pr_metadata_path = host_path
+                    extra_mounts_for_task.append(f"{host_path}:{container_path}:rw")
+                    runner_prompt = (
+                        f"{runner_prompt}{github_context_prompt_instructions(container_path)}"
+                    )
+                    self._on_task_log(
+                        task_id, f"[gh] GitHub context enabled; mounted -> {container_path}"
+                    )
 
         # Build config with GitHub repo info if needed
         gh_repo: str | None = None
+        gh_context_file: str | None = None
         if gh_mode == GH_MANAGEMENT_GITHUB and env:
             gh_repo = str(env.gh_management_target or "").strip() or None
+            # Pass GitHub context file path to worker (if created)
+            gh_context_file = getattr(task, "gh_pr_metadata_path", None)
 
         config = DockerRunnerConfig(
             task_id=task_id,
@@ -381,6 +421,7 @@ class _MainWindowTasksAgentMixin:
             gh_prefer_gh_cli=use_host_gh,
             gh_recreate_if_needed=True,
             gh_base_branch=desired_base or None,
+            gh_context_file_path=gh_context_file,
         )
         task._runner_config = config
         task._runner_prompt = runner_prompt

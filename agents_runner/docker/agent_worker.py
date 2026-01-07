@@ -114,6 +114,32 @@ class DockerAgentWorker:
                     self._gh_branch = str(result.get("branch") or "") or None
                     if self._gh_branch:
                         self._on_log(f"[gh] ready on branch {self._gh_branch}")
+                    
+                    # Update GitHub context file after clone (if context file exists)
+                    if self._config.gh_context_file_path and self._gh_repo_root:
+                        try:
+                            from agents_runner.pr_metadata import update_github_context_after_clone
+                            from agents_runner.pr_metadata import GitHubContext
+                            from agents_runner.environments.git_operations import get_git_info
+                            
+                            git_info = get_git_info(self._gh_repo_root)
+                            if git_info:
+                                github_context = GitHubContext(
+                                    repo_url=git_info.repo_url,
+                                    repo_owner=git_info.repo_owner,
+                                    repo_name=git_info.repo_name,
+                                    base_branch=self._gh_base_branch or git_info.branch,
+                                    task_branch=self._gh_branch,
+                                    head_commit=git_info.commit_sha,
+                                )
+                                update_github_context_after_clone(
+                                    self._config.gh_context_file_path,
+                                    github_context=github_context,
+                                )
+                                self._on_log("[gh] updated GitHub context file")
+                        except Exception as exc:
+                            self._on_log(f"[gh] failed to update GitHub context: {exc}")
+                            # Don't fail the task if context update fails
                 except (GhManagementError, Exception) as exc:
                     self._on_log(f"[gh] ERROR: {exc}")
                     self._on_done(1, str(exc), [])
