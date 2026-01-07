@@ -13,7 +13,7 @@ PIXELARCH_AGENT_CONTEXT_SUFFIX = (
 
 PIXELARCH_GIT_CONTEXT_SUFFIX = (
     "\n\n"
-    "VERSION CONTROL (non-interactive only)\n"
+    "VERSION CONTROL\n"
     "- The workspace is a git repository with a task branch already created.\n"
     "- `git` and `gh` CLI are installed and available in PATH.\n"
     "- IMPORTANT: Commit your changes as you work using:\n"
