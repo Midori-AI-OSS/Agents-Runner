@@ -452,6 +452,10 @@ class TaskDetailsPage(QWidget):
         self._apply_status(task)
         self._tick_uptime()
         self._sync_review_menu(task)
+        
+        # Notify artifacts tab of status changes
+        if self._artifacts_tab_visible:
+            self._artifacts_tab.on_task_status_changed(task)
 
     def _ensure_desktop_webview(self) -> QWebEngineView | None:
         if QWebEngineView is None:
