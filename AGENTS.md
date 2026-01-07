@@ -8,6 +8,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 - **Run locally:** `uv run main.py`
 - **UI styling:** Located in `agents_runner/style/` (Qt stylesheet builder) and `agents_runner/widgets/` (custom widgets)
+- **Preflight Review:** Read `.github/copilot-instructions.md` before starting work to understand environment, tooling, and compliance expectations.
 - **Design constraint:** Keep sharp/square corners (avoid non-`0px` `border-radius` values and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
 - **Docs:** Do not update the readme unless asked to; ensure `.codex/` documentation stays current with code changes
