@@ -175,6 +175,7 @@ class TaskSupervisor:
         on_retry: Callable[[int, str, float], None],
         on_agent_switch: Callable[[str, str], None],
         on_done: Callable[[int, str | None, list[str], dict[str, Any]], None] | None = None,
+        watch_states: dict[str, Any] | None = None,
     ) -> None:
         """Initialize task supervisor.
 
@@ -188,6 +189,7 @@ class TaskSupervisor:
             on_retry: Callback for retry attempts (retry_count, agent, delay)
             on_agent_switch: Callback for agent switches (from_agent, to_agent)
             on_done: Callback for completion (exit_code, error, artifacts, metadata)
+            watch_states: Dict of agent watch states for cooldown tracking
         """
         self._config = config
         self._prompt = prompt
@@ -198,6 +200,7 @@ class TaskSupervisor:
         self._on_retry = on_retry
         self._on_agent_switch = on_agent_switch
         self._on_done = on_done
+        self._watch_states = watch_states or {}
 
         # State tracking
         self._agent_chain: list[AgentInstance] = []
@@ -278,6 +281,10 @@ class TaskSupervisor:
                 self._last_container_state,
                 self._last_logs,
             )
+
+            # Record cooldown if rate-limited
+            if error_type == ErrorType.RATE_LIMIT:
+                self._record_cooldown(agent)
 
             # Fatal errors don't retry
             if error_type == ErrorType.FATAL:
@@ -511,3 +518,38 @@ class TaskSupervisor:
         # Note: This is a simplified version - in full implementation,
         # we would need to capture container state before removal
         self._last_container_state = {}
+
+    def _record_cooldown(self, agent: AgentInstance) -> None:
+        """Record rate-limit cooldown for agent.
+
+        Args:
+            agent: Agent instance that was rate-limited
+        """
+        from agents_runner.core.agent.cooldown_manager import CooldownManager
+        from agents_runner.core.agent.rate_limit import RateLimitDetector
+
+        # Detect rate limit and extract cooldown duration
+        is_rate_limited, cooldown_seconds = RateLimitDetector.detect(
+            agent.agent_cli,
+            self._last_exit_code,
+            self._last_logs,
+            self._last_container_state,
+        )
+
+        if not is_rate_limited:
+            return
+
+        # Get cooldown manager
+        cooldown_mgr = CooldownManager(self._watch_states)
+
+        # Extract reason from recent logs
+        reason_lines = self._last_logs[-10:] if self._last_logs else []
+        reason = "\n".join(reason_lines)[-200:]  # Limit to 200 chars
+
+        # Record cooldown
+        cooldown_mgr.set_cooldown(agent.agent_cli, cooldown_seconds, reason)
+
+        self._on_log(
+            f"[supervisor] rate-limit detected for {agent.agent_cli}, "
+            f"cooldown for {cooldown_seconds}s"
+        )

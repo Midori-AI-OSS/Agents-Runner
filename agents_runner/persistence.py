@@ -446,3 +446,116 @@ def _deserialize_runner_config(
         )
     except Exception:
         return None
+
+
+def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Load agent watch state from persistence.
+
+    Args:
+        state: State dictionary loaded from JSON
+
+    Returns:
+        Dict mapping provider_name -> AgentWatchState data
+    """
+    from agents_runner.core.agent.watch_state import (
+        AgentStatus,
+        AgentWatchState,
+        SupportLevel,
+        UsageWindow,
+    )
+
+    watch_data = state.get("agent_watch", {})
+    if not isinstance(watch_data, dict):
+        return {}
+
+    result = {}
+    for provider_name, data in watch_data.items():
+        if not isinstance(data, dict):
+            continue
+
+        # Deserialize cooldown timestamps
+        last_rate_limited_at = None
+        if data.get("last_rate_limited_at"):
+            last_rate_limited_at = _dt_from_str(data["last_rate_limited_at"])
+
+        cooldown_until = None
+        if data.get("cooldown_until"):
+            cooldown_until = _dt_from_str(data["cooldown_until"])
+
+        last_checked_at = None
+        if data.get("last_checked_at"):
+            last_checked_at = _dt_from_str(data["last_checked_at"])
+
+        # Deserialize windows
+        windows = []
+        for w_data in data.get("windows", []):
+            if not isinstance(w_data, dict):
+                continue
+            reset_at = None
+            if w_data.get("reset_at"):
+                reset_at = _dt_from_str(w_data["reset_at"])
+            windows.append(
+                UsageWindow(
+                    name=w_data.get("name", ""),
+                    used=w_data.get("used", 0),
+                    limit=w_data.get("limit", 0),
+                    remaining=w_data.get("remaining", 0),
+                    remaining_percent=w_data.get("remaining_percent", 0.0),
+                    reset_at=reset_at,
+                )
+            )
+
+        result[provider_name] = AgentWatchState(
+            provider_name=provider_name,
+            support_level=SupportLevel(
+                data.get("support_level", "unknown")
+            ),
+            status=AgentStatus(data.get("status", "ready")),
+            windows=windows,
+            last_rate_limited_at=last_rate_limited_at,
+            cooldown_until=cooldown_until,
+            cooldown_reason=data.get("cooldown_reason", ""),
+            last_checked_at=last_checked_at,
+            last_error=data.get("last_error", ""),
+            raw_data=data.get("raw_data", {}),
+        )
+
+    return result
+
+
+def save_watch_state(
+    state: dict[str, Any], watch_states: dict[str, Any]
+) -> None:
+    """Save agent watch state to persistence.
+
+    Args:
+        state: State dictionary to update
+        watch_states: Dict mapping provider_name -> AgentWatchState
+    """
+    watch_data = {}
+
+    for provider_name, ws in watch_states.items():
+        watch_data[provider_name] = {
+            "provider_name": ws.provider_name,
+            "support_level": ws.support_level.value,
+            "status": ws.status.value,
+            "windows": [
+                {
+                    "name": w.name,
+                    "used": w.used,
+                    "limit": w.limit,
+                    "remaining": w.remaining,
+                    "remaining_percent": w.remaining_percent,
+                    "reset_at": _dt_to_str(w.reset_at),
+                }
+                for w in ws.windows
+            ],
+            "last_rate_limited_at": _dt_to_str(ws.last_rate_limited_at),
+            "cooldown_until": _dt_to_str(ws.cooldown_until),
+            "cooldown_reason": ws.cooldown_reason,
+            "last_checked_at": _dt_to_str(ws.last_checked_at),
+            "last_error": ws.last_error,
+            "raw_data": ws.raw_data,
+        }
+
+    state["agent_watch"] = watch_data
