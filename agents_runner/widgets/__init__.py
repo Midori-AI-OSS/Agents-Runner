@@ -5,6 +5,8 @@ from .glass_card import GlassCard
 from .loading_bar import BouncingLoadingBar
 from .log_highlighter import LogHighlighter
 from .smooth_scroll import SmoothScrollArea
+from .spell_highlighter import SpellHighlighter
+from .spell_text_edit import SpellTextEdit
 from .status_glyph import StatusGlyph
 from .stained_glass_button import StainedGlassButton
 
@@ -17,6 +19,8 @@ __all__ = [
     "GlassCard",
     "LogHighlighter",
     "SmoothScrollArea",
+    "SpellHighlighter",
+    "SpellTextEdit",
     "StainedGlassButton",
     "StatusGlyph",
 ]

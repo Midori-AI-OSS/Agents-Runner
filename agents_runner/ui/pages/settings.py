@@ -139,6 +139,14 @@ class SettingsPage(QWidget):
             "Users can still disable it per-environment in the Environments editor."
         )
         
+        self._spellcheck_enabled = QCheckBox(
+            "Enable spellcheck in prompt editor"
+        )
+        self._spellcheck_enabled.setToolTip(
+            "When enabled, misspelled words in the prompt editor will be underlined in red.\n"
+            "Right-click on a misspelled word to see suggestions or add it to your dictionary."
+        )
+        
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
@@ -177,6 +185,7 @@ class SettingsPage(QWidget):
         grid.addWidget(self._append_pixelarch_context, 6, 0, 1, 4)
         grid.addWidget(self._headless_desktop_enabled, 7, 0, 1, 4)
         grid.addWidget(self._gh_context_default, 8, 0, 1, 4)
+        grid.addWidget(self._spellcheck_enabled, 9, 0, 1, 4)
 
         self._agent_config_widgets: dict[str, tuple[QWidget, ...]] = {
             "codex": (codex_label, self._host_codex_dir, browse_codex),
@@ -251,6 +260,9 @@ class SettingsPage(QWidget):
         self._gh_context_default.setChecked(
             bool(settings.get("gh_context_default_enabled") or False)
         )
+        self._spellcheck_enabled.setChecked(
+            bool(settings.get("spellcheck_enabled", True))
+        )
 
     def get_settings(self) -> dict:
         return {
@@ -278,6 +290,9 @@ class SettingsPage(QWidget):
             ),
             "gh_context_default_enabled": bool(
                 self._gh_context_default.isChecked()
+            ),
+            "spellcheck_enabled": bool(
+                self._spellcheck_enabled.isChecked()
             ),
         }
 

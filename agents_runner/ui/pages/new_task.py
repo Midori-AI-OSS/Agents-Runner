@@ -12,7 +12,6 @@ from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QMessageBox
-from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -25,6 +24,7 @@ from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
 from agents_runner.widgets import GlassCard
+from agents_runner.widgets import SpellTextEdit
 from agents_runner.widgets import StainedGlassButton
 
 
@@ -41,6 +41,7 @@ class NewTaskPage(QWidget):
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
+        self._spellcheck_enabled = True  # Default to enabled
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -83,7 +84,7 @@ class NewTaskPage(QWidget):
 
         prompt_title = QLabel("Prompt")
         prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
-        self._prompt = QPlainTextEdit()
+        self._prompt = SpellTextEdit(spellcheck_enabled=self._spellcheck_enabled)
         self._prompt.setPlaceholderText("Describe what you want the agent to do…")
         self._prompt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._prompt.setTabChangesFocus(True)
@@ -419,6 +420,11 @@ class NewTaskPage(QWidget):
     def set_defaults(self, host_codex: str) -> None:
         if host_codex:
             self._host_codex_dir = host_codex
+
+    def set_spellcheck_enabled(self, enabled: bool) -> None:
+        """Enable or disable spellcheck in the prompt editor."""
+        self._spellcheck_enabled = enabled
+        self._prompt.set_spellcheck_enabled(enabled)
 
     def set_workspace_status(self, *, path: str, ready: bool, message: str) -> None:
         self._workspace.setText(str(path or "—"))

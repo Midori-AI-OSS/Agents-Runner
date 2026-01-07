@@ -18,6 +18,10 @@ class _MainWindowSettingsMixin:
         self._settings.set_settings(self._settings_data)
         self._envs_page.set_settings_data(self._settings_data)  # Pass settings to environments page
         self._apply_active_environment_to_new_task()
+        
+        # Apply spellcheck setting to new task page
+        spellcheck_enabled = bool(self._settings_data.get("spellcheck_enabled", True))
+        self._new_task.set_spellcheck_enabled(spellcheck_enabled)
 
     def _apply_settings(self, settings: dict) -> None:
         merged = dict(self._settings_data)
