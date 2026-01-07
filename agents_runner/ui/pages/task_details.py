@@ -76,6 +76,8 @@ class TaskDetailsPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._current_task_id: str | None = None
+        self._desktop_tab_visible: bool = False
+        self._artifacts_tab_visible: bool = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -299,11 +301,16 @@ class TaskDetailsPage(QWidget):
         artifacts_tab = ArtifactsTab()
         self._artifacts_tab = artifacts_tab
 
+        # Store tab widgets for dynamic show/hide
+        self._task_tab_widget = task_tab
+        self._desktop_tab_widget = desktop_tab
+        self._artifacts_tab_widget = artifacts_tab
+
+        # Add only the Task tab initially (always visible)
         self._task_tab_index = self._tabs.addTab(task_tab, "Task")
-        self._desktop_tab_index = self._tabs.addTab(desktop_tab, "Desktop")
-        self._artifacts_tab_index = self._tabs.addTab(artifacts_tab, "Artifacts")
-        self._tabs.setTabEnabled(self._desktop_tab_index, False)
-        self._tabs.setTabEnabled(self._artifacts_tab_index, False)
+        # Desktop and Artifacts tabs will be added dynamically when needed
+        self._desktop_tab_index = -1
+        self._artifacts_tab_index = -1
         layout.addWidget(self._tabs, 1)
 
         self._ticker = QTimer(self)
@@ -323,12 +330,48 @@ class TaskDetailsPage(QWidget):
             QTimer.singleShot(0, self._scroll_logs_to_bottom)
             return
 
-        if index == getattr(self, "_desktop_tab_index", -1):
+        if index == getattr(self, "_desktop_tab_index", -1) and index >= 0:
             QTimer.singleShot(0, self._maybe_load_desktop)
             return
 
-        if index == getattr(self, "_artifacts_tab_index", -1):
+        if index == getattr(self, "_artifacts_tab_index", -1) and index >= 0:
             QTimer.singleShot(0, self._load_artifacts)
+
+    def _show_desktop_tab(self) -> None:
+        """Show the Desktop tab if not already visible."""
+        if self._desktop_tab_visible:
+            return
+        self._desktop_tab_index = self._tabs.addTab(self._desktop_tab_widget, "Desktop")
+        self._desktop_tab_visible = True
+
+    def _hide_desktop_tab(self) -> None:
+        """Hide the Desktop tab if currently visible."""
+        if not self._desktop_tab_visible:
+            return
+        # If Desktop tab is currently active, switch to Task tab
+        if self._tabs.currentIndex() == self._desktop_tab_index:
+            self._tabs.setCurrentIndex(self._task_tab_index)
+        self._tabs.removeTab(self._desktop_tab_index)
+        self._desktop_tab_index = -1
+        self._desktop_tab_visible = False
+
+    def _show_artifacts_tab(self) -> None:
+        """Show the Artifacts tab if not already visible."""
+        if self._artifacts_tab_visible:
+            return
+        self._artifacts_tab_index = self._tabs.addTab(self._artifacts_tab_widget, "Artifacts")
+        self._artifacts_tab_visible = True
+
+    def _hide_artifacts_tab(self) -> None:
+        """Hide the Artifacts tab if currently visible."""
+        if not self._artifacts_tab_visible:
+            return
+        # If Artifacts tab is currently active, switch to Task tab
+        if self._tabs.currentIndex() == self._artifacts_tab_index:
+            self._tabs.setCurrentIndex(self._task_tab_index)
+        self._tabs.removeTab(self._artifacts_tab_index)
+        self._artifacts_tab_index = -1
+        self._artifacts_tab_visible = False
 
     def _on_pr_triggered(self) -> None:
         task_id = str(self._current_task_id or "").strip()
@@ -426,7 +469,9 @@ class TaskDetailsPage(QWidget):
         return self._desktop_web
 
     def _maybe_load_desktop(self) -> None:
-        if not self._last_task or self._tabs.currentIndex() != self._desktop_tab_index:
+        if not self._last_task or not self._desktop_tab_visible:
+            return
+        if self._tabs.currentIndex() != self._desktop_tab_index:
             return
         url = str(self._last_task.novnc_url or "").strip()
         if not url or url == self._desktop_loaded_url:
@@ -441,14 +486,12 @@ class TaskDetailsPage(QWidget):
             pass
 
     def _sync_desktop(self, task: Task) -> None:
-        should_enable = bool(task.is_active() and task.headless_desktop_enabled)
+        should_show = bool(task.is_active() and task.headless_desktop_enabled)
         if not hasattr(self, "_tabs"):
             return
 
-        self._tabs.setTabEnabled(self._desktop_tab_index, should_enable)
-        if not should_enable:
-            if self._tabs.currentIndex() == self._desktop_tab_index:
-                self._tabs.setCurrentIndex(self._task_tab_index)
+        if not should_show:
+            self._hide_desktop_tab()
             self._desktop_loaded_url = ""
             self._desktop_url.setText("—")
             self._desktop_display.setText("—")
@@ -459,15 +502,19 @@ class TaskDetailsPage(QWidget):
                     pass
             return
 
+        self._show_desktop_tab()
         url = str(task.novnc_url or "").strip()
         self._desktop_url.setText(url or "(starting…)")
         self._desktop_display.setText(str(task.desktop_display or ":1"))
-        if self._tabs.currentIndex() == self._desktop_tab_index:
+        if self._desktop_tab_visible and self._tabs.currentIndex() == self._desktop_tab_index:
             self._maybe_load_desktop()
 
     def _sync_artifacts(self, task: Task) -> None:
         has_artifacts = bool(task.artifacts)
-        self._tabs.setTabEnabled(self._artifacts_tab_index, has_artifacts)
+        if has_artifacts:
+            self._show_artifacts_tab()
+        else:
+            self._hide_artifacts_tab()
 
     def _load_artifacts(self) -> None:
         if self._last_task:
