@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 class _MainWindowSettingsMixin:
     def _apply_settings_to_pages(self) -> None:
         self._settings.set_settings(self._settings_data)
+        self._envs_page.set_settings_data(self._settings_data)  # Pass settings to environments page
         self._apply_active_environment_to_new_task()
 
     def _apply_settings(self, settings: dict) -> None:

@@ -60,6 +60,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         self._environments: dict[str, Environment] = {}
         self._current_env_id: str | None = None
+        self._settings_data: dict[str, object] = {}  # Reference to main window settings
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*MAIN_LAYOUT_MARGINS)
@@ -164,15 +165,17 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             "Settings → Force headless desktop overrides this setting."
         )
 
-        self._gh_pr_metadata_enabled = QCheckBox(
-            "Allow agent to set PR title/body (non-interactive only)"
+        self._gh_context_enabled = QCheckBox(
+            "Provide GitHub context to agent"
         )
-        self._gh_pr_metadata_enabled.setToolTip(
-            "When enabled and Workspace is a GitHub repo (clone), a per-task JSON file is mounted into the container.\n"
-            "The agent is prompted to update it with a PR title/body, which will be used when opening the PR."
+        self._gh_context_enabled.setToolTip(
+            "When enabled, repository context (URL, branch, commit) is provided to the agent.\n"
+            "For GitHub-managed environments: Always available.\n"
+            "For folder-managed environments: Only if folder is a git repository.\n\n"
+            "Note: This does NOT provide GitHub authentication - that is separate."
         )
-        self._gh_pr_metadata_enabled.setEnabled(False)
-        self._gh_pr_metadata_enabled.setVisible(True)
+        self._gh_context_enabled.setEnabled(False)
+        self._gh_context_enabled.setVisible(True)
 
         max_agents_row = QWidget(general_tab)
         max_agents_row_layout = QHBoxLayout(max_agents_row)
@@ -193,18 +196,18 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         grid.addWidget(QLabel("Headless desktop"), 5, 0)
         grid.addWidget(headless_desktop_row, 5, 1, 1, 2)
 
-        self._gh_pr_metadata_label = QLabel("PR title/body")
-        self._gh_pr_metadata_row = QWidget(general_tab)
-        gh_pr_metadata_layout = QHBoxLayout(self._gh_pr_metadata_row)
-        gh_pr_metadata_layout.setContentsMargins(0, 0, 0, 0)
-        gh_pr_metadata_layout.setSpacing(BUTTON_ROW_SPACING)
-        gh_pr_metadata_layout.addWidget(self._gh_pr_metadata_enabled)
-        gh_pr_metadata_layout.addStretch(1)
+        self._gh_context_label = QLabel("GitHub context")
+        self._gh_context_row = QWidget(general_tab)
+        gh_context_layout = QHBoxLayout(self._gh_context_row)
+        gh_context_layout.setContentsMargins(0, 0, 0, 0)
+        gh_context_layout.setSpacing(BUTTON_ROW_SPACING)
+        gh_context_layout.addWidget(self._gh_context_enabled)
+        gh_context_layout.addStretch(1)
 
-        self._gh_pr_metadata_label.setVisible(False)
-        self._gh_pr_metadata_row.setVisible(False)
-        grid.addWidget(self._gh_pr_metadata_label, 4, 0)
-        grid.addWidget(self._gh_pr_metadata_row, 4, 1, 1, 2)
+        self._gh_context_label.setVisible(False)
+        self._gh_context_row.setVisible(False)
+        grid.addWidget(self._gh_context_label, 4, 0)
+        grid.addWidget(self._gh_context_row, 4, 1, 1, 2)
 
         self._gh_management_mode = QComboBox(general_tab)
         self._gh_management_mode.addItem("Use Settings workdir", GH_MANAGEMENT_NONE)
@@ -359,6 +362,10 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         self._load_selected()
         self._apply_environment_tints()
+    
+    def set_settings_data(self, settings_data: dict[str, object]) -> None:
+        """Set reference to main window settings data."""
+        self._settings_data = settings_data
 
     def _load_selected(self) -> None:
         env_id = str(self._env_select.currentData() or "")
@@ -368,10 +375,10 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._name.setText("")
             self._max_agents_running.setText("-1")
             self._headless_desktop_enabled.setChecked(False)
-            self._gh_pr_metadata_enabled.setChecked(False)
-            self._gh_pr_metadata_enabled.setEnabled(False)
-            self._gh_pr_metadata_label.setVisible(False)
-            self._gh_pr_metadata_row.setVisible(False)
+            self._gh_context_enabled.setChecked(False)
+            self._gh_context_enabled.setEnabled(False)
+            self._gh_context_label.setVisible(False)
+            self._gh_context_row.setVisible(False)
             self._gh_management_mode.setCurrentIndex(0)
             self._gh_management_target.setText("")
             self._gh_use_host_cli.setChecked(bool(is_gh_available()))
@@ -400,12 +407,27 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             )
             == GH_MANAGEMENT_GITHUB
         )
-        self._gh_pr_metadata_enabled.setChecked(
-            bool(getattr(env, "gh_pr_metadata_enabled", False))
+        is_local_env = (
+            normalize_gh_management_mode(
+                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
+            )
+            == GH_MANAGEMENT_LOCAL
         )
-        self._gh_pr_metadata_enabled.setEnabled(is_github_env)
-        self._gh_pr_metadata_label.setVisible(is_github_env)
-        self._gh_pr_metadata_row.setVisible(is_github_env)
+        
+        # Check if folder-locked environment is a git repo
+        is_git_repo = False
+        if is_local_env:
+            is_git_repo = env.detect_git_if_folder_locked()
+        
+        # Enable GitHub context for git-locked or folder-locked git repos
+        context_available = is_github_env or (is_local_env and is_git_repo)
+        
+        self._gh_context_enabled.setChecked(
+            bool(getattr(env, "gh_context_enabled", False))
+        )
+        self._gh_context_enabled.setEnabled(context_available)
+        self._gh_context_label.setVisible(context_available)
+        self._gh_context_row.setVisible(context_available)
         idx = self._gh_management_mode.findData(
             normalize_gh_management_mode(env.gh_management_mode)
         )

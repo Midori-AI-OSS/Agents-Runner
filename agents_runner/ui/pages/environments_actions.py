@@ -97,7 +97,11 @@ class _EnvironmentsPageActionsMixin:
 
         gh_management_mode = GH_MANAGEMENT_LOCAL
         gh_management_target = ""
-        gh_pr_metadata_enabled = False
+        # Get global default from settings
+        gh_context_enabled = bool(
+            self._settings_data.get("gh_context_default_enabled", False)
+        )
+        
         if selected_label == "Lock to GitHub repo (clone)":
             repo, ok = QInputDialog.getText(
                 self, "GitHub repo", "Repo (owner/repo or URL)"
@@ -114,12 +118,13 @@ class _EnvironmentsPageActionsMixin:
                 return
             gh_management_mode = GH_MANAGEMENT_GITHUB
             gh_management_target = repo
-            gh_pr_metadata_enabled = (
+            gh_context_enabled = (
                 QMessageBox.question(
                     self,
-                    "PR metadata",
-                    "Allow the agent to set the PR title/body via a mounted JSON file?\n\n"
-                    "This is only used for non-interactive runs.",
+                    "GitHub context",
+                    "Provide GitHub context to the agent?\n\n"
+                    "This will mount repository information (URL, branch, commit) "
+                    "that the agent can use for better PR descriptions.",
                     QMessageBox.Yes | QMessageBox.No,
                     QMessageBox.No,
                 )
@@ -153,7 +158,7 @@ class _EnvironmentsPageActionsMixin:
             gh_management_target=gh_management_target,
             gh_management_locked=True,
             gh_use_host_cli=gh_use_host_cli,
-            gh_pr_metadata_enabled=bool(gh_pr_metadata_enabled),
+            gh_context_enabled=bool(gh_context_enabled),
             prompts=[],
             prompts_unlocked=False,
             agent_selection=None,
@@ -207,16 +212,23 @@ class _EnvironmentsPageActionsMixin:
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
         )
-        gh_pr_metadata_enabled = (
-            bool(getattr(existing, "gh_pr_metadata_enabled", False))
+        gh_context_enabled = (
+            bool(getattr(existing, "gh_context_enabled", False))
             if existing
             else False
         )
 
         if existing and gh_mode == GH_MANAGEMENT_GITHUB:
-            gh_pr_metadata_enabled = bool(self._gh_pr_metadata_enabled.isChecked())
-        elif gh_mode != GH_MANAGEMENT_GITHUB:
-            gh_pr_metadata_enabled = False
+            gh_context_enabled = bool(self._gh_context_enabled.isChecked())
+        elif existing and gh_mode == GH_MANAGEMENT_LOCAL:
+            # For folder-locked, respect checkbox if git was detected
+            is_git_repo = existing.detect_git_if_folder_locked()
+            if is_git_repo:
+                gh_context_enabled = bool(self._gh_context_enabled.isChecked())
+            else:
+                gh_context_enabled = False
+        else:
+            gh_context_enabled = False
 
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
@@ -244,7 +256,7 @@ class _EnvironmentsPageActionsMixin:
             gh_management_target=gh_target,
             gh_management_locked=gh_locked,
             gh_use_host_cli=gh_use_host_cli,
-            gh_pr_metadata_enabled=gh_pr_metadata_enabled,
+            gh_context_enabled=gh_context_enabled,
             prompts=prompts,
             prompts_unlocked=prompts_unlocked,
             agent_selection=agent_selection,
@@ -276,16 +288,23 @@ class _EnvironmentsPageActionsMixin:
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
         )
-        gh_pr_metadata_enabled = (
-            bool(getattr(existing, "gh_pr_metadata_enabled", False))
+        gh_context_enabled = (
+            bool(getattr(existing, "gh_context_enabled", False))
             if existing
             else False
         )
 
         if existing and gh_mode == GH_MANAGEMENT_GITHUB:
-            gh_pr_metadata_enabled = bool(self._gh_pr_metadata_enabled.isChecked())
-        elif gh_mode != GH_MANAGEMENT_GITHUB:
-            gh_pr_metadata_enabled = False
+            gh_context_enabled = bool(self._gh_context_enabled.isChecked())
+        elif existing and gh_mode == GH_MANAGEMENT_LOCAL:
+            # For folder-locked, respect checkbox if git was detected
+            is_git_repo = existing.detect_git_if_folder_locked()
+            if is_git_repo:
+                gh_context_enabled = bool(self._gh_context_enabled.isChecked())
+            else:
+                gh_context_enabled = False
+        else:
+            gh_context_enabled = False
 
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
@@ -314,7 +333,7 @@ class _EnvironmentsPageActionsMixin:
             gh_management_target=gh_target,
             gh_management_locked=gh_locked,
             gh_use_host_cli=gh_use_host_cli,
-            gh_pr_metadata_enabled=gh_pr_metadata_enabled,
+            gh_context_enabled=gh_context_enabled,
             prompts=prompts,
             prompts_unlocked=prompts_unlocked,
             agent_selection=agent_selection,
