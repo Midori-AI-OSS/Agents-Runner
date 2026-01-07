@@ -28,11 +28,16 @@
 - **`04-usage-watch-design.md`** - Usage watch system design
 - **`05-usage-watch-implementation-summary.md`** (302 lines) - Implementation summary
 
-#### Task 4: GitHub Context System ⭐ NEW
+#### Task 4: GitHub Context System
 - **`README-TASK-4.md`** (281 lines) - **START HERE** - Executive summary
 - **`05-github-context-design.md`** (1541 lines) - Complete design specification
 - **`05-github-context-quick-ref.md`** (256 lines) - Quick reference guide
 - **`05-github-context-diagrams.md`** (623 lines) - Visual diagrams
+
+#### Task 5: First-Run Setup + Per-Agent Management ⭐ NEW
+- **`06-first-run-setup-design.md`** (1876 lines) - Complete design specification
+- **`06-first-run-setup-quick-ref.md`** (238 lines) - Quick reference guide
+- **`06-first-run-setup-summary.txt`** (147 lines) - Plain-text summary
 
 ---
 
@@ -227,8 +232,8 @@
 | Task 1 | ✅ Complete | ✅ This audit | N/A | ✅ DONE |
 | Task 2 | ✅ Complete | ⏳ Pending | ⏳ Pending | 🔄 IN PROGRESS |
 | Task 3 | ✅ Complete | ⏳ Pending | ⏳ Pending | 🔄 IN PROGRESS |
-| Task 4 | ✅ **Complete** | ⏳ **Pending** | ⏳ **Pending** | ✅ **READY** |
-| Task 5 | ⏳ Pending | ⏳ Pending | ⏳ Pending | 📋 PLANNED |
+| Task 4 | ✅ Complete | ⏳ Pending | ⏳ Pending | ✅ READY |
+| Task 5 | ✅ **Complete** | ⏳ **Pending** | ⏳ **Pending** | ⚠️ **READY (Research)** |
 | Task 6 | ⏳ Pending | ⏳ Pending | ⏳ Pending | 📋 PLANNED |
 | Task 7 | ⏳ Pending | ⏳ Pending | ⏳ Pending | 📋 PLANNED |
 | Task 8 | ⏳ Pending | ⏳ Pending | ⏳ Pending | 📋 PLANNED |
@@ -239,6 +244,47 @@
 - 🔄 In Progress
 - ⏳ Pending
 - 📋 Planned
+- ⚠️ Ready with Research Required
+
+---
+
+## Key Findings from Task 5 Audit
+
+### Critical Requirements (NON-NEGOTIABLE)
+1. **Sequential Setup Flow**
+   - One terminal at a time
+   - Wait for process exit (blocking)
+   - 1-3 second delay between agents
+   - Clean cancellation (no orphaned processes)
+
+2. **No Rerunnable Wizard**
+   - First-run setup shown once
+   - Per-agent management via individual actions
+   - No "Run Setup Wizard" button
+
+3. **User Can Skip**
+   - "Skip Setup" always available
+   - App remains usable if skipped
+
+### Detection Strategies
+- **Codex:** `codex login status` (exit code 0/1) ✅ Ready
+- **Claude:** Check `~/.claude/` config files ⚠️ Research needed
+- **Copilot:** `gh auth status` (GitHub CLI) ✅ Ready
+- **Gemini:** Check `~/.gemini/settings.json` or env vars ⚠️ Research needed
+
+### Implementation Estimate
+- **Original:** 7-10 days (from task breakdown)
+- **Confirmed:** 7-10 days (7 phases)
+- **Reason:** Sequential orchestration complexity, research required
+
+### Risk Level
+- **Overall:** MEDIUM
+- **High risks:** Terminal blocking, setup state corruption
+- **Blockers:** None (research can happen during implementation)
+
+### Research Required
+1. **Claude Code:** Auth status detection method
+2. **Gemini CLI:** Login/setup commands
 
 ---
 
@@ -252,7 +298,27 @@
 ### Upcoming (Other Tasks)
 1. **Task 2:** Begin implementation (Run Supervisor)
 2. **Task 3:** Begin implementation (Usage Watch)
-3. **Task 5:** Design first-run setup system
+3. **Task 5:** Research Claude/Gemini auth, then begin Phase 1
+
+---
+
+## Quick Start: Task 5 (First-Run Setup)
+
+### For Implementers
+1. Start: `06-first-run-setup-quick-ref.md` (overview)
+2. Read: `06-first-run-setup-design.md` (full design)
+3. Research: Claude and Gemini auth detection (sections 1.2.2, 1.2.4)
+4. Follow: Implementation Plan (7 phases, section 7.4)
+
+### For Reviewers
+1. Start: `06-first-run-setup-summary.txt` (plain-text overview)
+2. Review: `06-first-run-setup-design.md` (section 3: Sequential Setup Flow)
+3. Check: `06-first-run-setup-design.md` (section 10: Risk Analysis)
+
+### For Researchers
+1. Read: `06-first-run-setup-design.md` (section 9: Open Questions)
+2. Focus: Sections 1.2.2 (Claude) and 1.2.4 (Gemini)
+3. Document findings in research notes
 
 ---
 

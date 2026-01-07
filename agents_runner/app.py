@@ -42,8 +42,10 @@ def run_app(argv: list[str]) -> None:
 
     from PySide6.QtWidgets import QApplication
 
+    from agents_runner.setup.orchestrator import check_setup_complete
     from agents_runner.style import app_stylesheet
     from agents_runner.ui.constants import APP_TITLE
+    from agents_runner.ui.dialogs.first_run_setup import FirstRunSetupDialog
     from agents_runner.ui.icons import _app_icon
     from agents_runner.ui.main_window import MainWindow
 
@@ -54,6 +56,11 @@ def run_app(argv: list[str]) -> None:
     if icon is not None:
         app.setWindowIcon(icon)
     app.setStyleSheet(app_stylesheet())
+
+    # Check if first-run setup is needed
+    if not check_setup_complete():
+        dialog = FirstRunSetupDialog(parent=None)
+        dialog.exec()
 
     window = MainWindow()
     if icon is not None:

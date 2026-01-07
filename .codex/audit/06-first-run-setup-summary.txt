@@ -1,0 +1,184 @@
+FIRST-RUN SETUP AUDIT SUMMARY
+==============================
+
+Document: 06-first-run-setup-design.md
+Date: 2025-01-07
+Status: READY FOR REVIEW
+
+KEY FINDINGS:
+=============
+
+✅ COMPLETED RESEARCH:
+- Codex: Uses `codex login status` (exit code 0/1)
+- Copilot: Uses `gh auth status` (GitHub CLI)
+- GitHub: `gh auth status` works correctly
+- Terminal infrastructure: Already exists in terminal_apps.py
+
+⚠️ RESEARCH REQUIRED:
+- Claude Code: No obvious auth status command
+  * `claude whoami` launches interactive setup (blocks)
+  * Need to investigate config file structure in ~/.claude/
+  * `claude setup-token` opens browser for auth
+  
+- Gemini CLI: Unknown auth/setup commands
+  * No `gemini auth status` found
+  * Uses ~/.gemini/settings.json or env vars (GEMINI_API_KEY)
+  * Need to find proper login command
+
+CRITICAL DESIGN REQUIREMENTS:
+==============================
+
+1. SEQUENTIAL SETUP (NON-NEGOTIABLE):
+   - One terminal at a time
+   - Wait for process exit
+   - 1-3 second delay between agents
+   - User can cancel cleanly
+
+2. NO RERUNNABLE WIZARD:
+   - First-run setup shows once
+   - Per-agent management via individual actions
+   - No "Run Setup Wizard" button
+
+3. CLEAN CANCELLATION:
+   - Kill subprocess cleanly
+   - No orphaned processes
+   - Write partial state
+   - App remains usable
+
+4. NON-BLOCKING:
+   - User can skip setup entirely
+   - Setup never blocks app after first completion
+
+IMPLEMENTATION PLAN:
+====================
+
+Phase 1: Detection (2-3 days)
+- Create agents_runner/setup/agent_status.py
+- Implement install/login detection
+- Research Claude/Gemini
+
+Phase 2: Terminal (1-2 days)
+- Add launch_terminal_and_wait() to terminal_apps.py
+- Test blocking behavior
+
+Phase 3: Orchestration (2-3 days)
+- Create agents_runner/setup/orchestrator.py
+- Implement sequential flow with delays
+- Add cancellation handling
+
+Phase 4: First-Run UI (2-3 days)
+- Create agents_runner/ui/dialogs/first_run_setup.py
+- Agent selection table
+- Progress dialog
+
+Phase 5: Management UI (1-2 days)
+- Create agents_runner/ui/pages/agent_management.py
+- Status table with actions
+- Auto-refresh
+
+Phase 6: Integration (1 day)
+- Modify agents_runner/app.py
+- Check setup on launch
+
+Phase 7: Research & Polish (2-3 days)
+- Complete Claude/Gemini research
+- Error handling
+- Documentation
+
+TOTAL: 7-10 days (matches task breakdown)
+
+HIGH-RISK AREAS:
+================
+
+1. Terminal blocking indefinitely
+   → Mitigation: Cancel button, clear instructions, timeout
+
+2. Claude/Gemini detection unreliable
+   → Mitigation: Default to "Unknown", allow manual override
+
+3. Setup state corruption
+   → Mitigation: Atomic writes, validation, backups
+
+4. First-run dialog shows repeatedly
+   → Mitigation: Write flag immediately, test thoroughly
+
+NEW MODULES:
+============
+
+agents_runner/setup/
+  ├── __init__.py
+  ├── orchestrator.py (250-300 lines)
+  ├── agent_status.py (200-250 lines)
+  └── commands.py (100-150 lines)
+
+agents_runner/ui/dialogs/
+  └── first_run_setup.py (250-300 lines)
+
+agents_runner/ui/pages/
+  └── agent_management.py (200-250 lines)
+
+MODIFIED FILES:
+===============
+
+agents_runner/app.py (~20 lines added)
+agents_runner/ui/pages/settings.py (~30 lines added)
+agents_runner/terminal_apps.py (~40 lines added)
+
+CONFIG FILES:
+=============
+
+~/.midoriai/agents-runner/setup_state.json (NEW)
+
+SUCCESS CRITERIA:
+=================
+
+First-Run Setup:
+☐ Dialog appears on fresh install
+☐ Sequential setup (one terminal at a time)
+☐ 1-3 second delays between agents
+☐ Clean cancellation
+☐ Skip button works
+☐ Doesn't show again after completion
+
+Per-Agent Management:
+☐ Status display with auto-refresh
+☐ Login/Configure/Verify buttons
+☐ No "Setup Wizard" button
+☐ Status updates after actions
+
+NEXT ACTIONS:
+=============
+
+1. Review 06-first-run-setup-design.md
+2. Research Claude auth detection:
+   - Test claude --help for auth commands
+   - Examine ~/.claude/ structure
+   - Document findings
+
+3. Research Gemini setup:
+   - Find auth status command
+   - Document settings.json structure
+   - Find proper login command
+
+4. Get stakeholder approval
+5. Begin Phase 1 implementation
+
+BLOCKING ISSUES:
+================
+
+None (research can happen during implementation)
+
+OPEN QUESTIONS:
+===============
+
+1. Should cooldown status show in Agent Management?
+   → Yes, integrate with Task 3
+
+2. Timeout for terminal wait?
+   → Consider 30 minutes max, then auto-cancel
+
+3. Manual "Mark as Logged In" option?
+   → Add as advanced feature if detection unreliable
+
+4. Lock file for multiple instances?
+   → Consider if needed (low priority)
