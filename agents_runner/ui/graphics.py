@@ -16,7 +16,9 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QPainter
 from PySide6.QtGui import QPainterPath
+from PySide6.QtGui import QPaintEvent
 from PySide6.QtGui import QRadialGradient
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QWidget
 
 
@@ -37,7 +39,7 @@ class _EnvironmentTintOverlay(QWidget):
             self._color = QColor(color.red(), color.green(), color.blue(), self._alpha)
         self.update()
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         if self._color.alpha() <= 0:
             return
         painter = QPainter(self)
@@ -239,7 +241,7 @@ class GlassRoot(QWidget):
         anim.start()
         self._theme_anim = anim
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._constrain_orbs()
 
@@ -389,7 +391,7 @@ class GlassRoot(QWidget):
             painter.setPen(outline)
             painter.drawPath(path)
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 

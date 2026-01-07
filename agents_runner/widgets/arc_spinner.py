@@ -3,7 +3,7 @@ import math
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPainter, QPaintEvent
 from PySide6.QtWidgets import QWidget
 
 
@@ -28,7 +28,7 @@ class ArcSpinner(QWidget):
         self._angle = (self._angle + 6.0) % 360.0
         self.update()
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 

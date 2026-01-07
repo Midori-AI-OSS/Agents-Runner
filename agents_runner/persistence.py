@@ -32,9 +32,11 @@ def _dt_to_str(value: datetime | None) -> str | None:
 
 
 def _dt_from_str(value: str | None) -> datetime | None:
-    if not value:
+    if value is None:
         return None
     text = value.strip()
+    if not text:
+        return None
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
     try:
@@ -274,7 +276,7 @@ def load_done_task_payloads(
     return payloads
 
 
-def serialize_task(task) -> dict[str, Any]:
+def serialize_task(task: Any) -> dict[str, Any]:
     runner_config = getattr(task, "_runner_config", None)
     runner_config_payload: dict[str, Any] | None = None
     if runner_config is not None:
@@ -321,7 +323,7 @@ def serialize_task(task) -> dict[str, Any]:
     }
 
 
-def deserialize_task(task_cls, data: dict[str, Any]):
+def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
     task = task_cls(
         task_id=str(data.get("task_id") or ""),
         prompt=sanitize_prompt(str(data.get("prompt") or "")),
@@ -376,7 +378,7 @@ def deserialize_task(task_cls, data: dict[str, Any]):
 
 def _deserialize_runner_config(
     payload: dict[str, Any], *, task_id: str
-) -> object | None:
+) -> Any:
     try:
         from agents_runner.docker_runner import DockerRunnerConfig
     except Exception:

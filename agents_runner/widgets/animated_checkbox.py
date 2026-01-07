@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
-from PySide6.QtGui import QColor, QPainter, QPainterPath
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPaintEvent
 from PySide6.QtWidgets import QCheckBox, QWidget
 
 
@@ -37,7 +37,7 @@ class AnimatedCheckBox(QCheckBox):
 
     check_progress = property(get_check_progress, set_check_progress)
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         super().paintEvent(event)
 
         if self._check_progress > 0.0 and self._check_progress < 1.0:

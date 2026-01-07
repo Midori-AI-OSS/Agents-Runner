@@ -1,7 +1,5 @@
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer
-from PySide6.QtGui import QColor
-from PySide6.QtGui import QPainter
-from PySide6.QtGui import QPainterPath
+from PySide6.QtGui import QColor, QPaintEvent, QPainter, QPainterPath, QShowEvent
 from PySide6.QtWidgets import QFrame, QGraphicsOpacityEffect
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QWidget
@@ -18,7 +16,7 @@ class GlassCard(QFrame):
         self._animate_entrance = animate_entrance
         self._entrance_shown = False
 
-    def showEvent(self, event) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         if self._animate_entrance and not self._entrance_shown:
             self._entrance_shown = True
@@ -38,7 +36,7 @@ class GlassCard(QFrame):
 
         self._entrance_anim = anim
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         rect = self.rect().adjusted(1, 1, -1, -1)
 
         painter = QPainter(self)

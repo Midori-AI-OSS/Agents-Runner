@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation
-from PySide6.QtWidgets import QScrollArea
+from PySide6.QtWidgets import QScrollArea, QWidget
 
 
 class SmoothScrollArea(QScrollArea):
     """QScrollArea with smooth scrolling animation."""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._scroll_anim: QPropertyAnimation | None = None
 
