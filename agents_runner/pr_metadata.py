@@ -87,6 +87,7 @@ def pr_metadata_prompt_instructions(container_path: str) -> str:
         '  - "title": short PR title (<= 72 chars)\n'
         '  - "body": PR description (markdown)\n'
         "- Keep it as strict JSON (no trailing commas).\n"
+        "- REMINDER: Don't forget to commit your code changes with `git commit`!\n"
     )
 
 

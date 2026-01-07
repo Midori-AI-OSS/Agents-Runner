@@ -124,6 +124,9 @@ class DockerAgentWorker:
                     self._gh_branch = str(result.get("branch") or "") or None
                     if self._gh_branch:
                         self._on_log(f"[gh] ready on branch {self._gh_branch}")
+                        self._on_log(
+                            "[gh] REMINDER: Commit changes frequently with `git add` and `git commit`"
+                        )
                 except (GhManagementError, Exception) as exc:
                     self._on_log(f"[gh] ERROR: {exc}")
                     self._on_done(1, str(exc), [])
