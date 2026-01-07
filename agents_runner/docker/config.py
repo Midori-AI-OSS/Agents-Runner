@@ -9,7 +9,7 @@ class DockerRunnerConfig:
     host_codex_dir: str
     host_workdir: str
     agent_cli: str = "codex"
-    container_codex_dir: str = "/home/midori-ai/.codex"
+    container_codex_dir: str = "/home/midori-ai/.agents"
     container_workdir: str = "/home/midori-ai/workspace"
     auto_remove: bool = True
     pull_before_run: bool = True

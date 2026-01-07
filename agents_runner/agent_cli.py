@@ -22,7 +22,7 @@ def container_config_dir(agent: str) -> str:
         return f"{CONTAINER_HOME}/.copilot"
     if agent == "gemini":
         return f"{CONTAINER_HOME}/.gemini"
-    return f"{CONTAINER_HOME}/.codex"
+    return f"{CONTAINER_HOME}/.agents"
 
 
 def additional_config_mounts(agent: str, host_config_dir: str) -> list[str]:

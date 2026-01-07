@@ -38,7 +38,7 @@ class NewTaskPage(QWidget):
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
         self._gh_locked_envs: set[str] = set()
-        self._host_codex_dir = os.path.expanduser("~/.codex")
+        self._host_codex_dir = os.path.expanduser("~/.agents")
         self._workspace_ready = False
         self._workspace_error = ""
 

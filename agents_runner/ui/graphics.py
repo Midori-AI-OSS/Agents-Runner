@@ -151,7 +151,7 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
             shard_points=_SHARD_POINTS_GEMINI,
         )
 
-    # codex / ChatGPT neutral
+    # agents / ChatGPT neutral
     return _AgentTheme(
         name="codex",
         base=QColor(12, 13, 15),

@@ -230,7 +230,7 @@ class _MainWindowEnvironmentMixin:
             active_workdir = str(self._settings_data.get("host_workdir") or os.getcwd())
             active_codex = str(
                 self._settings_data.get("host_codex_dir")
-                or os.path.expanduser("~/.codex")
+                or os.path.expanduser("~/.agents")
             )
             try:
                 max_agents_running = int(

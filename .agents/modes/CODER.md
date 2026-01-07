@@ -1,6 +1,6 @@
 # Coder Mode
 
-> **Note:** Keep technical documentation and implementation notes in `.codex/implementation/` for the area you are modifying. Capture process updates or workflow adjustments in `.codex/instructions/` (create it if missing).
+> **Note:** Keep technical documentation and implementation notes in `.agents/implementation/` for the area you are modifying. Capture process updates or workflow adjustments in `.agents/instructions/` (create it if missing).
 
 ## Purpose
 Coders implement, refactor, and review code. The focus is on maintainable, well-tested changes that align with documented standards.
@@ -17,9 +17,9 @@ Coders implement, refactor, and review code. The focus is on maintainable, well-
 - Self-review your work for correctness, clarity, and completeness before submitting
 
 ## Typical Actions
-- Implement features, bug fixes, or refactors referenced by `.codex/tasks/`.
-- **Review and update** `.codex/implementation/` documentation to ensure it reflects current implementation details.
-- **Verify** that technical docs in `.codex/` folders are up to date with code changes before completing a task.
+- Implement features, bug fixes, or refactors referenced by `.agents/tasks/`.
+- **Review and update** `.agents/implementation/` documentation to ensure it reflects current implementation details.
+- **Verify** that technical docs in `.agents/` folders are up to date with code changes before completing a task.
 - Provide constructive feedback on peer contributions when requested.
 - Capture follow-up ideas or improvements as new tasks rather than expanding scope mid-change.
 - **Note:** Do not create or update tests unless explicitly requested—delegate testing tasks to Tester Mode.

@@ -117,10 +117,11 @@ class _MainWindowPersistenceMixin:
             )
         )
         if host_codex_dir == os.path.expanduser("~/.midoriai"):
-            self._settings_data["host_codex_dir"] = os.path.expanduser("~/.codex")
+            self._settings_data["host_codex_dir"] = os.path.expanduser("~/.agents")
         if not str(self._settings_data.get("host_codex_dir") or "").strip():
             self._settings_data["host_codex_dir"] = os.environ.get(
-                "CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")
+                "AGENTS_HOST_CONFIG_DIR",
+                os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.agents"))
             )
         if not str(self._settings_data.get("host_claude_dir") or "").strip():
             self._settings_data["host_claude_dir"] = os.path.expanduser("~/.claude")

@@ -92,7 +92,7 @@ class SettingsPage(QWidget):
             self._shell.addItem(label, value)
 
         self._host_codex_dir = QLineEdit()
-        self._host_codex_dir.setPlaceholderText(os.path.expanduser("~/.codex"))
+        self._host_codex_dir.setPlaceholderText(os.path.expanduser("~/.agents"))
         browse_codex = QPushButton("Browse…")
         browse_codex.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_codex.clicked.connect(self._pick_codex_dir)
@@ -208,7 +208,7 @@ class SettingsPage(QWidget):
             str(settings.get("host_codex_dir") or "").strip()
         )
         if not host_codex_dir:
-            host_codex_dir = os.path.expanduser("~/.codex")
+            host_codex_dir = os.path.expanduser("~/.agents")
         self._host_codex_dir.setText(host_codex_dir)
 
         host_claude_dir = os.path.expanduser(
@@ -268,7 +268,7 @@ class SettingsPage(QWidget):
         path = QFileDialog.getExistingDirectory(
             self,
             "Select Host Config folder",
-            self._host_codex_dir.text() or os.path.expanduser("~/.codex"),
+            self._host_codex_dir.text() or os.path.expanduser("~/.agents"),
         )
         if path:
             self._host_codex_dir.setText(path)

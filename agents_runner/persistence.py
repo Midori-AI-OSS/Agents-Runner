@@ -410,7 +410,7 @@ def _deserialize_runner_config(
             host_workdir=str(payload.get("host_workdir") or ""),
             agent_cli=str(payload.get("agent_cli") or "codex"),
             container_codex_dir=str(
-                payload.get("container_codex_dir") or "/home/midori-ai/.codex"
+                payload.get("container_codex_dir") or "/home/midori-ai/.agents"
             ),
             container_workdir=str(
                 payload.get("container_workdir") or "/home/midori-ai/workspace"

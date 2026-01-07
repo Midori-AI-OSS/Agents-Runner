@@ -32,7 +32,7 @@ class _MainWindowSettingsMixin:
             str(merged.get("host_codex_dir") or "").strip()
         )
         if not host_codex_dir:
-            host_codex_dir = os.path.expanduser("~/.codex")
+            host_codex_dir = os.path.expanduser("~/.agents")
         merged["host_codex_dir"] = host_codex_dir
 
         host_claude_dir = os.path.expanduser(
@@ -196,7 +196,8 @@ class _MainWindowSettingsMixin:
             config_dir = str(
                 settings.get("host_codex_dir")
                 or os.environ.get(
-                    "CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")
+                    "AGENTS_HOST_CONFIG_DIR",
+                    os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.agents"))
                 )
             )
 
@@ -311,7 +312,7 @@ class _MainWindowSettingsMixin:
                - ``"copilot"`` -> ``settings["host_copilot_dir"]``
                - ``"gemini"``  -> ``settings["host_gemini_dir"]``
                - ``"codex"``   -> ``settings["host_codex_dir"]`` or, if unset,
-                 ``$CODEX_HOST_CODEX_DIR`` or ``~/.codex``.
+                 ``$AGENTS_HOST_CONFIG_DIR``, ``$CODEX_HOST_CODEX_DIR`` (deprecated), or ``~/.agents``.
 
         3. Legacy ``Environment.host_codex_dir`` override
 
@@ -365,7 +366,8 @@ class _MainWindowSettingsMixin:
            * ``host_copilot_dir`` when ``agent_cli == "copilot"``
            * ``host_gemini_dir`` when ``agent_cli == "gemini"``
            * ``host_codex_dir`` for all other agents; if unset, falls back to the
-             ``CODEX_HOST_CODEX_DIR`` environment variable, then to ``~/.codex``.
+             ``AGENTS_HOST_CONFIG_DIR`` environment variable, then ``CODEX_HOST_CODEX_DIR`` 
+             (deprecated), then to ``~/.agents``.
         3. Finally, for legacy/backwards compatibility, if ``env`` defines
            ``host_codex_dir`` and ``agent_cli == "codex"``, that value overrides
            whichever directory was selected earlier.

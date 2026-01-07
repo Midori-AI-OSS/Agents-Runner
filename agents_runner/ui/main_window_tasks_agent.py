@@ -276,6 +276,8 @@ class _MainWindowTasksAgentMixin:
             else:
                 task.gh_pr_metadata_path = host_path
                 extra_mounts_for_task.append(f"{host_path}:{container_path}:rw")
+                env_vars_for_task.setdefault("AGENTS_PR_METADATA_PATH", container_path)
+                # Backward compatibility: also set the old variable name
                 env_vars_for_task.setdefault("CODEX_PR_METADATA_PATH", container_path)
                 runner_prompt = (
                     f"{runner_prompt}{pr_metadata_prompt_instructions(container_path)}"

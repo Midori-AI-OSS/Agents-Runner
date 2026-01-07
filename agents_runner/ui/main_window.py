@@ -78,7 +78,8 @@ class MainWindow(
             "preflight_script": "",
             "host_workdir": os.environ.get("CODEX_HOST_WORKDIR", os.getcwd()),
             "host_codex_dir": os.environ.get(
-                "CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")
+                "AGENTS_HOST_CONFIG_DIR", 
+                os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.agents"))
             ),
             "host_claude_dir": os.path.expanduser("~/.claude"),
             "host_copilot_dir": os.path.expanduser("~/.copilot"),
