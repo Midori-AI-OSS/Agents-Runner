@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass
 
 from ..agent_display import format_agent_markdown_link
+from ..prompts.loader import load_prompt
 from .errors import GhManagementError
 from .gh_cli import is_gh_available
 from .git_ops import (
@@ -41,13 +42,15 @@ def _append_pr_attribution_footer(
     else:
         agent_used = "(unknown)"
 
-    footer = (
-        "\n\n---\n"
-        f"{_PR_ATTRIBUTION_MARKER}\n"
-        f"Created by [Midori AI Agents Runner]({_MIDORI_AI_AGENTS_RUNNER_URL}).\n"
-        f"Agent Used: {agent_used}\n"
-        f"Related: [Midori AI Monorepo]({_MIDORI_AI_URL}).\n"
+    footer_content = load_prompt(
+        "pr_attribution_footer",
+        agent_used=agent_used,
+        agents_runner_url=_MIDORI_AI_AGENTS_RUNNER_URL,
+        midori_ai_url=_MIDORI_AI_URL,
+        marker=_PR_ATTRIBUTION_MARKER,
     )
+    
+    footer = f"\n\n{footer_content}\n"
     return (body + footer) if body else footer.lstrip("\n")
 
 
