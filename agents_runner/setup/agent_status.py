@@ -4,7 +4,6 @@ This module provides functions to detect whether agent CLIs are installed
 and whether they are logged in/authenticated.
 """
 
-import json
 import os
 import shutil
 import subprocess
@@ -133,8 +132,8 @@ def check_gemini_login() -> tuple[bool, str]:
 
     Gemini can be authenticated via:
     - GEMINI_API_KEY environment variable
-    - ~/.gemini/settings.json configuration file
-    - Other Google auth environment variables
+    - GOOGLE_GENAI_USE_VERTEXAI environment variable
+    - GOOGLE_GENAI_USE_GCA environment variable
 
     Returns:
         (logged_in: bool, status_message: str)
@@ -146,19 +145,6 @@ def check_gemini_login() -> tuple[bool, str]:
         return (True, "Logged in (VERTEXAI)")
     if os.environ.get("GOOGLE_GENAI_USE_GCA"):
         return (True, "Logged in (GCA)")
-
-    # Check settings.json
-    settings_path = Path.home() / ".gemini" / "settings.json"
-    if settings_path.exists():
-        try:
-            with open(settings_path, "r") as f:
-                settings = json.load(f)
-                # Look for any auth-related keys
-                auth_keys = ["apiKey", "api_key", "vertexai", "gca", "auth"]
-                if any(key in settings for key in auth_keys):
-                    return (True, "Logged in (settings.json)")
-        except (json.JSONDecodeError, OSError):
-            pass
 
     return (False, "Not logged in (no auth method found)")
 
