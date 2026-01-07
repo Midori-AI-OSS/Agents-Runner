@@ -126,7 +126,13 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
-    gh_pr_metadata_enabled = bool(payload.get("gh_pr_metadata_enabled", False))
+    
+    # Migration: Rename gh_pr_metadata_enabled to gh_context_enabled
+    # Check both old and new field names for backward compatibility
+    gh_context_enabled = bool(
+        payload.get("gh_context_enabled", 
+                    payload.get("gh_pr_metadata_enabled", False))
+    )
 
     prompts_data = payload.get("prompts", [])
     prompts = []
@@ -280,7 +286,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         gh_management_locked=gh_management_locked,
         gh_last_base_branch=gh_last_base_branch,
         gh_use_host_cli=gh_use_host_cli,
-        gh_pr_metadata_enabled=gh_pr_metadata_enabled,
+        gh_context_enabled=gh_context_enabled,  # Use migrated field name
         prompts=prompts,
         prompts_unlocked=prompts_unlocked,
         agent_selection=agent_selection,
@@ -347,7 +353,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
             getattr(env, "gh_last_base_branch", "") or ""
         ).strip(),
         "gh_use_host_cli": bool(env.gh_use_host_cli),
-        "gh_pr_metadata_enabled": bool(env.gh_pr_metadata_enabled),
+        "gh_context_enabled": bool(env.gh_context_enabled),  # Save with new name
+        # Also save with old name for backward compatibility with older builds
+        "gh_pr_metadata_enabled": bool(env.gh_context_enabled),
         "prompts": _serialize_prompts(env.prompts or []),
         "prompts_unlocked": bool(env.prompts_unlocked),
         "agent_selection": selection_payload,

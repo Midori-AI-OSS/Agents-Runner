@@ -84,7 +84,7 @@ class Environment:
     gh_management_locked: bool = False
     gh_last_base_branch: str = ""
     gh_use_host_cli: bool = True
-    gh_pr_metadata_enabled: bool = False
+    gh_context_enabled: bool = False  # Renamed from gh_pr_metadata_enabled
     prompts: list[PromptConfig] = field(default_factory=list)
     prompts_unlocked: bool = False
     agent_selection: AgentSelection | None = None
