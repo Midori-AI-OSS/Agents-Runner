@@ -3,6 +3,8 @@ import os
 
 from dataclasses import dataclass
 
+from agents_runner.prompts import load_prompt
+
 
 PR_METADATA_VERSION = 1
 
@@ -79,15 +81,9 @@ def pr_metadata_prompt_instructions(container_path: str) -> str:
     container_path = str(container_path or "").strip()
     if not container_path:
         container_path = "/tmp/codex-pr-metadata.json"
-    return (
-        "\n\n"
-        "PR METADATA (non-interactive only)\n"
-        f"- A JSON file is mounted at: {container_path}\n"
-        "- If you make changes intended for a PR, update that file with valid JSON containing:\n"
-        '  - "title": short PR title (<= 72 chars)\n'
-        '  - "body": PR description (markdown)\n'
-        "- Keep it as strict JSON (no trailing commas).\n"
-        "- REMINDER: Don't forget to commit your code changes with `git commit`!\n"
+    return load_prompt(
+        "pr_metadata",
+        PR_METADATA_FILE=container_path,
     )
 
 
