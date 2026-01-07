@@ -35,7 +35,10 @@ Helper functions for managing prompt files:
 #### Serialization (`agents_runner/environments/serialize.py`)
 
 **Serialization** (`serialize_environment`):
-- If prompt has text but no `prompt_path`, saves text to file and stores path
+- Handles three cases for prompt text lifecycle:
+  1. **Empty text with existing file**: Deletes the file and clears `prompt_path`
+  2. **Non-empty text**: Saves/updates file and stores `prompt_path`
+  3. **Empty text with no file**: No action needed
 - Stores empty `text` field in JSON when `prompt_path` exists (backwards compatibility)
 - Stores `prompt_path` in JSON
 
