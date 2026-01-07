@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
+from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QSizePolicy
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.utils import _apply_environment_combo_tint
@@ -35,6 +37,7 @@ class NewTaskPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
+        self._gh_locked_envs: set[str] = set()
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
@@ -85,7 +88,9 @@ class NewTaskPage(QWidget):
         self._prompt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._prompt.setTabChangesFocus(True)
 
-        interactive_hint = QLabel("Interactive: opens a terminal and runs the container with TTY/stdin for agent TUIs.")
+        interactive_hint = QLabel(
+            "Interactive: opens a terminal and runs the container with TTY/stdin for agent TUIs."
+        )
         interactive_hint.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
         self._terminal = QComboBox()
@@ -126,7 +131,9 @@ class NewTaskPage(QWidget):
 
         self._base_branch_label = QLabel("Base branch")
         self._base_branch = QComboBox()
-        self._base_branch.setToolTip("Base branch for the per-task branch (only shown for repo environments).")
+        self._base_branch.setToolTip(
+            "Base branch for the per-task branch (only shown for repo environments)."
+        )
         self.set_repo_branches([])
         cfg_grid.addWidget(self._base_branch_label, 2, 0)
         cfg_grid.addWidget(self._base_branch, 2, 1, 1, 2)
@@ -143,6 +150,14 @@ class NewTaskPage(QWidget):
         self._run_interactive = StainedGlassButton("Run Interactive")
         self._run_interactive.set_glass_enabled(False)
         self._run_interactive.clicked.connect(self._on_launch)
+
+        self._run_interactive_menu = QMenu(self)
+        self._run_interactive_desktop = self._run_interactive_menu.addAction(
+            "With desktop"
+        )
+        self._run_interactive_desktop.triggered.connect(self._on_launch_with_desktop)
+        self._run_interactive.set_menu(None)
+
         self._run_agent = StainedGlassButton("Run Agent")
         self._run_agent.set_glass_enabled(False)
         self._run_agent.clicked.connect(self._on_run)
@@ -170,9 +185,10 @@ class NewTaskPage(QWidget):
 
     def _update_run_buttons(self) -> None:
         has_terminal = bool(str(self._terminal.currentData() or "").strip())
+        can_launch = bool(self._workspace_ready and has_terminal)
         self._run_agent.setEnabled(self._workspace_ready)
-        self._run_interactive.setEnabled(self._workspace_ready and has_terminal)
-        self._get_agent_help.setEnabled(self._workspace_ready and has_terminal)
+        self._run_interactive.setEnabled(can_launch)
+        self._get_agent_help.setEnabled(can_launch)
 
     def _refresh_terminals(self) -> None:
         current = str(self._terminal.currentData() or "")
@@ -211,7 +227,8 @@ class NewTaskPage(QWidget):
             QMessageBox.warning(
                 self,
                 "Workspace not configured",
-                self._workspace_error or "Pick an environment with a local folder or GitHub repo configured.",
+                self._workspace_error
+                or "Pick an environment with a local folder or GitHub repo configured.",
             )
             return
 
@@ -226,7 +243,8 @@ class NewTaskPage(QWidget):
             QMessageBox.warning(
                 self,
                 "Workspace not configured",
-                self._workspace_error or "Pick an environment with a local folder or GitHub repo configured.",
+                self._workspace_error
+                or "Pick an environment with a local folder or GitHub repo configured.",
             )
             return
 
@@ -248,13 +266,17 @@ class NewTaskPage(QWidget):
             )
             return
 
-        helpme_path = Path(__file__).resolve().parent.parent.parent / "preflights" / "helpme.sh"
+        helpme_path = (
+            Path(__file__).resolve().parent.parent.parent / "preflights" / "helpme.sh"
+        )
         try:
             helpme_script = helpme_path.read_text(encoding="utf-8")
         except Exception:
             helpme_script = ""
         if not helpme_script.strip():
-            QMessageBox.warning(self, "Missing preflight", f"Could not load {helpme_path}")
+            QMessageBox.warning(
+                self, "Missing preflight", f"Could not load {helpme_path}"
+            )
             return
 
         host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
@@ -263,27 +285,9 @@ class NewTaskPage(QWidget):
 
         command = (self._command.text() or "").strip()
 
-        prompt = "\n".join(
-            [
-                "Agents Runner - Help Request",
-                "",
-                "Question:",
-                user_question,
-                "",
-                "You're helping a user who is using Agents Runner and its GUI.",
-                "",
-                "Environment:",
-                "- PixelArch Linux container (passwordless sudo).",
-                "- Install/update packages with `yay -Syu`.",
-                "",
-                "Repositories:",
-                "- Available under `~/.agent-help/repos/` (the preflight clones if needed).",
-                "- Includes `Agents-Runner` plus `codex`, `claude-code`, `copilot-cli`, and `gemini-cli`.",
-                "",
-                "Instructions:",
-                "- Answer the question directly; do not ask what they need help with again.",
-                "- If you need one missing detail (repo/path/version), ask one short clarifying question, then proceed.",
-            ]
+        prompt = load_prompt(
+            "help_request_template",
+            USER_QUESTION=user_question,
         )
         self.requested_launch.emit(
             prompt,
@@ -295,7 +299,15 @@ class NewTaskPage(QWidget):
             helpme_script,
         )
 
-    def _on_launch(self) -> None:
+    def _sync_interactive_options(self) -> None:
+        env_id = str(self._environment.currentData() or "")
+        self._run_interactive.set_menu(
+            self._run_interactive_menu
+            if (env_id and env_id in self._gh_locked_envs)
+            else None
+        )
+
+    def _emit_interactive_launch(self, *, extra_preflight_script: str = "") -> None:
         prompt = sanitize_prompt((self._prompt.toPlainText() or "").strip())
         command = (self._command.text() or "").strip()
 
@@ -303,7 +315,8 @@ class NewTaskPage(QWidget):
             QMessageBox.warning(
                 self,
                 "Workspace not configured",
-                self._workspace_error or "Pick an environment with a local folder or GitHub repo configured.",
+                self._workspace_error
+                or "Pick an environment with a local folder or GitHub repo configured.",
             )
             return
 
@@ -320,10 +333,39 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
-        self.requested_launch.emit(prompt, command, host_codex, env_id, terminal_id, base_branch, "")
+        self.requested_launch.emit(
+            prompt,
+            command,
+            host_codex,
+            env_id,
+            terminal_id,
+            base_branch,
+            extra_preflight_script,
+        )
+
+    def _on_launch(self) -> None:
+        self._emit_interactive_launch(extra_preflight_script="")
+
+    def _on_launch_with_desktop(self) -> None:
+        desktop_path = (
+            Path(__file__).resolve().parent.parent.parent
+            / "preflights"
+            / "headless_desktop_novnc.sh"
+        )
+        try:
+            desktop_script = desktop_path.read_text(encoding="utf-8")
+        except Exception:
+            desktop_script = ""
+        if not desktop_script.strip():
+            QMessageBox.warning(
+                self, "Missing preflight", f"Could not load {desktop_path}"
+            )
+            return
+        self._emit_interactive_launch(extra_preflight_script=desktop_script)
 
     def _on_environment_changed(self, index: int) -> None:
         self._apply_environment_tints()
+        self._sync_interactive_options()
         self.environment_changed.emit(str(self._environment.currentData() or ""))
 
     def _apply_environment_tints(self) -> None:
@@ -348,6 +390,10 @@ class NewTaskPage(QWidget):
         self._env_stains = {str(k): str(v) for k, v in (stains or {}).items()}
         self._apply_environment_tints()
 
+    def set_gh_locked_envs(self, env_ids: set[str]) -> None:
+        self._gh_locked_envs = {str(e) for e in (env_ids or set()) if str(e).strip()}
+        self._sync_interactive_options()
+
     def set_environments(self, envs: list[tuple[str, str]], active_id: str) -> None:
         current = str(self._environment.currentData() or "")
         self._environment.blockSignals(True)
@@ -362,6 +408,7 @@ class NewTaskPage(QWidget):
         finally:
             self._environment.blockSignals(False)
         self._apply_environment_tints()
+        self._sync_interactive_options()
 
     def set_environment_id(self, env_id: str) -> None:
         idx = self._environment.findData(env_id)
@@ -378,7 +425,11 @@ class NewTaskPage(QWidget):
         self._workspace_ready = bool(ready)
         self._workspace_error = str(message or "")
 
-        hint = "" if self._workspace_ready else (self._workspace_error or "Workspace not configured.")
+        hint = (
+            ""
+            if self._workspace_ready
+            else (self._workspace_error or "Workspace not configured.")
+        )
         self._workspace_hint.setText(hint)
         self._workspace_hint.setVisible(bool(hint))
 
@@ -389,7 +440,9 @@ class NewTaskPage(QWidget):
         self._base_branch_label.setVisible(visible)
         self._base_branch.setVisible(visible)
 
-    def set_repo_branches(self, branches: list[str], selected: str | None = None) -> None:
+    def set_repo_branches(
+        self, branches: list[str], selected: str | None = None
+    ) -> None:
         wanted = str(selected or "").strip()
         self._base_branch.blockSignals(True)
         try:
@@ -422,7 +475,7 @@ class NewTaskPage(QWidget):
         """Set tooltip info showing current and next agent."""
         agent = str(agent or "").strip()
         next_agent = str(next_agent or "").strip()
-        
+
         if next_agent and next_agent != agent:
             if str(next_agent).startswith("Fallback:"):
                 tooltip = f"Using: {agent} | {next_agent}"
@@ -432,7 +485,7 @@ class NewTaskPage(QWidget):
             tooltip = f"Using: {agent}"
         else:
             tooltip = ""
-        
+
         self._run_interactive.setToolTip(tooltip)
         self._run_agent.setToolTip(tooltip)
 

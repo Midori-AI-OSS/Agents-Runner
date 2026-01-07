@@ -1,7 +1,6 @@
 TEMPLATE_TASKS = """    QWidget#TaskList {
-        background-color: rgba(18, 20, 28, 95);
-        border: 1px solid rgba(255, 255, 255, 14);
-        border-radius: 0px;
+        background-color: transparent;
+        border: none;
     }
 
     QWidget#TaskRow {
@@ -112,6 +111,39 @@ TEMPLATE_TASKS = """    QWidget#TaskList {
         );
     }
 
+    QTabBar#DashboardTabs::tab {
+        background-color: rgba(18, 20, 28, 135);
+        border: 1px solid rgba(255, 255, 255, 18);
+        border-top-left-radius: 0px;
+        border-top-right-radius: 0px;
+        padding: 8px 12px;
+        margin-right: 6px;
+        font-weight: 650;
+    }
+
+    QTabBar#DashboardTabs::tab:hover {
+        background-color: rgba(255, 255, 255, 10);
+        border: 1px solid rgba(255, 255, 255, 24);
+    }
+
+    QTabBar#DashboardTabs::tab:selected {
+        background-color: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 rgba(16, 185, 129, 20),
+            stop: 1 rgba(18, 20, 28, 75)
+        );
+        border: 1px solid rgba(16, 185, 129, 140);
+    }
+
+    QTabBar#DashboardTabs::tab:selected:hover {
+        background-color: qlineargradient(
+            x1: 0, y1: 0, x2: 1, y2: 1,
+            stop: 0 rgba(16, 185, 129, 26),
+            stop: 1 rgba(18, 20, 28, 80)
+        );
+        border: 1px solid rgba(16, 185, 129, 170);
+    }
+
     QWidget#TaskRow[stain="slate"]:hover,
     QWidget#TaskRow[stain="cyan"]:hover,
     QWidget#TaskRow[stain="emerald"]:hover,
@@ -150,4 +182,3 @@ TEMPLATE_TASKS = """    QWidget#TaskList {
         font-size: 12px;
     }
     """
-

@@ -4,8 +4,6 @@ import os
 import shutil
 import time
 
-from datetime import datetime
-from datetime import timezone
 from uuid import uuid4
 
 from PySide6.QtCore import Qt
@@ -17,7 +15,6 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.environments import Environment
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.gh_management import is_gh_available
@@ -40,18 +37,27 @@ class _MainWindowPreflightMixin:
         environment_preflight_script: str | None,
     ) -> None:
         if shutil.which("docker") is None:
-            QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
+            QMessageBox.critical(
+                self, "Docker not found", "Could not find `docker` in PATH."
+            )
             return
 
         if not os.path.isdir(host_workdir):
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return
 
-        if not (settings_preflight_script or "").strip() and not (environment_preflight_script or "").strip():
-            QMessageBox.information(self, "Nothing to test", "No preflight scripts are enabled.")
+        if (
+            not (settings_preflight_script or "").strip()
+            and not (environment_preflight_script or "").strip()
+        ):
+            QMessageBox.information(
+                self, "Nothing to test", "No preflight scripts are enabled."
+            )
             return
 
-        agent_cli = normalize_agent(str(agent_cli or self._settings_data.get("use") or "codex"))
+        agent_cli = normalize_agent(
+            str(agent_cli or self._settings_data.get("use") or "codex")
+        )
         host_codex = os.path.expanduser(str(host_codex or "").strip())
         if not host_codex:
             host_codex = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
@@ -62,7 +68,9 @@ class _MainWindowPreflightMixin:
         image = PIXELARCH_EMERALD_IMAGE
 
         # Determine git management settings
-        gh_mode = normalize_gh_management_mode(env.gh_management_mode if env else GH_MANAGEMENT_NONE)
+        gh_mode = normalize_gh_management_mode(
+            env.gh_management_mode if env else GH_MANAGEMENT_NONE
+        )
         gh_repo: str = ""
         gh_base_branch: str | None = None
         gh_prefer_gh_cli = bool(getattr(env, "gh_use_host_cli", True)) if env else True
@@ -71,7 +79,9 @@ class _MainWindowPreflightMixin:
         if gh_mode == GH_MANAGEMENT_GITHUB and env:
             gh_repo = str(env.gh_management_target or "").strip()
             # Use the first non-empty agent_cli_arg as base branch, or empty
-            args_list = [a.strip() for a in (env.agent_cli_args or "").split() if a.strip()]
+            args_list = [
+                a.strip() for a in (env.agent_cli_args or "").split() if a.strip()
+            ]
             gh_base_branch = args_list[0] if args_list else None
 
         # Check gh CLI availability if needed
@@ -133,7 +143,6 @@ class _MainWindowPreflightMixin:
         self._show_dashboard()
         self._schedule_save()
 
-
     def _on_settings_test_preflight(self, settings: dict) -> None:
         settings_enabled = bool(settings.get("preflight_enabled") or False)
         settings_script: str | None = None
@@ -143,15 +152,18 @@ class _MainWindowPreflightMixin:
                 settings_script = candidate
 
         host_workdir_base = str(self._settings_data.get("host_workdir") or os.getcwd())
-        
+
         if settings_script is None:
             has_env_preflights = any(
-                e.preflight_enabled and (e.preflight_script or "").strip() for e in self._environment_list()
+                e.preflight_enabled and (e.preflight_script or "").strip()
+                for e in self._environment_list()
             )
             if not has_env_preflights:
                 if not settings_enabled:
                     return
-                QMessageBox.information(self, "Nothing to test", "No preflight scripts are enabled.")
+                QMessageBox.information(
+                    self, "Nothing to test", "No preflight scripts are enabled."
+                )
                 return
 
         skipped: list[str] = []
@@ -166,8 +178,12 @@ class _MainWindowPreflightMixin:
                 continue
 
             # Get effective agent and config for each environment
-            agent_cli, host_codex = self._effective_agent_and_config(env=env, settings=settings)
-            host_workdir = self._environment_effective_workdir(env, fallback=host_workdir_base)
+            agent_cli, host_codex = self._effective_agent_and_config(
+                env=env, settings=settings
+            )
+            host_workdir = self._environment_effective_workdir(
+                env, fallback=host_workdir_base
+            )
             if not os.path.isdir(host_workdir):
                 skipped.append(f"{env.name or env.env_id} ({host_workdir})")
                 continue
@@ -185,24 +201,31 @@ class _MainWindowPreflightMixin:
         if started == 0 and not skipped:
             if not settings_enabled:
                 return
-            QMessageBox.information(self, "Nothing to test", "No preflight scripts are enabled.")
+            QMessageBox.information(
+                self, "Nothing to test", "No preflight scripts are enabled."
+            )
             return
 
         if skipped:
             QMessageBox.warning(
                 self,
                 "Skipped environments",
-                "Skipped environments with missing Workdir:\n" + "\n".join(skipped[:20]),
+                "Skipped environments with missing Workdir:\n"
+                + "\n".join(skipped[:20]),
             )
-
 
     def _on_environment_test_preflight(self, env: object) -> None:
         if not isinstance(env, Environment):
             return
 
         settings_preflight_script: str | None = None
-        if self._settings_data.get("preflight_enabled") and str(self._settings_data.get("preflight_script") or "").strip():
-            settings_preflight_script = str(self._settings_data.get("preflight_script") or "")
+        if (
+            self._settings_data.get("preflight_enabled")
+            and str(self._settings_data.get("preflight_script") or "").strip()
+        ):
+            settings_preflight_script = str(
+                self._settings_data.get("preflight_script") or ""
+            )
 
         environment_preflight_script: str | None = None
         if env.preflight_enabled and (env.preflight_script or "").strip():
@@ -211,7 +234,9 @@ class _MainWindowPreflightMixin:
         host_workdir_base = str(self._settings_data.get("host_workdir") or os.getcwd())
         # Get effective agent and config for this environment
         agent_cli, host_codex = self._effective_agent_and_config(env=env)
-        host_workdir = self._environment_effective_workdir(env, fallback=host_workdir_base)
+        host_workdir = self._environment_effective_workdir(
+            env, fallback=host_workdir_base
+        )
 
         self._start_preflight_task(
             label=f"Preflight test: {env.name or env.env_id}",

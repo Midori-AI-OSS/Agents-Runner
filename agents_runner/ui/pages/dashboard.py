@@ -1,200 +1,36 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
-from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QHideEvent
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QFrame
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QScrollArea
 from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QStackedWidget
 from PySide6.QtWidgets import QStyle
+from PySide6.QtWidgets import QTabBar
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import ALLOWED_STAINS
+from agents_runner.ui.pages.dashboard_animations import PastTaskAnimator
+from agents_runner.ui.pages.dashboard_row import TaskRow
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.task_model import _task_display_status
-from agents_runner.ui.utils import _format_duration
-from agents_runner.ui.utils import _rgba
-from agents_runner.ui.utils import _stain_color
-from agents_runner.ui.utils import _status_color
-from agents_runner.widgets import BouncingLoadingBar
-from agents_runner.widgets import GlassCard
-from agents_runner.widgets import StatusGlyph
-
-
-class ElidedLabel(QLabel):
-    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
-        super().__init__(text, parent)
-        self._full_text = text
-        self.setWordWrap(False)
-        self.setTextInteractionFlags(Qt.TextSelectableByMouse)
-
-    def setFullText(self, text: str) -> None:
-        self._full_text = text
-        self._update_elide()
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._update_elide()
-
-    def _update_elide(self) -> None:
-        metrics = QFontMetrics(self.font())
-        elided = metrics.elidedText(self._full_text, Qt.ElideRight, max(10, self.width() - 4))
-        super().setText(elided)
-
-
-class TaskRow(QWidget):
-    clicked = Signal()
-    discard_requested = Signal(str)
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setFixedHeight(52)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self._task_id: str | None = None
-        self._last_task: Task | None = None
-        self.setObjectName("TaskRow")
-        self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setProperty("selected", False)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(12)
-
-        self._task = ElidedLabel("—")
-        self._task.setStyleSheet("font-weight: 650; color: rgba(237, 239, 245, 235);")
-        self._task.setMinimumWidth(260)
-        self._task.setTextInteractionFlags(Qt.NoTextInteraction)
-        self._task.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-
-        state_wrap = QWidget()
-        state_layout = QHBoxLayout(state_wrap)
-        state_layout.setContentsMargins(0, 0, 0, 0)
-        state_layout.setSpacing(8)
-        self._glyph = StatusGlyph(size=18)
-        self._glyph.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self._busy_bar = BouncingLoadingBar(width=72, height=8)
-        self._busy_bar.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self._busy_bar.hide()
-        self._status = QLabel("idle")
-        self._status.setStyleSheet("color: rgba(237, 239, 245, 190);")
-        self._status.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        state_layout.addWidget(self._glyph, 0, Qt.AlignLeft)
-        state_layout.addWidget(self._busy_bar, 0, Qt.AlignLeft)
-        state_layout.addWidget(self._status, 0, Qt.AlignLeft)
-        state_wrap.setMinimumWidth(180)
-        state_wrap.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-
-        self._info = ElidedLabel("")
-        self._info.setStyleSheet("color: rgba(237, 239, 245, 150);")
-        self._info.setTextInteractionFlags(Qt.NoTextInteraction)
-        self._info.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-
-        self._btn_discard = QToolButton()
-        self._btn_discard.setObjectName("RowTrash")
-        self._btn_discard.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
-        self._btn_discard.setToolButtonStyle(Qt.ToolButtonIconOnly)
-        self._btn_discard.setToolTip("Discard task")
-        self._btn_discard.setCursor(Qt.PointingHandCursor)
-        self._btn_discard.setIconSize(self._btn_discard.iconSize().expandedTo(self._glyph.size()))
-        self._btn_discard.clicked.connect(self._on_discard_clicked)
-
-        layout.addWidget(self._task, 5)
-        layout.addWidget(state_wrap, 0)
-        layout.addWidget(self._info, 4)
-        layout.addWidget(self._btn_discard, 0, Qt.AlignRight)
-
-        self.setCursor(Qt.PointingHandCursor)
-        self.set_stain("slate")
-
-    @property
-    def task_id(self) -> str | None:
-        return self._task_id
-
-    def set_task_id(self, task_id: str) -> None:
-        self._task_id = task_id
-
-    def _on_discard_clicked(self) -> None:
-        if self._task_id:
-            self.discard_requested.emit(self._task_id)
-
-    def set_stain(self, stain: str) -> None:
-        if (self.property("stain") or "") == stain:
-            return
-        self.setProperty("stain", stain)
-        self.style().unpolish(self)
-        self.style().polish(self)
-        self.update()
-
-    def set_selected(self, selected: bool) -> None:
-        selected = bool(selected)
-        if bool(self.property("selected")) == selected:
-            return
-        self.setProperty("selected", selected)
-        self.style().unpolish(self)
-        self.style().polish(self)
-        self.update()
-
-    def mousePressEvent(self, event) -> None:
-        if event.button() == Qt.LeftButton:
-            self.clicked.emit()
-        super().mousePressEvent(event)
-
-    def set_task(self, text: str) -> None:
-        self._task.setFullText(text)
-
-    def set_info(self, text: str) -> None:
-        self._info.setFullText(text)
-
-    def update_from_task(self, task: Task, spinner_color: QColor | None = None) -> None:
-        self._last_task = task
-        self.set_task(task.prompt_one_line())
-        self.set_info(task.info_one_line())
-
-        display = _task_display_status(task)
-        status_key = (task.status or "").lower()
-        if task.is_done():
-            color = _status_color("done")
-        elif task.is_failed() or (task.exit_code is not None and task.exit_code != 0):
-            color = _status_color("failed")
-        else:
-            color = _status_color(status_key)
-        self._status.setText(display)
-        self._status.setStyleSheet(f"color: {_rgba(color, 235)}; font-weight: 700;")
-
-        if task.is_active():
-            self._glyph.hide()
-            self._busy_bar.set_color(spinner_color or color)
-            self._busy_bar.set_mode("dotted" if status_key == "queued" else "bounce")
-            self._busy_bar.show()
-            self._busy_bar.start()
-            return
-        self._busy_bar.stop()
-        self._busy_bar.hide()
-        self._glyph.show()
-        if task.is_done():
-            self._glyph.set_mode("check", color)
-            return
-        if task.is_failed() or (task.exit_code is not None and task.exit_code != 0):
-            self._glyph.set_mode("x", color)
-            return
-        self._glyph.set_mode("idle", color)
-
-    def last_task(self) -> Task | None:
-        return self._last_task
 
 
 class DashboardPage(QWidget):
     task_selected = Signal(str)
     clean_old_requested = Signal()
     task_discard_requested = Signal(str)
+    past_load_more_requested = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -205,14 +41,14 @@ class DashboardPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
 
-        table = GlassCard()
+        table = QWidget()
         table_layout = QVBoxLayout(table)
-        table_layout.setContentsMargins(12, 12, 12, 12)
-        table_layout.setSpacing(10)
+        table_layout.setContentsMargins(0, 12, 0, 12)
+        table_layout.setSpacing(0)
 
         filters = QWidget()
         filters_layout = QHBoxLayout(filters)
-        filters_layout.setContentsMargins(8, 0, 8, 0)
+        filters_layout.setContentsMargins(0, 0, 0, 0)
         filters_layout.setSpacing(10)
 
         self._filter_text = QLineEdit()
@@ -256,7 +92,7 @@ class DashboardPage(QWidget):
 
         columns = QWidget()
         columns_layout = QHBoxLayout(columns)
-        columns_layout.setContentsMargins(8, 0, 8, 0)
+        columns_layout.setContentsMargins(0, 0, 0, 0)
         columns_layout.setSpacing(12)
         c1 = QLabel("Task")
         c1.setStyleSheet("color: rgba(237, 239, 245, 150); font-weight: 650;")
@@ -271,26 +107,102 @@ class DashboardPage(QWidget):
         columns_layout.addWidget(c3, 4)
         columns_layout.addSpacing(self._btn_clean_old.sizeHint().width())
 
-        self._scroll = QScrollArea()
-        self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QScrollArea.NoFrame)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self._scroll.setObjectName("TaskScroll")
+        self._tabs = QTabBar()
+        self._tabs.setObjectName("DashboardTabs")
+        self._tabs.setDocumentMode(True)
+        self._tabs.addTab("Active Tasks")
+        self._tabs.addTab("Past Tasks")
+        self._tabs.currentChanged.connect(self._on_tab_changed)
 
-        self._list = QWidget()
-        self._list.setObjectName("TaskList")
-        self._list_layout = QVBoxLayout(self._list)
-        self._list_layout.setContentsMargins(8, 8, 8, 8)
-        self._list_layout.setSpacing(6)
-        self._list_layout.addStretch(1)
-        self._scroll.setWidget(self._list)
+        tabs_row = QWidget()
+        tabs_row_layout = QHBoxLayout(tabs_row)
+        tabs_row_layout.setContentsMargins(0, 0, 0, 0)
+        tabs_row_layout.setSpacing(0)
+        tabs_row_layout.addWidget(self._tabs, 1)
 
-        table_layout.addWidget(filters)
-        table_layout.addWidget(columns)
-        table_layout.addWidget(self._scroll, 1)
+        pane = QFrame()
+        pane.setObjectName("TaskTabPane")
+        pane.setAttribute(Qt.WA_StyledBackground, True)
+        pane_layout = QVBoxLayout(pane)
+        pane_layout.setContentsMargins(0, 8, 0, 0)
+        pane_layout.setSpacing(10)
+
+        self._stack = QStackedWidget()
+
+        active_page = QWidget()
+        active_layout = QVBoxLayout(active_page)
+        active_layout.setContentsMargins(0, 0, 0, 0)
+        active_layout.setSpacing(0)
+
+        self._scroll_active = QScrollArea()
+        self._scroll_active.setWidgetResizable(True)
+        self._scroll_active.setFrameShape(QScrollArea.NoFrame)
+        self._scroll_active.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll_active.setObjectName("TaskScroll")
+
+        self._list_active = QWidget()
+        self._list_active.setObjectName("TaskList")
+        self._list_layout_active = QVBoxLayout(self._list_active)
+        self._list_layout_active.setContentsMargins(8, 8, 8, 8)
+        self._list_layout_active.setSpacing(6)
+        self._list_layout_active.addStretch(1)
+        self._scroll_active.setWidget(self._list_active)
+        active_layout.addWidget(self._scroll_active, 1)
+
+        past_page = QWidget()
+        past_layout = QVBoxLayout(past_page)
+        past_layout.setContentsMargins(0, 0, 0, 0)
+        past_layout.setSpacing(10)
+
+        self._scroll_past = QScrollArea()
+        self._scroll_past.setWidgetResizable(True)
+        self._scroll_past.setFrameShape(QScrollArea.NoFrame)
+        self._scroll_past.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll_past.setObjectName("TaskScroll")
+
+        self._list_past = QWidget()
+        self._list_past.setObjectName("TaskList")
+        self._list_layout_past = QVBoxLayout(self._list_past)
+        self._list_layout_past.setContentsMargins(8, 8, 8, 8)
+        self._list_layout_past.setSpacing(6)
+        self._list_layout_past.addStretch(1)
+        self._scroll_past.setWidget(self._list_past)
+
+        self._btn_load_more = QPushButton("Load more")
+        self._btn_load_more.setCursor(Qt.PointingHandCursor)
+        self._btn_load_more.clicked.connect(self._request_more_past_tasks)
+
+        past_layout.addWidget(self._scroll_past, 1)
+        past_layout.addWidget(self._btn_load_more, 0, Qt.AlignRight)
+
+        self._stack.addWidget(active_page)
+        self._stack.addWidget(past_page)
+
+        pane_layout.addWidget(filters)
+        pane_layout.addWidget(columns)
+        pane_layout.addWidget(self._stack, 1)
+
+        table_layout.addWidget(tabs_row, 0)
+        table_layout.addWidget(pane, 1)
         layout.addWidget(table, 1)
 
-        self._rows: dict[str, TaskRow] = {}
+        self._rows_active: dict[str, TaskRow] = {}
+        self._rows_past: dict[str, TaskRow] = {}
+
+        # Initialize animator after widgets are created
+        self._past_animator = PastTaskAnimator(
+            self._scroll_past,
+            lambda: self._rows_past
+        )
+
+    def hideEvent(self, event: QHideEvent) -> None:
+        self._past_animator.cancel_entrances()
+        super().hideEvent(event)
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if self._stack.currentIndex() == 1:
+            self._past_animator.on_tab_shown()
 
     def _set_selected_task_id(self, task_id: str | None) -> None:
         task_id = str(task_id or "").strip() or None
@@ -299,18 +211,19 @@ class DashboardPage(QWidget):
         prev = self._selected_task_id
         self._selected_task_id = task_id
 
-        if prev and prev in self._rows:
-            self._rows[prev].set_selected(False)
-        if task_id and task_id in self._rows:
-            self._rows[task_id].set_selected(True)
+        for rows in (self._rows_active, self._rows_past):
+            if prev and prev in rows:
+                rows[prev].set_selected(False)
+            if task_id and task_id in rows:
+                rows[task_id].set_selected(True)
 
-    def _pick_new_row_stain(self) -> str:
+    def _pick_new_row_stain(self, layout: QVBoxLayout) -> str:
         stains = tuple(stain for stain in ALLOWED_STAINS if stain != "slate")
         if not stains:
             stains = ("slate",)
         current: str | None = None
-        for i in range(self._list_layout.count()):
-            item = self._list_layout.itemAt(i)
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
             widget = item.widget() if item is not None else None
             if isinstance(widget, TaskRow):
                 current = str(widget.property("stain") or "")
@@ -319,22 +232,46 @@ class DashboardPage(QWidget):
             return stains[(stains.index(current) + 1) % len(stains)]
         return stains[0]
 
-    def upsert_task(self, task: Task, stain: str | None = None, spinner_color: QColor | None = None) -> None:
-        row = self._rows.get(task.task_id)
+    def upsert_task(
+        self, task: Task, stain: str | None = None, spinner_color: QColor | None = None
+    ) -> None:
+        row = self._rows_active.get(task.task_id)
         if row is None:
             row = TaskRow()
             row.set_task_id(task.task_id)
-            row.set_stain(stain or self._pick_new_row_stain())
+            row.set_stain(stain or self._pick_new_row_stain(self._list_layout_active))
             row.clicked.connect(self._on_row_clicked)
             row.discard_requested.connect(self.task_discard_requested.emit)
-            self._rows[task.task_id] = row
-            self._list_layout.insertWidget(0, row)
+            self._rows_active[task.task_id] = row
+            self._list_layout_active.insertWidget(0, row)
         elif stain:
             row.set_stain(stain)
 
         row.set_selected(self._selected_task_id == task.task_id)
         row.update_from_task(task, spinner_color=spinner_color)
         row.setVisible(self._row_visible_for_task(task))
+
+    def upsert_past_task(self, task: Task, stain: str | None = None) -> None:
+        row = self._rows_past.get(task.task_id)
+        created = False
+        if row is None:
+            row = TaskRow(discard_enabled=False)
+            row.set_task_id(task.task_id)
+            row.set_stain(stain or self._pick_new_row_stain(self._list_layout_past))
+            row.clicked.connect(self._on_row_clicked)
+            self._rows_past[task.task_id] = row
+            self._list_layout_past.insertWidget(
+                max(0, self._list_layout_past.count() - 1), row
+            )
+            created = True
+        elif stain:
+            row.set_stain(stain)
+
+        row.set_selected(self._selected_task_id == task.task_id)
+        row.update_from_task(task)
+        row.setVisible(self._row_visible_for_task(task))
+        if created and self._stack.currentIndex() == 1:
+            self._past_animator.on_past_task_added()
 
     def set_environment_filter_options(self, envs: list[tuple[str, str]]) -> None:
         current = str(self._filter_environment.currentData() or "")
@@ -402,9 +339,12 @@ class DashboardPage(QWidget):
         return self._task_matches_text(task)
 
     def _apply_filters(self) -> None:
-        for row in self._rows.values():
-            task = row.last_task()
-            row.setVisible(True if task is None else self._row_visible_for_task(task))
+        for rows in (self._rows_active, self._rows_past):
+            for row in rows.values():
+                task = row.last_task()
+                row.setVisible(
+                    True if task is None else self._row_visible_for_task(task)
+                )
 
     def _on_row_clicked(self) -> None:
         row = self.sender()
@@ -413,10 +353,36 @@ class DashboardPage(QWidget):
             self.task_selected.emit(row.task_id)
 
     def remove_tasks(self, task_ids: set[str]) -> None:
-        for task_id in task_ids:
-            row = self._rows.pop(task_id, None)
-            if row is not None:
-                row.setParent(None)
-                row.deleteLater()
-            if self._selected_task_id == task_id:
-                self._selected_task_id = None
+        for rows in (self._rows_active, self._rows_past):
+            for task_id in task_ids:
+                row = rows.pop(task_id, None)
+                if row is not None:
+                    row.setParent(None)
+                    row.deleteLater()
+                if self._selected_task_id == task_id:
+                    self._selected_task_id = None
+
+    def set_past_load_more_enabled(
+        self, enabled: bool, label: str | None = None
+    ) -> None:
+        self._btn_load_more.setEnabled(bool(enabled))
+        if label is not None:
+            self._btn_load_more.setText(str(label))
+        elif enabled and self._btn_load_more.text() != "Load more":
+            self._btn_load_more.setText("Load more")
+
+    def _request_more_past_tasks(self) -> None:
+        if not self._btn_load_more.isEnabled():
+            return
+        self._btn_load_more.setEnabled(False)
+        self.past_load_more_requested.emit(len(self._rows_past))
+
+    def _on_tab_changed(self, index: int) -> None:
+        if index >= 0:
+            self._stack.setCurrentIndex(index)
+        if index != 1:
+            self._past_animator.cancel_entrances()
+            return
+        if not self._rows_past and self._btn_load_more.isEnabled():
+            self._request_more_past_tasks()
+        self._past_animator.on_tab_shown()

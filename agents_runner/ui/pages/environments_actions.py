@@ -22,12 +22,16 @@ from agents_runner.gh_management import is_gh_available
 
 
 class _EnvironmentsPageActionsMixin:
-    def _sync_gh_management_controls(self, *_: object, env: Environment | None = None) -> None:
+    def _sync_gh_management_controls(
+        self, *_: object, env: Environment | None = None
+    ) -> None:
         if env is None:
             env = self._environments.get(str(self._current_env_id or ""))
 
         gh_available = bool(is_gh_available())
-        mode = normalize_gh_management_mode(str(self._gh_management_mode.currentData() or GH_MANAGEMENT_NONE))
+        mode = normalize_gh_management_mode(
+            str(self._gh_management_mode.currentData() or GH_MANAGEMENT_NONE)
+        )
         locked = env is not None
         if locked and env is not None:
             desired_mode = normalize_gh_management_mode(env.gh_management_mode)
@@ -72,7 +76,7 @@ class _EnvironmentsPageActionsMixin:
             return
         name = (name or "").strip() or "New environment"
 
-        base = self._environments.get(str(self._env_select.currentData() or ""))
+        base = None
         env_id = f"env-{uuid4().hex[:8]}"
         color = "emerald"
         if base and base.color in ALLOWED_STAINS:
@@ -95,12 +99,18 @@ class _EnvironmentsPageActionsMixin:
         gh_management_target = ""
         gh_pr_metadata_enabled = False
         if selected_label == "Lock to GitHub repo (clone)":
-            repo, ok = QInputDialog.getText(self, "GitHub repo", "Repo (owner/repo or URL)")
+            repo, ok = QInputDialog.getText(
+                self, "GitHub repo", "Repo (owner/repo or URL)"
+            )
             if not ok:
                 return
             repo = (repo or "").strip()
             if not repo:
-                QMessageBox.warning(self, "Missing repo", "Enter a GitHub repo like owner/repo (or a URL).")
+                QMessageBox.warning(
+                    self,
+                    "Missing repo",
+                    "Enter a GitHub repo like owner/repo (or a URL).",
+                )
                 return
             gh_management_mode = GH_MANAGEMENT_GITHUB
             gh_management_target = repo
@@ -116,30 +126,29 @@ class _EnvironmentsPageActionsMixin:
                 == QMessageBox.Yes
             )
         else:
-            folder = QFileDialog.getExistingDirectory(self, "Select workspace folder", os.getcwd())
+            folder = QFileDialog.getExistingDirectory(
+                self, "Select workspace folder", os.getcwd()
+            )
             if not folder:
                 return
             gh_management_target = folder
 
-        gh_use_host_cli = bool(getattr(base, "gh_use_host_cli", True)) if base else True
+        gh_use_host_cli = True
         if not is_gh_available():
             gh_use_host_cli = False
-        try:
-            max_agents_running = int(str(getattr(base, "max_agents_running", -1) if base else -1).strip())
-        except Exception:
-            max_agents_running = -1
         env = Environment(
             env_id=env_id,
             name=name,
             color=color,
             host_workdir="",
-            host_codex_dir=base.host_codex_dir if base else "",
-            agent_cli_args=base.agent_cli_args if base else "",
-            max_agents_running=max_agents_running,
-            preflight_enabled=base.preflight_enabled if base else False,
-            preflight_script=base.preflight_script if base else "",
-            env_vars=dict(base.env_vars) if base else {},
-            extra_mounts=list(base.extra_mounts) if base else [],
+            host_codex_dir="",
+            agent_cli_args="",
+            max_agents_running=-1,
+            headless_desktop_enabled=False,
+            preflight_enabled=False,
+            preflight_script="",
+            env_vars={},
+            extra_mounts=[],
             gh_management_mode=gh_management_mode,
             gh_management_target=gh_management_target,
             gh_management_locked=True,
@@ -178,23 +187,31 @@ class _EnvironmentsPageActionsMixin:
             return True
         name = (self._name.text() or "").strip()
         if not name:
-            QMessageBox.warning(self, "Missing name", "Enter an environment name first.")
+            QMessageBox.warning(
+                self, "Missing name", "Enter an environment name first."
+            )
             return False
 
         existing = self._environments.get(env_id)
-        host_codex_dir = os.path.expanduser((self._host_codex_dir.text() or "").strip())
-        agent_cli_args = (self._agent_cli_args.text() or "").strip()
         max_agents_text = str(self._max_agents_running.text() or "-1").strip()
         try:
             max_agents_running = int(max_agents_text)
         except ValueError:
             max_agents_running = -1
 
-        gh_mode = normalize_gh_management_mode(existing.gh_management_mode if existing else GH_MANAGEMENT_NONE)
+        gh_mode = normalize_gh_management_mode(
+            existing.gh_management_mode if existing else GH_MANAGEMENT_NONE
+        )
         gh_target = str(existing.gh_management_target or "").strip() if existing else ""
         gh_locked = True
-        gh_use_host_cli = bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
-        gh_pr_metadata_enabled = bool(getattr(existing, "gh_pr_metadata_enabled", False)) if existing else False
+        gh_use_host_cli = (
+            bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
+        )
+        gh_pr_metadata_enabled = (
+            bool(getattr(existing, "gh_pr_metadata_enabled", False))
+            if existing
+            else False
+        )
 
         if existing and gh_mode == GH_MANAGEMENT_GITHUB:
             gh_pr_metadata_enabled = bool(self._gh_pr_metadata_enabled.isChecked())
@@ -203,7 +220,9 @@ class _EnvironmentsPageActionsMixin:
 
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
-            QMessageBox.warning(self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12]))
+            QMessageBox.warning(
+                self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
+            )
             return False
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
@@ -215,9 +234,8 @@ class _EnvironmentsPageActionsMixin:
             name=name,
             color=str(self._color.currentData() or "slate"),
             host_workdir="",
-            host_codex_dir=host_codex_dir,
-            agent_cli_args=agent_cli_args,
             max_agents_running=max_agents_running,
+            headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
             preflight_enabled=bool(self._preflight_enabled.isChecked()),
             preflight_script=str(self._preflight_script.toPlainText() or ""),
             env_vars=env_vars,
@@ -244,19 +262,25 @@ class _EnvironmentsPageActionsMixin:
             return None
 
         existing = self._environments.get(env_id)
-        host_codex_dir = os.path.expanduser((self._host_codex_dir.text() or "").strip())
-        agent_cli_args = (self._agent_cli_args.text() or "").strip()
         max_agents_text = str(self._max_agents_running.text() or "-1").strip()
         try:
             max_agents_running = int(max_agents_text)
         except ValueError:
             max_agents_running = -1
 
-        gh_mode = normalize_gh_management_mode(existing.gh_management_mode if existing else GH_MANAGEMENT_NONE)
+        gh_mode = normalize_gh_management_mode(
+            existing.gh_management_mode if existing else GH_MANAGEMENT_NONE
+        )
         gh_target = str(existing.gh_management_target or "").strip() if existing else ""
         gh_locked = True
-        gh_use_host_cli = bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
-        gh_pr_metadata_enabled = bool(getattr(existing, "gh_pr_metadata_enabled", False)) if existing else False
+        gh_use_host_cli = (
+            bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
+        )
+        gh_pr_metadata_enabled = (
+            bool(getattr(existing, "gh_pr_metadata_enabled", False))
+            if existing
+            else False
+        )
 
         if existing and gh_mode == GH_MANAGEMENT_GITHUB:
             gh_pr_metadata_enabled = bool(self._gh_pr_metadata_enabled.isChecked())
@@ -265,7 +289,9 @@ class _EnvironmentsPageActionsMixin:
 
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
-            QMessageBox.warning(self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12]))
+            QMessageBox.warning(
+                self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
+            )
             return None
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
@@ -278,9 +304,8 @@ class _EnvironmentsPageActionsMixin:
             name=name,
             color=str(self._color.currentData() or "slate"),
             host_workdir="",
-            host_codex_dir=host_codex_dir,
-            agent_cli_args=agent_cli_args,
             max_agents_running=max_agents_running,
+            headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
             preflight_enabled=bool(self._preflight_enabled.isChecked()),
             preflight_script=str(self._preflight_script.toPlainText() or ""),
             env_vars=env_vars,

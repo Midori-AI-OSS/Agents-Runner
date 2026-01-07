@@ -1,40 +1,39 @@
+"""Interactive task launching orchestration for MainWindow.
+
+This module handles the high-level orchestration of interactive task launching,
+including validation, agent selection, workspace setup, and delegation to
+specialized modules for command building and Docker launching.
+"""
+
 from __future__ import annotations
 
 import os
 import shlex
 import shutil
-import subprocess
-import tempfile
 import threading
 import time
-from pathlib import Path
-
-from datetime import datetime
-from datetime import timezone
 from uuid import uuid4
 
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
-from agents_runner.agent_cli import normalize_agent
-from agents_runner.agent_cli import verify_cli_clause
-from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
-from agents_runner.docker_platform import docker_platform_args_for_pixelarch
-from agents_runner.docker_platform import has_rosetta
 from agents_runner.environments import Environment
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
-from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
-from agents_runner.ui.shell_templates import build_git_clone_or_update_snippet
+from agents_runner.ui.main_window_tasks_interactive_command import (
+    build_agent_command_parts,
+)
+from agents_runner.ui.main_window_tasks_interactive_docker import (
+    launch_docker_terminal_task,
+)
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _safe_str
 from agents_runner.ui.utils import _stain_color
 
 
@@ -50,7 +49,9 @@ class _MainWindowTasksInteractiveMixin:
         extra_preflight_script: str,
     ) -> None:
         if shutil.which("docker") is None:
-            QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
+            QMessageBox.critical(
+                self, "Docker not found", "Could not find `docker` in PATH."
+            )
             return
 
         prompt = sanitize_prompt((prompt or "").strip())
@@ -68,33 +69,59 @@ class _MainWindowTasksInteractiveMixin:
 
         env_id = str(env_id or "").strip() or self._active_environment_id()
         if env_id not in self._environments:
-            QMessageBox.warning(self, "Unknown environment", "Pick an environment first.")
+            QMessageBox.warning(
+                self, "Unknown environment", "Pick an environment first."
+            )
             return
         env = self._environments.get(env_id)
-        gh_mode = normalize_gh_management_mode(str(env.gh_management_mode or GH_MANAGEMENT_NONE)) if env else GH_MANAGEMENT_NONE
-        host_workdir, ready, message = self._new_task_workspace(env)
+
+        task_id = uuid4().hex[:10]
+        task_token = f"interactive-{task_id}"
+
+        gh_mode = (
+            normalize_gh_management_mode(
+                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
+            )
+            if env
+            else GH_MANAGEMENT_NONE
+        )
+        host_workdir, ready, message = self._new_task_workspace(env, task_id=task_id)
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
             return
 
-        task_id = uuid4().hex[:10]
-        task_token = f"interactive-{task_id}"
         if gh_mode != GH_MANAGEMENT_GITHUB and not os.path.isdir(host_workdir):
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return
 
         desired_base = str(base_branch or "").strip()
 
+        # Save the selected branch for locked environments
+        if (
+            env
+            and env.gh_management_locked
+            and desired_base
+            and gh_mode == GH_MANAGEMENT_GITHUB
+        ):
+            env.gh_last_base_branch = desired_base
+            save_environment(env)
+            # Update in-memory copy to persist across tab changes and reloads
+            self._environments[env.env_id] = env
+
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
-            agent_cli, auto_config_dir, agent_instance_id = self._select_agent_instance_for_env(
-                env=env,
-                settings=self._settings_data,
-                advance_round_robin=True,
+            agent_cli, auto_config_dir, agent_instance_id = (
+                self._select_agent_instance_for_env(
+                    env=env,
+                    settings=self._settings_data,
+                    advance_round_robin=True,
+                )
             )
         else:
-            agent_cli, auto_config_dir = self._effective_agent_and_config(env=env, advance_round_robin=True)
+            agent_cli, auto_config_dir = self._effective_agent_and_config(
+                env=env, advance_round_robin=True
+            )
         if not host_codex:
             host_codex = auto_config_dir
         if not self._ensure_agent_config_dir(agent_cli, host_codex):
@@ -108,6 +135,7 @@ class _MainWindowTasksInteractiveMixin:
                 QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
                 return
 
+        # Build command with agent-specific handling
         raw_command = str(command or "").strip()
         if not raw_command:
             interactive_key = self._interactive_command_key(agent_cli)
@@ -115,10 +143,12 @@ class _MainWindowTasksInteractiveMixin:
             if not raw_command:
                 raw_command = self._default_interactive_command(agent_cli)
         command = raw_command
-        is_help_launch = bool(str(extra_preflight_script or "").strip()) or self._is_agent_help_interactive_launch(
+        extra_preflight_script = str(extra_preflight_script or "")
+        is_help_launch = self._is_agent_help_interactive_launch(
             prompt=prompt, command=command
         )
-        help_repos_dir = "/home/midori-ai/.agent-help/repos"
+        if extra_preflight_script.strip() and "clone_repo" in extra_preflight_script:
+            is_help_launch = True
         if is_help_launch:
             prompt = "\n".join(
                 [
@@ -127,122 +157,29 @@ class _MainWindowTasksInteractiveMixin:
                     str(prompt or "").strip(),
                 ]
             ).strip()
+
         try:
-            if command.startswith("-"):
-                cmd_parts = [agent_cli, *shlex.split(command)]
-            else:
-                cmd_parts = shlex.split(command)
+            cmd_parts = build_agent_command_parts(
+                command=command,
+                agent_cli=agent_cli,
+                agent_cli_args=agent_cli_args,
+                prompt=prompt,
+                is_help_launch=is_help_launch,
+            )
         except ValueError as exc:
             QMessageBox.warning(self, "Invalid container command", str(exc))
             return
-        if not cmd_parts:
-            cmd_parts = ["bash"]
-
-        def _move_positional_to_end(parts: list[str], value: str) -> None:
-            value = str(value or "")
-            if not value:
-                return
-            for idx in range(len(parts) - 1, 0, -1):
-                if parts[idx] != value:
-                    continue
-                prev = parts[idx - 1]
-                if prev != "--" and prev.startswith("-"):
-                    continue
-                parts.pop(idx)
-                break
-            parts.append(value)
-
-        def _move_flag_value_to_end(parts: list[str], flags: set[str]) -> None:
-            for idx in range(len(parts) - 2, -1, -1):
-                if parts[idx] in flags:
-                    flag = parts.pop(idx)
-                    value = parts.pop(idx)
-                    parts.extend([flag, value])
-                    return
-
-        if cmd_parts[0] == "codex":
-            if len(cmd_parts) >= 2 and cmd_parts[1] == "exec":
-                cmd_parts.pop(1)
-            if agent_cli_args:
-                cmd_parts.extend(agent_cli_args)
-            if is_help_launch:
-                found_sandbox = False
-                for idx in range(len(cmd_parts) - 1):
-                    if cmd_parts[idx] != "--sandbox":
-                        continue
-                    cmd_parts[idx + 1] = "danger-full-access"
-                    found_sandbox = True
-                if not found_sandbox:
-                    cmd_parts[1:1] = ["--sandbox", "danger-full-access"]
-            if prompt:
-                _move_positional_to_end(cmd_parts, prompt)
-        elif cmd_parts[0] == "claude":
-            if agent_cli_args:
-                cmd_parts.extend(agent_cli_args)
-            if "--add-dir" not in cmd_parts:
-                cmd_parts[1:1] = ["--add-dir", "/home/midori-ai/workspace"]
-            if is_help_launch:
-                if "--permission-mode" not in cmd_parts:
-                    cmd_parts[1:1] = ["--permission-mode", "bypassPermissions"]
-                if help_repos_dir not in cmd_parts:
-                    cmd_parts[1:1] = ["--add-dir", help_repos_dir]
-            if prompt:
-                _move_positional_to_end(cmd_parts, prompt)
-        elif cmd_parts[0] == "copilot":
-            if agent_cli_args:
-                cmd_parts.extend(agent_cli_args)
-            if "--add-dir" not in cmd_parts:
-                cmd_parts[1:1] = ["--add-dir", "/home/midori-ai/workspace"]
-            if is_help_launch:
-                if "--allow-all-tools" not in cmd_parts:
-                    cmd_parts[1:1] = ["--allow-all-tools"]
-                if "--allow-all-paths" not in cmd_parts:
-                    cmd_parts[1:1] = ["--allow-all-paths"]
-                if help_repos_dir not in cmd_parts:
-                    cmd_parts[1:1] = ["--add-dir", help_repos_dir]
-            if prompt:
-                has_interactive = "-i" in cmd_parts or "--interactive" in cmd_parts
-                has_prompt = "-p" in cmd_parts or "--prompt" in cmd_parts
-                if has_prompt:
-                    _move_flag_value_to_end(cmd_parts, {"-p", "--prompt"})
-                elif not has_interactive:
-                    cmd_parts.extend(["-i", prompt])
-        elif cmd_parts[0] == "gemini":
-            if agent_cli_args:
-                cmd_parts.extend(agent_cli_args)
-            if "--include-directories" not in cmd_parts:
-                cmd_parts[1:1] = ["--include-directories", "/home/midori-ai/workspace"]
-            if is_help_launch:
-                if help_repos_dir not in cmd_parts:
-                    cmd_parts[1:1] = ["--include-directories", help_repos_dir]
-                if "--sandbox" in cmd_parts:
-                    idx = cmd_parts.index("--sandbox")
-                    cmd_parts.pop(idx)
-                    if idx < len(cmd_parts) and not cmd_parts[idx].startswith("-"):
-                        cmd_parts.pop(idx)
-                if "-s" in cmd_parts:
-                    cmd_parts.remove("-s")
-                if "--no-sandbox" not in cmd_parts:
-                    cmd_parts[1:1] = ["--no-sandbox"]
-            if "--sandbox" not in cmd_parts and "--no-sandbox" not in cmd_parts and "-s" not in cmd_parts:
-                cmd_parts[1:1] = ["--no-sandbox"]
-            if "--approval-mode" not in cmd_parts:
-                cmd_parts[1:1] = ["--approval-mode", "yolo"]
-            if prompt:
-                has_interactive_prompt = "-i" in cmd_parts or "--prompt-interactive" in cmd_parts
-                has_prompt = "-p" in cmd_parts or "--prompt" in cmd_parts
-                if has_interactive_prompt:
-                    _move_flag_value_to_end(cmd_parts, {"-i", "--prompt-interactive"})
-                elif has_prompt:
-                    _move_flag_value_to_end(cmd_parts, {"-p", "--prompt"})
-                else:
-                    cmd_parts.extend(["-i", prompt])
 
         image = PIXELARCH_EMERALD_IMAGE
 
         settings_preflight_script: str | None = None
-        if self._settings_data.get("preflight_enabled") and str(self._settings_data.get("preflight_script") or "").strip():
-            settings_preflight_script = str(self._settings_data.get("preflight_script") or "")
+        if (
+            self._settings_data.get("preflight_enabled")
+            and str(self._settings_data.get("preflight_script") or "").strip()
+        ):
+            settings_preflight_script = str(
+                self._settings_data.get("preflight_script") or ""
+            )
 
         environment_preflight_script: str | None = None
         if env and env.preflight_enabled and (env.preflight_script or "").strip():
@@ -264,7 +201,9 @@ class _MainWindowTasksInteractiveMixin:
             status="starting",
             container_id=container_name,
             gh_management_mode=gh_mode,
-            gh_use_host_cli=bool(getattr(env, "gh_use_host_cli", True)) if env else True,
+            gh_use_host_cli=(
+                bool(getattr(env, "gh_use_host_cli", True)) if env else True
+            ),
             agent_cli=agent_cli,
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
@@ -282,15 +221,15 @@ class _MainWindowTasksInteractiveMixin:
         if gh_mode == GH_MANAGEMENT_GITHUB and env:
             gh_repo = str(env.gh_management_target or "").strip()
 
-        # Launch interactive terminal directly - git clone happens in the terminal script
-        self._launch_interactive_terminal_task(
-            task_id=task_id,
-            task_token=task_token,
+        # Launch interactive terminal - delegated to Docker launcher module
+        launch_docker_terminal_task(
+            main_window=self,
             task=task,
             env=env,
             env_id=env_id,
-            terminal_id=str(terminal_id or ""),
-            opt=opt,
+            task_id=task_id,
+            task_token=task_token,
+            terminal_opt=opt,
             cmd_parts=cmd_parts,
             prompt=prompt,
             command=command,
@@ -311,306 +250,12 @@ class _MainWindowTasksInteractiveMixin:
             gh_repo=gh_repo,
             gh_prefer_gh_cli=bool(task.gh_use_host_cli),
         )
-        return
-
-
-    def _launch_interactive_terminal_task(
-        self,
-        *,
-        task_id: str,
-        task_token: str,
-        task: Task,
-        env: Environment | None,
-        env_id: str,
-        terminal_id: str,
-        opt: object,
-        cmd_parts: list[str],
-        prompt: str,
-        command: str,
-        agent_cli: str,
-        host_codex: str,
-        host_workdir: str,
-        config_extra_mounts: list[str],
-        image: str,
-        container_name: str,
-        container_agent_dir: str,
-        container_workdir: str,
-        settings_preflight_script: str | None,
-        environment_preflight_script: str | None,
-        extra_preflight_script: str,
-        stain: str | None,
-        spinner: str | None,
-        desired_base: str = "",
-        gh_repo: str = "",
-        gh_prefer_gh_cli: bool = True,
-    ) -> None:
-        settings_tmp_path = ""
-        env_tmp_path = ""
-        helpme_tmp_path = ""
-        system_tmp_path = ""
-
-        preflight_clause = ""
-        preflight_mounts: list[str] = []
-        system_container_path = f"/tmp/codex-preflight-system-{task_token}.sh"
-        settings_container_path = f"/tmp/codex-preflight-settings-{task_token}.sh"
-        environment_container_path = f"/tmp/codex-preflight-environment-{task_token}.sh"
-        helpme_container_path = f"/tmp/codex-preflight-helpme-{task_token}.sh"
-
-        def _write_preflight_script(script: str, label: str) -> str:
-            fd, tmp_path = tempfile.mkstemp(prefix=f"codex-preflight-{label}-{task_token}-", suffix=".sh")
-            try:
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    if not script.endswith("\n"):
-                        script += "\n"
-                    f.write(script)
-            except Exception:
-                try:
-                    os.close(fd)
-                except Exception:
-                    pass
-                raise
-            return tmp_path
-
-        try:
-            system_preflight_path = Path(__file__).resolve().parent.parent / "preflights" / "pixelarch_yay.sh"
-            system_preflight_script = system_preflight_path.read_text(encoding="utf-8")
-            if not system_preflight_script.strip():
-                raise RuntimeError(f"Missing system preflight: {system_preflight_path}")
-
-            system_tmp_path = _write_preflight_script(system_preflight_script, "system")
-            preflight_mounts.extend(["-v", f"{system_tmp_path}:{system_container_path}:ro"])
-            preflight_clause += (
-                f'PREFLIGHT_SYSTEM={shlex.quote(system_container_path)}; '
-                'echo "[preflight] system: starting"; '
-                '/bin/bash "${PREFLIGHT_SYSTEM}"; '
-                'echo "[preflight] system: done"; '
-            )
-
-            if (settings_preflight_script or "").strip():
-                settings_tmp_path = _write_preflight_script(str(settings_preflight_script or ""), "settings")
-                preflight_mounts.extend(["-v", f"{settings_tmp_path}:{settings_container_path}:ro"])
-                preflight_clause += (
-                    f'PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; '
-                    'echo "[preflight] settings: running"; '
-                    '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    'echo "[preflight] settings: done"; '
-                )
-
-            if (environment_preflight_script or "").strip():
-                env_tmp_path = _write_preflight_script(str(environment_preflight_script or ""), "environment")
-                preflight_mounts.extend(["-v", f"{env_tmp_path}:{environment_container_path}:ro"])
-                preflight_clause += (
-                    f'PREFLIGHT_ENV={shlex.quote(environment_container_path)}; '
-                    'echo "[preflight] environment: running"; '
-                    '/bin/bash "${PREFLIGHT_ENV}"; '
-                    'echo "[preflight] environment: done"; '
-                )
-
-            if str(extra_preflight_script or "").strip():
-                helpme_tmp_path = _write_preflight_script(str(extra_preflight_script or ""), "helpme")
-                preflight_mounts.extend(["-v", f"{helpme_tmp_path}:{helpme_container_path}:ro"])
-                preflight_clause += (
-                    f'PREFLIGHT_HELP={shlex.quote(helpme_container_path)}; '
-                    'echo "[preflight] helpme: running"; '
-                    '/bin/bash "${PREFLIGHT_HELP}"; '
-                    'echo "[preflight] helpme: done"; '
-                )
-        except Exception as exc:
-            for tmp in (system_tmp_path, settings_tmp_path, env_tmp_path, helpme_tmp_path):
-                try:
-                    if tmp and os.path.exists(tmp):
-                        os.unlink(tmp)
-                except Exception:
-                    pass
-            task.status = "failed"
-            task.error = str(exc)
-            task.exit_code = 1
-            task.finished_at = datetime.now(tz=timezone.utc)
-            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            self._details.update_task(task)
-            self._schedule_save()
-            QMessageBox.warning(self, "Failed to prepare preflight scripts", str(exc))
-            return
-
-        try:
-            env_args: list[str] = []
-            for key, value in sorted((env.env_vars or {}).items() if env else []):
-                k = str(key).strip()
-                if not k:
-                    continue
-                env_args.extend(["-e", f"{k}={value}"])
-
-            extra_mount_args: list[str] = []
-            for mount in (env.extra_mounts or []) if env else []:
-                m = str(mount).strip()
-                if not m:
-                    continue
-                extra_mount_args.extend(["-v", m])
-            for mount in config_extra_mounts:
-                m = str(mount).strip()
-                if not m:
-                    continue
-                extra_mount_args.extend(["-v", m])
-
-            target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
-            verify_clause = ""
-            if cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
-                verify_clause = verify_cli_clause(cmd_parts[0])
-
-            container_script = "set -euo pipefail; " f"{preflight_clause}{verify_clause}{target_cmd}"
-
-            forward_gh_token = bool(cmd_parts and cmd_parts[0] == "copilot")
-            docker_env_passthrough: list[str] = []
-            if forward_gh_token:
-                docker_env_passthrough = ["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"]
-
-            docker_platform_args = docker_platform_args_for_pixelarch()
-            docker_args = [
-                "docker",
-                "run",
-                *docker_platform_args,
-                "-it",
-                "--name",
-                container_name,
-                "-v",
-                f"{host_codex}:{container_agent_dir}",
-                "-v",
-                f"{host_workdir}:{container_workdir}",
-                *extra_mount_args,
-                *preflight_mounts,
-                *env_args,
-                *docker_env_passthrough,
-                "-w",
-                container_workdir,
-                image,
-                "/bin/bash",
-                "-lc",
-                container_script,
-            ]
-            docker_cmd = " ".join(shlex.quote(part) for part in docker_args)
-
-            finish_dir = os.path.dirname(self._state_path)
-            os.makedirs(finish_dir, exist_ok=True)
-            finish_path = os.path.join(finish_dir, f"interactive-finish-{task_id}.txt")
-            try:
-                if os.path.exists(finish_path):
-                    os.unlink(finish_path)
-            except Exception:
-                pass
-
-            gh_token_snippet = ""
-            if forward_gh_token:
-                gh_token_snippet = (
-                    'if [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then '
-                    'TOKEN="$(gh auth token -h github.com 2>/dev/null || true)"; '
-                    'TOKEN="$(printf "%s" "$TOKEN" | tr -d "\\r\\n")"; '
-                    'if [ -n "$TOKEN" ]; then export GH_TOKEN="$TOKEN"; export GITHUB_TOKEN="$TOKEN"; fi; '
-                    "fi"
-                )
-
-            rosetta_snippet = ""
-            if has_rosetta() is False:
-                rosetta_snippet = (
-                    f'echo "[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"'
-                )
-
-            # Build git clone snippet if gh_repo is specified
-            gh_clone_snippet = ""
-            if gh_repo:
-                quoted_dest = shlex.quote(host_workdir)
-                gh_clone_snippet = build_git_clone_or_update_snippet(
-                    gh_repo=gh_repo,
-                    host_workdir=host_workdir,
-                    quoted_dest=quoted_dest,
-                    prefer_gh_cli=gh_prefer_gh_cli,
-                    task_id=task_id,
-                    desired_base=desired_base,
-                    is_locked_env=False,
-                )
-                # Update task with branch info
-                branch_name = f"agents-runner-{task_id}"
-                task.gh_repo_root = host_workdir
-                task.gh_branch = branch_name
-                task.gh_base_branch = desired_base
-                self._schedule_save()
-
-            docker_pull_parts = ["docker", "pull", *docker_platform_args, image]
-            docker_pull_cmd = " ".join(shlex.quote(part) for part in docker_pull_parts)
-
-            host_script_parts = [
-                f'CONTAINER_NAME={shlex.quote(container_name)}',
-                f'TMP_SYSTEM={shlex.quote(system_tmp_path)}',
-                f'TMP_SETTINGS={shlex.quote(settings_tmp_path)}',
-                f'TMP_ENV={shlex.quote(env_tmp_path)}',
-                f'TMP_HELPME={shlex.quote(helpme_tmp_path)}',
-                f'FINISH_FILE={shlex.quote(finish_path)}',
-                'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
-                'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
-                'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
-                'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
-                'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; '
-                'if [ -n "$TMP_HELPME" ]; then rm -f -- "$TMP_HELPME" >/dev/null 2>&1 || true; fi; }',
-                'finish() { STATUS=$?; if [ ! -e "$FINISH_FILE" ]; then write_finish "$STATUS"; fi; cleanup; }',
-                "trap finish EXIT",
-            ]
-            if gh_token_snippet:
-                host_script_parts.append(gh_token_snippet)
-            if rosetta_snippet:
-                host_script_parts.append(rosetta_snippet)
-            if gh_clone_snippet:
-                host_script_parts.append(gh_clone_snippet)
-            host_script_parts.extend(
-                [
-                    f"{docker_pull_cmd} || {{ STATUS=$?; echo \"[host] docker pull failed (exit $STATUS)\"; write_finish \"$STATUS\"; read -r -p \"Press Enter to close...\"; exit $STATUS; }}",
-                    f"{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then echo \"[host] container command failed (exit $STATUS)\"; fi; write_finish \"$STATUS\"; if [ $STATUS -ne 0 ]; then read -r -p \"Press Enter to close...\"; fi; exit $STATUS",
-                ]
-            )
-            host_script = " ; ".join(host_script_parts)
-
-            if (desired_base or "").strip():
-                self._on_task_log(task_id, f"[gh] base branch: {desired_base}")
-
-            self._settings_data["host_workdir"] = host_workdir
-            self._settings_data[self._host_config_dir_key(agent_cli)] = host_codex
-            self._settings_data["active_environment_id"] = env_id
-            self._settings_data["interactive_terminal_id"] = str(terminal_id or "")
-            interactive_key = self._interactive_command_key(agent_cli)
-            if not self._is_agent_help_interactive_launch(prompt=prompt, command=command):
-                self._settings_data[interactive_key] = self._sanitize_interactive_command_value(interactive_key, command)
-            self._apply_active_environment_to_new_task()
-            self._schedule_save()
-
-            task.status = "running"
-            task.started_at = datetime.now(tz=timezone.utc)
-            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            self._details.update_task(task)
-            self._schedule_save()
-            self._start_interactive_finish_watch(task_id, finish_path)
-            self._on_task_log(task_id, f"[interactive] launched in {_safe_str(getattr(opt, 'label', 'Terminal'))}")
-
-            launch_in_terminal(opt, host_script, cwd=host_workdir)
-            self._show_dashboard()
-            self._new_task.reset_for_new_run()
-        except Exception as exc:
-            for tmp in (system_tmp_path, settings_tmp_path, env_tmp_path, helpme_tmp_path):
-                try:
-                    if tmp and os.path.exists(tmp):
-                        os.unlink(tmp)
-                except Exception:
-                    pass
-            task.status = "failed"
-            task.error = str(exc)
-            task.exit_code = 1
-            task.finished_at = datetime.now(tz=timezone.utc)
-            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            self._details.update_task(task)
-            self._schedule_save()
-            QMessageBox.warning(self, "Failed to launch terminal", str(exc))
-
 
     def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
         task_id = str(task_id or "").strip()
-        finish_path = os.path.abspath(os.path.expanduser(str(finish_path or "").strip()))
+        finish_path = os.path.abspath(
+            os.path.expanduser(str(finish_path or "").strip())
+        )
         if not task_id or not finish_path:
             return
 

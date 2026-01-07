@@ -11,6 +11,7 @@ from PySide6.QtGui import QIcon
 from PySide6.QtGui import QPainter
 from PySide6.QtGui import QPixmap
 from PySide6.QtGui import QPolygon
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
@@ -26,6 +27,8 @@ try:
     from PySide6.QtWebEngineWidgets import QWebEngineView
 except Exception:  # pragma: no cover
     QWebEngineView = None
+
+from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
 
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import normalize_gh_management_mode
@@ -185,7 +188,9 @@ class TaskDetailsPage(QWidget):
         self._btn_unfreeze.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
         self._btn_unfreeze.setIconSize(QSize(16, 16))
         self._btn_unfreeze.setToolTip("Unfreeze (unpause container)")
-        self._btn_unfreeze.clicked.connect(lambda: self._emit_container_action("unfreeze"))
+        self._btn_unfreeze.clicked.connect(
+            lambda: self._emit_container_action("unfreeze")
+        )
 
         self._btn_stop = QToolButton()
         self._btn_stop.setToolButtonStyle(Qt.ToolButtonIconOnly)
@@ -268,13 +273,16 @@ class TaskDetailsPage(QWidget):
         for label in (self._desktop_url, self._desktop_display):
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
-        self._desktop_view: QWidget
-        if QWebEngineView is not None:
-            self._desktop_view = QWebEngineView()
-        else:
-            desktop_label = QLabel("QtWebEngine not available; open the noVNC URL externally.")
-            desktop_label.setWordWrap(True)
-            self._desktop_view = desktop_label
+        self._desktop_layout = desktop_layout
+        self._desktop_web: QWebEngineView | None = None
+
+        desktop_label = QLabel(
+            "Select the Desktop tab to load the noVNC session."
+            if QWebEngineView is not None
+            else "QtWebEngine not available; open the noVNC URL externally."
+        )
+        desktop_label.setWordWrap(True)
+        self._desktop_view: QWidget = desktop_label
 
         desktop_cfg = QGridLayout()
         desktop_cfg.setHorizontalSpacing(10)
@@ -287,9 +295,15 @@ class TaskDetailsPage(QWidget):
         desktop_layout.addWidget(self._desktop_view, 1)
         desktop_layout.addLayout(desktop_cfg)
 
+        # Artifacts tab
+        artifacts_tab = ArtifactsTab()
+        self._artifacts_tab = artifacts_tab
+
         self._task_tab_index = self._tabs.addTab(task_tab, "Task")
         self._desktop_tab_index = self._tabs.addTab(desktop_tab, "Desktop")
+        self._artifacts_tab_index = self._tabs.addTab(artifacts_tab, "Artifacts")
         self._tabs.setTabEnabled(self._desktop_tab_index, False)
+        self._tabs.setTabEnabled(self._artifacts_tab_index, False)
         layout.addWidget(self._tabs, 1)
 
         self._ticker = QTimer(self)
@@ -299,9 +313,22 @@ class TaskDetailsPage(QWidget):
 
         self._last_task: Task | None = None
 
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        if self._tabs.currentIndex() == getattr(self, "_task_tab_index", -1):
+            QTimer.singleShot(0, self._scroll_logs_to_bottom)
+
     def _on_tab_changed(self, index: int) -> None:
         if index == getattr(self, "_task_tab_index", -1):
             QTimer.singleShot(0, self._scroll_logs_to_bottom)
+            return
+
+        if index == getattr(self, "_desktop_tab_index", -1):
+            QTimer.singleShot(0, self._maybe_load_desktop)
+            return
+
+        if index == getattr(self, "_artifacts_tab_index", -1):
+            QTimer.singleShot(0, self._load_artifacts)
 
     def _on_pr_triggered(self) -> None:
         task_id = str(self._current_task_id or "").strip()
@@ -310,7 +337,9 @@ class TaskDetailsPage(QWidget):
 
     def _sync_review_menu(self, task: Task) -> None:
         gh_mode = normalize_gh_management_mode(str(task.gh_management_mode or ""))
-        can_pr = bool(gh_mode == GH_MANAGEMENT_GITHUB and task.gh_repo_root and task.gh_branch)
+        can_pr = bool(
+            gh_mode == GH_MANAGEMENT_GITHUB and task.gh_repo_root and task.gh_branch
+        )
         pr_url = str(task.gh_pr_url or "").strip()
         self._review_pr.setVisible(can_pr)
         self._review_pr.setEnabled(can_pr and not task.is_active())
@@ -353,6 +382,7 @@ class TaskDetailsPage(QWidget):
         self._container.setText(task.container_id or "—")
         self._tabs.setCurrentIndex(self._task_tab_index)
         self._sync_desktop(task)
+        self._sync_artifacts(task)
         self._sync_container_actions(task)
         self._logs.setPlainText("\n".join(task.logs[-5000:]))
         QTimer.singleShot(0, self._scroll_logs_to_bottom)
@@ -380,6 +410,36 @@ class TaskDetailsPage(QWidget):
         self._tick_uptime()
         self._sync_review_menu(task)
 
+    def _ensure_desktop_webview(self) -> QWebEngineView | None:
+        if QWebEngineView is None:
+            return None
+        if self._desktop_web is None:
+            self._desktop_web = QWebEngineView()
+            try:
+                self._desktop_layout.replaceWidget(
+                    self._desktop_view, self._desktop_web
+                )
+                self._desktop_view.setParent(None)
+            except Exception:
+                pass
+            self._desktop_view = self._desktop_web
+        return self._desktop_web
+
+    def _maybe_load_desktop(self) -> None:
+        if not self._last_task or self._tabs.currentIndex() != self._desktop_tab_index:
+            return
+        url = str(self._last_task.novnc_url or "").strip()
+        if not url or url == self._desktop_loaded_url:
+            return
+        web = self._ensure_desktop_webview()
+        if web is None:
+            return
+        self._desktop_loaded_url = url
+        try:
+            web.setUrl(QUrl(url))
+        except Exception:
+            pass
+
     def _sync_desktop(self, task: Task) -> None:
         should_enable = bool(task.is_active() and task.headless_desktop_enabled)
         if not hasattr(self, "_tabs"):
@@ -392,9 +452,9 @@ class TaskDetailsPage(QWidget):
             self._desktop_loaded_url = ""
             self._desktop_url.setText("—")
             self._desktop_display.setText("—")
-            if QWebEngineView is not None:
+            if self._desktop_web is not None:
                 try:
-                    self._desktop_view.setUrl(QUrl("about:blank"))
+                    self._desktop_web.setUrl(QUrl("about:blank"))
                 except Exception:
                     pass
             return
@@ -402,12 +462,16 @@ class TaskDetailsPage(QWidget):
         url = str(task.novnc_url or "").strip()
         self._desktop_url.setText(url or "(starting…)")
         self._desktop_display.setText(str(task.desktop_display or ":1"))
-        if QWebEngineView is not None and url and url != self._desktop_loaded_url:
-            self._desktop_loaded_url = url
-            try:
-                self._desktop_view.setUrl(QUrl(url))
-            except Exception:
-                pass
+        if self._tabs.currentIndex() == self._desktop_tab_index:
+            self._maybe_load_desktop()
+
+    def _sync_artifacts(self, task: Task) -> None:
+        has_artifacts = bool(task.artifacts)
+        self._tabs.setTabEnabled(self._artifacts_tab_index, has_artifacts)
+
+    def _load_artifacts(self) -> None:
+        if self._last_task:
+            self._artifacts_tab.set_task(self._last_task)
 
     def _apply_status(self, task: Task) -> None:
         status = _task_display_status(task)

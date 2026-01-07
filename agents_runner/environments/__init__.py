@@ -7,6 +7,7 @@ from agents_runner.environments.model import GH_MANAGEMENT_NONE
 from agents_runner.environments.model import SYSTEM_ENV_ID
 from agents_runner.environments.model import SYSTEM_ENV_NAME
 from agents_runner.environments.model import Environment
+from agents_runner.environments.model import PromptConfig
 from agents_runner.environments.model import normalize_gh_management_mode
 from agents_runner.environments.parse import parse_env_vars_text
 from agents_runner.environments.parse import parse_mounts_text
@@ -27,6 +28,7 @@ __all__ = [
     "GH_MANAGEMENT_LOCAL",
     "GH_MANAGEMENT_NONE",
     "Environment",
+    "PromptConfig",
     "default_data_dir",
     "delete_environment",
     "environment_path",

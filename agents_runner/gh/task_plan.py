@@ -2,6 +2,8 @@ import re
 
 from dataclasses import dataclass
 
+from ..agent_display import format_agent_markdown_link
+from ..prompts.loader import load_prompt
 from .errors import GhManagementError
 from .gh_cli import is_gh_available
 from .git_ops import (
@@ -21,22 +23,34 @@ _MIDORI_AI_URL = "https://github.com/Midori-AI-OSS/Midori-AI"
 _PR_ATTRIBUTION_MARKER = "<!-- midori-ai-agents-runner-pr-footer -->"
 
 
-def _append_pr_attribution_footer(body: str, agent_cli: str = "", agent_cli_args: str = "") -> str:
+def _append_pr_attribution_footer(
+    body: str, agent_cli: str = "", agent_cli_args: str = ""
+) -> str:
     body = (body or "").rstrip()
     if _PR_ATTRIBUTION_MARKER in body:
         return body + "\n"
 
-    agent_used = " ".join(part for part in (agent_cli.strip(), agent_cli_args.strip()) if part)
-    if not agent_used:
+    agent_cli_name = agent_cli.strip()
+    agent_args = agent_cli_args.strip()
+
+    if agent_cli_name:
+        agent_link = format_agent_markdown_link(agent_cli_name)
+        if agent_args:
+            agent_used = f"{agent_link} {agent_args}"
+        else:
+            agent_used = agent_link
+    else:
         agent_used = "(unknown)"
 
-    footer = (
-        "\n\n---\n"
-        f"{_PR_ATTRIBUTION_MARKER}\n"
-        f"Created by [Midori AI Agents Runner]({_MIDORI_AI_AGENTS_RUNNER_URL}).\n"
-        f"Agent Used: {agent_used}\n"
-        f"Related: [Midori AI Monorepo]({_MIDORI_AI_URL}).\n"
+    footer_content = load_prompt(
+        "pr_attribution_footer",
+        agent_used=agent_used,
+        agents_runner_url=_MIDORI_AI_AGENTS_RUNNER_URL,
+        midori_ai_url=_MIDORI_AI_URL,
+        marker=_PR_ATTRIBUTION_MARKER,
     )
+    
+    footer = f"\n\n{footer_content}\n"
     return (body + footer) if body else footer.lstrip("\n")
 
 
@@ -78,7 +92,15 @@ def _has_origin_branch(repo_root: str, branch: str) -> bool:
     if not branch:
         return False
     proc = _run(
-        ["git", "-C", repo_root, "show-ref", "--verify", "--quiet", f"refs/remotes/origin/{branch}"],
+        [
+            "git",
+            "-C",
+            repo_root,
+            "show-ref",
+            "--verify",
+            "--quiet",
+            f"refs/remotes/origin/{branch}",
+        ],
         timeout_s=8.0,
     )
     return proc.returncode == 0
@@ -92,7 +114,10 @@ def _update_base_branch_from_origin(repo_root: str, base_branch: str) -> None:
     if not _has_origin_branch(repo_root, base_branch):
         return
     _require_ok(
-        _run(["git", "-C", repo_root, "merge", "--ff-only", f"origin/{base_branch}"], timeout_s=120.0),
+        _run(
+            ["git", "-C", repo_root, "merge", "--ff-only", f"origin/{base_branch}"],
+            timeout_s=120.0,
+        ),
         args=["git", "merge", "--ff-only"],
     )
 
@@ -105,14 +130,27 @@ def prepare_branch_for_task(
 ) -> tuple[str, str]:
     repo_root = _expand_dir(repo_root)
 
-    _require_ok(_run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0), args=["git", "fetch"])
+    _require_ok(
+        _run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0),
+        args=["git", "fetch"],
+    )
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
-    checkout_proc = _run(["git", "-C", repo_root, "checkout", "-f", base_branch], timeout_s=20.0)
+    checkout_proc = _run(
+        ["git", "-C", repo_root, "checkout", "-f", base_branch], timeout_s=20.0
+    )
     if checkout_proc.returncode != 0:
         _require_ok(
             _run(
-                ["git", "-C", repo_root, "checkout", "-B", base_branch, f"origin/{base_branch}"],
+                [
+                    "git",
+                    "-C",
+                    repo_root,
+                    "checkout",
+                    "-B",
+                    base_branch,
+                    f"origin/{base_branch}",
+                ],
                 timeout_s=20.0,
             ),
             args=["git", "checkout", "-B", base_branch],
@@ -120,7 +158,9 @@ def prepare_branch_for_task(
     _update_base_branch_from_origin(repo_root, base_branch)
 
     if not git_is_clean(repo_root):
-        raise GhManagementError("repo has uncommitted changes; commit/stash before running")
+        raise GhManagementError(
+            "repo has uncommitted changes; commit/stash before running"
+        )
 
     _require_ok(
         _run(["git", "-C", repo_root, "checkout", "-B", branch], timeout_s=20.0),
@@ -150,7 +190,9 @@ def plan_repo_task(
     branch = _sanitize_branch(f"midoriaiagents/{task_id}")
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
-    return RepoPlan(workdir=workdir, repo_root=repo_root, base_branch=base_branch, branch=branch)
+    return RepoPlan(
+        workdir=workdir, repo_root=repo_root, base_branch=base_branch, branch=branch
+    )
 
 
 def commit_push_and_pr(
@@ -166,20 +208,99 @@ def commit_push_and_pr(
 ) -> str | None:
     repo_root = _expand_dir(repo_root)
     base_branch = str(base_branch or "").strip() or _pick_auto_base_branch(repo_root)
-    body = _append_pr_attribution_footer(body, agent_cli=agent_cli, agent_cli_args=agent_cli_args)
-
-    _require_ok(
-        _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
-        args=["git", "checkout"],
+    body = _append_pr_attribution_footer(
+        body, agent_cli=agent_cli, agent_cli_args=agent_cli_args
     )
 
-    proc = _run(["git", "-C", repo_root, "status", "--porcelain"], timeout_s=15.0)
-    _require_ok(proc, args=["git", "status"])
-    has_worktree_changes = bool((proc.stdout or "").strip())
+    def _porcelain_status() -> str:
+        proc = _run(["git", "-C", repo_root, "status", "--porcelain"], timeout_s=15.0)
+        _require_ok(proc, args=["git", "status"])
+        return str(proc.stdout or "")
+
+    def _ensure_local_branch() -> None:
+        branch_ref = f"refs/heads/{branch}"
+        exists_proc = _run(
+            ["git", "-C", repo_root, "show-ref", "--verify", "--quiet", branch_ref],
+            timeout_s=8.0,
+        )
+        if exists_proc.returncode == 0:
+            return
+        create_proc = _run(
+            ["git", "-C", repo_root, "branch", branch, base_branch], timeout_s=20.0
+        )
+        if create_proc.returncode != 0:
+            create_proc = _run(
+                ["git", "-C", repo_root, "branch", branch, f"origin/{base_branch}"],
+                timeout_s=20.0,
+            )
+        _require_ok(create_proc, args=["git", "branch"])
+
+    def _checkout_branch_for_commit() -> None:
+        current = git_current_branch(repo_root)
+        if current == branch:
+            return
+
+        _ensure_local_branch()
+        if not _porcelain_status().strip():
+            _require_ok(
+                _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
+                args=["git", "checkout"],
+            )
+            return
+
+        # Common case: the repo is dirty on the base branch. If the task branch
+        # has no unique commits yet, reset it to the current HEAD so we can
+        # switch branches without overwriting local changes.
+        if current == base_branch:
+            ahead_proc = _run(
+                ["git", "-C", repo_root, "rev-list", "--count", f"{base_branch}..{branch}"],
+                timeout_s=10.0,
+            )
+            ahead = None
+            if ahead_proc.returncode == 0:
+                try:
+                    ahead = int((ahead_proc.stdout or "").strip() or "0")
+                except ValueError:
+                    ahead = None
+            if ahead == 0:
+                _require_ok(
+                    _run(
+                        ["git", "-C", repo_root, "checkout", "-B", branch, "HEAD"],
+                        timeout_s=20.0,
+                    ),
+                    args=["git", "checkout", "-B"],
+                )
+                return
+
+        merge_proc = _run(
+            ["git", "-C", repo_root, "checkout", "--merge", branch], timeout_s=20.0
+        )
+        if merge_proc.returncode != 0:
+            combined = ((merge_proc.stdout or "") + "\n" + (merge_proc.stderr or "")).strip()
+            raise GhManagementError(
+                "failed to switch to PR branch while preserving local changes; "
+                "commit/stash your work (or switch back to the base branch) and rerun PR creation.\n"
+                f"{combined}".rstrip()
+            )
+        unmerged_proc = _run(["git", "-C", repo_root, "ls-files", "-u"], timeout_s=8.0)
+        _require_ok(unmerged_proc, args=["git", "ls-files", "-u"])
+        if (unmerged_proc.stdout or "").strip():
+            raise GhManagementError(
+                "switching branches resulted in merge conflicts; resolve them and rerun PR creation."
+            )
+
+    _checkout_branch_for_commit()
+
+    has_worktree_changes = bool(_porcelain_status().strip())
 
     if has_worktree_changes:
-        _require_ok(_run(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0), args=["git", "add"])
-        commit_proc = _run(["git", "-C", repo_root, "commit", "-m", title], timeout_s=60.0)
+        _require_ok(
+            _run(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0),
+            args=["git", "add"],
+        )
+        commit_proc = _run(
+            ["git", "-C", repo_root, "commit", "-m", title], timeout_s=60.0
+        )
         if commit_proc.returncode != 0:
             combined = (commit_proc.stdout or "") + "\n" + (commit_proc.stderr or "")
             if "nothing to commit" not in combined.lower():
@@ -187,7 +308,10 @@ def commit_push_and_pr(
 
     ahead_count = None
     for base_ref in (base_branch, f"origin/{base_branch}"):
-        count_proc = _run(["git", "-C", repo_root, "rev-list", "--count", f"{base_ref}..HEAD"], timeout_s=15.0)
+        count_proc = _run(
+            ["git", "-C", repo_root, "rev-list", "--count", f"{base_ref}..HEAD"],
+            timeout_s=15.0,
+        )
         if count_proc.returncode == 0:
             try:
                 ahead_count = int((count_proc.stdout or "").strip() or "0")
@@ -198,7 +322,9 @@ def commit_push_and_pr(
     if not has_worktree_changes and (ahead_count is not None and ahead_count <= 0):
         return None
 
-    push_proc = _run(["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0)
+    push_proc = _run(
+        ["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0
+    )
     _require_ok(push_proc, args=["git", "push"])
 
     if not use_gh or not is_gh_available():

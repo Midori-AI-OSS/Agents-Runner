@@ -41,6 +41,7 @@ def normalize_gh_management_mode(value: str) -> str:
 class PromptConfig:
     enabled: bool = False
     text: str = ""
+    prompt_path: str = ""
 
 
 @dataclass
@@ -54,6 +55,7 @@ class AgentInstance:
     agent_id: str
     agent_cli: str
     config_dir: str = ""
+    cli_flags: str = ""
 
 
 @dataclass
@@ -72,6 +74,7 @@ class Environment:
     host_codex_dir: str = ""
     agent_cli_args: str = ""
     max_agents_running: int = -1
+    headless_desktop_enabled: bool = False
     preflight_enabled: bool = False
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
@@ -79,6 +82,7 @@ class Environment:
     gh_management_mode: str = GH_MANAGEMENT_NONE
     gh_management_target: str = ""
     gh_management_locked: bool = False
+    gh_last_base_branch: str = ""
     gh_use_host_cli: bool = True
     gh_pr_metadata_enabled: bool = False
     prompts: list[PromptConfig] = field(default_factory=list)

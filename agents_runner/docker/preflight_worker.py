@@ -27,6 +27,7 @@ from agents_runner.docker.process import _has_platform_image
 from agents_runner.docker.process import _inspect_state
 from agents_runner.docker.process import _pull_image
 from agents_runner.docker.process import _run_docker
+from agents_runner.docker.utils import _resolve_workspace_mount
 from agents_runner.docker.utils import _write_preflight_script
 
 
@@ -95,14 +96,29 @@ class DockerPreflightWorker:
                     )
             agent_cli = normalize_agent(self._config.agent_cli)
             config_container_dir = container_config_dir(agent_cli)
-            config_extra_mounts = additional_config_mounts(agent_cli, self._config.host_codex_dir)
+            config_extra_mounts = additional_config_mounts(
+                agent_cli, self._config.host_codex_dir
+            )
+            host_mount, container_cwd = _resolve_workspace_mount(
+                self._config.host_workdir, container_mount=self._config.container_workdir
+            )
+            if host_mount != self._config.host_workdir:
+                self._on_log(
+                    f"[host] mounting workspace root: {host_mount} (selected {self._config.host_workdir})"
+                )
+            if container_cwd != self._config.container_workdir:
+                self._on_log(f"[host] container workdir: {container_cwd}")
             container_name = f"codex-preflight-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
-            settings_container_path = self._config.container_settings_preflight_path.replace(
-                "{task_id}", task_token
+            settings_container_path = (
+                self._config.container_settings_preflight_path.replace(
+                    "{task_id}", task_token
+                )
             )
-            environment_container_path = self._config.container_environment_preflight_path.replace(
-                "{task_id}", task_token
+            environment_container_path = (
+                self._config.container_environment_preflight_path.replace(
+                    "{task_id}", task_token
+                )
             )
 
             settings_preflight_tmp_path: str | None = None
@@ -128,7 +144,9 @@ class DockerPreflightWorker:
                 self._on_log(f"[host] docker pull {self._config.image}")
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
-            elif forced_platform and not _has_platform_image(self._config.image, forced_platform):
+            elif forced_platform and not _has_platform_image(
+                self._config.image, forced_platform
+            ):
                 self._on_state({"Status": "pulling"})
                 self._on_log(f"[host] image missing; docker pull {self._config.image}")
                 _pull_image(self._config.image, platform_args=platform_args)
@@ -152,7 +170,7 @@ class DockerPreflightWorker:
                     ]
                 )
                 preflight_clause += (
-                    f'PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; '
+                    f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
                     'echo "[preflight] settings: running"; '
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
                     'echo "[preflight] settings: done"; '
@@ -169,7 +187,7 @@ class DockerPreflightWorker:
                     ]
                 )
                 preflight_clause += (
-                    f'PREFLIGHT_ENV={shlex.quote(environment_container_path)}; '
+                    f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
                     'echo "[preflight] environment: running"; '
                     '/bin/bash "${PREFLIGHT_ENV}"; '
                     'echo "[preflight] environment: done"; '
@@ -184,8 +202,10 @@ class DockerPreflightWorker:
 
             if agent_cli == "copilot":
                 token = resolve_github_token()
-                if token and "GH_TOKEN" not in (self._config.env_vars or {}) and "GITHUB_TOKEN" not in (
-                    self._config.env_vars or {}
+                if (
+                    token
+                    and "GH_TOKEN" not in (self._config.env_vars or {})
+                    and "GITHUB_TOKEN" not in (self._config.env_vars or {})
                 ):
                     docker_env = dict(os.environ)
                     docker_env["GH_TOKEN"] = token
@@ -193,7 +213,7 @@ class DockerPreflightWorker:
                     env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
 
             extra_mount_args: list[str] = []
-            for mount in (self._config.extra_mounts or []):
+            for mount in self._config.extra_mounts or []:
                 m = str(mount).strip()
                 if not m:
                     continue
@@ -214,12 +234,12 @@ class DockerPreflightWorker:
                 "-v",
                 f"{self._config.host_codex_dir}:{config_container_dir}",
                 "-v",
-                f"{self._config.host_workdir}:{self._config.container_workdir}",
+                f"{host_mount}:{self._config.container_workdir}",
                 *extra_mount_args,
                 *preflight_mounts,
                 *env_args,
                 "-w",
-                self._config.container_workdir,
+                container_cwd,
                 self._config.image,
                 "/bin/bash",
                 "-lc",

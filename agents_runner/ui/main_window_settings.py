@@ -6,9 +6,7 @@ import shlex
 
 from PySide6.QtWidgets import QMessageBox
 
-from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import normalize_agent
-from agents_runner.agent_cli import verify_cli_clause
 from agents_runner.ui.utils import _looks_like_agent_help_command
 from agents_runner.environments import Environment
 
@@ -20,7 +18,6 @@ class _MainWindowSettingsMixin:
         self._settings.set_settings(self._settings_data)
         self._apply_active_environment_to_new_task()
 
-
     def _apply_settings(self, settings: dict) -> None:
         merged = dict(self._settings_data)
         merged.update(settings or {})
@@ -31,32 +28,48 @@ class _MainWindowSettingsMixin:
             shell_value = "bash"
         merged["shell"] = shell_value
 
-        host_codex_dir = os.path.expanduser(str(merged.get("host_codex_dir") or "").strip())
+        host_codex_dir = os.path.expanduser(
+            str(merged.get("host_codex_dir") or "").strip()
+        )
         if not host_codex_dir:
             host_codex_dir = os.path.expanduser("~/.codex")
         merged["host_codex_dir"] = host_codex_dir
 
-        host_claude_dir = os.path.expanduser(str(merged.get("host_claude_dir") or "").strip())
+        host_claude_dir = os.path.expanduser(
+            str(merged.get("host_claude_dir") or "").strip()
+        )
         if not host_claude_dir:
             host_claude_dir = os.path.expanduser("~/.claude")
         merged["host_claude_dir"] = host_claude_dir
 
-        host_copilot_dir = os.path.expanduser(str(merged.get("host_copilot_dir") or "").strip())
+        host_copilot_dir = os.path.expanduser(
+            str(merged.get("host_copilot_dir") or "").strip()
+        )
         if not host_copilot_dir:
             host_copilot_dir = os.path.expanduser("~/.copilot")
         merged["host_copilot_dir"] = host_copilot_dir
 
-        host_gemini_dir = os.path.expanduser(str(merged.get("host_gemini_dir") or "").strip())
+        host_gemini_dir = os.path.expanduser(
+            str(merged.get("host_gemini_dir") or "").strip()
+        )
         if not host_gemini_dir:
             host_gemini_dir = os.path.expanduser("~/.gemini")
         merged["host_gemini_dir"] = host_gemini_dir
 
         merged["preflight_enabled"] = bool(merged.get("preflight_enabled") or False)
         merged["preflight_script"] = str(merged.get("preflight_script") or "")
-        merged["interactive_command"] = str(merged.get("interactive_command") or "--sandbox danger-full-access")
-        merged["interactive_command_claude"] = str(merged.get("interactive_command_claude") or "")
-        merged["interactive_command_copilot"] = str(merged.get("interactive_command_copilot") or "")
-        merged["interactive_command_gemini"] = str(merged.get("interactive_command_gemini") or "")
+        merged["interactive_command"] = str(
+            merged.get("interactive_command") or "--sandbox danger-full-access"
+        )
+        merged["interactive_command_claude"] = str(
+            merged.get("interactive_command_claude") or ""
+        )
+        merged["interactive_command_copilot"] = str(
+            merged.get("interactive_command_copilot") or ""
+        )
+        merged["interactive_command_gemini"] = str(
+            merged.get("interactive_command_gemini") or ""
+        )
         for key in (
             "interactive_command",
             "interactive_command_claude",
@@ -64,17 +77,22 @@ class _MainWindowSettingsMixin:
             "interactive_command_gemini",
         ):
             merged[key] = self._sanitize_interactive_command_value(key, merged.get(key))
-        merged["append_pixelarch_context"] = bool(merged.get("append_pixelarch_context") or False)
-        merged["headless_desktop_enabled"] = bool(merged.get("headless_desktop_enabled") or False)
+        merged["append_pixelarch_context"] = bool(
+            merged.get("append_pixelarch_context") or False
+        )
+        merged["headless_desktop_enabled"] = bool(
+            merged.get("headless_desktop_enabled") or False
+        )
 
         try:
-            merged["max_agents_running"] = int(str(merged.get("max_agents_running", -1)).strip())
+            merged["max_agents_running"] = int(
+                str(merged.get("max_agents_running", -1)).strip()
+            )
         except Exception:
             merged["max_agents_running"] = -1
         self._settings_data = merged
         self._apply_settings_to_pages()
         self._schedule_save()
-
 
     def _interactive_command_key(self, agent_cli: str) -> str:
         agent_cli = normalize_agent(agent_cli)
@@ -86,7 +104,6 @@ class _MainWindowSettingsMixin:
             return "interactive_command_gemini"
         return "interactive_command"
 
-
     def _host_config_dir_key(self, agent_cli: str) -> str:
         agent_cli = normalize_agent(agent_cli)
         if agent_cli == "claude":
@@ -97,7 +114,6 @@ class _MainWindowSettingsMixin:
             return "host_gemini_dir"
         return "host_codex_dir"
 
-
     def _default_interactive_command(self, agent_cli: str) -> str:
         agent_cli = normalize_agent(agent_cli)
         if agent_cli == "claude":
@@ -107,7 +123,6 @@ class _MainWindowSettingsMixin:
         if agent_cli == "gemini":
             return "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace"
         return "--sandbox danger-full-access"
-
 
     def _sanitize_interactive_command_value(self, key: str, raw: object) -> str:
         value = str(raw or "").strip()
@@ -136,14 +151,12 @@ class _MainWindowSettingsMixin:
 
         return value
 
-
     @staticmethod
     def _is_agent_help_interactive_launch(prompt: str, command: str) -> bool:
         prompt = str(prompt or "").strip().lower()
         if prompt.startswith("get agent help"):
             return True
         return _looks_like_agent_help_command(command)
-
 
     def _resolve_config_dir_for_agent(
         self,
@@ -165,7 +178,9 @@ class _MainWindowSettingsMixin:
             for inst in env.agent_selection.agents or []:
                 if normalize_agent(getattr(inst, "agent_cli", "")) != agent_cli:
                     continue
-                inst_dir = os.path.expanduser(str(getattr(inst, "config_dir", "") or "").strip())
+                inst_dir = os.path.expanduser(
+                    str(getattr(inst, "config_dir", "") or "").strip()
+                )
                 if inst_dir:
                     return inst_dir
 
@@ -180,7 +195,9 @@ class _MainWindowSettingsMixin:
         else:
             config_dir = str(
                 settings.get("host_codex_dir")
-                or os.environ.get("CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex"))
+                or os.environ.get(
+                    "CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")
+                )
             )
 
         # Legacy: check env.host_codex_dir override (deprecated) — only apply for codex
@@ -188,7 +205,6 @@ class _MainWindowSettingsMixin:
             config_dir = env.host_codex_dir
 
         return os.path.expanduser(str(config_dir or "").strip())
-
 
     def _select_agent_instance_for_env(
         self,
@@ -200,10 +216,16 @@ class _MainWindowSettingsMixin:
         agents = list(getattr(env.agent_selection, "agents", []) or [])
         if not agents:
             agent_cli = normalize_agent(str(settings.get("use") or "codex"))
-            config_dir = self._resolve_config_dir_for_agent(agent_cli=agent_cli, env=env, settings=settings)
+            config_dir = self._resolve_config_dir_for_agent(
+                agent_cli=agent_cli, env=env, settings=settings
+            )
             return agent_cli, config_dir, ""
 
-        mode = str(getattr(env.agent_selection, "selection_mode", "") or "round-robin").strip().lower()
+        mode = (
+            str(getattr(env.agent_selection, "selection_mode", "") or "round-robin")
+            .strip()
+            .lower()
+        )
         env_id = str(getattr(env, "env_id", "") or "")
 
         if not hasattr(self, "_agent_selection_round_robin_cursor"):
@@ -211,11 +233,15 @@ class _MainWindowSettingsMixin:
 
         chosen = agents[0]
         if mode == "round-robin":
-            cursor = int(getattr(self, "_agent_selection_round_robin_cursor", {}).get(env_id, 0))
+            cursor = int(
+                getattr(self, "_agent_selection_round_robin_cursor", {}).get(env_id, 0)
+            )
             idx = cursor % len(agents)
             chosen = agents[idx]
             if advance_round_robin:
-                getattr(self, "_agent_selection_round_robin_cursor", {})[env_id] = idx + 1
+                getattr(self, "_agent_selection_round_robin_cursor", {})[env_id] = (
+                    idx + 1
+                )
         elif mode == "least-used":
             counts: dict[str, int] = {}
             tasks = getattr(self, "_tasks", {}) or {}
@@ -224,7 +250,9 @@ class _MainWindowSettingsMixin:
                     continue
                 if not getattr(task, "is_active", lambda: False)():
                     continue
-                agent_instance_id = str(getattr(task, "agent_instance_id", "") or "").strip()
+                agent_instance_id = str(
+                    getattr(task, "agent_instance_id", "") or ""
+                ).strip()
                 if not agent_instance_id:
                     continue
                 counts[agent_instance_id] = counts.get(agent_instance_id, 0) + 1
@@ -238,9 +266,13 @@ class _MainWindowSettingsMixin:
         agent_cli = normalize_agent(str(getattr(chosen, "agent_cli", "") or "codex"))
         agent_id = str(getattr(chosen, "agent_id", "") or "").strip()
 
-        config_dir = os.path.expanduser(str(getattr(chosen, "config_dir", "") or "").strip())
+        config_dir = os.path.expanduser(
+            str(getattr(chosen, "config_dir", "") or "").strip()
+        )
         if not config_dir:
-            config_dir = self._resolve_config_dir_for_agent(agent_cli=agent_cli, env=env, settings=settings)
+            config_dir = self._resolve_config_dir_for_agent(
+                agent_cli=agent_cli, env=env, settings=settings
+            )
         # Legacy: env.host_codex_dir was historically used as a global config-dir
         # override. Preserve backwards compatibility for Codex only; other agents
         # have their own per-agent settings (e.g. host_copilot_dir).
@@ -248,7 +280,6 @@ class _MainWindowSettingsMixin:
             config_dir = os.path.expanduser(str(env.host_codex_dir or "").strip())
 
         return agent_cli, config_dir, agent_id
-
 
     def _effective_agent_and_config(
         self,
@@ -309,7 +340,9 @@ class _MainWindowSettingsMixin:
             return agent_cli, config_dir
 
         agent_cli = normalize_agent(str(settings.get("use") or "codex"))
-        config_dir = self._resolve_config_dir_for_agent(agent_cli=agent_cli, env=env, settings=settings)
+        config_dir = self._resolve_config_dir_for_agent(
+            agent_cli=agent_cli, env=env, settings=settings
+        )
         return agent_cli, config_dir
 
     def _effective_host_config_dir(
@@ -357,12 +390,15 @@ class _MainWindowSettingsMixin:
             settings=settings,
         )
 
-
     def _ensure_agent_config_dir(self, agent_cli: str, host_config_dir: str) -> bool:
         agent_cli = normalize_agent(agent_cli)
         host_config_dir = os.path.expanduser(str(host_config_dir or "").strip())
         if agent_cli in {"claude", "copilot", "gemini"} and not host_config_dir:
-            agent_label = "Claude" if agent_cli == "claude" else ("Copilot" if agent_cli == "copilot" else "Gemini")
+            agent_label = (
+                "Claude"
+                if agent_cli == "claude"
+                else ("Copilot" if agent_cli == "copilot" else "Gemini")
+            )
             QMessageBox.warning(
                 self,
                 "Missing config folder",
@@ -372,7 +408,9 @@ class _MainWindowSettingsMixin:
         if not host_config_dir:
             return False
         if os.path.exists(host_config_dir) and not os.path.isdir(host_config_dir):
-            QMessageBox.warning(self, "Invalid config folder", "Config folder path is not a directory.")
+            QMessageBox.warning(
+                self, "Invalid config folder", "Config folder path is not a directory."
+            )
             return False
         try:
             os.makedirs(host_config_dir, exist_ok=True)
@@ -385,7 +423,11 @@ class _MainWindowSettingsMixin:
         """Return (current, next) labels for Run button tooltips."""
         agent_cli, _ = self._effective_agent_and_config(env=env)
 
-        if not env or not env.agent_selection or not getattr(env.agent_selection, "agents", None):
+        if (
+            not env
+            or not env.agent_selection
+            or not getattr(env.agent_selection, "agents", None)
+        ):
             return agent_cli, ""
 
         agents = list(env.agent_selection.agents or [])
@@ -395,18 +437,36 @@ class _MainWindowSettingsMixin:
                 return agent_cli, ""
             return self._format_agent_label(inst), ""
 
-        mode = str(getattr(env.agent_selection, "selection_mode", "") or "round-robin").strip().lower()
+        mode = (
+            str(getattr(env.agent_selection, "selection_mode", "") or "round-robin")
+            .strip()
+            .lower()
+        )
         env_id = str(getattr(env, "env_id", "") or "")
-        cursor_map = getattr(self, "_agent_selection_round_robin_cursor", {}) if hasattr(self, "_agent_selection_round_robin_cursor") else {}
+        cursor_map = (
+            getattr(self, "_agent_selection_round_robin_cursor", {})
+            if hasattr(self, "_agent_selection_round_robin_cursor")
+            else {}
+        )
         cursor = int(cursor_map.get(env_id, 0))
         current_idx = 0 if mode != "round-robin" else (cursor % len(agents))
         current = agents[current_idx]
 
         if mode == "fallback":
             fallbacks = dict(getattr(env.agent_selection, "agent_fallbacks", {}) or {})
-            wanted_id = str(fallbacks.get(str(getattr(current, "agent_id", "") or "").strip(), "") or "").strip()
-            next_inst = next((a for a in agents if str(getattr(a, "agent_id", "") or "").strip() == wanted_id), None)
-            next_label = (self._format_agent_label(next_inst) if next_inst else "")
+            wanted_id = str(
+                fallbacks.get(str(getattr(current, "agent_id", "") or "").strip(), "")
+                or ""
+            ).strip()
+            next_inst = next(
+                (
+                    a
+                    for a in agents
+                    if str(getattr(a, "agent_id", "") or "").strip() == wanted_id
+                ),
+                None,
+            )
+            next_label = self._format_agent_label(next_inst) if next_inst else ""
             if next_label:
                 next_label = f"Fallback: {next_label}"
             return self._format_agent_label(current), next_label
@@ -424,16 +484,22 @@ class _MainWindowSettingsMixin:
                     counts[inst_id] = counts.get(inst_id, 0) + 1
             ordered = sorted(
                 agents,
-                key=lambda a: (counts.get(str(getattr(a, "agent_id", "") or "").strip(), 0), agents.index(a)),
+                key=lambda a: (
+                    counts.get(str(getattr(a, "agent_id", "") or "").strip(), 0),
+                    agents.index(a),
+                ),
             )
             now = ordered[0] if ordered else current
             nxt = ordered[1] if len(ordered) > 1 else None
-            return self._format_agent_label(now), (self._format_agent_label(nxt) if nxt else "")
+            return self._format_agent_label(now), (
+                self._format_agent_label(nxt) if nxt else ""
+            )
 
         # round-robin (default)
         next_idx = (current_idx + 1) % len(agents)
-        return self._format_agent_label(current), self._format_agent_label(agents[next_idx])
-
+        return self._format_agent_label(current), self._format_agent_label(
+            agents[next_idx]
+        )
 
     @staticmethod
     def _format_agent_label(inst: object | None) -> str:

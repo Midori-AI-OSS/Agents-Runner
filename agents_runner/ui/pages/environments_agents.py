@@ -21,6 +21,13 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import SUPPORTED_AGENTS
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
+from agents_runner.ui.constants import (
+    TAB_CONTENT_MARGINS,
+    TAB_CONTENT_SPACING,
+    BUTTON_ROW_SPACING,
+    TABLE_ROW_HEIGHT,
+    AGENT_COMBO_WIDTH,
+)
 
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -33,10 +40,9 @@ class AgentsTabWidget(QWidget):
     _COL_AGENT = 1
     _COL_ID = 2
     _COL_CONFIG = 3
-    _COL_FALLBACK = 4
-    _COL_REMOVE = 5
-    _ROW_HEIGHT_PX = 56
-    _AGENT_COL_WIDTH_PX = 170
+    _COL_CLI_FLAGS = 4
+    _COL_FALLBACK = 5
+    _COL_REMOVE = 6
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -45,8 +51,8 @@ class AgentsTabWidget(QWidget):
         self._fallbacks: dict[str, str] = {}
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 16, 0, 12)
-        layout.setSpacing(10)
+        layout.setContentsMargins(*TAB_CONTENT_MARGINS)
+        layout.setSpacing(TAB_CONTENT_SPACING)
 
         header_label = QLabel(
             "Override the Settings agent configuration for this environment.\n"
@@ -56,7 +62,7 @@ class AgentsTabWidget(QWidget):
         layout.addWidget(header_label)
 
         add_row = QHBoxLayout()
-        add_row.setSpacing(10)
+        add_row.setSpacing(BUTTON_ROW_SPACING)
         add_row.addWidget(QLabel("Add agent"))
         self._add_agent_cli = QComboBox()
         for agent in SUPPORTED_AGENTS:
@@ -72,33 +78,54 @@ class AgentsTabWidget(QWidget):
         layout.addLayout(add_row)
 
         self._agent_table = QTableWidget()
-        self._agent_table.setColumnCount(6)
-        self._agent_table.setHorizontalHeaderLabels(["Priority", "Agent", "ID", "Config folder", "Fallback", ""])
-        self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_PRIORITY, QHeaderView.ResizeToContents)
-        self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_AGENT, QHeaderView.Interactive)
-        self._agent_table.setColumnWidth(self._COL_AGENT, self._AGENT_COL_WIDTH_PX)
-        self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_ID, QHeaderView.ResizeToContents)
-        self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_CONFIG, QHeaderView.Stretch)
-        self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_FALLBACK, QHeaderView.ResizeToContents)
-        self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeToContents)
+        self._agent_table.setColumnCount(7)
+        self._agent_table.setHorizontalHeaderLabels(
+            ["Priority", "Agent", "ID", "Config folder", "CLI Flags", "Fallback", ""]
+        )
+        self._agent_table.horizontalHeader().setSectionResizeMode(
+            self._COL_PRIORITY, QHeaderView.ResizeToContents
+        )
+        self._agent_table.horizontalHeader().setSectionResizeMode(
+            self._COL_AGENT, QHeaderView.Interactive
+        )
+        self._agent_table.setColumnWidth(self._COL_AGENT, AGENT_COMBO_WIDTH)
+        self._agent_table.horizontalHeader().setSectionResizeMode(
+            self._COL_ID, QHeaderView.ResizeToContents
+        )
+        self._agent_table.horizontalHeader().setSectionResizeMode(
+            self._COL_CONFIG, QHeaderView.Stretch
+        )
+        self._agent_table.horizontalHeader().setSectionResizeMode(
+            self._COL_CLI_FLAGS, QHeaderView.Stretch
+        )
+        self._agent_table.horizontalHeader().setSectionResizeMode(
+            self._COL_FALLBACK, QHeaderView.ResizeToContents
+        )
+        self._agent_table.horizontalHeader().setSectionResizeMode(
+            self._COL_REMOVE, QHeaderView.ResizeToContents
+        )
         self._agent_table.verticalHeader().setVisible(False)
-        self._agent_table.verticalHeader().setMinimumSectionSize(self._ROW_HEIGHT_PX)
-        self._agent_table.verticalHeader().setDefaultSectionSize(self._ROW_HEIGHT_PX)
+        self._agent_table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
+        self._agent_table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
         self._agent_table.setSelectionMode(QTableWidget.NoSelection)
         self._agent_table.setFocusPolicy(Qt.NoFocus)
         layout.addWidget(self._agent_table)
 
-        self._selection_mode_label = QLabel("Selection mode (when multiple entries exist):")
+        self._selection_mode_label = QLabel(
+            "Selection mode (when multiple entries exist):"
+        )
         layout.addWidget(self._selection_mode_label)
 
         mode_row = QHBoxLayout()
-        mode_row.setSpacing(10)
+        mode_row.setSpacing(BUTTON_ROW_SPACING)
         self._selection_mode = QComboBox()
         self._selection_mode.addItem("Round-robin", "round-robin")
         self._selection_mode.addItem("Least used (active tasks)", "least-used")
         self._selection_mode.addItem("Fallback (show mapping)", "fallback")
         self._selection_mode.setMaximumWidth(340)
-        self._selection_mode.currentIndexChanged.connect(self._on_selection_mode_changed)
+        self._selection_mode.currentIndexChanged.connect(
+            self._on_selection_mode_changed
+        )
         mode_row.addWidget(self._selection_mode)
         mode_row.addStretch(1)
         layout.addLayout(mode_row)
@@ -127,7 +154,11 @@ class AgentsTabWidget(QWidget):
     def _on_add_agent(self) -> None:
         agent_cli = normalize_agent(str(self._add_agent_cli.currentData() or "codex"))
         agent_id = self._generate_agent_id(agent_cli)
-        self._rows.append(AgentInstance(agent_id=agent_id, agent_cli=agent_cli, config_dir=""))
+        self._rows.append(
+            AgentInstance(
+                agent_id=agent_id, agent_cli=agent_cli, config_dir="", cli_flags=""
+            )
+        )
         self._render_table()
         self._update_fallback_options()
         self.agents_changed.emit()
@@ -137,7 +168,9 @@ class AgentsTabWidget(QWidget):
         self.agents_changed.emit()
 
     def _refresh_fallback_visibility(self) -> None:
-        is_fallback_mode = str(self._selection_mode.currentData() or "round-robin") == "fallback"
+        is_fallback_mode = (
+            str(self._selection_mode.currentData() or "round-robin") == "fallback"
+        )
         self._agent_table.setColumnHidden(self._COL_FALLBACK, not is_fallback_mode)
 
     def _refresh_priority_visibility(self) -> None:
@@ -148,13 +181,28 @@ class AgentsTabWidget(QWidget):
         self._agent_table.setMinimumHeight(1)
 
         for row_index, inst in enumerate(self._rows):
-            self._agent_table.setRowHeight(row_index, self._ROW_HEIGHT_PX)
-            self._agent_table.setCellWidget(row_index, self._COL_PRIORITY, self._priority_widget(row_index))
-            self._agent_table.setCellWidget(row_index, self._COL_AGENT, self._agent_cli_widget(row_index, inst))
-            self._agent_table.setCellWidget(row_index, self._COL_ID, self._agent_id_widget(row_index, inst))
-            self._agent_table.setCellWidget(row_index, self._COL_CONFIG, self._config_dir_widget(row_index, inst))
-            self._agent_table.setCellWidget(row_index, self._COL_FALLBACK, self._fallback_widget(row_index, inst))
-            self._agent_table.setCellWidget(row_index, self._COL_REMOVE, self._remove_widget(row_index))
+            self._agent_table.setRowHeight(row_index, TABLE_ROW_HEIGHT)
+            self._agent_table.setCellWidget(
+                row_index, self._COL_PRIORITY, self._priority_widget(row_index)
+            )
+            self._agent_table.setCellWidget(
+                row_index, self._COL_AGENT, self._agent_cli_widget(row_index, inst)
+            )
+            self._agent_table.setCellWidget(
+                row_index, self._COL_ID, self._agent_id_widget(row_index, inst)
+            )
+            self._agent_table.setCellWidget(
+                row_index, self._COL_CONFIG, self._config_dir_widget(row_index, inst)
+            )
+            self._agent_table.setCellWidget(
+                row_index, self._COL_CLI_FLAGS, self._cli_flags_widget(row_index, inst)
+            )
+            self._agent_table.setCellWidget(
+                row_index, self._COL_FALLBACK, self._fallback_widget(row_index, inst)
+            )
+            self._agent_table.setCellWidget(
+                row_index, self._COL_REMOVE, self._remove_widget(row_index)
+            )
 
         self._update_fallback_options()
         self._refresh_priority_visibility()
@@ -190,9 +238,17 @@ class AgentsTabWidget(QWidget):
 
     def _move_row(self, row_index: int, delta: int) -> None:
         new_index = row_index + int(delta)
-        if row_index < 0 or new_index < 0 or row_index >= len(self._rows) or new_index >= len(self._rows):
+        if (
+            row_index < 0
+            or new_index < 0
+            or row_index >= len(self._rows)
+            or new_index >= len(self._rows)
+        ):
             return
-        self._rows[row_index], self._rows[new_index] = self._rows[new_index], self._rows[row_index]
+        self._rows[row_index], self._rows[new_index] = (
+            self._rows[new_index],
+            self._rows[row_index],
+        )
         self._render_table()
         self.agents_changed.emit()
 
@@ -204,7 +260,11 @@ class AgentsTabWidget(QWidget):
         idx = combo.findData(current)
         if idx >= 0:
             combo.setCurrentIndex(idx)
-        combo.currentIndexChanged.connect(lambda _i: self._set_row_agent_cli(row_index, str(combo.currentData() or "")))
+        combo.currentIndexChanged.connect(
+            lambda _i: self._set_row_agent_cli(
+                row_index, str(combo.currentData() or "")
+            )
+        )
         return combo
 
     def _set_row_agent_cli(self, row_index: int, agent_cli: str) -> None:
@@ -212,7 +272,12 @@ class AgentsTabWidget(QWidget):
             return
         agent_cli = normalize_agent(agent_cli)
         inst = self._rows[row_index]
-        self._rows[row_index] = AgentInstance(agent_id=inst.agent_id, agent_cli=agent_cli, config_dir=inst.config_dir)
+        self._rows[row_index] = AgentInstance(
+            agent_id=inst.agent_id,
+            agent_cli=agent_cli,
+            config_dir=inst.config_dir,
+            cli_flags=inst.cli_flags,
+        )
         self._update_fallback_options()
         self.agents_changed.emit()
 
@@ -233,11 +298,19 @@ class AgentsTabWidget(QWidget):
             line.setText(old_id)
             return
         if not _ID_RE.match(new_id):
-            QMessageBox.warning(self, "Invalid ID", "Agent ID must match: [a-z0-9][a-z0-9_-]{0,63}")
+            QMessageBox.warning(
+                self, "Invalid ID", "Agent ID must match: [a-z0-9][a-z0-9_-]{0,63}"
+            )
             line.setText(old_id)
             return
-        if any(a.agent_id == new_id for i, a in enumerate(self._rows) if i != row_index):
-            QMessageBox.warning(self, "Duplicate ID", f"Agent ID '{new_id}' is already used in this environment.")
+        if any(
+            a.agent_id == new_id for i, a in enumerate(self._rows) if i != row_index
+        ):
+            QMessageBox.warning(
+                self,
+                "Duplicate ID",
+                f"Agent ID '{new_id}' is already used in this environment.",
+            )
             line.setText(old_id)
             return
         if new_id == old_id:
@@ -250,7 +323,12 @@ class AgentsTabWidget(QWidget):
             if kk and vv and kk != vv:
                 updated_fallbacks[kk] = vv
         self._fallbacks = updated_fallbacks
-        self._rows[row_index] = AgentInstance(agent_id=new_id, agent_cli=current.agent_cli, config_dir=current.config_dir)
+        self._rows[row_index] = AgentInstance(
+            agent_id=new_id,
+            agent_cli=current.agent_cli,
+            config_dir=current.config_dir,
+            cli_flags=current.cli_flags,
+        )
         self._render_table()
         self.agents_changed.emit()
 
@@ -263,7 +341,9 @@ class AgentsTabWidget(QWidget):
         line = QLineEdit()
         line.setText(inst.config_dir)
         line.setPlaceholderText("Inherit Settings (leave blank)")
-        line.editingFinished.connect(lambda: self._commit_row_config_dir(row_index, line))
+        line.editingFinished.connect(
+            lambda: self._commit_row_config_dir(row_index, line)
+        )
 
         browse = QToolButton()
         browse.setText("Browse…")
@@ -279,7 +359,12 @@ class AgentsTabWidget(QWidget):
             return
         inst = self._rows[row_index]
         value = os.path.expanduser(str(line.text() or "").strip())
-        self._rows[row_index] = AgentInstance(agent_id=inst.agent_id, agent_cli=inst.agent_cli, config_dir=value)
+        self._rows[row_index] = AgentInstance(
+            agent_id=inst.agent_id,
+            agent_cli=inst.agent_cli,
+            config_dir=value,
+            cli_flags=inst.cli_flags,
+        )
         self.agents_changed.emit()
 
     def _browse_row_config_dir(self, row_index: int, line: QLineEdit) -> None:
@@ -287,15 +372,42 @@ class AgentsTabWidget(QWidget):
             return
         inst = self._rows[row_index]
         current = line.text() or os.path.expanduser(inst.config_dir or "~")
-        path = QFileDialog.getExistingDirectory(self, "Select Agent Config folder", current)
+        path = QFileDialog.getExistingDirectory(
+            self, "Select Agent Config folder", current
+        )
         if path:
             line.setText(path)
             self._commit_row_config_dir(row_index, line)
 
+    def _cli_flags_widget(self, row_index: int, inst: AgentInstance) -> QWidget:
+        line = QLineEdit()
+        line.setText(inst.cli_flags)
+        line.setPlaceholderText("--model … (optional)")
+        line.setToolTip("Extra CLI flags appended to this agent command")
+        line.editingFinished.connect(
+            lambda: self._commit_row_cli_flags(row_index, line)
+        )
+        return line
+
+    def _commit_row_cli_flags(self, row_index: int, line: QLineEdit) -> None:
+        if row_index < 0 or row_index >= len(self._rows):
+            return
+        inst = self._rows[row_index]
+        value = str(line.text() or "").strip()
+        self._rows[row_index] = AgentInstance(
+            agent_id=inst.agent_id,
+            agent_cli=inst.agent_cli,
+            config_dir=inst.config_dir,
+            cli_flags=value,
+        )
+        self.agents_changed.emit()
+
     def _fallback_widget(self, row_index: int, inst: AgentInstance) -> QWidget:
         combo = QComboBox()
         combo.addItem("—", "")
-        combo.currentIndexChanged.connect(lambda _i: self._commit_row_fallback(row_index, combo))
+        combo.currentIndexChanged.connect(
+            lambda _i: self._commit_row_fallback(row_index, combo)
+        )
         return combo
 
     def _commit_row_fallback(self, row_index: int, combo: QComboBox) -> None:
@@ -342,7 +454,10 @@ class AgentsTabWidget(QWidget):
             for other in self._rows:
                 if other.agent_id == inst.agent_id:
                     continue
-                combo.addItem(f"{other.agent_id} ({normalize_agent(other.agent_cli)})", other.agent_id)
+                combo.addItem(
+                    f"{other.agent_id} ({normalize_agent(other.agent_cli)})",
+                    other.agent_id,
+                )
             if current_value and current_value in ids:
                 idx = combo.findData(current_value)
                 if idx >= 0:
@@ -362,12 +477,15 @@ class AgentsTabWidget(QWidget):
                         agent_id=str(a.agent_id or "").strip(),
                         agent_cli=normalize_agent(str(a.agent_cli or "")),
                         config_dir=str(getattr(a, "config_dir", "") or "").strip(),
+                        cli_flags=str(getattr(a, "cli_flags", "") or "").strip(),
                     )
                     for a in (agent_selection.agents or [])
                     if str(getattr(a, "agent_id", "") or "").strip()
                 ]
                 self._fallbacks = dict(agent_selection.agent_fallbacks or {})
-                idx = self._selection_mode.findData(str(agent_selection.selection_mode or "round-robin"))
+                idx = self._selection_mode.findData(
+                    str(agent_selection.selection_mode or "round-robin")
+                )
                 self._selection_mode.setCurrentIndex(idx if idx >= 0 else 0)
         finally:
             self._selection_mode.blockSignals(False)
@@ -382,8 +500,16 @@ class AgentsTabWidget(QWidget):
             agent_id = str(inst.agent_id or "").strip()
             agent_cli = normalize_agent(str(inst.agent_cli or "codex"))
             config_dir = os.path.expanduser(str(inst.config_dir or "").strip())
+            cli_flags = str(inst.cli_flags or "").strip()
             if agent_id:
-                agents.append(AgentInstance(agent_id=agent_id, agent_cli=agent_cli, config_dir=config_dir))
+                agents.append(
+                    AgentInstance(
+                        agent_id=agent_id,
+                        agent_cli=agent_cli,
+                        config_dir=config_dir,
+                        cli_flags=cli_flags,
+                    )
+                )
 
         if not agents:
             return None

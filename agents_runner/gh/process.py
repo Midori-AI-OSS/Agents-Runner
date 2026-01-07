@@ -47,7 +47,9 @@ def _require_ok(proc: subprocess.CompletedProcess[str], *, args: list[str]) -> N
     stdout = (proc.stdout or "").strip()
     extra = stderr or stdout
     if extra:
-        raise GhManagementError(f"command failed ({proc.returncode}): {' '.join(args)}\n{extra}")
+        raise GhManagementError(
+            f"command failed ({proc.returncode}): {' '.join(args)}\n{extra}"
+        )
     raise GhManagementError(f"command failed ({proc.returncode}): {' '.join(args)}")
 
 

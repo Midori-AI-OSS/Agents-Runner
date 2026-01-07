@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import threading
 import time
@@ -13,9 +12,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
+from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.log_format import prettify_log_line
+from agents_runner.persistence import deserialize_task
+from agents_runner.persistence import load_task_payload
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.bridges import TaskRunnerBridge
@@ -26,12 +29,25 @@ from agents_runner.ui.utils import _stain_color
 
 class _MainWindowTaskEventsMixin:
     def _open_task_details(self, task_id: str) -> None:
-        task = self._tasks.get(task_id)
-        if not task:
+        task_id = str(task_id or "").strip()
+        if not task_id:
             return
+
+        task = self._tasks.get(task_id)
+        if task is None:
+            payload = load_task_payload(self._state_path, task_id, archived=True)
+            if not isinstance(payload, dict):
+                return
+            task = deserialize_task(Task, payload)
+            if task.logs:
+                task.logs = [
+                    prettify_log_line(line)
+                    for line in task.logs
+                    if isinstance(line, str)
+                ]
+
         self._details.show_task(task)
         self._show_task_details()
-
 
     def _on_task_container_action(self, task_id: str, action: str) -> None:
         task_id = str(task_id or "").strip()
@@ -41,10 +57,14 @@ class _MainWindowTaskEventsMixin:
             return
 
         bridge = self._bridges.get(task_id)
-        container_id = task.container_id or (bridge.container_id if bridge is not None else None)
+        container_id = task.container_id or (
+            bridge.container_id if bridge is not None else None
+        )
         container_id = str(container_id or "").strip()
         if not container_id:
-            QMessageBox.information(self, "No container", "This task does not have a container ID yet.")
+            QMessageBox.information(
+                self, "No container", "This task does not have a container ID yet."
+            )
             return
 
         docker_args: list[str]
@@ -62,7 +82,10 @@ class _MainWindowTaskEventsMixin:
                 f"{task.prompt_one_line()}\n\n"
                 "This can interrupt the agent immediately."
             )
-            if QMessageBox.question(self, "Kill container?", msg) != QMessageBox.StandardButton.Yes:
+            if (
+                QMessageBox.question(self, "Kill container?", msg)
+                != QMessageBox.StandardButton.Yes
+            ):
                 return
             docker_args = ["kill", container_id]
         else:
@@ -83,7 +106,9 @@ class _MainWindowTaskEventsMixin:
             return
 
         if completed.returncode != 0:
-            detail = (completed.stderr or completed.stdout or "").strip() or f"docker exited {completed.returncode}"
+            detail = (
+                completed.stderr or completed.stdout or ""
+            ).strip() or f"docker exited {completed.returncode}"
             self._on_task_log(task_id, f"[docker] ERROR: {detail}")
             QMessageBox.warning(self, "Docker command failed", detail)
 
@@ -94,7 +119,6 @@ class _MainWindowTaskEventsMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
-
 
     def _discard_task_from_ui(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
@@ -108,7 +132,10 @@ class _MainWindowTaskEventsMixin:
             f"{prompt}\n\n"
             "This removes it from the list, archives it for auditing, and will attempt to stop/remove any running container."
         )
-        if QMessageBox.question(self, "Discard task?", message) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(self, "Discard task?", message)
+            != QMessageBox.StandardButton.Yes
+        ):
             return
 
         task.status = "discarded"
@@ -118,7 +145,9 @@ class _MainWindowTaskEventsMixin:
 
         bridge = self._bridges.get(task_id)
         thread = self._threads.get(task_id)
-        container_id = task.container_id or (bridge.container_id if bridge is not None else None)
+        container_id = task.container_id or (
+            bridge.container_id if bridge is not None else None
+        )
         watch = self._interactive_watch.get(task_id)
         if watch is not None:
             _, stop = watch
@@ -154,6 +183,14 @@ class _MainWindowTaskEventsMixin:
                 daemon=True,
             ).start()
 
+        # Clean up task workspace (if using GitHub management)
+        gh_mode = normalize_gh_management_mode(task.gh_management_mode)
+        if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+            threading.Thread(
+                target=self._cleanup_task_workspace_async,
+                args=(task_id, task.environment_id),
+                daemon=True,
+            ).start()
 
     def _force_remove_container(self, container_id: str) -> None:
         container_id = str(container_id or "").strip()
@@ -170,20 +207,29 @@ class _MainWindowTaskEventsMixin:
         except Exception:
             pass
 
+    def _cleanup_task_workspace_async(self, task_id: str, env_id: str) -> None:
+        """Clean up task workspace in background thread."""
+        import os
+
+        data_dir = os.path.dirname(self._state_path)
+        cleanup_task_workspace(
+            env_id=env_id,
+            task_id=task_id,
+            data_dir=data_dir,
+            on_log=None,  # Silent cleanup (no UI updates)
+        )
 
     def _on_bridge_state(self, state: dict) -> None:
         bridge = self.sender()
         if isinstance(bridge, TaskRunnerBridge):
             self._on_task_state(bridge.task_id, state)
 
-
     def _on_bridge_log(self, line: str) -> None:
         bridge = self.sender()
         if isinstance(bridge, TaskRunnerBridge):
             self._on_task_log(bridge.task_id, line)
 
-
-    def _on_bridge_done(self, exit_code: int, error: object) -> None:
+    def _on_bridge_done(self, exit_code: int, error: object, artifacts: list) -> None:
         bridge = self.sender()
         if isinstance(bridge, TaskRunnerBridge):
             # Capture GitHub repo info from the worker if available
@@ -195,12 +241,13 @@ class _MainWindowTaskEventsMixin:
                     task.gh_base_branch = bridge.gh_base_branch
                 if bridge.gh_branch:
                     task.gh_branch = bridge.gh_branch
+                # Store collected artifacts
+                if artifacts:
+                    task.artifacts = list(artifacts)
             self._on_task_done(bridge.task_id, exit_code, error)
-
 
     def _on_host_log(self, task_id: str, line: str) -> None:
         self._on_task_log(task_id, line)
-
 
     def _on_host_pr_url(self, task_id: str, pr_url: str) -> None:
         task = self._tasks.get(task_id)
@@ -213,7 +260,6 @@ class _MainWindowTaskEventsMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
-
 
     def _on_task_log(self, task_id: str, line: str) -> None:
         task = self._tasks.get(task_id)
@@ -241,7 +287,6 @@ class _MainWindowTaskEventsMixin:
             spinner = _stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
-
 
     def _on_task_state(self, task_id: str, state: dict) -> None:
         task = self._tasks.get(task_id)
@@ -280,7 +325,11 @@ class _MainWindowTaskEventsMixin:
 
         if current not in {"done", "failed"}:
             if incoming in {"exited", "dead"} and task.exit_code is not None:
-                task.status = "done" if (incoming == "exited" and task.exit_code == 0) else "failed"
+                task.status = (
+                    "done"
+                    if (incoming == "exited" and task.exit_code == 0)
+                    else "failed"
+                )
                 if task.finished_at is None:
                     task.finished_at = datetime.now(tz=timezone.utc)
                 self._try_start_queued_tasks()
@@ -293,7 +342,6 @@ class _MainWindowTaskEventsMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
-
 
     def _on_task_done(self, task_id: str, exit_code: int, error: object) -> None:
         task = self._tasks.get(task_id)

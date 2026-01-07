@@ -26,7 +26,10 @@ class _MainWindowTaskReviewMixin:
             )
             return
 
-        if normalize_gh_management_mode(task.gh_management_mode) != GH_MANAGEMENT_GITHUB:
+        if (
+            normalize_gh_management_mode(task.gh_management_mode)
+            != GH_MANAGEMENT_GITHUB
+        ):
             return
 
         pr_url = str(task.gh_pr_url or "").strip()
@@ -38,17 +41,26 @@ class _MainWindowTaskReviewMixin:
         repo_root = str(task.gh_repo_root or "").strip()
         branch = str(task.gh_branch or "").strip()
         if not repo_root or not branch:
-            QMessageBox.warning(self, "PR not available", "This task is missing repo/branch metadata.")
+            QMessageBox.warning(
+                self, "PR not available", "This task is missing repo/branch metadata."
+            )
             return
 
         if task.is_active():
-            QMessageBox.information(self, "Task still running", "Wait for the task to finish before creating a PR.")
+            QMessageBox.information(
+                self,
+                "Task still running",
+                "Wait for the task to finish before creating a PR.",
+            )
             return
 
         base_branch = str(task.gh_base_branch or "").strip()
         base_display = base_branch or "auto"
         message = f"Create a PR from {branch} -> {base_display}?\n\nThis will commit and push any local changes."
-        if QMessageBox.question(self, "Create pull request?", message) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(self, "Create pull request?", message)
+            != QMessageBox.StandardButton.Yes
+        ):
             return
 
         prompt_text = str(task.prompt or "")

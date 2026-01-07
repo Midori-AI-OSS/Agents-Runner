@@ -19,6 +19,18 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.widgets import GlassCard
+from agents_runner.ui.constants import (
+    MAIN_LAYOUT_MARGINS,
+    MAIN_LAYOUT_SPACING,
+    HEADER_MARGINS,
+    HEADER_SPACING,
+    CARD_MARGINS,
+    CARD_SPACING,
+    GRID_HORIZONTAL_SPACING,
+    GRID_VERTICAL_SPACING,
+    BUTTON_ROW_SPACING,
+    STANDARD_BUTTON_WIDTH,
+)
 
 
 class SettingsPage(QWidget):
@@ -30,13 +42,13 @@ class SettingsPage(QWidget):
         super().__init__(parent)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setContentsMargins(*MAIN_LAYOUT_MARGINS)
+        layout.setSpacing(MAIN_LAYOUT_SPACING)
 
         header = GlassCard()
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(18, 16, 18, 16)
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(*HEADER_MARGINS)
+        header_layout.setSpacing(HEADER_SPACING)
 
         title = QLabel("Settings")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
@@ -55,19 +67,19 @@ class SettingsPage(QWidget):
 
         card = GlassCard()
         card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(18, 16, 18, 16)
-        card_layout.setSpacing(12)
+        card_layout.setContentsMargins(*CARD_MARGINS)
+        card_layout.setSpacing(CARD_SPACING)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(10)
+        grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
         grid.setColumnStretch(1, 1)
 
         self._use = QComboBox()
-        self._use.addItem("Codex", "codex")
-        self._use.addItem("Claude", "claude")
-        self._use.addItem("GitHub Copilot", "copilot")
-        self._use.addItem("Gemini", "gemini")
+        self._use.addItem("OpenAI Codex", "codex")
+        self._use.addItem("Claude Code", "claude")
+        self._use.addItem("Github Copilot", "copilot")
+        self._use.addItem("Google Gemini", "gemini")
 
         self._shell = QComboBox()
         for label, value in [
@@ -82,34 +94,41 @@ class SettingsPage(QWidget):
         self._host_codex_dir = QLineEdit()
         self._host_codex_dir.setPlaceholderText(os.path.expanduser("~/.codex"))
         browse_codex = QPushButton("Browse…")
-        browse_codex.setFixedWidth(100)
+        browse_codex.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_codex.clicked.connect(self._pick_codex_dir)
 
         self._host_claude_dir = QLineEdit()
         self._host_claude_dir.setPlaceholderText(os.path.expanduser("~/.claude"))
         browse_claude = QPushButton("Browse…")
-        browse_claude.setFixedWidth(100)
+        browse_claude.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_claude.clicked.connect(self._pick_claude_dir)
 
         self._host_copilot_dir = QLineEdit()
         self._host_copilot_dir.setPlaceholderText(os.path.expanduser("~/.copilot"))
         browse_copilot = QPushButton("Browse…")
-        browse_copilot.setFixedWidth(100)
+        browse_copilot.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_copilot.clicked.connect(self._pick_copilot_dir)
 
         self._host_gemini_dir = QLineEdit()
         self._host_gemini_dir.setPlaceholderText(os.path.expanduser("~/.gemini"))
         browse_gemini = QPushButton("Browse…")
-        browse_gemini.setFixedWidth(100)
+        browse_gemini.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_gemini.clicked.connect(self._pick_gemini_dir)
 
-        self._preflight_enabled = QCheckBox("Enable settings preflight bash (runs on all envs, before env preflight)")
+        self._preflight_enabled = QCheckBox(
+            "Enable settings preflight bash (runs on all envs, before env preflight)"
+        )
         self._append_pixelarch_context = QCheckBox("Append PixelArch context")
         self._append_pixelarch_context.setToolTip(
             "When enabled, appends a short note to the end of the prompt passed to Run Agent.\n"
             "This never affects Run Interactive."
         )
-        self._headless_desktop_enabled = QCheckBox("Enable headless desktop (noVNC) for agents")
+        self._headless_desktop_enabled = QCheckBox(
+            "Force headless desktop (noVNC) for all environments"
+        )
+        self._headless_desktop_enabled.setToolTip(
+            "When enabled, this overrides the per-environment headless desktop setting."
+        )
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
@@ -158,7 +177,7 @@ class SettingsPage(QWidget):
         self._sync_agent_config_widgets()
 
         buttons = QHBoxLayout()
-        buttons.setSpacing(10)
+        buttons.setSpacing(BUTTON_ROW_SPACING)
         save = QToolButton()
         save.setText("Save")
         save.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -185,18 +204,26 @@ class SettingsPage(QWidget):
         shell_value = str(settings.get("shell") or "bash").strip().lower()
         self._set_combo_value(self._shell, shell_value, fallback="bash")
 
-        host_codex_dir = os.path.expanduser(str(settings.get("host_codex_dir") or "").strip())
+        host_codex_dir = os.path.expanduser(
+            str(settings.get("host_codex_dir") or "").strip()
+        )
         if not host_codex_dir:
             host_codex_dir = os.path.expanduser("~/.codex")
         self._host_codex_dir.setText(host_codex_dir)
 
-        host_claude_dir = os.path.expanduser(str(settings.get("host_claude_dir") or "").strip())
+        host_claude_dir = os.path.expanduser(
+            str(settings.get("host_claude_dir") or "").strip()
+        )
         self._host_claude_dir.setText(host_claude_dir)
 
-        host_copilot_dir = os.path.expanduser(str(settings.get("host_copilot_dir") or "").strip())
+        host_copilot_dir = os.path.expanduser(
+            str(settings.get("host_copilot_dir") or "").strip()
+        )
         self._host_copilot_dir.setText(host_copilot_dir)
 
-        host_gemini_dir = os.path.expanduser(str(settings.get("host_gemini_dir") or "").strip())
+        host_gemini_dir = os.path.expanduser(
+            str(settings.get("host_gemini_dir") or "").strip()
+        )
         self._host_gemini_dir.setText(host_gemini_dir)
 
         enabled = bool(settings.get("preflight_enabled") or False)
@@ -204,21 +231,37 @@ class SettingsPage(QWidget):
         self._preflight_script.setEnabled(enabled)
         self._preflight_script.setPlainText(str(settings.get("preflight_script") or ""))
 
-        self._append_pixelarch_context.setChecked(bool(settings.get("append_pixelarch_context") or False))
-        self._headless_desktop_enabled.setChecked(bool(settings.get("headless_desktop_enabled") or False))
+        self._append_pixelarch_context.setChecked(
+            bool(settings.get("append_pixelarch_context") or False)
+        )
+        self._headless_desktop_enabled.setChecked(
+            bool(settings.get("headless_desktop_enabled") or False)
+        )
 
     def get_settings(self) -> dict:
         return {
             "use": str(self._use.currentData() or "codex"),
             "shell": str(self._shell.currentData() or "bash"),
-            "host_codex_dir": os.path.expanduser(str(self._host_codex_dir.text() or "").strip()),
-            "host_claude_dir": os.path.expanduser(str(self._host_claude_dir.text() or "").strip()),
-            "host_copilot_dir": os.path.expanduser(str(self._host_copilot_dir.text() or "").strip()),
-            "host_gemini_dir": os.path.expanduser(str(self._host_gemini_dir.text() or "").strip()),
+            "host_codex_dir": os.path.expanduser(
+                str(self._host_codex_dir.text() or "").strip()
+            ),
+            "host_claude_dir": os.path.expanduser(
+                str(self._host_claude_dir.text() or "").strip()
+            ),
+            "host_copilot_dir": os.path.expanduser(
+                str(self._host_copilot_dir.text() or "").strip()
+            ),
+            "host_gemini_dir": os.path.expanduser(
+                str(self._host_gemini_dir.text() or "").strip()
+            ),
             "preflight_enabled": bool(self._preflight_enabled.isChecked()),
             "preflight_script": str(self._preflight_script.toPlainText() or ""),
-            "append_pixelarch_context": bool(self._append_pixelarch_context.isChecked()),
-            "headless_desktop_enabled": bool(self._headless_desktop_enabled.isChecked()),
+            "append_pixelarch_context": bool(
+                self._append_pixelarch_context.isChecked()
+            ),
+            "headless_desktop_enabled": bool(
+                self._headless_desktop_enabled.isChecked()
+            ),
         }
 
     def _pick_codex_dir(self) -> None:

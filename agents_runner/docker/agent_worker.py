@@ -4,6 +4,7 @@ import uuid
 import shlex
 import selectors
 import subprocess
+from pathlib import Path
 from typing import Any
 from typing import Callable
 
@@ -22,6 +23,7 @@ from agents_runner.docker_platform import has_rosetta
 from agents_runner.github_token import resolve_github_token
 from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.gh_management import GhManagementError
+from agents_runner.artifacts import collect_artifacts_from_container
 
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.paths import _is_git_repo_root
@@ -30,7 +32,17 @@ from agents_runner.docker.process import _has_platform_image
 from agents_runner.docker.process import _inspect_state
 from agents_runner.docker.process import _pull_image
 from agents_runner.docker.process import _run_docker
+from agents_runner.docker.utils import _resolve_workspace_mount
 from agents_runner.docker.utils import _write_preflight_script
+from agents_runner.prompts import load_prompt
+
+
+def _headless_desktop_prompt_instructions(*, display: str) -> str:
+    display = str(display or "").strip() or ":1"
+    return load_prompt(
+        "headless_desktop",
+        DISPLAY=display,
+    )
 
 
 class DockerAgentWorker:
@@ -40,7 +52,7 @@ class DockerAgentWorker:
         prompt: str,
         on_state: Callable[[dict[str, Any]], None],
         on_log: Callable[[str], None],
-        on_done: Callable[[int, str | None], None],
+        on_done: Callable[[int, str | None, list[str]], None],
     ) -> None:
         self._config = config
         self._prompt = sanitize_prompt((prompt or "").strip())
@@ -52,6 +64,7 @@ class DockerAgentWorker:
         self._gh_repo_root: str | None = None
         self._gh_base_branch: str | None = None
         self._gh_branch: str | None = None
+        self._collected_artifacts: list[str] = []
 
     @property
     def container_id(self) -> str | None:
@@ -103,7 +116,7 @@ class DockerAgentWorker:
                         self._on_log(f"[gh] ready on branch {self._gh_branch}")
                 except (GhManagementError, Exception) as exc:
                     self._on_log(f"[gh] ERROR: {exc}")
-                    self._on_done(1, str(exc))
+                    self._on_done(1, str(exc), [])
                     return
 
             os.makedirs(self._config.host_codex_dir, exist_ok=True)
@@ -118,14 +131,38 @@ class DockerAgentWorker:
                     )
             agent_cli = normalize_agent(self._config.agent_cli)
             config_container_dir = container_config_dir(agent_cli)
-            config_extra_mounts = additional_config_mounts(agent_cli, self._config.host_codex_dir)
+            config_extra_mounts = additional_config_mounts(
+                agent_cli, self._config.host_codex_dir
+            )
+            host_mount, container_cwd = _resolve_workspace_mount(
+                self._config.host_workdir, container_mount=self._config.container_workdir
+            )
+            if host_mount != self._config.host_workdir:
+                self._on_log(
+                    f"[host] mounting workspace root: {host_mount} (selected {self._config.host_workdir})"
+                )
+            if container_cwd != self._config.container_workdir:
+                self._on_log(f"[host] container workdir: {container_cwd}")
             container_name = f"agents-runner-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
-            settings_container_path = self._config.container_settings_preflight_path.replace(
-                "{task_id}", task_token
+            
+            # Create artifacts staging directory
+            artifacts_staging_dir = (
+                Path.home() / ".midoriai" / "agents-runner" / "artifacts" 
+                / task_token / "staging"
             )
-            environment_container_path = self._config.container_environment_preflight_path.replace(
-                "{task_id}", task_token
+            artifacts_staging_dir.mkdir(parents=True, exist_ok=True)
+            self._on_log(f"[host] artifacts staging: {artifacts_staging_dir}")
+            
+            settings_container_path = (
+                self._config.container_settings_preflight_path.replace(
+                    "{task_id}", task_token
+                )
+            )
+            environment_container_path = (
+                self._config.container_environment_preflight_path.replace(
+                    "{task_id}", task_token
+                )
             )
 
             settings_preflight_tmp_path: str | None = None
@@ -151,7 +188,9 @@ class DockerAgentWorker:
                 self._on_log(f"[host] docker pull {self._config.image}")
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
-            elif forced_platform and not _has_platform_image(self._config.image, forced_platform):
+            elif forced_platform and not _has_platform_image(
+                self._config.image, forced_platform
+            ):
                 self._on_state({"Status": "pulling"})
                 self._on_log(f"[host] image missing; docker pull {self._config.image}")
                 _pull_image(self._config.image, platform_args=platform_args)
@@ -162,20 +201,32 @@ class DockerAgentWorker:
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
 
-            if agent_cli == "codex" and not _is_git_repo_root(self._config.host_workdir):
-                self._on_log("[host] .git missing in workdir; adding --skip-git-repo-check")
+            if agent_cli == "codex" and not _is_git_repo_root(host_mount):
+                self._on_log(
+                    "[host] .git missing in workdir; adding --skip-git-repo-check"
+                )
+
+            desktop_enabled = bool(self._config.headless_desktop_enabled)
+            desktop_display = ":1"
+
+            prompt_for_agent = self._prompt
+            if desktop_enabled:
+                prompt_for_agent = sanitize_prompt(
+                    f"{prompt_for_agent.rstrip()}{_headless_desktop_prompt_instructions(display=desktop_display)}"
+                )
+                self._on_log(
+                    "[desktop] added desktop context to prompt (non-interactive)"
+                )
 
             agent_args = build_noninteractive_cmd(
                 agent=agent_cli,
-                prompt=self._prompt,
-                host_workdir=self._config.host_workdir,
+                prompt=prompt_for_agent,
+                host_workdir=host_mount,
                 container_workdir=self._config.container_workdir,
                 agent_cli_args=list(self._config.agent_cli_args or []),
             )
             agent_cmd = " ".join(shlex.quote(part) for part in agent_args)
 
-            desktop_enabled = bool(self._config.headless_desktop_enabled)
-            desktop_display = ":1"
             desktop_state: dict[str, Any] = {}
             port_args: list[str] = []
 
@@ -185,32 +236,33 @@ class DockerAgentWorker:
                 port_args.extend(["-p", "127.0.0.1::6080"])
                 preflight_clause += (
                     'echo "[desktop] starting headless desktop (noVNC)"; '
-                    f'export DISPLAY={desktop_display}; '
+                    f"export DISPLAY={desktop_display}; "
                     'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
                     'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
                     'mkdir -p "${XDG_RUNTIME_DIR}"; '
                     'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
                     'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
-                    'if command -v yay >/dev/null 2>&1; then '
-                    '  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify xorg-xauth ttf-dejavu xorg-fonts-misc >/dev/null || true; '
-                    'fi; '
+                    "if command -v yay >/dev/null 2>&1; then "
+                    "  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify wmctrl xdotool xorg-xprop xorg-xauth ttf-dejavu xorg-fonts-misc || true; "
+                    "fi; "
                     'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & '
-                    'sleep 0.25; '
+                    "sleep 0.25; "
                     '(fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true; '
                     '(xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true; '
                     'NOVNC_WEB=""; '
                     'for candidate in "/usr/share/webapps/novnc" "/usr/share/novnc" "/usr/share/noVNC"; do '
                     '  if [ -d "${candidate}" ]; then NOVNC_WEB="${candidate}"; break; fi; '
-                    'done; '
+                    "done; "
                     'if [ -z "${NOVNC_WEB}" ]; then '
                     '  echo "[desktop] ERROR: noVNC web root not found" >&2; '
-                    'else '
+                    "else "
                     '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
-                    'fi; '
+                    "fi; "
                     'echo "[desktop] ready"; '
                     'echo "[desktop] DISPLAY=${DISPLAY}"; '
-                    'echo "[desktop] screenshot: import -display :1 -window root ${RUNTIME_BASE}/out/screenshot.png"; '
+                    'echo "[desktop] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
                 )
+            
             if settings_preflight_tmp_path is not None:
                 self._on_log(
                     f"[host] settings preflight enabled; mounting -> {settings_container_path} (ro)"
@@ -222,7 +274,7 @@ class DockerAgentWorker:
                     ]
                 )
                 preflight_clause += (
-                    f'PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; '
+                    f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
                     'echo "[preflight] settings: running"; '
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
                     'echo "[preflight] settings: done"; '
@@ -239,7 +291,7 @@ class DockerAgentWorker:
                     ]
                 )
                 preflight_clause += (
-                    f'PREFLIGHT_ENV={shlex.quote(environment_container_path)}; '
+                    f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
                     'echo "[preflight] environment: running"; '
                     '/bin/bash "${PREFLIGHT_ENV}"; '
                     'echo "[preflight] environment: done"; '
@@ -254,10 +306,14 @@ class DockerAgentWorker:
 
             if agent_cli == "copilot":
                 token = resolve_github_token()
-                if token and "GH_TOKEN" not in (self._config.env_vars or {}) and "GITHUB_TOKEN" not in (
-                    self._config.env_vars or {}
+                if (
+                    token
+                    and "GH_TOKEN" not in (self._config.env_vars or {})
+                    and "GITHUB_TOKEN" not in (self._config.env_vars or {})
                 ):
-                    self._on_log("[auth] forwarding GitHub token from host -> container")
+                    self._on_log(
+                        "[auth] forwarding GitHub token from host -> container"
+                    )
                     docker_env = dict(os.environ)
                     docker_env["GH_TOKEN"] = token
                     docker_env["GITHUB_TOKEN"] = token
@@ -280,7 +336,7 @@ class DockerAgentWorker:
                 )
 
             extra_mount_args: list[str] = []
-            for mount in (self._config.extra_mounts or []):
+            for mount in self._config.extra_mounts or []:
                 m = str(mount).strip()
                 if not m:
                     continue
@@ -300,13 +356,15 @@ class DockerAgentWorker:
                 "-v",
                 f"{self._config.host_codex_dir}:{config_container_dir}",
                 "-v",
-                f"{self._config.host_workdir}:{self._config.container_workdir}",
+                f"{host_mount}:{self._config.container_workdir}",
+                "-v",
+                f"{artifacts_staging_dir}:/tmp/agents-artifacts",
                 *extra_mount_args,
                 *preflight_mounts,
                 *env_args,
                 *port_args,
                 "-w",
-                self._config.container_workdir,
+                container_cwd,
                 self._config.image,
                 "/bin/bash",
                 "-lc",
@@ -324,11 +382,19 @@ class DockerAgentWorker:
                         timeout_s=10.0,
                         env=docker_env,
                     )
-                    first = (mapping or "").strip().splitlines()[0] if (mapping or "").strip() else ""
+                    first = (
+                        (mapping or "").strip().splitlines()[0]
+                        if (mapping or "").strip()
+                        else ""
+                    )
                     host_port = first.rsplit(":", 1)[-1].strip() if ":" in first else ""
                     if host_port.isdigit():
-                        desktop_state["NoVncUrl"] = f"http://127.0.0.1:{host_port}/vnc.html"
-                        self._on_log(f"[desktop] noVNC URL: {desktop_state['NoVncUrl']}")
+                        desktop_state["NoVncUrl"] = (
+                            f"http://127.0.0.1:{host_port}/vnc.html"
+                        )
+                        self._on_log(
+                            f"[desktop] noVNC URL: {desktop_state['NoVncUrl']}"
+                        )
                 except Exception as exc:
                     self._on_log(f"[desktop] ERROR: {exc}")
 
@@ -400,15 +466,35 @@ class DockerAgentWorker:
             self._on_state(final_state)
             exit_code = int(final_state.get("ExitCode") or 0)
 
+            # Collect artifacts before removing container
+            if self._container_id:
+                try:
+                    self._on_log("[host] collecting artifacts from container...")
+                    task_dict = {
+                        "task_id": self._config.task_id,
+                        "image": self._config.image,
+                        "agent_cli": agent_cli,
+                        "created_at": time.time(),
+                    }
+                    self._collected_artifacts = collect_artifacts_from_container(
+                        self._container_id, task_dict, self._config.environment_id
+                    )
+                    if self._collected_artifacts:
+                        self._on_log(
+                            f"[host] collected {len(self._collected_artifacts)} artifact(s)"
+                        )
+                except Exception as e:
+                    self._on_log(f"[host] artifact collection failed: {e}")
+
             if self._config.auto_remove:
                 try:
                     _run_docker(["rm", "-f", self._container_id], timeout_s=30.0)
                 except Exception:
                     pass
 
-            self._on_done(exit_code, None)
+            self._on_done(exit_code, None, self._collected_artifacts)
         except Exception as exc:
-            self._on_done(1, str(exc))
+            self._on_done(1, str(exc), self._collected_artifacts)
         finally:
             for tmp_path in preflight_tmp_paths:
                 try:

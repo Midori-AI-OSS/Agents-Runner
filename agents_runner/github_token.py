@@ -3,7 +3,9 @@ import shutil
 import subprocess
 
 
-def resolve_github_token(*, host: str = "github.com", timeout_s: float = 8.0) -> str | None:
+def resolve_github_token(
+    *, host: str = "github.com", timeout_s: float = 8.0
+) -> str | None:
     """Return a GitHub token from the host environment or `gh`, if available.
 
     Preference order:
@@ -22,7 +24,13 @@ def resolve_github_token(*, host: str = "github.com", timeout_s: float = 8.0) ->
 
     try:
         proc = subprocess.run(
-            ["gh", "auth", "token", "-h", str(host or "github.com").strip() or "github.com"],
+            [
+                "gh",
+                "auth",
+                "token",
+                "-h",
+                str(host or "github.com").strip() or "github.com",
+            ],
             check=False,
             capture_output=True,
             text=True,

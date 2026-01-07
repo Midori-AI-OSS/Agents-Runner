@@ -8,9 +8,10 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 - **Run locally:** `uv run main.py`
 - **UI styling:** Located in `agents_runner/style/` (Qt stylesheet builder) and `agents_runner/widgets/` (custom widgets)
+- **Preflight Review:** Read `.github/copilot-instructions.md` before starting work to understand environment, tooling, and compliance expectations.
 - **Design constraint:** Keep sharp/square corners (avoid non-`0px` `border-radius` values and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
-- **Docs:** Do not update the readme unless asked to; ensure `.codex/` documentation stays current with code changes
+- **Docs:** Do not update the readme unless asked to; ensure `.agents/` documentation stays current with code changes
 - **Test:** Do not build tests unless asked to; delegate testing to Tester Mode when requested
 
 ---
@@ -45,17 +46,19 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 ## Contributor Modes
 
-Use these mode guides from `.codex/modes/` when working on specific tasks:
+Use these mode guides from `.agents/modes/` when working on specific tasks:
 
-- **Coder Mode** (`.codex/modes/CODER.md`): Implementing features and fixes
-- **Tester Mode** (`.codex/modes/TESTER.md`): Building and managing tests
-- **Reviewer Mode** (`.codex/modes/REVIEWER.md`): Auditing documentation
-- **Task Master Mode** (`.codex/modes/TASKMASTER.md`): Managing work items
-- **Manager Mode** (`.codex/modes/MANAGER.md`): Planning and coordination
-- **Auditor Mode** (`.codex/modes/AUDITOR.md`): Code and security audits
+- **Coder Mode** (`.agents/modes/CODER.md`): Implementing features and fixes
+- **Tester Mode** (`.agents/modes/TESTER.md`): Building and managing tests
+- **Reviewer Mode** (`.agents/modes/REVIEWER.md`): Auditing documentation
+- **Task Master Mode** (`.agents/modes/TASKMASTER.md`): Managing work items
+- **Manager Mode** (`.agents/modes/MANAGER.md`): Planning and coordination
+- **Auditor Mode** (`.agents/modes/AUDITOR.md`): Code and security audits
+- **QA Mode** (`.agents/modes/QA.md`): Ensuring correctness and reliability
 
 ---
 
 ## Communication
 
 Use GitHub issues/PRs/comments as the primary async communication channel. Keep commit messages and PR descriptions concise and outcome-focused.
+Do not use emoticons, emoji, or other non-text icons in commit messages, issue/PR descriptions, comments, documentation, or source code.

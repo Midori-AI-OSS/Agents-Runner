@@ -12,9 +12,15 @@ from agents_runner.docker_runner import DockerRunnerConfig
 class TaskRunnerBridge(QObject):
     state = Signal(dict)
     log = Signal(str)
-    done = Signal(int, object)
+    done = Signal(int, object, list)
 
-    def __init__(self, task_id: str, config: DockerRunnerConfig, prompt: str = "", mode: str = "codex") -> None:
+    def __init__(
+        self,
+        task_id: str,
+        config: DockerRunnerConfig,
+        prompt: str = "",
+        mode: str = "codex",
+    ) -> None:
         super().__init__()
         self.task_id = task_id
         if mode == "preflight":
@@ -22,7 +28,7 @@ class TaskRunnerBridge(QObject):
                 config=config,
                 on_state=self.state.emit,
                 on_log=self.log.emit,
-                on_done=lambda code, err: self.done.emit(code, err),
+                on_done=lambda code, err: self.done.emit(code, err, []),
             )
         else:
             self._worker = DockerAgentWorker(
@@ -30,7 +36,7 @@ class TaskRunnerBridge(QObject):
                 prompt=prompt,
                 on_state=self.state.emit,
                 on_log=self.log.emit,
-                on_done=lambda code, err: self.done.emit(code, err),
+                on_done=lambda code, err, artifacts: self.done.emit(code, err, artifacts),
             )
 
     @property

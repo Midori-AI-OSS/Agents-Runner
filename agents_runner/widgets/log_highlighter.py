@@ -39,10 +39,19 @@ class LogHighlighter(QSyntaxHighlighter):
         amber = QColor(245, 158, 11, 235)
         violet = QColor(168, 85, 247, 235)
         zinc = QColor(226, 232, 240, 235)
+        blue = QColor(59, 130, 246, 235)
+        fuchsia = QColor(217, 70, 239, 235)
 
         self._rules: list[tuple[object, QTextCharFormat]] = [
             (r"\[host\]", fmt(cyan, True)),
             (r"\[preflight\]", fmt(emerald, True)),
+            (r"\[gh\]", fmt(violet, True)),
+            (r"\[git\]", fmt(violet, True)),
+            (r"\[docker\]", fmt(blue, True)),
+            (r"\[desktop\]", fmt(fuchsia, True)),
+            (r"\[cleanup\]", fmt(amber, True)),
+            (r"\[queue\]", fmt(slate, True)),
+            (r"\[interactive\]", fmt(cyan, True)),
             (r"\bpull complete\b", fmt(emerald, True)),
             (r"\bdocker pull\b", fmt(cyan, True)),
             (r"\b(exit|exited)\b", fmt(amber, True)),
@@ -54,7 +63,10 @@ class LogHighlighter(QSyntaxHighlighter):
             (r"\*\*[^*]+\*\*", fmt(zinc, True)),
             (r"__[^_]+__", fmt(zinc, True)),
             (r"`[^`]+`", fmt_block(violet, background=QColor(168, 85, 247, 28))),
-            (r"```.*$", fmt_block(violet, background=QColor(168, 85, 247, 28), bold=True)),
+            (
+                r"```.*$",
+                fmt_block(violet, background=QColor(168, 85, 247, 28), bold=True),
+            ),
             (r"https?://\S+", fmt(cyan, False)),
             (r"\bTODO\b", fmt(amber, True)),
             (r"\bNOTE\b", fmt(slate, True)),

@@ -2,7 +2,7 @@ import math
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPaintEvent
 from PySide6.QtGui import QPainter
 from PySide6.QtGui import QPainterPath
 from PySide6.QtWidgets import QWidget
@@ -34,7 +34,7 @@ class StatusGlyph(QWidget):
         self._angle = (self._angle + 7.0) % 360.0
         self.update()
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
@@ -48,7 +48,9 @@ class StatusGlyph(QWidget):
                 t = (i / 12.0) * math.tau
                 angle_deg = math.degrees(t) + self._angle
                 alpha = int(30 + (i / 12.0) * 200)
-                color = QColor(self._color.red(), self._color.green(), self._color.blue(), alpha)
+                color = QColor(
+                    self._color.red(), self._color.green(), self._color.blue(), alpha
+                )
                 painter.setPen(Qt.NoPen)
                 painter.setBrush(color)
 
@@ -59,12 +61,16 @@ class StatusGlyph(QWidget):
             return
 
         painter.setPen(Qt.NoPen)
-        painter.setBrush(QColor(self._color.red(), self._color.green(), self._color.blue(), 45))
+        painter.setBrush(
+            QColor(self._color.red(), self._color.green(), self._color.blue(), 45)
+        )
         painter.drawEllipse(rect.adjusted(1, 1, -1, -1))
 
         pen = painter.pen()
         pen.setWidthF(max(1.6, size * 0.12))
-        pen.setColor(QColor(self._color.red(), self._color.green(), self._color.blue(), 220))
+        pen.setColor(
+            QColor(self._color.red(), self._color.green(), self._color.blue(), 220)
+        )
         pen.setCapStyle(Qt.RoundCap)
         pen.setJoinStyle(Qt.RoundJoin)
         painter.setPen(pen)

@@ -13,6 +13,7 @@ from .paths import default_data_dir
 from .paths import environment_path
 from .serialize import _environment_from_payload
 from .serialize import serialize_environment
+from .prompt_storage import delete_prompt_file
 
 
 def _state_path_for_data_dir(data_dir: str) -> str:
@@ -24,7 +25,9 @@ def _load_legacy_environments(data_dir: str) -> dict[str, Environment]:
         return {}
     envs: dict[str, Environment] = {}
     for name in sorted(os.listdir(data_dir)):
-        if not name.startswith(ENVIRONMENT_FILENAME_PREFIX) or not name.endswith(".json"):
+        if not name.startswith(ENVIRONMENT_FILENAME_PREFIX) or not name.endswith(
+            ".json"
+        ):
             continue
         path = os.path.join(data_dir, name)
         try:
@@ -49,7 +52,9 @@ def load_environments(data_dir: str | None = None) -> dict[str, Environment]:
     settings = state.get("settings")
     if isinstance(settings, dict):
         try:
-            default_max_agents_running = int(str(settings.get("max_agents_running", -1)).strip())
+            default_max_agents_running = int(
+                str(settings.get("max_agents_running", -1)).strip()
+            )
         except Exception:
             default_max_agents_running = -1
     raw = state.get("environments")
@@ -71,7 +76,9 @@ def load_environments(data_dir: str | None = None) -> dict[str, Environment]:
     legacy_envs = _load_legacy_environments(data_dir)
     if legacy_envs:
         state = dict(state)
-        state["environments"] = [serialize_environment(env) for env in legacy_envs.values()]
+        state["environments"] = [
+            serialize_environment(env) for env in legacy_envs.values()
+        ]
         save_state(state_path, state)
     return legacy_envs
 
@@ -111,7 +118,28 @@ def delete_environment(env_id: str, data_dir: str | None = None) -> None:
     data_dir = data_dir or default_data_dir()
     state_path = _state_path_for_data_dir(data_dir)
     state = load_state(state_path)
+    
+    # Load the environment to get prompt paths before deleting
     raw = state.get("environments")
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            existing_id = str(item.get("env_id") or item.get("id") or "").strip()
+            if existing_id == str(env_id or "").strip():
+                env = _environment_from_payload(item)
+                if env:
+                    # Delete associated prompt files
+                    for prompt in env.prompts or []:
+                        if prompt.prompt_path:
+                            try:
+                                delete_prompt_file(prompt.prompt_path)
+                            except Exception:
+                                # Best-effort cleanup: ignore errors while deleting prompt files.
+                                pass
+                break
+    
+    # Remove from state
     if isinstance(raw, list):
         keep: list[dict[str, Any]] = []
         target = str(env_id or "").strip()
@@ -131,4 +159,3 @@ def delete_environment(env_id: str, data_dir: str | None = None) -> None:
             os.unlink(path)
     except Exception:
         pass
-

@@ -1,16 +1,52 @@
 from __future__ import annotations
 
+import os
 import sys
+from pathlib import Path
 
-from PySide6.QtWidgets import QApplication
 
-from agents_runner.style import app_stylesheet
-from agents_runner.ui.constants import APP_TITLE
-from agents_runner.ui.icons import _app_icon
-from agents_runner.ui.main_window import MainWindow
+def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
+    tokens: list[str] = []
+    existing = (existing or "").strip()
+    if existing:
+        tokens.extend(existing.split())
+    existing_set = set(tokens)
+    for flag in extra_flags:
+        if flag not in existing_set:
+            tokens.append(flag)
+            existing_set.add(flag)
+    return " ".join(tokens).strip()
+
+
+def _configure_qtwebengine_runtime() -> None:
+    fontconfig_file = os.environ.get("FONTCONFIG_FILE")
+    if not fontconfig_file:
+        candidate = Path("/etc/fonts/fonts.conf")
+        if candidate.is_file():
+            os.environ["FONTCONFIG_FILE"] = str(candidate)
+
+    if not Path("/dev/dri").exists():
+        flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = _append_chromium_flags(
+            flags,
+            [
+                "--disable-gpu",
+                "--disable-gpu-compositing",
+                "--disable-features=Vulkan",
+            ],
+        )
 
 
 def run_app(argv: list[str]) -> None:
+    _configure_qtwebengine_runtime()
+
+    from PySide6.QtWidgets import QApplication
+
+    from agents_runner.style import app_stylesheet
+    from agents_runner.ui.constants import APP_TITLE
+    from agents_runner.ui.icons import _app_icon
+    from agents_runner.ui.main_window import MainWindow
+
     app = QApplication(argv)
     app.setApplicationDisplayName(APP_TITLE)
     app.setApplicationName(APP_TITLE)
