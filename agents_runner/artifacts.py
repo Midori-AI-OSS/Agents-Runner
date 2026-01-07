@@ -31,6 +31,17 @@ class ArtifactMeta:
     size_bytes: int
 
 
+@dataclass
+class StagingArtifactMeta:
+    """Metadata for a staging (unencrypted) artifact."""
+    
+    filename: str
+    path: Path
+    size_bytes: int
+    modified_at: datetime
+    mime_type: str
+
+
 def get_artifact_key(task_dict: dict[str, Any], env_name: str) -> bytes:
     """
     Generate encryption key from task id and environment id.
@@ -281,10 +292,7 @@ def collect_artifacts_from_container(
         return []
     
     # Get staging directory (this was mounted to the container)
-    artifacts_staging = (
-        Path.home() / ".midoriai" / "agents-runner" / "artifacts" 
-        / task_id / "staging"
-    )
+    artifacts_staging = get_staging_dir(task_id)
     
     if not artifacts_staging.exists():
         logger.debug(f"No staging directory found: {artifacts_staging}")
@@ -313,16 +321,113 @@ def collect_artifacts_from_container(
             except Exception as e:
                 logger.error(f"Failed to collect artifact {file_path.name}: {e}")
                 continue
-        
-        # Clean up staging directory if empty
-        try:
-            if not any(artifacts_staging.iterdir()):
-                artifacts_staging.rmdir()
-                logger.debug(f"Removed empty staging directory: {artifacts_staging}")
-        except Exception as e:
-            logger.debug(f"Could not remove staging directory: {e}")
             
     except Exception as e:
         logger.error(f"Failed to collect artifacts from staging: {e}")
     
+    finally:
+        # ALWAYS clean up staging directory, even if encryption failed
+        try:
+            if artifacts_staging.exists():
+                # Remove any remaining files
+                for file_path in artifacts_staging.iterdir():
+                    try:
+                        if file_path.is_file():
+                            file_path.unlink()
+                    except Exception as file_error:
+                        logger.warning(f"Failed to remove {file_path}: {file_error}")
+                
+                # Remove staging directory
+                artifacts_staging.rmdir()
+                logger.debug(f"Cleaned up staging directory: {artifacts_staging}")
+        except Exception as cleanup_error:
+            logger.error(f"Staging cleanup failed: {cleanup_error}")
+    
     return artifact_uuids
+
+
+def get_staging_dir(task_id: str) -> Path:
+    """
+    Get path to staging directory for a task.
+    
+    Args:
+        task_id: Task identifier
+    
+    Returns:
+        Path to staging directory
+    """
+    artifacts_dir = _get_artifacts_dir(task_id)
+    return artifacts_dir / "staging"
+
+
+def list_staging_artifacts(task_id: str) -> list[StagingArtifactMeta]:
+    """
+    List artifacts in staging directory (for running tasks).
+    
+    Args:
+        task_id: Task identifier
+    
+    Returns:
+        List of staging artifact metadata
+    """
+    staging_dir = get_staging_dir(task_id)
+    
+    if not staging_dir.exists():
+        return []
+    
+    artifacts: list[StagingArtifactMeta] = []
+    
+    try:
+        for file_path in staging_dir.iterdir():
+            if not file_path.is_file():
+                continue
+            
+            stat = file_path.stat()
+            mime_type, _ = mimetypes.guess_type(file_path.name)
+            if mime_type is None:
+                mime_type = "application/octet-stream"
+            
+            artifact = StagingArtifactMeta(
+                filename=file_path.name,
+                path=file_path,
+                size_bytes=stat.st_size,
+                modified_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc),
+                mime_type=mime_type,
+            )
+            artifacts.append(artifact)
+        
+        # Sort by modification time (newest first)
+        artifacts.sort(key=lambda a: a.modified_at, reverse=True)
+        
+    except Exception as e:
+        logger.error(f"Failed to list staging artifacts for task {task_id}: {e}")
+    
+    return artifacts
+
+
+def get_staging_artifact_path(task_id: str, filename: str) -> Path | None:
+    """
+    Get path to a staging artifact (for direct access).
+    
+    Args:
+        task_id: Task identifier
+        filename: Artifact filename
+    
+    Returns:
+        Path to staging file, or None if not found
+    """
+    staging_dir = get_staging_dir(task_id)
+    file_path = staging_dir / filename
+    
+    if file_path.exists() and file_path.is_file():
+        # Security: Verify file is within staging directory (prevent path traversal)
+        try:
+            if file_path.resolve().parent != staging_dir.resolve():
+                logger.error(f"Path traversal attempt: {filename}")
+                return None
+        except Exception as e:
+            logger.error(f"Failed to resolve path {filename}: {e}")
+            return None
+        return file_path
+    
+    return None
