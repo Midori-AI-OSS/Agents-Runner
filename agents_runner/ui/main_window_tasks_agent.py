@@ -311,6 +311,7 @@ class _MainWindowTasksAgentMixin:
         )
         task._runner_config = config
         task._runner_prompt = runner_prompt
+        task._agent_selection = env.agent_selection if env else None
 
         if self._can_start_new_agent_for_env(env_id):
             self._actually_start_task(task)
@@ -325,6 +326,7 @@ class _MainWindowTasksAgentMixin:
     def _actually_start_task(self, task: Task) -> None:
         config = getattr(task, "_runner_config", None)
         prompt = getattr(task, "_runner_prompt", None)
+        agent_selection = getattr(task, "_agent_selection", None)
         if config is None or prompt is None:
             return
 
@@ -334,7 +336,12 @@ class _MainWindowTasksAgentMixin:
         spinner = _stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
-        bridge = TaskRunnerBridge(task_id=task.task_id, config=config, prompt=prompt)
+        bridge = TaskRunnerBridge(
+            task_id=task.task_id,
+            config=config,
+            prompt=prompt,
+            agent_selection=agent_selection,
+        )
         thread = QThread(self)
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
@@ -342,6 +349,8 @@ class _MainWindowTasksAgentMixin:
         bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
         bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
         bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
+        bridge.retry_attempt.connect(self._on_bridge_retry_attempt, Qt.QueuedConnection)
+        bridge.agent_switched.connect(self._on_bridge_agent_switched, Qt.QueuedConnection)
 
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)

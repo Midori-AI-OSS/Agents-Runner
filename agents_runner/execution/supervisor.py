@@ -174,6 +174,7 @@ class TaskSupervisor:
         on_log: Callable[[str], None],
         on_retry: Callable[[int, str, float], None],
         on_agent_switch: Callable[[str, str], None],
+        on_done: Callable[[int, str | None, list[str], dict[str, Any]], None] | None = None,
     ) -> None:
         """Initialize task supervisor.
 
@@ -186,6 +187,7 @@ class TaskSupervisor:
             on_log: Callback for log messages
             on_retry: Callback for retry attempts (retry_count, agent, delay)
             on_agent_switch: Callback for agent switches (from_agent, to_agent)
+            on_done: Callback for completion (exit_code, error, artifacts, metadata)
         """
         self._config = config
         self._prompt = prompt
@@ -195,12 +197,14 @@ class TaskSupervisor:
         self._on_log = on_log
         self._on_retry = on_retry
         self._on_agent_switch = on_agent_switch
+        self._on_done = on_done
 
         # State tracking
         self._agent_chain: list[AgentInstance] = []
         self._current_agent_index = 0
         self._retry_counts: dict[str, int] = {}
         self._total_attempts = 0
+        self._current_worker: DockerAgentWorker | None = None
 
         # Worker results
         self._last_exit_code = 0
@@ -208,6 +212,39 @@ class TaskSupervisor:
         self._last_artifacts: list[str] = []
         self._last_logs: list[str] = []
         self._last_container_state: dict[str, Any] = {}
+
+    @property
+    def container_id(self) -> str | None:
+        """Get current worker's container ID."""
+        if self._current_worker:
+            return self._current_worker.container_id
+        return None
+
+    @property
+    def gh_repo_root(self) -> str | None:
+        """Get current worker's GitHub repo root."""
+        if self._current_worker:
+            return self._current_worker.gh_repo_root
+        return None
+
+    @property
+    def gh_base_branch(self) -> str | None:
+        """Get current worker's GitHub base branch."""
+        if self._current_worker:
+            return self._current_worker.gh_base_branch
+        return None
+
+    @property
+    def gh_branch(self) -> str | None:
+        """Get current worker's GitHub branch."""
+        if self._current_worker:
+            return self._current_worker.gh_branch
+        return None
+
+    def request_stop(self) -> None:
+        """Request stop of current worker."""
+        if self._current_worker:
+            self._current_worker.request_stop()
 
     def run(self) -> SupervisorResult:
         """Execute task with supervision.
@@ -226,6 +263,13 @@ class TaskSupervisor:
 
             # Success
             if result.exit_code == 0:
+                if self._on_done:
+                    self._on_done(
+                        result.exit_code,
+                        result.error,
+                        result.artifacts,
+                        result.metadata,
+                    )
                 return result
 
             # Classify error
@@ -238,6 +282,13 @@ class TaskSupervisor:
             # Fatal errors don't retry
             if error_type == ErrorType.FATAL:
                 self._on_log(f"[supervisor] fatal error detected, no retry")
+                if self._on_done:
+                    self._on_done(
+                        result.exit_code,
+                        result.error,
+                        result.artifacts,
+                        result.metadata,
+                    )
                 return result
 
             # Check retry count for current agent
@@ -268,15 +319,30 @@ class TaskSupervisor:
 
             # No more fallback agents
             self._on_log(f"[supervisor] all agents exhausted")
+            if self._on_done:
+                self._on_done(
+                    result.exit_code,
+                    result.error,
+                    result.artifacts,
+                    result.metadata,
+                )
             return result
 
         # Should not reach here
-        return SupervisorResult(
+        result = SupervisorResult(
             exit_code=1,
             error="All agents exhausted",
             artifacts=[],
             metadata={},
         )
+        if self._on_done:
+            self._on_done(
+                result.exit_code,
+                result.error,
+                result.artifacts,
+                result.metadata,
+            )
+        return result
 
     def _initialize_agent_chain(self) -> None:
         """Build ordered agent chain from agent_selection."""
@@ -350,8 +416,11 @@ class TaskSupervisor:
             on_log=self._on_log_capture,
             on_done=self._on_worker_done,
         )
+        self._current_worker = worker
 
         worker.run()
+
+        self._current_worker = None
 
         return SupervisorResult(
             exit_code=self._last_exit_code,
@@ -374,23 +443,40 @@ class TaskSupervisor:
         Returns:
             DockerRunnerConfig configured for this agent
         """
+        # Parse agent CLI args
+        agent_cli_args: list[str] = []
+        if agent.cli_flags:
+            import shlex
+
+            try:
+                agent_cli_args = shlex.split(agent.cli_flags)
+            except ValueError:
+                # Invalid flags, use empty list
+                agent_cli_args = []
+
         config = DockerRunnerConfig(
             task_id=self._config.task_id,
-            agent_cli=agent.agent_cli,
-            config_dir=agent.config_dir or self._config.config_dir,
-            agent_cli_args=agent.cli_flags or self._config.agent_cli_args,
             image=self._config.image,
-            workdir=self._config.workdir,
+            host_codex_dir=agent.config_dir or self._config.host_codex_dir,
+            host_workdir=self._config.host_workdir,
+            agent_cli=agent.agent_cli,
+            container_codex_dir=self._config.container_codex_dir,
+            container_workdir=self._config.container_workdir,
+            auto_remove=self._config.auto_remove,
+            pull_before_run=self._config.pull_before_run,
+            settings_preflight_script=self._config.settings_preflight_script,
+            environment_preflight_script=self._config.environment_preflight_script,
+            headless_desktop_enabled=self._config.headless_desktop_enabled,
+            environment_id=self._config.environment_id,
+            container_settings_preflight_path=self._config.container_settings_preflight_path,
+            container_environment_preflight_path=self._config.container_environment_preflight_path,
             env_vars=self._config.env_vars,
             extra_mounts=self._config.extra_mounts,
-            auto_remove=self._config.auto_remove,
-            preflight_enabled=self._config.preflight_enabled,
-            preflight_script=self._config.preflight_script,
-            headless_desktop_enabled=self._config.headless_desktop_enabled,
-            gh_repo_root=self._config.gh_repo_root,
+            agent_cli_args=agent_cli_args or self._config.agent_cli_args,
+            gh_repo=self._config.gh_repo,
+            gh_prefer_gh_cli=self._config.gh_prefer_gh_cli,
+            gh_recreate_if_needed=self._config.gh_recreate_if_needed,
             gh_base_branch=self._config.gh_base_branch,
-            gh_use_host_cli=self._config.gh_use_host_cli,
-            gh_pr_metadata_path=self._config.gh_pr_metadata_path,
         )
         return config
 

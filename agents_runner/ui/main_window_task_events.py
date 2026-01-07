@@ -229,7 +229,51 @@ class _MainWindowTaskEventsMixin:
         if isinstance(bridge, TaskRunnerBridge):
             self._on_task_log(bridge.task_id, line)
 
-    def _on_bridge_done(self, exit_code: int, error: object, artifacts: list) -> None:
+    def _on_bridge_retry_attempt(
+        self, retry_count: int, agent: str, delay: float
+    ) -> None:
+        """Handle retry attempt signal from supervisor."""
+        bridge = self.sender()
+        if not isinstance(bridge, TaskRunnerBridge):
+            return
+
+        task = self._tasks.get(bridge.task_id)
+        if task is None:
+            return
+
+        self._on_task_log(
+            bridge.task_id,
+            f"[supervisor] retry {retry_count}/3 with {agent} in {delay:.0f}s",
+        )
+        task.status = f"retrying ({retry_count}/3)"
+        env = self._environments.get(task.environment_id)
+        stain = env.color if env else None
+        spinner = _stain_color(env.color) if env else None
+        self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+
+    def _on_bridge_agent_switched(self, from_agent: str, to_agent: str) -> None:
+        """Handle agent switch signal from supervisor."""
+        bridge = self.sender()
+        if not isinstance(bridge, TaskRunnerBridge):
+            return
+
+        task = self._tasks.get(bridge.task_id)
+        if task is None:
+            return
+
+        self._on_task_log(
+            bridge.task_id,
+            f"[supervisor] switching from {from_agent} to {to_agent} (fallback)",
+        )
+        task.agent_cli = to_agent
+        env = self._environments.get(task.environment_id)
+        stain = env.color if env else None
+        spinner = _stain_color(env.color) if env else None
+        self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+
+    def _on_bridge_done(
+        self, exit_code: int, error: object, artifacts: list, metadata: dict | None = None
+    ) -> None:
         bridge = self.sender()
         if isinstance(bridge, TaskRunnerBridge):
             # Capture GitHub repo info from the worker if available
@@ -244,6 +288,23 @@ class _MainWindowTaskEventsMixin:
                 # Store collected artifacts
                 if artifacts:
                     task.artifacts = list(artifacts)
+                
+                # Capture metadata from supervisor
+                if metadata:
+                    agent_used = metadata.get("agent_used")
+                    agent_id = metadata.get("agent_id")
+                    retry_count = metadata.get("retry_count", 0)
+                    
+                    if agent_used:
+                        task.agent_cli = agent_used
+                    if agent_id:
+                        task.agent_instance_id = agent_id
+                    
+                    if retry_count > 0:
+                        self._on_task_log(
+                            bridge.task_id,
+                            f"[supervisor] completed after {retry_count} retries",
+                        )
             self._on_task_done(bridge.task_id, exit_code, error)
 
     def _on_host_log(self, task_id: str, line: str) -> None:
