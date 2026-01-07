@@ -351,8 +351,8 @@ class TaskSupervisor:
             default_agent = AgentInstance(
                 agent_id="default",
                 agent_cli=self._config.agent_cli,
-                config_dir=self._config.config_dir,
-                cli_flags=self._config.agent_cli_args,
+                config_dir=self._config.host_codex_dir,
+                cli_flags="",
             )
             self._agent_chain = [default_agent]
             return
