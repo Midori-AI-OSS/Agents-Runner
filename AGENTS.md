@@ -11,7 +11,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - **Preflight Review:** Read `.github/copilot-instructions.md` before starting work to understand environment, tooling, and compliance expectations.
 - **Design constraint:** Keep sharp/square corners (avoid non-`0px` `border-radius` values and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
-- **Docs:** Do not update the readme unless asked to; ensure `.codex/` documentation stays current with code changes
+- **Docs:** Do not update the readme unless asked to; ensure `.agents/` documentation stays current with code changes
 - **Test:** Do not build tests unless asked to; delegate testing to Tester Mode when requested
 
 ---
@@ -46,15 +46,15 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 ## Contributor Modes
 
-Use these mode guides from `.codex/modes/` when working on specific tasks:
+Use these mode guides from `.agents/modes/` when working on specific tasks:
 
-- **Coder Mode** (`.codex/modes/CODER.md`): Implementing features and fixes
-- **Tester Mode** (`.codex/modes/TESTER.md`): Building and managing tests
-- **Reviewer Mode** (`.codex/modes/REVIEWER.md`): Auditing documentation
-- **Task Master Mode** (`.codex/modes/TASKMASTER.md`): Managing work items
-- **Manager Mode** (`.codex/modes/MANAGER.md`): Planning and coordination
-- **Auditor Mode** (`.codex/modes/AUDITOR.md`): Code and security audits
-- **QA Mode** (`.codex/modes/QA.md`): Ensuring correctness and reliability
+- **Coder Mode** (`.agents/modes/CODER.md`): Implementing features and fixes
+- **Tester Mode** (`.agents/modes/TESTER.md`): Building and managing tests
+- **Reviewer Mode** (`.agents/modes/REVIEWER.md`): Auditing documentation
+- **Task Master Mode** (`.agents/modes/TASKMASTER.md`): Managing work items
+- **Manager Mode** (`.agents/modes/MANAGER.md`): Planning and coordination
+- **Auditor Mode** (`.agents/modes/AUDITOR.md`): Code and security audits
+- **QA Mode** (`.agents/modes/QA.md`): Ensuring correctness and reliability
 
 ---
 

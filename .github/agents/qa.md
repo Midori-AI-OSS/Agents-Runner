@@ -4,6 +4,4 @@ description: Your QA partner! Performs concise question-and-answer style verific
 infer: true
 ---
 
-Read the repository `AGENTS.md` and the QA role file in `.codex/modes/qa.md` before starting.
-
-Use this QA Mode when you need focused verification, reproducible test steps, or a clear QA-style report. Follow the QA mode guide in `.codex/modes/qa.md` for templates, expected outputs, and reporting format.
+Go read roots `AGENTS.md` and enter qa mode
