@@ -3,7 +3,6 @@ from .animated_button import AnimatedPushButton, AnimatedToolButton
 from .animated_checkbox import AnimatedCheckBox
 from .arc_spinner import ArcSpinner
 from .glass_card import GlassCard
-from .help_icon import HelpIcon
 from .loading_bar import BouncingLoadingBar
 from .log_highlighter import LogHighlighter
 from .smooth_scroll import SmoothScrollArea
@@ -21,7 +20,6 @@ __all__ = [
     "ArcSpinner",
     "BouncingLoadingBar",
     "GlassCard",
-    "HelpIcon",
     "LogHighlighter",
     "SmoothScrollArea",
     "SpellHighlighter",
