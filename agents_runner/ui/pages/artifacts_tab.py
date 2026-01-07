@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import subprocess
+import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -12,7 +14,11 @@ from PySide6.QtWidgets import (
     QListWidgetItem, QToolButton, QFileDialog, QSplitter,
 )
 
-from agents_runner.artifacts import list_artifacts, decrypt_artifact, ArtifactMeta
+from agents_runner.artifacts import (
+    list_artifacts, decrypt_artifact, ArtifactMeta,
+    list_staging_artifacts, get_staging_dir, StagingArtifactMeta
+)
+from agents_runner.docker.artifact_file_watcher import ArtifactFileWatcher
 from agents_runner.ui.task_model import Task
 from agents_runner.widgets.glass_card import GlassCard
 
@@ -39,8 +45,13 @@ class ArtifactsTab(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._current_task: Task | None = None
-        self._artifacts: list[ArtifactMeta] = []
+        self._artifacts: list[ArtifactMeta | StagingArtifactMeta] = []
         self._temp_files: list[Path] = []
+        self._mode: str = "encrypted"  # "staging" or "encrypted"
+        self._file_watcher: ArtifactFileWatcher | None = None
+        self._refresh_timer = QTimer()
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.timeout.connect(self._refresh_file_list)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -60,9 +71,15 @@ class ArtifactsTab(QWidget):
         list_title.setStyleSheet("font-size: 14px; font-weight: 650;")
         self._artifact_count = QLabel("(0)")
         self._artifact_count.setStyleSheet("color: rgba(237, 239, 245, 160);")
+        
+        # Add mode indicator
+        self._mode_label = QLabel("Archived Artifacts")
+        self._mode_label.setStyleSheet("color: rgba(237, 239, 245, 160); font-size: 11px;")
+        
         list_header.addWidget(list_title)
         list_header.addWidget(self._artifact_count)
         list_header.addStretch(1)
+        list_header.addWidget(self._mode_label)
 
         self._artifact_list = QListWidget()
         self._artifact_list.setSpacing(4)
@@ -114,6 +131,12 @@ class ArtifactsTab(QWidget):
         self._btn_open.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self._btn_open.setEnabled(False)
         self._btn_open.clicked.connect(self._on_open_clicked)
+        
+        self._btn_edit = QToolButton()
+        self._btn_edit.setText("Edit")
+        self._btn_edit.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._btn_edit.setEnabled(False)
+        self._btn_edit.clicked.connect(self._on_edit_clicked)
 
         self._btn_download = QToolButton()
         self._btn_download.setText("Download")
@@ -123,6 +146,7 @@ class ArtifactsTab(QWidget):
 
         button_row.addStretch(1)
         button_row.addWidget(self._btn_open)
+        button_row.addWidget(self._btn_edit)
         button_row.addWidget(self._btn_download)
 
         right_layout.addWidget(preview_title)
@@ -141,9 +165,91 @@ class ArtifactsTab(QWidget):
         self._preview_area.hide()
 
     def set_task(self, task: Task) -> None:
+        """Load artifacts for a task and determine mode based on status."""
         self._current_task = task
         self._cleanup_temp_files()
-        self._artifacts = list_artifacts(task.task_id)
+        
+        # Determine mode based on task status
+        if task.status in ["running", "queued"]:
+            self._switch_to_staging_mode()
+        else:
+            self._switch_to_encrypted_mode()
+    
+    def on_task_status_changed(self, task: Task) -> None:
+        """Handle task status changes."""
+        if not self._current_task or self._current_task.task_id != task.task_id:
+            return
+        
+        self._current_task = task
+        
+        # Check if we need to switch modes
+        if task.status in ["running", "queued"] and self._mode != "staging":
+            self._switch_to_staging_mode()
+        elif task.status not in ["running", "queued"] and self._mode == "staging":
+            # Task completed - switch to encrypted mode
+            self._switch_to_encrypted_mode()
+    
+    def _switch_to_staging_mode(self) -> None:
+        """Switch to staging (live) mode."""
+        self._mode = "staging"
+        self._mode_label.setText("Live Artifacts")
+        self._mode_label.setStyleSheet(
+            "color: rgba(100, 255, 100, 200); font-weight: 600; font-size: 11px;"
+        )
+        
+        # Start file watcher
+        if self._current_task:
+            staging_dir = get_staging_dir(self._current_task.task_id)
+            if self._file_watcher:
+                self._file_watcher.stop()
+            self._file_watcher = ArtifactFileWatcher(staging_dir)
+            self._file_watcher.files_changed.connect(self._on_files_changed)
+            self._file_watcher.start()
+        
+        # Load staging artifacts
+        self._refresh_file_list()
+    
+    def _switch_to_encrypted_mode(self) -> None:
+        """Switch to encrypted (archived) mode."""
+        self._mode = "encrypted"
+        self._mode_label.setText("Archived Artifacts")
+        self._mode_label.setStyleSheet("color: rgba(237, 239, 245, 160); font-size: 11px;")
+        
+        # Stop file watcher
+        if self._file_watcher:
+            self._file_watcher.stop()
+            self._file_watcher = None
+        
+        # Load encrypted artifacts
+        if self._current_task:
+            self._artifacts = list_artifacts(self._current_task.task_id)
+        else:
+            self._artifacts = []
+        self._update_artifact_list()
+    
+    def _on_files_changed(self) -> None:
+        """Handle file watcher notification (debounced)."""
+        # Debounce: Wait 500ms before refreshing
+        self._refresh_timer.start(500)
+    
+    def _refresh_file_list(self) -> None:
+        """Refresh artifact list from current mode."""
+        if not self._current_task:
+            return
+        
+        if self._mode == "staging":
+            self._artifacts = list_staging_artifacts(self._current_task.task_id)
+        else:
+            self._artifacts = list_artifacts(self._current_task.task_id)
+        
+        self._update_artifact_list()
+    
+    def _update_artifact_list(self) -> None:
+        """Update UI list widget with current artifacts."""
+        self._artifact_list.clear()
+        self._artifact_count.setText(f"({len(self._artifacts)})")
+    def _update_artifact_list(self) -> None:
+        """Update UI list widget with current artifacts."""
         self._artifact_list.clear()
         self._artifact_count.setText(f"({len(self._artifacts)})")
 
@@ -151,6 +257,7 @@ class ArtifactsTab(QWidget):
             self._empty_state.show()
             self._preview_area.hide()
             self._btn_open.setEnabled(False)
+            self._btn_edit.setEnabled(False)
             self._btn_download.setEnabled(False)
             return
 
@@ -165,10 +272,20 @@ class ArtifactsTab(QWidget):
             layout.setContentsMargins(8, 6, 8, 6)
             layout.setSpacing(2)
 
-            name = QLabel(artifact.original_filename)
-            name.setStyleSheet("font-weight: 600; color: rgba(237, 239, 245, 235);")
+            if isinstance(artifact, StagingArtifactMeta):
+                # Staging artifact - green color
+                name = QLabel(artifact.filename)
+                name.setStyleSheet("font-weight: 600; color: rgba(100, 255, 100, 235);")
+                
+                info_text = f"{_format_size(artifact.size_bytes)} • {_format_timestamp(artifact.modified_at.isoformat())}"
+            else:
+                # Encrypted artifact - normal color
+                name = QLabel(artifact.original_filename)
+                name.setStyleSheet("font-weight: 600; color: rgba(237, 239, 245, 235);")
+                
+                info_text = f"{_format_size(artifact.size_bytes)} • {_format_timestamp(artifact.encrypted_at)}"
 
-            info = QLabel(f"{_format_size(artifact.size_bytes)} • {_format_timestamp(artifact.encrypted_at)}")
+            info = QLabel(info_text)
             info.setStyleSheet("font-size: 11px; color: rgba(237, 239, 245, 140);")
 
             layout.addWidget(name)
@@ -185,18 +302,43 @@ class ArtifactsTab(QWidget):
         if current_row < 0 or current_row >= len(self._artifacts):
             self._preview_area.hide()
             self._btn_open.setEnabled(False)
+            self._btn_edit.setEnabled(False)
             self._btn_download.setEnabled(False)
             return
 
         artifact = self._artifacts[current_row]
         self._preview_area.show()
         self._btn_open.setEnabled(True)
-        self._btn_download.setEnabled(True)
         self._thumbnail.hide()
-        self._preview_label.setText(f"{artifact.original_filename}\n{artifact.mime_type}")
-
-        if artifact.mime_type.startswith("image/"):
-            QTimer.singleShot(0, lambda: self._load_thumbnail(artifact))
+        
+        # Enable edit only for staging text files
+        if isinstance(artifact, StagingArtifactMeta):
+            self._btn_edit.setEnabled(artifact.mime_type.startswith("text/"))
+            self._btn_download.setEnabled(False)  # No download for staging
+            self._preview_label.setText(f"{artifact.filename}\n{artifact.mime_type}")
+            
+            if artifact.mime_type.startswith("image/"):
+                QTimer.singleShot(0, lambda: self._load_staging_thumbnail(artifact))
+        else:
+            self._btn_edit.setEnabled(False)  # No edit for encrypted
+            self._btn_download.setEnabled(True)
+            self._preview_label.setText(f"{artifact.original_filename}\n{artifact.mime_type}")
+            
+            if artifact.mime_type.startswith("image/"):
+                QTimer.singleShot(0, lambda: self._load_thumbnail(artifact))
+    
+    def _load_staging_thumbnail(self, artifact: StagingArtifactMeta) -> None:
+        """Load thumbnail from staging artifact."""
+        try:
+            pixmap = QPixmap(str(artifact.path))
+            if not pixmap.isNull():
+                scaled = pixmap.scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                self._thumbnail.setPixmap(scaled)
+                self._thumbnail.show()
+            else:
+                logger.warning(f"Failed to load image: {artifact.filename}")
+        except Exception as e:
+            logger.error(f"Failed to load staging thumbnail: {e}")
 
     def _load_thumbnail(self, artifact: ArtifactMeta) -> None:
         if not self._current_task:
@@ -234,7 +376,31 @@ class ArtifactsTab(QWidget):
             return
 
         artifact = self._artifacts[current_row]
-
+        
+        if isinstance(artifact, StagingArtifactMeta):
+            self._open_staging_artifact(artifact)
+        else:
+            self._open_encrypted_artifact(artifact)
+    
+    def _open_staging_artifact(self, artifact: StagingArtifactMeta) -> None:
+        """Open a staging artifact directly."""
+        try:
+            file_path = str(artifact.path)
+            
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", file_path])
+            elif sys.platform == "win32":
+                subprocess.Popen(["start", file_path], shell=True)
+            else:
+                subprocess.Popen(["xdg-open", file_path])
+            
+            logger.info(f"Opened staging artifact: {artifact.filename}")
+        
+        except Exception as e:
+            logger.error(f"Failed to open staging artifact: {e}")
+    
+    def _open_encrypted_artifact(self, artifact: ArtifactMeta) -> None:
+        """Open an encrypted artifact (existing implementation)."""
         try:
             suffix = Path(artifact.original_filename).suffix
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -245,9 +411,6 @@ class ArtifactsTab(QWidget):
                 env_name = self._current_task.environment_id or "default"
 
                 if decrypt_artifact(task_dict, env_name, artifact.uuid, tmp_path):
-                    import subprocess
-                    import sys
-
                     if sys.platform == "darwin":
                         subprocess.Popen(["open", str(tmp_path)])
                     elif sys.platform == "win32":
@@ -261,6 +424,53 @@ class ArtifactsTab(QWidget):
 
         except Exception as e:
             logger.error(f"Failed to open artifact: {e}")
+    
+    def _on_edit_clicked(self) -> None:
+        """Edit selected artifact in external editor."""
+        current_row = self._artifact_list.currentRow()
+        if current_row < 0 or not self._current_task:
+            return
+        
+        artifact = self._artifacts[current_row]
+        
+        # Only allow editing for staging artifacts
+        if not isinstance(artifact, StagingArtifactMeta):
+            logger.warning("Cannot edit encrypted artifacts")
+            return
+        
+        # Only allow editing for text files
+        if not artifact.mime_type.startswith("text/"):
+            logger.warning(f"Cannot edit non-text file: {artifact.mime_type}")
+            return
+        
+        self._edit_staging_artifact(artifact)
+    
+    def _edit_staging_artifact(self, artifact: StagingArtifactMeta) -> None:
+        """Launch external editor for a staging artifact."""
+        try:
+            file_path = str(artifact.path)
+            
+            # Determine editor command
+            if sys.platform == "darwin":
+                editor = ["open", "-e"]  # TextEdit on macOS
+            elif sys.platform == "win32":
+                editor = ["notepad.exe"]  # Notepad on Windows
+            else:
+                # Linux: Try $EDITOR, fall back to xdg-open
+                import os
+                editor_env = os.environ.get("EDITOR")
+                if editor_env:
+                    editor = [editor_env]
+                else:
+                    editor = ["xdg-open"]
+            
+            # Launch editor (non-blocking)
+            subprocess.Popen(editor + [file_path])
+            
+            logger.info(f"Launched editor for: {artifact.filename}")
+        
+        except Exception as e:
+            logger.error(f"Failed to launch editor: {e}")
 
     def _on_download_clicked(self) -> None:
         current_row = self._artifact_list.currentRow()
@@ -299,3 +509,7 @@ class ArtifactsTab(QWidget):
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
         self._cleanup_temp_files()
+        # Stop file watcher when tab is hidden
+        if self._file_watcher:
+            self._file_watcher.stop()
+            self._file_watcher = None
