@@ -17,6 +17,8 @@ from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QFontMetrics
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
@@ -47,7 +49,7 @@ class ElidedLabel(QLabel):
         self._full_text = text
         self._update_elide()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._update_elide()
 
@@ -153,7 +155,7 @@ class TaskRow(QWidget):
         """Apply the current content offset to the content widget geometry."""
         self._content.setGeometry(self.rect().translated(int(self._content_offset), 0))
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._apply_content_geometry()
 
@@ -266,7 +268,7 @@ class TaskRow(QWidget):
         self.style().polish(self)
         self.update()
 
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)

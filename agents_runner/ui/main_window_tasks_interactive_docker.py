@@ -196,6 +196,7 @@ def launch_docker_terminal_task(
             if os.path.exists(finish_path):
                 os.unlink(finish_path)
         except Exception:
+            # Best-effort cleanup: ignore errors while removing stale finish file.
             pass
 
         # Build git token snippet
@@ -349,6 +350,8 @@ def _prepare_preflight_scripts(
             try:
                 os.close(fd)
             except Exception:
+                # Best-effort cleanup: ignore errors while closing the fd,
+                # since the original exception is re-raised below.
                 pass
             raise
         return tmp_path
@@ -524,10 +527,10 @@ def _build_host_shell_script(
         f"FINISH_FILE={shlex.quote(finish_path)}",
         'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
         'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
-        'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
-        'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
-        'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; '
-        'if [ -n "$TMP_HELPME" ]; then rm -f -- "$TMP_HELPME" >/dev/null 2>&1 || true; fi; }',
+        + 'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
+        + 'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
+        + 'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; '
+        + 'if [ -n "$TMP_HELPME" ]; then rm -f -- "$TMP_HELPME" >/dev/null 2>&1 || true; fi; }',
         'finish() { STATUS=$?; if [ ! -e "$FINISH_FILE" ]; then write_finish "$STATUS"; fi; cleanup; }',
         "trap finish EXIT",
     ]
@@ -560,6 +563,7 @@ def _cleanup_temp_files(tmp_paths: dict[str, str]) -> None:
             if tmp and os.path.exists(tmp):
                 os.unlink(tmp)
         except Exception:
+            # Best-effort cleanup: ignore errors while removing temporary files.
             pass
 
 

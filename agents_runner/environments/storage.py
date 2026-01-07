@@ -135,6 +135,7 @@ def delete_environment(env_id: str, data_dir: str | None = None) -> None:
                             try:
                                 delete_prompt_file(prompt.prompt_path)
                             except Exception:
+                                # Best-effort cleanup: ignore errors while deleting prompt files.
                                 pass
                 break
     
