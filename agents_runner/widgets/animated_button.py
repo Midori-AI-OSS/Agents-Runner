@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize
+from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QSize
+from PySide6.QtGui import QEnterEvent, QMouseEvent
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QPushButton, QToolButton, QWidget
 
 
@@ -13,19 +14,19 @@ class AnimatedPushButton(QPushButton):
         self._hover_anim: QPropertyAnimation | None = None
         self._press_anim: QPropertyAnimation | None = None
 
-    def enterEvent(self, event) -> None:
+    def enterEvent(self, event: QEnterEvent) -> None:
         super().enterEvent(event)
         self._animate_scale(1.02)
 
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, event: QEvent) -> None:
         super().leaveEvent(event)
         self._animate_scale(1.0)
 
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         super().mousePressEvent(event)
         self._animate_scale(0.98)
 
-    def mouseReleaseEvent(self, event) -> None:
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         super().mouseReleaseEvent(event)
         if self.underMouse():
             self._animate_scale(1.02)
@@ -66,11 +67,11 @@ class AnimatedToolButton(QToolButton):
         self._glow_effect: QGraphicsOpacityEffect | None = None
         self._glow_anim: QPropertyAnimation | None = None
 
-    def enterEvent(self, event) -> None:
+    def enterEvent(self, event: QEnterEvent) -> None:
         super().enterEvent(event)
         self._animate_glow(0.15)
 
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, event: QEvent) -> None:
         super().leaveEvent(event)
         self._animate_glow(0.0)
 

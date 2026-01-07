@@ -13,10 +13,13 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QHideEvent,
     QLinearGradient,
     QMouseEvent,
+    QPaintEvent,
     QPainter,
     QPainterPath,
+    QShowEvent,
 )
 from PySide6.QtWidgets import QMenu, QPushButton, QWidget
 
@@ -95,7 +98,7 @@ class StainedGlassButton(QPushButton):
         self._menu = menu
         self.update()
 
-    def _menu_rect(self, rect) -> QRect:
+    def _menu_rect(self, rect: QRect) -> QRect:
         if self._menu is None:
             return QRect()
         w = int(self._menu_width)
@@ -114,7 +117,7 @@ class StainedGlassButton(QPushButton):
             return
         super().mouseReleaseEvent(event)
 
-    def showEvent(self, event) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         if (
             self._glass_enabled
@@ -123,12 +126,12 @@ class StainedGlassButton(QPushButton):
         ):
             self._pulse_anim.start()
 
-    def hideEvent(self, event) -> None:
+    def hideEvent(self, event: QHideEvent) -> None:
         super().hideEvent(event)
         if self._pulse_anim.state() == QAbstractAnimation.State.Running:
             self._pulse_anim.stop()
 
-    def changeEvent(self, event) -> None:
+    def changeEvent(self, event: QEvent) -> None:
         super().changeEvent(event)
         if event.type() == QEvent.Type.EnabledChange:
             if self._glass_enabled and self.isEnabled():
@@ -159,7 +162,7 @@ class StainedGlassButton(QPushButton):
         base = super().minimumSizeHint()
         return QSize(base.width() + 24, base.height())
 
-    def paintEvent(self, event) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 

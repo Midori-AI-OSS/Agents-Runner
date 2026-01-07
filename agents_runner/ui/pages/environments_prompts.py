@@ -113,12 +113,8 @@ class PromptsTabWidget(QWidget):
 
         if result == QMessageBox.Yes:
             self._unlocked = True
-            self._unlock_btn.setEnabled(False)
-            self._unlock_btn.setText("Prompts Unlocked")
-            self._warning_label.setText(
-                "✓ Prompts are unlocked. Configure up to 20 custom prompts below."
-            )
-            self._warning_label.setStyleSheet("color: rgba(80, 250, 123, 200);")
+            self._unlock_btn.setVisible(False)
+            self._warning_label.setVisible(False)
             self._tabs.setVisible(True)
             self._sync_visible_tabs()
             self.prompts_changed.emit()
@@ -163,16 +159,14 @@ class PromptsTabWidget(QWidget):
         self._unlocked = unlocked
 
         if unlocked:
-            self._unlock_btn.setEnabled(False)
-            self._unlock_btn.setText("Prompts Unlocked")
-            self._warning_label.setText(
-                "✓ Prompts are unlocked. Configure up to 20 custom prompts below."
-            )
-            self._warning_label.setStyleSheet("color: rgba(80, 250, 123, 200);")
+            self._unlock_btn.setVisible(False)
+            self._warning_label.setVisible(False)
             self._tabs.setVisible(True)
         else:
+            self._unlock_btn.setVisible(True)
             self._unlock_btn.setEnabled(True)
             self._unlock_btn.setText("Unlock Prompts")
+            self._warning_label.setVisible(True)
             self._warning_label.setText(
                 "⚠️  Prompts are locked. Click 'Unlock Prompts' to enable."
             )

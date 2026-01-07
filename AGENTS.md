@@ -8,6 +8,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 - **Run locally:** `uv run main.py`
 - **UI styling:** Located in `agents_runner/style/` (Qt stylesheet builder) and `agents_runner/widgets/` (custom widgets)
+- **Preflight Review:** Read `.github/copilot-instructions.md` before starting work to understand environment, tooling, and compliance expectations.
 - **Design constraint:** Keep sharp/square corners (avoid non-`0px` `border-radius` values and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
 - **Docs:** Do not update the readme unless asked to; ensure `.codex/` documentation stays current with code changes
@@ -60,3 +61,4 @@ Use these mode guides from `.codex/modes/` when working on specific tasks:
 ## Communication
 
 Use GitHub issues/PRs/comments as the primary async communication channel. Keep commit messages and PR descriptions concise and outcome-focused.
+Do not use emoticons, emoji, or other non-text icons in commit messages, issue/PR descriptions, comments, documentation, or source code.

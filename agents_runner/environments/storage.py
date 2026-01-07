@@ -13,6 +13,7 @@ from .paths import default_data_dir
 from .paths import environment_path
 from .serialize import _environment_from_payload
 from .serialize import serialize_environment
+from .prompt_storage import delete_prompt_file
 
 
 def _state_path_for_data_dir(data_dir: str) -> str:
@@ -117,7 +118,28 @@ def delete_environment(env_id: str, data_dir: str | None = None) -> None:
     data_dir = data_dir or default_data_dir()
     state_path = _state_path_for_data_dir(data_dir)
     state = load_state(state_path)
+    
+    # Load the environment to get prompt paths before deleting
     raw = state.get("environments")
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            existing_id = str(item.get("env_id") or item.get("id") or "").strip()
+            if existing_id == str(env_id or "").strip():
+                env = _environment_from_payload(item)
+                if env:
+                    # Delete associated prompt files
+                    for prompt in env.prompts or []:
+                        if prompt.prompt_path:
+                            try:
+                                delete_prompt_file(prompt.prompt_path)
+                            except Exception:
+                                # Best-effort cleanup: ignore errors while deleting prompt files.
+                                pass
+                break
+    
+    # Remove from state
     if isinstance(raw, list):
         keep: list[dict[str, Any]] = []
         target = str(env_id or "").strip()

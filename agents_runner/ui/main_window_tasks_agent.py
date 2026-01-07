@@ -30,6 +30,7 @@ from agents_runner.persistence import serialize_task
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import PIXELARCH_AGENT_CONTEXT_SUFFIX
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
+from agents_runner.ui.constants import PIXELARCH_GIT_CONTEXT_SUFFIX
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _stain_color
 
@@ -225,6 +226,10 @@ class _MainWindowTasksAgentMixin:
         runner_prompt = prompt
         if bool(self._settings_data.get("append_pixelarch_context") or False):
             runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
+
+        # Inject git context when GitHub management is enabled
+        if gh_mode == GH_MANAGEMENT_GITHUB:
+            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_GIT_CONTEXT_SUFFIX}"
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
