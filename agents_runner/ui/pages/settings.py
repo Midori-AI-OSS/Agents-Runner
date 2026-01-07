@@ -129,7 +129,7 @@ class SettingsPage(QWidget):
             "This never affects Run Interactive."
         )
         self._headless_desktop_enabled = QCheckBox(
-            "Force headless desktop (noVNC) for all environments"
+            "Force headless desktop for all environments"
         )
         self._headless_desktop_enabled.setToolTip(
             "When enabled, this overrides the per-environment headless desktop setting."

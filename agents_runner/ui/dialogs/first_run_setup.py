@@ -96,11 +96,13 @@ class FirstRunSetupDialog(QDialog):
         # Instructions
         instructions_label = QLabel(
             "Setup will open one terminal at a time. Complete each agent's setup "
-            "before moving to the next.\n"
-            "(You can configure individual agents later in Settings)"
+            "before moving to the next."
         )
         instructions_label.setWordWrap(True)
         instructions_label.setStyleSheet("color: #666; font-size: 11px;")
+        instructions_label.setToolTip(
+            "You can configure individual agents later in Settings → Agent CLI section."
+        )
         layout.addWidget(instructions_label)
 
         # Buttons
