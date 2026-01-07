@@ -202,6 +202,7 @@ class _MainWindowEnvironmentMixin:
         self._new_task.set_defaults(host_codex=host_codex)
         self._new_task.set_workspace_status(path=workdir, ready=ready, message=message)
         self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)
+        self._update_new_task_agent_chain(env)
         self._sync_new_task_repo_controls(env)
         interactive_key = self._interactive_command_key(agent_cli)
         interactive_command = str(
@@ -214,6 +215,64 @@ class _MainWindowEnvironmentMixin:
             command=interactive_command,
         )
         self._populate_environment_pickers()
+
+    def _update_new_task_agent_chain(self, env: Environment | None) -> None:
+        """Update the agent chain display in the new task page.
+
+        Args:
+            env: Current environment, or None for default
+        """
+        from agents_runner.agent_cli import normalize_agent
+
+        # Get agent chain from environment or settings
+        if env and env.agent_selection and env.agent_selection.agents:
+            # Environment has custom agent configuration
+            selection = env.agent_selection
+            mode = str(selection.selection_mode or "round-robin")
+
+            if mode == "fallback":
+                # Build fallback chain
+                agent_ids = {a.agent_id for a in selection.agents}
+                fallback_targets = set(selection.agent_fallbacks.values())
+                primary_agents = agent_ids - fallback_targets
+
+                # Build chain from first primary agent
+                chains: list[list[str]] = []
+                for primary in primary_agents:
+                    chain = [primary]
+                    current = primary
+                    visited = {primary}
+                    while current in selection.agent_fallbacks:
+                        next_id = selection.agent_fallbacks[current]
+                        if next_id in visited:
+                            break  # Circular reference
+                        chain.append(next_id)
+                        visited.add(next_id)
+                        current = next_id
+                    chains.append(chain)
+
+                # Convert agent IDs to CLI names
+                id_to_cli = {a.agent_id: a.agent_cli for a in selection.agents}
+                if chains:
+                    agent_names = [
+                        normalize_agent(id_to_cli.get(agent_id, agent_id))
+                        for agent_id in chains[0]
+                    ]
+                else:
+                    agent_names = []
+            else:
+                # Round-robin or least-used: show all agents in priority order
+                agent_names = [
+                    normalize_agent(a.agent_cli) for a in selection.agents
+                ]
+        else:
+            # Use default agent from settings
+            default_agent = normalize_agent(
+                str(self._settings_data.get("agent_cli") or "codex")
+            )
+            agent_names = [default_agent]
+
+        self._new_task.set_agent_chain(agent_names)
 
     def _on_new_task_env_changed(self, env_id: str) -> None:
         if self._syncing_environment:

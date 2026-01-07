@@ -140,6 +140,17 @@ class NewTaskPage(QWidget):
         cfg_grid.addWidget(self._base_branch, 2, 1, 1, 2)
         self.set_repo_controls_visible(False)
 
+        # Agent chain display
+        self._agent_chain_label = QLabel("Agent chain")
+        self._agent_chain = QLabel("—")
+        self._agent_chain.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._agent_chain.setStyleSheet("color: rgba(237, 239, 245, 200);")
+        self._agent_chain.setToolTip(
+            "Agents will be used in this order for new tasks in this environment."
+        )
+        cfg_grid.addWidget(self._agent_chain_label, 3, 0)
+        cfg_grid.addWidget(self._agent_chain, 3, 1, 1, 2)
+
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
         self._get_agent_help = StainedGlassButton("Get Agent Help")
@@ -494,6 +505,29 @@ class NewTaskPage(QWidget):
 
         self._run_interactive.setToolTip(tooltip)
         self._run_agent.setToolTip(tooltip)
+
+    def set_agent_chain(self, agents: list[str]) -> None:
+        """Set the agent chain display for the selected environment.
+
+        Args:
+            agents: List of agent names in priority order
+        """
+        if not agents:
+            self._agent_chain.setText("—")
+            self._agent_chain.setToolTip("")
+            return
+
+        # Format as: Primary → Fallback1 → Fallback2
+        chain_text = " → ".join(a.title() for a in agents)
+        self._agent_chain.setText(chain_text)
+
+        tooltip = "Agents will be used in this order:\n"
+        for i, agent in enumerate(agents, 1):
+            if i == 1:
+                tooltip += f"{i}. {agent.title()} (Primary)\n"
+            else:
+                tooltip += f"{i}. {agent.title()} (Fallback {i-1})\n"
+        self._agent_chain.setToolTip(tooltip.strip())
 
     def reset_for_new_run(self) -> None:
         self._prompt.setPlainText("")
