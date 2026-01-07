@@ -63,8 +63,14 @@ class _MainWindowPersistenceMixin:
         self._save_timer.start()
 
     def _save_state(self) -> None:
+        from agents_runner.persistence import save_watch_state
+
         environments = [serialize_environment(env) for env in self._environment_list()]
         payload = {"settings": dict(self._settings_data), "environments": environments}
+
+        # Save watch states
+        save_watch_state(payload, self._watch_states)
+
         save_state(self._state_path, payload)
         for task in sorted(self._tasks.values(), key=lambda t: t.created_at_s):
             save_task_payload(
@@ -74,10 +80,16 @@ class _MainWindowPersistenceMixin:
             )
 
     def _load_state(self) -> None:
+        from agents_runner.persistence import load_watch_state
+
         try:
             payload = load_state(self._state_path)
         except Exception:
             return
+
+        # Load watch states
+        self._watch_states.update(load_watch_state(payload))
+
         settings = payload.get("settings")
         if isinstance(settings, dict):
             self._settings_data.update(settings)

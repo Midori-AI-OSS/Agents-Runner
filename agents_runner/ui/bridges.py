@@ -27,6 +27,7 @@ class TaskRunnerBridge(QObject):
         mode: str = "codex",
         agent_selection: AgentSelection | None = None,
         use_supervisor: bool = True,
+        watch_states: dict | None = None,
     ) -> None:
         super().__init__()
         self.task_id = task_id
@@ -55,6 +56,7 @@ class TaskRunnerBridge(QObject):
                 on_retry=self.retry_attempt.emit,
                 on_agent_switch=self.agent_switched.emit,
                 on_done=self.done.emit,
+                watch_states=watch_states or {},
             )
         else:
             # Legacy mode without supervisor

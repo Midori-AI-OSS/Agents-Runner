@@ -117,6 +117,79 @@ class _MainWindowTasksAgentMixin:
                 env=env, advance_round_robin=True
             )
 
+        # Check cooldown for selected agent
+        from agents_runner.core.agent.cooldown_manager import CooldownManager
+        from agents_runner.ui.dialogs.cooldown_modal import (
+            CooldownAction,
+            CooldownModal,
+        )
+
+        cooldown_mgr = CooldownManager(self._watch_states)
+        watch_state = cooldown_mgr.check_cooldown(agent_cli)
+
+        # Show cooldown modal if agent is on cooldown
+        if watch_state and watch_state.is_on_cooldown():
+            # Get fallback agent name
+            fallback_name = None
+            fallback_agent = None
+            if (
+                env
+                and env.agent_selection
+                and env.agent_selection.agent_fallbacks
+            ):
+                # Find primary agent
+                primary_agent = None
+                if env.agent_selection.agents:
+                    for agent in env.agent_selection.agents:
+                        if agent.agent_cli == agent_cli:
+                            primary_agent = agent
+                            break
+
+                # Get fallback
+                if primary_agent:
+                    fallback_id = env.agent_selection.agent_fallbacks.get(
+                        primary_agent.agent_id
+                    )
+                    if fallback_id:
+                        fallback_agent = next(
+                            (
+                                a
+                                for a in env.agent_selection.agents
+                                if a.agent_id == fallback_id
+                            ),
+                            None,
+                        )
+                        if fallback_agent:
+                            fallback_name = fallback_agent.agent_cli.capitalize()
+
+            # Show cooldown modal
+            modal = CooldownModal(
+                self,
+                agent_name=agent_cli.capitalize(),
+                watch_state=watch_state,
+                fallback_agent_name=fallback_name,
+            )
+
+            result = modal.exec()
+            action = modal.get_result()
+
+            if action == CooldownAction.CANCEL:
+                return  # Don't start task
+
+            elif action == CooldownAction.BYPASS:
+                # Clear cooldown and continue with original agent
+                cooldown_mgr.clear_cooldown(agent_cli)
+                self._schedule_save()  # Persist cooldown clear
+
+            elif action == CooldownAction.USE_FALLBACK:
+                # Override agent for this task only (task-scoped)
+                if fallback_agent:
+                    agent_cli = fallback_agent.agent_cli
+                    auto_config_dir = fallback_agent.config_dir
+                    agent_instance_id = fallback_agent.agent_id
+                    # Don't modify environment, just use fallback for this task
+
+
         gh_mode = (
             normalize_gh_management_mode(
                 str(env.gh_management_mode or GH_MANAGEMENT_NONE)
@@ -341,6 +414,7 @@ class _MainWindowTasksAgentMixin:
             config=config,
             prompt=prompt,
             agent_selection=agent_selection,
+            watch_states=self._watch_states,
         )
         thread = QThread(self)
         bridge.moveToThread(thread)

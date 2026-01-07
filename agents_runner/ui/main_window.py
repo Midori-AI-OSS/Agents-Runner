@@ -110,6 +110,11 @@ class MainWindow(
         self._save_timer.setInterval(450)
         self._save_timer.timeout.connect(self._save_state)
 
+        # Agent watch states for cooldown tracking
+        from agents_runner.core.agent.watch_state import AgentWatchState
+
+        self._watch_states: dict[str, AgentWatchState] = {}
+
         self.host_log.connect(self._on_host_log, Qt.QueuedConnection)
         self.host_pr_url.connect(self._on_host_pr_url, Qt.QueuedConnection)
         self.interactive_finished.connect(
