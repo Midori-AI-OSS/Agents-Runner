@@ -3,6 +3,8 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
+from PySide6.QtGui import QHideEvent
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QFrame
 from PySide6.QtWidgets import QHBoxLayout
@@ -193,11 +195,11 @@ class DashboardPage(QWidget):
             lambda: self._rows_past
         )
 
-    def hideEvent(self, event) -> None:
+    def hideEvent(self, event: QHideEvent) -> None:
         self._past_animator.cancel_entrances()
         super().hideEvent(event)
 
-    def showEvent(self, event) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         if self._stack.currentIndex() == 1:
             self._past_animator.on_tab_shown()

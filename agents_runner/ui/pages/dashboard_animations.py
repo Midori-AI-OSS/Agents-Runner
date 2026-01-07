@@ -7,6 +7,8 @@ maintain the 600-line hard limit per file.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from PySide6.QtCore import QPoint
 from PySide6.QtCore import QRect
 from PySide6.QtCore import QTimer
@@ -24,7 +26,7 @@ class PastTaskAnimator:
     """
 
     def __init__(
-        self, scroll_area: QScrollArea, get_rows_callback
+        self, scroll_area: QScrollArea, get_rows_callback: Callable[[], dict[str, TaskRow]]
     ) -> None:
         """Initialize the animator.
 
