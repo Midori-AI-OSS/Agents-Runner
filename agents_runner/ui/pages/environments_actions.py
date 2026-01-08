@@ -248,6 +248,7 @@ class _EnvironmentsPageActionsMixin:
             host_workdir="",
             max_agents_running=max_agents_running,
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
+            cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             preflight_enabled=bool(self._preflight_enabled.isChecked()),
             preflight_script=str(self._preflight_script.toPlainText() or ""),
             env_vars=env_vars,

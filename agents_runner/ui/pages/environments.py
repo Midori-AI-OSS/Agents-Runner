@@ -165,6 +165,22 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             "When enabled, agent runs for this environment will start a noVNC desktop.\n"
             "Settings → Force headless desktop overrides this setting."
         )
+        
+        self._cache_desktop_build = QCheckBox(
+            "Cache desktop build"
+        )
+        self._cache_desktop_build.setToolTip(
+            "When enabled, desktop components are pre-installed in a cached Docker image.\n"
+            "This reduces task startup time from 45-90s to 2-5s.\n"
+            "Requires 'Enable headless desktop' to be enabled.\n\n"
+            "Image is automatically rebuilt when scripts change."
+        )
+        self._cache_desktop_build.setEnabled(False)  # Disabled until desktop is enabled
+        
+        # Connect desktop enabled checkbox to cache checkbox state
+        self._headless_desktop_enabled.stateChanged.connect(
+            self._on_headless_desktop_toggled
+        )
 
         self._gh_context_enabled = QCheckBox(
             "Provide GitHub context to agent"
@@ -190,6 +206,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         headless_desktop_layout.setContentsMargins(0, 0, 0, 0)
         headless_desktop_layout.setSpacing(BUTTON_ROW_SPACING)
         headless_desktop_layout.addWidget(self._headless_desktop_enabled)
+        headless_desktop_layout.addWidget(self._cache_desktop_build)
         headless_desktop_layout.addStretch(1)
 
         grid.addWidget(QLabel("Max agents running"), 3, 0)
@@ -374,6 +391,8 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._name.setText("")
             self._max_agents_running.setText("-1")
             self._headless_desktop_enabled.setChecked(False)
+            self._cache_desktop_build.setChecked(False)
+            self._cache_desktop_build.setEnabled(False)
             self._gh_context_enabled.setChecked(False)
             self._gh_context_enabled.setEnabled(False)
             self._gh_context_label.setVisible(False)
@@ -398,6 +417,13 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             str(int(getattr(env, "max_agents_running", -1)))
         )
         self._headless_desktop_enabled.setChecked(
+            bool(getattr(env, "headless_desktop_enabled", False))
+        )
+        self._cache_desktop_build.setChecked(
+            bool(getattr(env, "cache_desktop_build", False))
+        )
+        # Update cache checkbox enabled state based on desktop enabled state
+        self._cache_desktop_build.setEnabled(
             bool(getattr(env, "headless_desktop_enabled", False))
         )
         is_github_env = (
@@ -449,6 +475,18 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
     def _on_agents_changed(self) -> None:
         pass
+    
+    def _on_headless_desktop_toggled(self, state: int) -> None:
+        """Handle headless desktop checkbox state change.
+        
+        When desktop is disabled, also disable and uncheck cache checkbox.
+        When desktop is enabled, enable cache checkbox (but leave unchecked by default).
+        """
+        is_enabled = state == Qt.CheckState.Checked.value
+        self._cache_desktop_build.setEnabled(is_enabled)
+        if not is_enabled:
+            # Desktop disabled, also disable cache
+            self._cache_desktop_build.setChecked(False)
 
     def _on_env_selected(self, index: int) -> None:
         old_env_id = self._current_env_id

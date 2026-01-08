@@ -75,6 +75,7 @@ class Environment:
     agent_cli_args: str = ""
     max_agents_running: int = -1
     headless_desktop_enabled: bool = False
+    cache_desktop_build: bool = False
     preflight_enabled: bool = False
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)

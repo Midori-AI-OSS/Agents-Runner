@@ -259,6 +259,11 @@ class _MainWindowTasksAgentMixin:
             bool(getattr(env, "headless_desktop_enabled", False)) if env else False
         )
         headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
+        desktop_cache_enabled = (
+            bool(getattr(env, "cache_desktop_build", False)) if env else False
+        )
+        # Only enable cache if desktop is enabled
+        desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
 
         task = Task(
             task_id=task_id,
@@ -414,6 +419,7 @@ class _MainWindowTasksAgentMixin:
             settings_preflight_script=settings_preflight_script,
             environment_preflight_script=environment_preflight_script,
             headless_desktop_enabled=headless_desktop_enabled,
+            desktop_cache_enabled=desktop_cache_enabled,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             agent_cli_args=agent_cli_args,
