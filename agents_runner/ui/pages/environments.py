@@ -14,6 +14,8 @@ from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QSplitter
+from PySide6.QtWidgets import QStackedWidget
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -191,6 +193,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             "The cached preflight script is configured in the Preflight tab.\n"
             "Image is automatically rebuilt when the cached preflight script changes."
         )
+        self._container_caching_enabled.stateChanged.connect(
+            self._on_container_caching_toggled
+        )
 
         self._gh_context_enabled = QCheckBox(
             "Provide GitHub context to agent"
@@ -284,8 +289,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         general_layout.addLayout(grid)
         general_layout.addStretch(1)
 
+        # Single-editor mode widgets (caching OFF)
         self._preflight_enabled = QCheckBox(
-            "Enable environment preflight bash"
+            "Enable environment preflight"
         )
         self._preflight_enabled.setToolTip(
             "Runs after Settings preflight script.\n"
@@ -303,13 +309,106 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._preflight_enabled.toggled.connect(self._preflight_script.setEnabled)
         self._preflight_script.setEnabled(False)
 
+        # Dual-editor mode widgets (caching ON)
+        self._cached_preflight_enabled = QCheckBox(
+            "Enable cached preflight"
+        )
+        self._cached_preflight_enabled.setToolTip(
+            "Runs at Docker build time to pre-install dependencies.\n"
+            "Creates a cached image for faster task startup."
+        )
+        self._cached_preflight_script = QPlainTextEdit()
+        self._cached_preflight_script.setPlaceholderText(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "\n"
+            "# Runs at Docker build time.\n"
+            "# Use for installing packages and dependencies.\n"
+        )
+        self._cached_preflight_script.setTabChangesFocus(True)
+        self._cached_preflight_enabled.toggled.connect(self._cached_preflight_script.setEnabled)
+        self._cached_preflight_script.setEnabled(False)
+
+        self._run_preflight_enabled = QCheckBox(
+            "Enable run preflight"
+        )
+        self._run_preflight_enabled.setToolTip(
+            "Runs at task startup after cached preflight.\n"
+            "Use for runtime setup and validation."
+        )
+        self._run_preflight_script = QPlainTextEdit()
+        self._run_preflight_script.setPlaceholderText(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "\n"
+            "# Runs at task startup (after cached layer).\n"
+            "# Use for runtime-specific setup.\n"
+        )
+        self._run_preflight_script.setTabChangesFocus(True)
+        self._run_preflight_enabled.toggled.connect(self._run_preflight_script.setEnabled)
+        self._run_preflight_script.setEnabled(False)
+
+        # Build single-editor container (caching OFF)
+        self._preflight_single_container = QWidget()
+        single_layout = QVBoxLayout(self._preflight_single_container)
+        single_layout.setSpacing(TAB_CONTENT_SPACING)
+        single_layout.setContentsMargins(0, 0, 0, 0)
+        single_layout.addWidget(self._preflight_enabled)
+        single_layout.addWidget(QLabel("Preflight script"))
+        single_layout.addWidget(self._preflight_script, 1)
+
+        # Build dual-editor container (caching ON)
+        self._preflight_dual_container = QWidget()
+        dual_layout = QVBoxLayout(self._preflight_dual_container)
+        dual_layout.setSpacing(TAB_CONTENT_SPACING)
+        dual_layout.setContentsMargins(0, 0, 0, 0)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
+
+        # Left panel: Cached preflight
+        left_panel = GlassCard()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(18, 16, 18, 16)
+        left_layout.setSpacing(10)
+
+        cached_label = QLabel("Cached preflight")
+        cached_label.setStyleSheet("font-size: 14px; font-weight: 650;")
+
+        left_layout.addWidget(self._cached_preflight_enabled)
+        left_layout.addWidget(cached_label)
+        left_layout.addWidget(self._cached_preflight_script, 1)
+
+        # Right panel: Run preflight
+        right_panel = GlassCard()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(18, 16, 18, 16)
+        right_layout.setSpacing(10)
+
+        run_label = QLabel("Run preflight")
+        run_label.setStyleSheet("font-size: 14px; font-weight: 650;")
+
+        right_layout.addWidget(self._run_preflight_enabled)
+        right_layout.addWidget(run_label)
+        right_layout.addWidget(self._run_preflight_script, 1)
+
+        splitter.addWidget(left_panel)
+        splitter.addWidget(right_panel)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+
+        dual_layout.addWidget(splitter, 1)
+
+        # Create stacked widget for layout switching
+        self._preflight_stack = QStackedWidget()
+        self._preflight_stack.addWidget(self._preflight_single_container)  # Index 0: caching OFF
+        self._preflight_stack.addWidget(self._preflight_dual_container)    # Index 1: caching ON
+
         preflight_tab = QWidget()
         preflight_layout = QVBoxLayout(preflight_tab)
         preflight_layout.setSpacing(TAB_CONTENT_SPACING)
         preflight_layout.setContentsMargins(*TAB_CONTENT_MARGINS)
-        preflight_layout.addWidget(self._preflight_enabled)
-        preflight_layout.addWidget(QLabel("Preflight script"))
-        preflight_layout.addWidget(self._preflight_script, 1)
+        preflight_layout.addWidget(self._preflight_stack, 1)
 
         self._env_vars = QPlainTextEdit()
         self._env_vars.setPlaceholderText("# KEY=VALUE (one per line)\n")
@@ -422,6 +521,11 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._gh_use_host_cli.setChecked(bool(is_gh_available()))
             self._preflight_enabled.setChecked(False)
             self._preflight_script.setPlainText("")
+            self._cached_preflight_enabled.setChecked(False)
+            self._cached_preflight_script.setPlainText("")
+            self._run_preflight_enabled.setChecked(False)
+            self._run_preflight_script.setPlainText("")
+            self._preflight_stack.setCurrentIndex(0)
             self._env_vars.setPlainText("")
             self._mounts.setPlainText("")
             self._prompts_tab.set_prompts([], False)
@@ -484,9 +588,29 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._gh_management_target.setText(str(env.gh_management_target or ""))
         self._gh_use_host_cli.setChecked(bool(getattr(env, "gh_use_host_cli", True)))
         self._sync_gh_management_controls(env=env)
+        
+        # Load preflight scripts based on container caching state
+        container_caching = bool(getattr(env, "container_caching_enabled", False))
+        
+        # Single-editor mode (caching OFF)
         self._preflight_enabled.setChecked(bool(env.preflight_enabled))
         self._preflight_script.setEnabled(bool(env.preflight_enabled))
         self._preflight_script.setPlainText(env.preflight_script or "")
+        
+        # Dual-editor mode (caching ON)
+        cached_script = str(getattr(env, "cached_preflight_script", "") or "")
+        has_cached = bool(cached_script.strip())
+        self._cached_preflight_enabled.setChecked(has_cached)
+        self._cached_preflight_script.setEnabled(has_cached)
+        self._cached_preflight_script.setPlainText(cached_script)
+        
+        self._run_preflight_enabled.setChecked(bool(env.preflight_enabled))
+        self._run_preflight_script.setEnabled(bool(env.preflight_enabled))
+        self._run_preflight_script.setPlainText(env.preflight_script or "")
+        
+        # Set layout state
+        self._preflight_stack.setCurrentIndex(1 if container_caching else 0)
+        
         env_lines = "\n".join(f"{k}={v}" for k, v in sorted(env.env_vars.items()))
         self._env_vars.setPlainText(env_lines)
         self._mounts.setPlainText("\n".join(env.extra_mounts))
@@ -510,6 +634,11 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         if not is_enabled:
             # Desktop disabled, also disable cache
             self._cache_desktop_build.setChecked(False)
+
+    def _on_container_caching_toggled(self, state: int) -> None:
+        """Switch preflight tab layout based on container caching state."""
+        is_enabled = state == Qt.CheckState.Checked.value
+        self._preflight_stack.setCurrentIndex(1 if is_enabled else 0)
 
     def _on_env_selected(self, index: int) -> None:
         old_env_id = self._current_env_id

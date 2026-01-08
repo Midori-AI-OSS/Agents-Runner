@@ -244,6 +244,24 @@ class _EnvironmentsPageActionsMixin:
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
 
+        # Read preflight scripts based on container caching state
+        container_caching_enabled = bool(self._container_caching_enabled.isChecked())
+        
+        if container_caching_enabled:
+            # Dual-editor mode: read from both editors
+            cached_preflight_script = (
+                str(self._cached_preflight_script.toPlainText() or "")
+                if self._cached_preflight_enabled.isChecked()
+                else ""
+            )
+            preflight_enabled = bool(self._run_preflight_enabled.isChecked())
+            preflight_script = str(self._run_preflight_script.toPlainText() or "")
+        else:
+            # Single-editor mode: read from single editor only
+            cached_preflight_script = ""
+            preflight_enabled = bool(self._preflight_enabled.isChecked())
+            preflight_script = str(self._preflight_script.toPlainText() or "")
+
         env = Environment(
             env_id=env_id,
             name=name,
@@ -253,9 +271,9 @@ class _EnvironmentsPageActionsMixin:
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
-            cached_preflight_script="",  # Will be added in Part 4
-            preflight_enabled=bool(self._preflight_enabled.isChecked()),
-            preflight_script=str(self._preflight_script.toPlainText() or ""),
+            cached_preflight_script=cached_preflight_script,
+            preflight_enabled=preflight_enabled,
+            preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
             gh_management_mode=gh_mode,
@@ -324,6 +342,24 @@ class _EnvironmentsPageActionsMixin:
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
 
+        # Read preflight scripts based on container caching state
+        container_caching_enabled = bool(self._container_caching_enabled.isChecked())
+        
+        if container_caching_enabled:
+            # Dual-editor mode: read from both editors
+            cached_preflight_script = (
+                str(self._cached_preflight_script.toPlainText() or "")
+                if self._cached_preflight_enabled.isChecked()
+                else ""
+            )
+            preflight_enabled = bool(self._run_preflight_enabled.isChecked())
+            preflight_script = str(self._run_preflight_script.toPlainText() or "")
+        else:
+            # Single-editor mode: read from single editor only
+            cached_preflight_script = ""
+            preflight_enabled = bool(self._preflight_enabled.isChecked())
+            preflight_script = str(self._preflight_script.toPlainText() or "")
+
         return Environment(
             env_id=env_id,
             name=name,
@@ -333,9 +369,9 @@ class _EnvironmentsPageActionsMixin:
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
-            cached_preflight_script="",  # Will be added in Part 4
-            preflight_enabled=bool(self._preflight_enabled.isChecked()),
-            preflight_script=str(self._preflight_script.toPlainText() or ""),
+            cached_preflight_script=cached_preflight_script,
+            preflight_enabled=preflight_enabled,
+            preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
             gh_management_mode=gh_mode,
