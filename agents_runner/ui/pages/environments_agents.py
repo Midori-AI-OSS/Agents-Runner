@@ -29,7 +29,6 @@ from agents_runner.ui.constants import (
     AGENT_COMBO_WIDTH,
 )
 from agents_runner.ui.dialogs.test_chain_dialog import TestChainDialog
-from agents_runner.widgets import AgentChainStatusWidget
 
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -62,22 +61,6 @@ class AgentsTabWidget(QWidget):
         )
         header_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
         layout.addWidget(header_label)
-
-        add_row = QHBoxLayout()
-        add_row.setSpacing(BUTTON_ROW_SPACING)
-        add_row.addWidget(QLabel("Add agent"))
-        self._add_agent_cli = QComboBox()
-        for agent in SUPPORTED_AGENTS:
-            self._add_agent_cli.addItem(agent.title(), agent)
-        add_row.addWidget(self._add_agent_cli)
-
-        add_btn = QToolButton()
-        add_btn.setText("Add")
-        add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        add_btn.clicked.connect(self._on_add_agent)
-        add_row.addWidget(add_btn)
-        add_row.addStretch(1)
-        layout.addLayout(add_row)
 
         self._agent_table = QTableWidget()
         self._agent_table.setColumnCount(7)
@@ -113,18 +96,30 @@ class AgentsTabWidget(QWidget):
         self._agent_table.setFocusPolicy(Qt.NoFocus)
         layout.addWidget(self._agent_table)
 
-        # Agent chain status display
-        self._chain_status = AgentChainStatusWidget()
-        self._chain_status.test_chain_requested.connect(self._on_test_chain)
-        layout.addWidget(self._chain_status)
+        # Controls row under table with :: separators
+        controls_row = QHBoxLayout()
+        controls_row.setSpacing(BUTTON_ROW_SPACING)
 
-        self._selection_mode_label = QLabel(
-            "Selection mode (when multiple entries exist):"
-        )
-        layout.addWidget(self._selection_mode_label)
+        # Add agent controls
+        controls_row.addWidget(QLabel("Add agent"))
+        self._add_agent_cli = QComboBox()
+        for agent in SUPPORTED_AGENTS:
+            self._add_agent_cli.addItem(agent.title(), agent)
+        controls_row.addWidget(self._add_agent_cli)
 
-        mode_row = QHBoxLayout()
-        mode_row.setSpacing(BUTTON_ROW_SPACING)
+        add_btn = QToolButton()
+        add_btn.setText("Add")
+        add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        add_btn.clicked.connect(self._on_add_agent)
+        controls_row.addWidget(add_btn)
+
+        # Separator
+        sep1 = QLabel("::")
+        sep1.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
+        controls_row.addWidget(sep1)
+
+        # Selection mode controls
+        controls_row.addWidget(QLabel("Selection mode"))
         self._selection_mode = QComboBox()
         self._selection_mode.addItem("Round-robin", "round-robin")
         self._selection_mode.addItem("Least used (active tasks)", "least-used")
@@ -133,9 +128,22 @@ class AgentsTabWidget(QWidget):
         self._selection_mode.currentIndexChanged.connect(
             self._on_selection_mode_changed
         )
-        mode_row.addWidget(self._selection_mode)
-        mode_row.addStretch(1)
-        layout.addLayout(mode_row)
+        controls_row.addWidget(self._selection_mode)
+
+        # Separator
+        sep2 = QLabel("::")
+        sep2.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
+        controls_row.addWidget(sep2)
+
+        # Test Chain button
+        test_chain_btn = QToolButton()
+        test_chain_btn.setText("Test Chain")
+        test_chain_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        test_chain_btn.clicked.connect(self._on_test_chain)
+        controls_row.addWidget(test_chain_btn)
+
+        controls_row.addStretch(1)
+        layout.addLayout(controls_row)
 
         layout.addStretch(1)
         self._refresh_fallback_visibility()
@@ -168,12 +176,10 @@ class AgentsTabWidget(QWidget):
         )
         self._render_table()
         self._update_fallback_options()
-        self._update_chain_status()
         self.agents_changed.emit()
 
     def _on_selection_mode_changed(self, _index: int) -> None:
         self._refresh_fallback_visibility()
-        self._update_chain_status()
         self.agents_changed.emit()
 
     def _refresh_fallback_visibility(self) -> None:
@@ -216,49 +222,6 @@ class AgentsTabWidget(QWidget):
         self._update_fallback_options()
         self._refresh_priority_visibility()
         self._refresh_fallback_visibility()
-        self._update_chain_status()
-
-    def _update_chain_status(self) -> None:
-        """Update the agent chain status display."""
-        # Build agent chain based on selection mode
-        selection_mode = str(self._selection_mode.currentData() or "round-robin")
-        
-        if selection_mode == "fallback":
-            # For fallback mode, show the fallback chain
-            # Start with agents that have no fallback pointing to them
-            agent_ids = {a.agent_id for a in self._rows}
-            fallback_targets = set(self._fallbacks.values())
-            primary_agents = agent_ids - fallback_targets
-            
-            # Build chain from each primary agent
-            chains: list[list[str]] = []
-            for primary in primary_agents:
-                chain = [primary]
-                current = primary
-                visited = {primary}
-                while current in self._fallbacks:
-                    next_id = self._fallbacks[current]
-                    if next_id in visited:
-                        break  # Circular reference
-                    chain.append(next_id)
-                    visited.add(next_id)
-                    current = next_id
-                chains.append(chain)
-            
-            # Convert agent IDs to agent CLI names
-            id_to_cli = {a.agent_id: a.agent_cli for a in self._rows}
-            if chains:
-                # Show the first/primary chain
-                agent_names = [
-                    id_to_cli.get(agent_id, agent_id) for agent_id in chains[0]
-                ]
-            else:
-                agent_names = []
-        else:
-            # For round-robin/least-used, show all agents in priority order
-            agent_names = [a.agent_cli for a in self._rows]
-        
-        self._chain_status.set_chain(agent_names)
 
     def _on_test_chain(self) -> None:
         """Handle test chain button click."""
@@ -318,7 +281,6 @@ class AgentsTabWidget(QWidget):
             self._rows[row_index],
         )
         self._render_table()
-        self._update_chain_status()
         self.agents_changed.emit()
 
     def _agent_cli_widget(self, row_index: int, inst: AgentInstance) -> QWidget:
@@ -488,7 +450,6 @@ class AgentsTabWidget(QWidget):
             self._fallbacks[inst.agent_id] = fallback_id
         else:
             self._fallbacks.pop(inst.agent_id, None)
-        self._update_chain_status()
         self.agents_changed.emit()
 
     def _remove_widget(self, row_index: int) -> QWidget:
@@ -509,7 +470,6 @@ class AgentsTabWidget(QWidget):
             if v == removed_id:
                 self._fallbacks.pop(k, None)
         self._render_table()
-        self._update_chain_status()
         self.agents_changed.emit()
 
     def _update_fallback_options(self) -> None:
