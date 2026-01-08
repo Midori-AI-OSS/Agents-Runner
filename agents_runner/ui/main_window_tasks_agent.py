@@ -336,6 +336,12 @@ class _MainWindowTasksAgentMixin:
             )
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
+        
+        # Add host cache mount if enabled in settings
+        if self._settings_data.get("mount_host_cache", False):
+            host_cache = os.path.expanduser("~/.cache")
+            container_cache = "/home/midori-ai/.cache"
+            extra_mounts_for_task.append(f"{host_cache}:{container_cache}:rw")
 
         # GitHub context preparation
         # For git-locked: Create empty file before clone, populate after clone completes

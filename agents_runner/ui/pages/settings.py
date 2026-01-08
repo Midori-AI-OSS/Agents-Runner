@@ -153,6 +153,15 @@ class SettingsPage(QWidget):
             "Right-click on a misspelled word to see suggestions or add it to your dictionary."
         )
         
+        self._mount_host_cache = QCheckBox(
+            "Mount host cache into containers"
+        )
+        self._mount_host_cache.setToolTip(
+            "Mounts ~/.cache to /home/midori-ai/.cache for faster package installs.\n"
+            "Speeds up uv, pip, npm, bun, yarn, cargo, and other package managers.\n"
+            "Cache is shared across all environments."
+        )
+        
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
@@ -202,6 +211,7 @@ class SettingsPage(QWidget):
         left_layout.addWidget(self._headless_desktop_enabled)
         left_layout.addWidget(self._gh_context_default)
         left_layout.addWidget(self._spellcheck_enabled)
+        left_layout.addWidget(self._mount_host_cache)
         left_layout.addStretch(1)
         
         # Right column: preflight script editor
@@ -292,6 +302,9 @@ class SettingsPage(QWidget):
         self._spellcheck_enabled.setChecked(
             bool(settings.get("spellcheck_enabled", True))
         )
+        self._mount_host_cache.setChecked(
+            bool(settings.get("mount_host_cache", False))
+        )
 
     def get_settings(self) -> dict:
         return {
@@ -322,6 +335,9 @@ class SettingsPage(QWidget):
             ),
             "spellcheck_enabled": bool(
                 self._spellcheck_enabled.isChecked()
+            ),
+            "mount_host_cache": bool(
+                self._mount_host_cache.isChecked()
             ),
         }
 

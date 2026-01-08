@@ -115,7 +115,7 @@ class _MainWindowPreflightMixin:
             settings_preflight_script=settings_preflight_script,
             environment_preflight_script=environment_preflight_script,
             env_vars=dict(env.env_vars) if env else {},
-            extra_mounts=list(env.extra_mounts) if env else [],
+            extra_mounts=self._get_extra_mounts_with_cache(env),
             agent_cli_args=[],
             gh_repo=gh_repo or None,
             gh_prefer_gh_cli=gh_prefer_gh_cli,
@@ -247,3 +247,15 @@ class _MainWindowPreflightMixin:
             settings_preflight_script=settings_preflight_script,
             environment_preflight_script=environment_preflight_script,
         )
+    
+    def _get_extra_mounts_with_cache(self, env: Environment | None) -> list[str]:
+        """Get extra mounts list with optional host cache mount if enabled."""
+        extra_mounts = list(env.extra_mounts) if env else []
+        
+        # Add host cache mount if enabled in settings
+        if self._settings_data.get("mount_host_cache", False):
+            host_cache = os.path.expanduser("~/.cache")
+            container_cache = "/home/midori-ai/.cache"
+            extra_mounts.append(f"{host_cache}:{container_cache}:rw")
+        
+        return extra_mounts
