@@ -19,6 +19,7 @@ from agents_runner.environments import parse_env_vars_text
 from agents_runner.environments import parse_mounts_text
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
+from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
 
 
 class _EnvironmentsPageActionsMixin:
@@ -71,103 +72,11 @@ class _EnvironmentsPageActionsMixin:
         self._gh_management_browse.setEnabled(wants_browse and not locked)
 
     def _on_new(self) -> None:
-        name, ok = QInputDialog.getText(self, "New environment", "Name")
-        if not ok:
-            return
-        name = (name or "").strip() or "New environment"
-
-        base = None
-        env_id = f"env-{uuid4().hex[:8]}"
-        color = "emerald"
-        if base and base.color in ALLOWED_STAINS:
-            idx = ALLOWED_STAINS.index(base.color)
-            color = ALLOWED_STAINS[(idx + 1) % len(ALLOWED_STAINS)]
-
-        workspace_labels = ["Lock to local folder", "Lock to GitHub repo (clone)"]
-        selected_label, ok = QInputDialog.getItem(
-            self,
-            "Workspace",
-            "Workspace type",
-            workspace_labels,
-            0,
-            False,
+        wizard = NewEnvironmentWizard(self)
+        wizard.environment_created.connect(
+            lambda env: self.updated.emit(env.env_id)
         )
-        if not ok:
-            return
-
-        gh_management_mode = GH_MANAGEMENT_LOCAL
-        gh_management_target = ""
-        # Get global default from settings
-        gh_context_enabled = bool(
-            self._settings_data.get("gh_context_default_enabled", False)
-        )
-        
-        if selected_label == "Lock to GitHub repo (clone)":
-            repo, ok = QInputDialog.getText(
-                self, "GitHub repo", "Repo (owner/repo or URL)"
-            )
-            if not ok:
-                return
-            repo = (repo or "").strip()
-            if not repo:
-                QMessageBox.warning(
-                    self,
-                    "Missing repo",
-                    "Enter a GitHub repo like owner/repo (or a URL).",
-                )
-                return
-            gh_management_mode = GH_MANAGEMENT_GITHUB
-            gh_management_target = repo
-            gh_context_enabled = (
-                QMessageBox.question(
-                    self,
-                    "GitHub context",
-                    "Provide GitHub context to the agent?\n\n"
-                    "This will mount repository information (URL, branch, commit) "
-                    "that the agent can use for better PR descriptions.",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No,
-                )
-                == QMessageBox.Yes
-            )
-        else:
-            folder = QFileDialog.getExistingDirectory(
-                self, "Select workspace folder", os.getcwd()
-            )
-            if not folder:
-                return
-            gh_management_target = folder
-
-        gh_use_host_cli = True
-        if not is_gh_available():
-            gh_use_host_cli = False
-        env = Environment(
-            env_id=env_id,
-            name=name,
-            color=color,
-            host_workdir="",
-            host_codex_dir="",
-            agent_cli_args="",
-            max_agents_running=-1,
-            headless_desktop_enabled=False,
-            cache_desktop_build=False,
-            container_caching_enabled=False,
-            cached_preflight_script="",
-            preflight_enabled=False,
-            preflight_script="",
-            env_vars={},
-            extra_mounts=[],
-            gh_management_mode=gh_management_mode,
-            gh_management_target=gh_management_target,
-            gh_management_locked=True,
-            gh_use_host_cli=gh_use_host_cli,
-            gh_context_enabled=bool(gh_context_enabled),
-            prompts=[],
-            prompts_unlocked=False,
-            agent_selection=None,
-        )
-        save_environment(env)
-        self.updated.emit(env_id)
+        wizard.exec()
 
     def _on_delete(self) -> None:
         env_id = self._current_env_id

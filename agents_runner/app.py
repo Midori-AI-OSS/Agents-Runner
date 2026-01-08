@@ -42,10 +42,12 @@ def run_app(argv: list[str]) -> None:
 
     from PySide6.QtWidgets import QApplication
 
+    from agents_runner.environments import load_environments
     from agents_runner.setup.orchestrator import check_setup_complete
     from agents_runner.style import app_stylesheet
     from agents_runner.ui.constants import APP_TITLE
     from agents_runner.ui.dialogs.first_run_setup import FirstRunSetupDialog
+    from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
     from agents_runner.ui.icons import _app_icon
     from agents_runner.ui.main_window import MainWindow
 
@@ -61,6 +63,11 @@ def run_app(argv: list[str]) -> None:
     if not check_setup_complete():
         dialog = FirstRunSetupDialog(parent=None)
         dialog.exec()
+
+    # Check if user has no environments and show wizard
+    if not load_environments():
+        wizard = NewEnvironmentWizard(parent=None)
+        wizard.exec()
 
     window = MainWindow()
     if icon is not None:
