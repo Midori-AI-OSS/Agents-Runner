@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QSplitter
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -117,7 +118,7 @@ class SettingsPage(QWidget):
         browse_gemini.clicked.connect(self._pick_gemini_dir)
 
         self._preflight_enabled = QCheckBox(
-            "Enable settings preflight bash"
+            "Enable settings preflight"
         )
         self._preflight_enabled.setToolTip(
             "Runs on all environments before environment-specific preflight.\n"
@@ -186,11 +187,35 @@ class SettingsPage(QWidget):
         grid.addWidget(gemini_label, 4, 0)
         grid.addWidget(self._host_gemini_dir, 4, 1, 1, 2)
         grid.addWidget(browse_gemini, 4, 3)
-        grid.addWidget(self._preflight_enabled, 5, 0, 1, 4)
-        grid.addWidget(self._append_pixelarch_context, 6, 0, 1, 4)
-        grid.addWidget(self._headless_desktop_enabled, 7, 0, 1, 4)
-        grid.addWidget(self._gh_context_default, 8, 0, 1, 4)
-        grid.addWidget(self._spellcheck_enabled, 9, 0, 1, 4)
+        
+        # Create two-column layout for checkboxes and preflight editor
+        preflight_splitter = QSplitter(Qt.Orientation.Horizontal)
+        preflight_splitter.setChildrenCollapsible(False)
+        
+        # Left column: checkboxes stacked vertically
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(GRID_VERTICAL_SPACING)
+        left_layout.addWidget(self._preflight_enabled)
+        left_layout.addWidget(self._append_pixelarch_context)
+        left_layout.addWidget(self._headless_desktop_enabled)
+        left_layout.addWidget(self._gh_context_default)
+        left_layout.addWidget(self._spellcheck_enabled)
+        left_layout.addStretch(1)
+        
+        # Right column: preflight script editor
+        right_widget = QWidget()
+        right_layout = QVBoxLayout(right_widget)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(GRID_VERTICAL_SPACING)
+        right_layout.addWidget(QLabel("Preflight script"))
+        right_layout.addWidget(self._preflight_script, 1)
+        
+        preflight_splitter.addWidget(left_widget)
+        preflight_splitter.addWidget(right_widget)
+        preflight_splitter.setStretchFactor(0, 3)
+        preflight_splitter.setStretchFactor(1, 7)
 
         self._agent_config_widgets: dict[str, tuple[QWidget, ...]] = {
             "codex": (codex_label, self._host_codex_dir, browse_codex),
@@ -216,8 +241,7 @@ class SettingsPage(QWidget):
         buttons.addStretch(1)
 
         card_layout.addLayout(grid)
-        card_layout.addWidget(QLabel("Preflight script"))
-        card_layout.addWidget(self._preflight_script, 1)
+        card_layout.addWidget(preflight_splitter, 1)
         card_layout.addLayout(buttons)
         layout.addWidget(card, 1)
 
