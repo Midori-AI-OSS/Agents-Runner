@@ -59,7 +59,7 @@ class TestChainDialog(QDialog):
         # Info label
         info = QLabel(
             "Testing agent availability. This checks if agents are installed "
-            "and logged in, without exposing authentication details."
+            "and logged in using safe status commands."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: rgba(237, 239, 245, 160);")
