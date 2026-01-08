@@ -27,4 +27,13 @@ You can read this file to understand the GitHub context. The file is in JSON for
 }}
 ```
 
+## Updating GitHub Context
+
+If you make changes that should be represented in a pull request or issue:
+- Update the GitHub context file with valid JSON containing:
+  - "title": short title describing your changes (<= 72 chars)
+  - "body": detailed description of changes (markdown format)
+- Keep it as strict JSON (no trailing commas).
+- REMINDER: Don't forget to commit your code changes with `git commit`!
+
 Use `gh` CLI commands to interact with GitHub if needed (e.g., creating PRs, managing issues).

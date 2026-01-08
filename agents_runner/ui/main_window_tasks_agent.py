@@ -412,12 +412,11 @@ class _MainWindowTasksAgentMixin:
                     )
 
         # Build config with GitHub repo info if needed
+        # Get the context file path if it was created (regardless of mode)
+        gh_context_file = getattr(task, "gh_pr_metadata_path", None)
         gh_repo: str | None = None
-        gh_context_file: str | None = None
         if gh_mode == GH_MANAGEMENT_GITHUB and env:
             gh_repo = str(env.gh_management_target or "").strip() or None
-            # Pass GitHub context file path to worker (if created)
-            gh_context_file = getattr(task, "gh_pr_metadata_path", None)
 
         config = DockerRunnerConfig(
             task_id=task_id,
