@@ -556,7 +556,7 @@ class _MainWindowTaskEventsMixin:
         if (
             user_stop is None
             and
-            normalize_gh_management_mode(task.gh_management_mode) != GH_MANAGEMENT_NONE
+            normalize_gh_management_mode(task.gh_management_mode) == GH_MANAGEMENT_GITHUB
             and task.gh_repo_root
             and task.gh_branch
         ):
