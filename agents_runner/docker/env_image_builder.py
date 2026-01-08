@@ -105,9 +105,7 @@ def _get_dockerfile_template() -> str:
 COPY cached_preflight.sh /tmp/cached_preflight.sh
 
 # Run cached preflight at build time
-RUN chmod +x /tmp/cached_preflight.sh && \\
-    /bin/bash /tmp/cached_preflight.sh && \\
-    rm -f /tmp/cached_preflight.sh
+RUN /bin/bash /tmp/cached_preflight.sh && rm -f /tmp/cached_preflight.sh
 
 # Environment-specific setup is now cached
 """
