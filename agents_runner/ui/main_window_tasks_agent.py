@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 class _MainWindowTasksAgentMixin:
     def _clean_old_tasks(self) -> None:
         to_remove: set[str] = set()
-        for task_id, task in self._tasks.items():
+        for task_id, task in list(self._tasks.items()):
             status = (task.status or "").lower()
             if status in {"done", "failed", "error"} and not task.is_active():
                 to_remove.add(task_id)

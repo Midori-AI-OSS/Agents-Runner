@@ -64,7 +64,7 @@ def cleanup_task_workspace(
             on_log(f"[cleanup] Removing task workspace: {task_workspace}")
 
         # Use shutil.rmtree with error handler for better cleanup
-        def handle_remove_error(func, path, exc_info):
+        def handle_remove_error(func, path, exc_info) -> None:
             """Handle permission errors during removal."""
             logger.debug(f"[cleanup] Error removing {path}: {exc_info[1]}")
             # Try to make writable and retry

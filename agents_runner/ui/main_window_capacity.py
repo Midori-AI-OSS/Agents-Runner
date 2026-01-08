@@ -5,7 +5,7 @@ class _MainWindowCapacityMixin:
     def _count_running_agents(self, env_id: str | None = None) -> int:
         count = 0
         env_id = str(env_id or "").strip() or None
-        for task in self._tasks.values():
+        for task in list(self._tasks.values()):
             if env_id and str(getattr(task, "environment_id", "") or "") != env_id:
                 continue
             if task.status.lower() in {"pulling", "created", "running", "starting"}:
@@ -32,7 +32,7 @@ class _MainWindowCapacityMixin:
         return self._count_running_agents(env_id) < max_agents
 
     def _try_start_queued_tasks(self) -> None:
-        queued = [t for t in self._tasks.values() if t.status.lower() == "queued"]
+        queued = [t for t in list(self._tasks.values()) if t.status.lower() == "queued"]
         if not queued:
             return
         queued.sort(key=lambda t: t.created_at_s)

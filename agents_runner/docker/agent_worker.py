@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import uuid
@@ -35,6 +36,8 @@ from agents_runner.docker.process import _run_docker
 from agents_runner.docker.utils import _resolve_workspace_mount
 from agents_runner.docker.utils import _write_preflight_script
 from agents_runner.prompts import load_prompt
+
+logger = logging.getLogger(__name__)
 
 
 def _headless_desktop_prompt_instructions(*, display: str) -> str:
@@ -91,6 +94,7 @@ class DockerAgentWorker:
                 try:
                     _run_docker(["kill", self._container_id], timeout_s=10.0)
                 except Exception:
+                    logger.warning("Failed to stop/kill container %s during request_stop", self._container_id)
                     pass
 
     def run(self) -> None:
@@ -405,6 +409,7 @@ class DockerAgentWorker:
                     state.update(desktop_state)
                 self._on_state(state)
             except Exception:
+                logger.debug("Failed to inspect container state after creation")
                 pass
 
             logs_proc = subprocess.Popen(
@@ -454,6 +459,7 @@ class DockerAgentWorker:
                     try:
                         logs_proc.wait(timeout=2.0)
                     except subprocess.TimeoutExpired:
+                        logger.debug("Logs process did not terminate in time, killing")
                         logs_proc.kill()
 
             try:
@@ -490,6 +496,7 @@ class DockerAgentWorker:
                 try:
                     _run_docker(["rm", "-f", self._container_id], timeout_s=30.0)
                 except Exception:
+                    logger.warning("Failed to auto-remove container %s", self._container_id)
                     pass
 
             self._on_done(exit_code, None, self._collected_artifacts)
@@ -501,4 +508,5 @@ class DockerAgentWorker:
                     if os.path.exists(tmp_path):
                         os.unlink(tmp_path)
                 except Exception:
+                    logger.debug("Failed to remove temp preflight file: %s", tmp_path)
                     pass
