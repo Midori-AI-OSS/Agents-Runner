@@ -182,6 +182,16 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._on_headless_desktop_toggled
         )
 
+        self._container_caching_enabled = QCheckBox(
+            "Enable container caching"
+        )
+        self._container_caching_enabled.setToolTip(
+            "When enabled, environment preflight scripts are executed at Docker build time.\n"
+            "This creates a cached image with pre-installed dependencies, speeding up task startup.\n\n"
+            "The cached preflight script is configured in the Preflight tab.\n"
+            "Image is automatically rebuilt when the cached preflight script changes."
+        )
+
         self._gh_context_enabled = QCheckBox(
             "Provide GitHub context to agent"
         )
@@ -209,10 +219,19 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         headless_desktop_layout.addWidget(self._cache_desktop_build)
         headless_desktop_layout.addStretch(1)
 
+        container_caching_row = QWidget(general_tab)
+        container_caching_layout = QHBoxLayout(container_caching_row)
+        container_caching_layout.setContentsMargins(0, 0, 0, 0)
+        container_caching_layout.setSpacing(BUTTON_ROW_SPACING)
+        container_caching_layout.addWidget(self._container_caching_enabled)
+        container_caching_layout.addStretch(1)
+
         grid.addWidget(QLabel("Max agents running"), 3, 0)
         grid.addWidget(max_agents_row, 3, 1, 1, 2)
         grid.addWidget(QLabel("Headless desktop"), 5, 0)
         grid.addWidget(headless_desktop_row, 5, 1, 1, 2)
+        grid.addWidget(QLabel("Container caching"), 6, 0)
+        grid.addWidget(container_caching_row, 6, 1, 1, 2)
 
         self._gh_context_label = QLabel("GitHub context")
         self._gh_context_row = QWidget(general_tab)
@@ -393,6 +412,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._headless_desktop_enabled.setChecked(False)
             self._cache_desktop_build.setChecked(False)
             self._cache_desktop_build.setEnabled(False)
+            self._container_caching_enabled.setChecked(False)
             self._gh_context_enabled.setChecked(False)
             self._gh_context_enabled.setEnabled(False)
             self._gh_context_label.setVisible(False)
@@ -425,6 +445,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         # Update cache checkbox enabled state based on desktop enabled state
         self._cache_desktop_build.setEnabled(
             bool(getattr(env, "headless_desktop_enabled", False))
+        )
+        self._container_caching_enabled.setChecked(
+            bool(getattr(env, "container_caching_enabled", False))
         )
         is_github_env = (
             normalize_gh_management_mode(

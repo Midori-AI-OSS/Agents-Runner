@@ -34,6 +34,8 @@ from agents_runner.docker.process import _run_docker
 from agents_runner.docker.utils import _resolve_workspace_mount
 from agents_runner.docker.utils import _write_preflight_script
 from agents_runner.docker.image_builder import ensure_desktop_image
+from agents_runner.docker.image_builder import compute_desktop_cache_key
+from agents_runner.docker.env_image_builder import ensure_env_image
 from agents_runner.prompts import load_prompt
 
 
@@ -239,6 +241,7 @@ class DockerAgentWorker:
             runtime_image = self._config.image
             desktop_enabled = bool(self._config.headless_desktop_enabled)
             desktop_cached = bool(self._config.desktop_cache_enabled)
+            desktop_cache_key: str | None = None
             
             if desktop_enabled and desktop_cached:
                 # Try to use/build cached desktop image
@@ -250,11 +253,37 @@ class DockerAgentWorker:
                     )
                     if runtime_image != self._config.image:
                         self._on_log(f"[desktop] using cached image: {runtime_image}")
+                        # Extract cache key from tag for env caching
+                        desktop_cache_key = compute_desktop_cache_key(self._config.image)
                     else:
                         self._on_log("[desktop] cache build failed; falling back to runtime install")
                 except Exception as exc:
                     self._on_log(f"[desktop] cache error: {exc}; falling back to runtime install")
                     runtime_image = self._config.image
+
+            # Apply environment-level caching if enabled
+            container_caching_enabled = bool(self._config.container_caching_enabled)
+            cached_preflight_script = (self._config.cached_preflight_script or "").strip()
+            
+            if container_caching_enabled and cached_preflight_script:
+                # Try to use/build cached environment image
+                self._on_log("[env-cache] container caching enabled; checking for cached image")
+                try:
+                    runtime_image = ensure_env_image(
+                        self._config.image,
+                        desktop_cache_key,
+                        cached_preflight_script,
+                        on_log=self._on_log,
+                    )
+                    if runtime_image.startswith("agent-runner-env:"):
+                        self._on_log(f"[env-cache] using cached environment image: {runtime_image}")
+                    else:
+                        self._on_log("[env-cache] cache build failed; falling back to runtime preflight")
+                except Exception as exc:
+                    self._on_log(f"[env-cache] error: {exc}; falling back to runtime preflight")
+                    # runtime_image stays as-is (desktop or base image)
+            elif container_caching_enabled and not cached_preflight_script:
+                self._on_log("[env-cache] container caching enabled but no cached preflight script configured")
 
             if agent_cli == "codex" and not _is_git_repo_root(host_mount):
                 self._on_log(

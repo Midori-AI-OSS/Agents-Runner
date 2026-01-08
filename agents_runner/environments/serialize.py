@@ -113,6 +113,8 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     preflight_script = str(payload.get("preflight_script") or "")
     headless_desktop_enabled = bool(payload.get("headless_desktop_enabled", False))
     cache_desktop_build = bool(payload.get("cache_desktop_build", False))
+    container_caching_enabled = bool(payload.get("container_caching_enabled", False))
+    cached_preflight_script = str(payload.get("cached_preflight_script") or "")
 
     env_vars = payload.get("env_vars", {})
     env_vars = env_vars if isinstance(env_vars, dict) else {}
@@ -279,6 +281,8 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         max_agents_running=max_agents_running,
         headless_desktop_enabled=headless_desktop_enabled,
         cache_desktop_build=cache_desktop_build,
+        container_caching_enabled=container_caching_enabled,
+        cached_preflight_script=cached_preflight_script,
         preflight_enabled=preflight_enabled,
         preflight_script=preflight_script,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
@@ -345,6 +349,10 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
             getattr(env, "headless_desktop_enabled", False)
         ),
         "cache_desktop_build": bool(getattr(env, "cache_desktop_build", False)),
+        "container_caching_enabled": bool(
+            getattr(env, "container_caching_enabled", False)
+        ),
+        "cached_preflight_script": str(getattr(env, "cached_preflight_script", "") or ""),
         "preflight_enabled": bool(env.preflight_enabled),
         "preflight_script": env.preflight_script,
         "env_vars": dict(env.env_vars),

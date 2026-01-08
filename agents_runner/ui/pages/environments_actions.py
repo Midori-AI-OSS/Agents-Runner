@@ -150,6 +150,9 @@ class _EnvironmentsPageActionsMixin:
             agent_cli_args="",
             max_agents_running=-1,
             headless_desktop_enabled=False,
+            cache_desktop_build=False,
+            container_caching_enabled=False,
+            cached_preflight_script="",
             preflight_enabled=False,
             preflight_script="",
             env_vars={},
@@ -249,6 +252,8 @@ class _EnvironmentsPageActionsMixin:
             max_agents_running=max_agents_running,
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
+            container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
+            cached_preflight_script="",  # Will be added in Part 4
             preflight_enabled=bool(self._preflight_enabled.isChecked()),
             preflight_script=str(self._preflight_script.toPlainText() or ""),
             env_vars=env_vars,
@@ -326,6 +331,9 @@ class _EnvironmentsPageActionsMixin:
             host_workdir="",
             max_agents_running=max_agents_running,
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
+            cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
+            container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
+            cached_preflight_script="",  # Will be added in Part 4
             preflight_enabled=bool(self._preflight_enabled.isChecked()),
             preflight_script=str(self._preflight_script.toPlainText() or ""),
             env_vars=env_vars,
