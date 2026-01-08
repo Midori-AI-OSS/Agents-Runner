@@ -209,6 +209,10 @@ class TaskSupervisor:
         self._retry_counts: dict[str, int] = {}
         self._total_attempts = 0
         self._current_worker: DockerAgentWorker | None = None
+        self._last_container_id: str | None = None
+        self._last_gh_repo_root: str | None = None
+        self._last_gh_base_branch: str | None = None
+        self._last_gh_branch: str | None = None
 
         # Worker results
         self._last_exit_code = 0
@@ -223,28 +227,28 @@ class TaskSupervisor:
         """Get current worker's container ID."""
         if self._current_worker:
             return self._current_worker.container_id
-        return None
+        return self._last_container_id
 
     @property
     def gh_repo_root(self) -> str | None:
         """Get current worker's GitHub repo root."""
         if self._current_worker:
             return self._current_worker.gh_repo_root
-        return None
+        return self._last_gh_repo_root
 
     @property
     def gh_base_branch(self) -> str | None:
         """Get current worker's GitHub base branch."""
         if self._current_worker:
             return self._current_worker.gh_base_branch
-        return None
+        return self._last_gh_base_branch
 
     @property
     def gh_branch(self) -> str | None:
         """Get current worker's GitHub branch."""
         if self._current_worker:
             return self._current_worker.gh_branch
-        return None
+        return self._last_gh_branch
 
     def request_stop(self) -> None:
         """Request stop of current worker."""
@@ -490,6 +494,10 @@ class TaskSupervisor:
 
         worker.run()
 
+        self._last_container_id = worker.container_id
+        self._last_gh_repo_root = worker.gh_repo_root
+        self._last_gh_base_branch = worker.gh_base_branch
+        self._last_gh_branch = worker.gh_branch
         self._current_worker = None
 
         return SupervisorResult(
