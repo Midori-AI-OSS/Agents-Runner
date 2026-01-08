@@ -33,6 +33,9 @@ from agents_runner.docker.process import _pull_image
 from agents_runner.docker.process import _run_docker
 from agents_runner.docker.utils import _resolve_workspace_mount
 from agents_runner.docker.utils import _write_preflight_script
+from agents_runner.docker.image_builder import ensure_desktop_image
+from agents_runner.docker.image_builder import compute_desktop_cache_key
+from agents_runner.docker.env_image_builder import ensure_env_image
 from agents_runner.prompts import load_prompt
 
 
@@ -233,6 +236,54 @@ class DockerAgentWorker:
                 self._on_log(f"[host] image missing; docker pull {self._config.image}")
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log("[host] pull complete")
+            
+            # Determine which image to use based on desktop cache setting
+            runtime_image = self._config.image
+            desktop_enabled = bool(self._config.headless_desktop_enabled)
+            desktop_cached = bool(self._config.desktop_cache_enabled)
+            desktop_cache_key: str | None = None
+            
+            if desktop_enabled and desktop_cached:
+                # Try to use/build cached desktop image
+                self._on_log("[desktop] cache enabled; checking for cached image")
+                try:
+                    runtime_image = ensure_desktop_image(
+                        self._config.image,
+                        on_log=self._on_log,
+                    )
+                    if runtime_image != self._config.image:
+                        self._on_log(f"[desktop] using cached image: {runtime_image}")
+                        # Extract cache key from tag for env caching
+                        desktop_cache_key = compute_desktop_cache_key(self._config.image)
+                    else:
+                        self._on_log("[desktop] cache build failed; falling back to runtime install")
+                except Exception as exc:
+                    self._on_log(f"[desktop] cache error: {exc}; falling back to runtime install")
+                    runtime_image = self._config.image
+
+            # Apply environment-level caching if enabled
+            container_caching_enabled = bool(self._config.container_caching_enabled)
+            cached_preflight_script = (self._config.cached_preflight_script or "").strip()
+            
+            if container_caching_enabled and cached_preflight_script:
+                # Try to use/build cached environment image
+                self._on_log("[env-cache] container caching enabled; checking for cached image")
+                try:
+                    runtime_image = ensure_env_image(
+                        self._config.image,
+                        desktop_cache_key,
+                        cached_preflight_script,
+                        on_log=self._on_log,
+                    )
+                    if runtime_image.startswith("agent-runner-env:"):
+                        self._on_log(f"[env-cache] using cached environment image: {runtime_image}")
+                    else:
+                        self._on_log("[env-cache] cache build failed; falling back to runtime preflight")
+                except Exception as exc:
+                    self._on_log(f"[env-cache] error: {exc}; falling back to runtime preflight")
+                    # runtime_image stays as-is (desktop or base image)
+            elif container_caching_enabled and not cached_preflight_script:
+                self._on_log("[env-cache] container caching enabled but no cached preflight script configured")
 
             if agent_cli == "codex" and not _is_git_repo_root(host_mount):
                 self._on_log(
@@ -267,34 +318,78 @@ class DockerAgentWorker:
             preflight_mounts: list[str] = []
             if desktop_enabled:
                 port_args.extend(["-p", "127.0.0.1::6080"])
-                preflight_clause += (
-                    'echo "[desktop] starting headless desktop (noVNC)"; '
-                    f"export DISPLAY={desktop_display}; "
-                    'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
-                    'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
-                    'mkdir -p "${XDG_RUNTIME_DIR}"; '
-                    'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
-                    'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
-                    "if command -v yay >/dev/null 2>&1; then "
-                    "  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify wmctrl xdotool xorg-xprop xorg-xauth ttf-dejavu xorg-fonts-misc || true; "
-                    "fi; "
-                    'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & '
-                    "sleep 0.25; "
-                    '(fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true; '
-                    '(xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true; '
-                    'NOVNC_WEB=""; '
-                    'for candidate in "/usr/share/webapps/novnc" "/usr/share/novnc" "/usr/share/noVNC"; do '
-                    '  if [ -d "${candidate}" ]; then NOVNC_WEB="${candidate}"; break; fi; '
-                    "done; "
-                    'if [ -z "${NOVNC_WEB}" ]; then '
-                    '  echo "[desktop] ERROR: noVNC web root not found" >&2; '
-                    "else "
-                    '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
-                    "fi; "
-                    'echo "[desktop] ready"; '
-                    'echo "[desktop] DISPLAY=${DISPLAY}"; '
-                    'echo "[desktop] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
-                )
+                
+                # If using cached image, desktop is already installed - just run it
+                # If not cached, install then run (original behavior)
+                using_cached_image = runtime_image != self._config.image
+                
+                if using_cached_image:
+                    # Desktop already installed in cached image - just start services
+                    self._on_log("[desktop] using pre-installed desktop from cached image")
+                    preflight_clause += (
+                        'echo "[desktop] starting headless desktop (noVNC)"; '
+                        f"export DISPLAY={desktop_display}; "
+                        'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
+                        'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
+                        'mkdir -p "${XDG_RUNTIME_DIR}"; '
+                        'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
+                        'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
+                        # Load noVNC path from cached setup
+                        'if [ -f /etc/default/novnc-path ]; then '
+                        '  source /etc/default/novnc-path; '
+                        'else '
+                        '  NOVNC_WEB=""; '
+                        '  for candidate in "/usr/share/webapps/novnc" "/usr/share/novnc" "/usr/share/noVNC"; do '
+                        '    if [ -d "${candidate}" ]; then NOVNC_WEB="${candidate}"; break; fi; '
+                        '  done; '
+                        'fi; '
+                        # Load environment defaults
+                        'if [ -f /etc/profile.d/desktop-env.sh ]; then '
+                        '  source /etc/profile.d/desktop-env.sh; '
+                        'fi; '
+                        'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & '
+                        "sleep 0.25; "
+                        '(fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true; '
+                        '(xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true; '
+                        'if [ -n "${NOVNC_WEB}" ]; then '
+                        '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
+                        'else '
+                        '  echo "[desktop] ERROR: noVNC web root not found" >&2; '
+                        'fi; '
+                        'echo "[desktop] ready"; '
+                        'echo "[desktop] DISPLAY=${DISPLAY}"; '
+                        'echo "[desktop] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
+                    )
+                else:
+                    # Original behavior: install packages at runtime
+                    preflight_clause += (
+                        'echo "[desktop] starting headless desktop (noVNC)"; '
+                        f"export DISPLAY={desktop_display}; "
+                        'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
+                        'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
+                        'mkdir -p "${XDG_RUNTIME_DIR}"; '
+                        'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
+                        'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
+                        "if command -v yay >/dev/null 2>&1; then "
+                        "  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify wmctrl xdotool xorg-xprop xorg-xauth ttf-dejavu xorg-fonts-misc || true; "
+                        "fi; "
+                        'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & '
+                        "sleep 0.25; "
+                        '(fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true; '
+                        '(xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true; '
+                        'NOVNC_WEB=""; '
+                        'for candidate in "/usr/share/webapps/novnc" "/usr/share/novnc" "/usr/share/noVNC"; do '
+                        '  if [ -d "${candidate}" ]; then NOVNC_WEB="${candidate}"; break; fi; '
+                        "done; "
+                        'if [ -z "${NOVNC_WEB}" ]; then '
+                        '  echo "[desktop] ERROR: noVNC web root not found" >&2; '
+                        "else "
+                        '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
+                        "fi; "
+                        'echo "[desktop] ready"; '
+                        'echo "[desktop] DISPLAY=${DISPLAY}"; '
+                        'echo "[desktop] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
+                    )
             
             if settings_preflight_tmp_path is not None:
                 self._on_log(
@@ -398,7 +493,7 @@ class DockerAgentWorker:
                 *port_args,
                 "-w",
                 container_cwd,
-                self._config.image,
+                runtime_image,
                 "/bin/bash",
                 "-lc",
                 "set -euo pipefail; "

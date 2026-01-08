@@ -145,6 +145,14 @@ def launch_docker_terminal_task(
 
         # Prepare extra mounts
         extra_mount_args: list[str] = []
+        
+        # Add host cache mount if enabled in settings
+        if main_window._settings_data.get("mount_host_cache", False):
+            host_cache = os.path.expanduser("~/.cache")
+            container_cache = "/home/midori-ai/.cache"
+            extra_mount_args.extend(["-v", f"{host_cache}:{container_cache}:rw"])
+        
+        # Add environment-specific mounts
         for mount in (env.extra_mounts or []) if env else []:
             m = str(mount).strip()
             if not m:
