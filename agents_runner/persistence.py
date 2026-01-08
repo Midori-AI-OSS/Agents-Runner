@@ -403,6 +403,16 @@ def _deserialize_runner_config(
         if isinstance(raw_args, list):
             agent_cli_args = [str(item) for item in raw_args if str(item).strip()]
 
+        artifact_collection_timeout_s = 30.0
+        raw_timeout = payload.get("artifact_collection_timeout_s")
+        if raw_timeout is not None:
+            try:
+                artifact_collection_timeout_s = float(raw_timeout)
+            except Exception:
+                artifact_collection_timeout_s = 30.0
+        if artifact_collection_timeout_s <= 0.0:
+            artifact_collection_timeout_s = 30.0
+
         return DockerRunnerConfig(
             task_id=str(payload.get("task_id") or task_id),
             image=str(payload.get("image") or ""),
@@ -443,6 +453,7 @@ def _deserialize_runner_config(
             env_vars=env_vars,
             extra_mounts=extra_mounts,
             agent_cli_args=agent_cli_args,
+            artifact_collection_timeout_s=artifact_collection_timeout_s,
         )
     except Exception:
         return None

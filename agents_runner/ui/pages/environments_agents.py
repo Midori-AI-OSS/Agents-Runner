@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QHeaderView
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QTableWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -94,10 +95,14 @@ class AgentsTabWidget(QWidget):
         self._agent_table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
         self._agent_table.setSelectionMode(QTableWidget.NoSelection)
         self._agent_table.setFocusPolicy(Qt.NoFocus)
-        layout.addWidget(self._agent_table)
+        self._agent_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(self._agent_table, 1)
 
         # Controls row under table with :: separators
-        controls_row = QHBoxLayout()
+        controls_container = QWidget(self)
+        controls_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        controls_row = QHBoxLayout(controls_container)
+        controls_row.setContentsMargins(0, 0, 0, 0)
         controls_row.setSpacing(BUTTON_ROW_SPACING)
 
         # Add agent controls
@@ -143,9 +148,8 @@ class AgentsTabWidget(QWidget):
         controls_row.addWidget(test_chain_btn)
 
         controls_row.addStretch(1)
-        layout.addLayout(controls_row)
+        layout.addWidget(controls_container, 0)
 
-        layout.addStretch(1)
         self._refresh_fallback_visibility()
         self._render_table()
 

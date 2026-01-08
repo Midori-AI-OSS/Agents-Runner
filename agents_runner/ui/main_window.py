@@ -62,6 +62,7 @@ class MainWindow(
 ):
     host_log = Signal(str, str)
     host_pr_url = Signal(str, str)
+    host_artifacts = Signal(str, object)
     interactive_finished = Signal(str, int)
     repo_branches_ready = Signal(int, object)
 
@@ -117,6 +118,7 @@ class MainWindow(
 
         self.host_log.connect(self._on_host_log, Qt.QueuedConnection)
         self.host_pr_url.connect(self._on_host_pr_url, Qt.QueuedConnection)
+        self.host_artifacts.connect(self._on_host_artifacts, Qt.QueuedConnection)
         self.interactive_finished.connect(
             self._on_interactive_finished, Qt.QueuedConnection
         )

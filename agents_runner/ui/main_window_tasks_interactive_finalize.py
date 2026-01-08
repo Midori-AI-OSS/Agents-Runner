@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 
 from datetime import datetime
 from datetime import timezone
@@ -95,6 +96,9 @@ class _MainWindowTasksInteractiveFinalizeMixin:
     ) -> None:
         if not repo_root or not branch:
             return
+
+        start_s = time.monotonic()
+        self.host_log.emit(task_id, "[host][finalize] PR preparation started")
 
         # Get task info for cleanup - extract environment_id safely
         task = self._tasks.get(task_id)
@@ -194,3 +198,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                     self.host_log.emit(
                         task_id, f"[gh] cleanup failed: {cleanup_exc}"
                     )
+            elapsed_s = time.monotonic() - start_s
+            self.host_log.emit(
+                task_id, f"[host][finalize] PR preparation finished in {elapsed_s:.1f}s"
+            )

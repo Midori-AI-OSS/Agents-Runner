@@ -21,6 +21,7 @@ from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_task_payload
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
+from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _parse_docker_time
@@ -322,6 +323,23 @@ class _MainWindowTaskEventsMixin:
         self._details.update_task(task)
         self._schedule_save()
 
+    def _on_host_artifacts(self, task_id: str, artifacts: object) -> None:
+        task = self._tasks.get(task_id)
+        if task is None:
+            return
+        if not isinstance(artifacts, list):
+            return
+        artifact_uuids = [str(item) for item in artifacts if str(item).strip()]
+        if not artifact_uuids:
+            return
+        task.artifacts = artifact_uuids
+        env = self._environments.get(task.environment_id)
+        stain = env.color if env else None
+        spinner = _stain_color(env.color) if env else None
+        self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+        self._details.update_task(task)
+        self._schedule_save()
+
     def _on_task_log(self, task_id: str, line: str) -> None:
         task = self._tasks.get(task_id)
         if task is None:
@@ -409,6 +427,8 @@ class _MainWindowTaskEventsMixin:
         if task is None:
             return
 
+        self._on_task_log(task_id, "[host][finalize] finalization started")
+
         if task.started_at is None:
             started_s = self._run_started_s.get(task_id)
             if started_s is not None:
@@ -430,6 +450,12 @@ class _MainWindowTaskEventsMixin:
         self._details.update_task(task)
         self._schedule_save()
         QApplication.beep()
+
+        self._on_task_log(
+            task_id,
+            f"[host][finalize] task marked complete: status={task.status} exit_code={task.exit_code}",
+        )
+        self._start_artifact_finalization(task)
 
         self._try_start_queued_tasks()
 
@@ -460,3 +486,56 @@ class _MainWindowTaskEventsMixin:
                 ),
                 daemon=True,
             ).start()
+
+    def _start_artifact_finalization(self, task: Task) -> None:
+        if getattr(task, "_artifact_finalization_started", False):
+            return
+        try:
+            setattr(task, "_artifact_finalization_started", True)
+        except Exception:
+            pass
+
+        runner_config = getattr(task, "_runner_config", None)
+        timeout_s = 30.0
+        if runner_config is not None:
+            try:
+                timeout_s = float(getattr(runner_config, "artifact_collection_timeout_s"))
+            except Exception:
+                timeout_s = 30.0
+        if timeout_s <= 0.0:
+            timeout_s = 30.0
+
+        container_id = str(task.container_id or "")
+        env_name = str(task.environment_id or "")
+        task_dict = {
+            "task_id": str(task.task_id or ""),
+            "image": str(task.image or ""),
+            "agent_cli": str(task.agent_cli or ""),
+            "created_at": float(task.created_at_s or 0.0),
+        }
+
+        def _worker() -> None:
+            start = time.monotonic()
+            self.host_log.emit(task.task_id, "[host] collecting artifacts from container...")
+            try:
+                artifact_uuids = collect_artifacts_from_container_with_timeout(
+                    container_id,
+                    task_dict,
+                    env_name,
+                    timeout_s=timeout_s,
+                )
+                elapsed_s = time.monotonic() - start
+                self.host_log.emit(
+                    task.task_id,
+                    f"[host][finalize] artifact collection finished in {elapsed_s:.1f}s ({len(artifact_uuids)} artifact(s))",
+                )
+                if artifact_uuids:
+                    self.host_artifacts.emit(task.task_id, artifact_uuids)
+            except Exception as exc:
+                elapsed_s = time.monotonic() - start
+                self.host_log.emit(
+                    task.task_id,
+                    f"[host] artifact collection failed/timeout: {exc} (elapsed {elapsed_s:.1f}s)",
+                )
+
+        threading.Thread(target=_worker, daemon=True).start()

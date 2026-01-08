@@ -9,10 +9,14 @@ import hashlib
 import json
 import logging
 import mimetypes
+import multiprocessing
+import queue
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from typing import cast
 from uuid import uuid4
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -344,6 +348,80 @@ def collect_artifacts_from_container(
             logger.error(f"Staging cleanup failed: {cleanup_error}")
     
     return artifact_uuids
+
+
+def _collect_artifacts_child(
+    result_q: multiprocessing.Queue,  # type: ignore[type-arg]
+    container_id: str,
+    task_dict: dict[str, Any],
+    env_name: str,
+) -> None:
+    try:
+        artifact_uuids = collect_artifacts_from_container(container_id, task_dict, env_name)
+        result_q.put(("ok", artifact_uuids))
+    except Exception as exc:
+        result_q.put(("err", f"{type(exc).__name__}: {exc}"))
+
+
+def collect_artifacts_from_container_with_timeout(
+    container_id: str,
+    task_dict: dict[str, Any],
+    env_name: str,
+    *,
+    timeout_s: float,
+) -> list[str]:
+    """
+    Best-effort artifact collection with a hard timeout.
+
+    Runs artifact collection in a child process so it can be terminated if it
+    stalls (e.g., filesystem/IO hangs). On timeout, raises TimeoutError.
+    """
+    timeout_s = float(timeout_s)
+    if timeout_s <= 0.0:
+        raise ValueError("timeout_s must be > 0")
+
+    ctx = multiprocessing.get_context("spawn")
+    result_q = ctx.Queue()
+    proc = ctx.Process(
+        target=_collect_artifacts_child,
+        args=(result_q, container_id, task_dict, env_name),
+        daemon=True,
+    )
+
+    start = time.monotonic()
+    proc.start()
+    proc.join(timeout=timeout_s)
+
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=2.0)
+        if proc.is_alive():
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            proc.join(timeout=2.0)
+        raise TimeoutError(
+            f"artifact collection timed out after {timeout_s:.0f}s (elapsed {time.monotonic() - start:.1f}s)"
+        )
+
+    try:
+        kind, payload = cast(tuple[str, object], result_q.get(timeout=1.0))
+    except queue.Empty:
+        exit_code = proc.exitcode
+        raise RuntimeError(
+            f"artifact collection process exited without result (exit_code={exit_code})"
+        )
+    finally:
+        try:
+            result_q.close()
+            result_q.cancel_join_thread()
+        except Exception:
+            pass
+
+    if kind == "ok":
+        return cast(list[str], payload)
+    raise RuntimeError(str(payload))
 
 
 def get_staging_dir(task_id: str) -> Path:

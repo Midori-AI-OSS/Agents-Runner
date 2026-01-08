@@ -484,6 +484,7 @@ class TaskSupervisor:
             gh_prefer_gh_cli=self._config.gh_prefer_gh_cli,
             gh_recreate_if_needed=self._config.gh_recreate_if_needed,
             gh_base_branch=self._config.gh_base_branch,
+            artifact_collection_timeout_s=self._config.artifact_collection_timeout_s,
         )
         return config
 

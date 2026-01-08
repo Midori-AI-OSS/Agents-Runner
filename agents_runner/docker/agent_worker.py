@@ -23,7 +23,6 @@ from agents_runner.docker_platform import has_rosetta
 from agents_runner.github_token import resolve_github_token
 from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.gh_management import GhManagementError
-from agents_runner.artifacts import collect_artifacts_from_container
 
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.paths import _is_git_repo_root
@@ -491,26 +490,6 @@ class DockerAgentWorker:
                 final_state.update(desktop_state)
             self._on_state(final_state)
             exit_code = int(final_state.get("ExitCode") or 0)
-
-            # Collect artifacts before removing container
-            if self._container_id:
-                try:
-                    self._on_log("[host] collecting artifacts from container...")
-                    task_dict = {
-                        "task_id": self._config.task_id,
-                        "image": self._config.image,
-                        "agent_cli": agent_cli,
-                        "created_at": time.time(),
-                    }
-                    self._collected_artifacts = collect_artifacts_from_container(
-                        self._container_id, task_dict, self._config.environment_id
-                    )
-                    if self._collected_artifacts:
-                        self._on_log(
-                            f"[host] collected {len(self._collected_artifacts)} artifact(s)"
-                        )
-                except Exception as e:
-                    self._on_log(f"[host] artifact collection failed: {e}")
 
             if self._config.auto_remove:
                 try:
