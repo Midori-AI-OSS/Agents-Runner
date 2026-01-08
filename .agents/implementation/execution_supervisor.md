@@ -134,6 +134,14 @@ agent_fallbacks = {"agent_a": "agent_b", "agent_b": "agent_c"}
       - Continue loop (try fallback)
    g. Otherwise: return result (exhausted)
 
+### User Stop Handling (Stop/Kill)
+
+User-initiated Stop/Kill is treated as a terminal outcome and bypasses retry/fallback:
+
+- `request_user_cancel()` sets `user_stop=cancel`, stops the current worker, and logs `user_cancel requested`
+- `request_user_kill()` sets `user_stop=kill`, force-kills the current worker/container, and logs `user_kill requested`
+- Retry backoff sleep is interruptible; if a user stop is requested during backoff, the supervisor exits early and logs `retry skipped due to user stop`
+
 ### Agent Execution
 
 `_try_agent(agent)`:

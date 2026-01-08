@@ -68,27 +68,83 @@ class _MainWindowTaskEventsMixin:
             )
             return
 
+        if action in {"stop", "kill"}:
+            current = (task.status or "").lower()
+            if current in {"cancelled", "killed"}:
+                return
+
+            is_kill = action == "kill"
+            task.status = "killed" if is_kill else "cancelled"
+            if task.finished_at is None:
+                task.finished_at = datetime.now(tz=timezone.utc)
+
+            self._on_task_log(
+                task_id,
+                "[host] user_kill requested" if is_kill else "[host] user_cancel requested",
+            )
+
+            watch = self._interactive_watch.get(task_id)
+            if watch is not None:
+                _, stop = watch
+                stop.set()
+
+            if bridge is not None:
+                try:
+                    QMetaObject.invokeMethod(
+                        bridge,
+                        "request_user_kill" if is_kill else "request_user_cancel",
+                        Qt.QueuedConnection,
+                    )
+                except Exception:
+                    bridge = None
+
+            if bridge is None:
+                docker_args = (
+                    ["kill", container_id]
+                    if is_kill
+                    else ["stop", "-t", "1", container_id]
+                )
+                self._on_task_log(task_id, f"[docker] docker {' '.join(docker_args)}")
+                try:
+                    completed = subprocess.run(
+                        ["docker", *docker_args],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                        timeout=10.0 if is_kill else 20.0,
+                    )
+                except Exception as exc:
+                    self._on_task_log(task_id, f"[docker] ERROR: {exc}")
+                    completed = None
+
+                if completed is not None and completed.returncode != 0:
+                    detail = (completed.stderr or completed.stdout or "").strip()
+                    if detail:
+                        self._on_task_log(task_id, f"[docker] ERROR: {detail}")
+
+            env = self._environments.get(task.environment_id)
+            stain = env.color if env else None
+            spinner = _stain_color(env.color) if env else None
+            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+            self._details.update_task(task)
+            self._schedule_save()
+
+            gh_mode = normalize_gh_management_mode(task.gh_management_mode)
+            if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+                threading.Thread(
+                    target=self._cleanup_task_workspace_async,
+                    args=(task_id, task.environment_id),
+                    daemon=True,
+                ).start()
+
+            return
+
         docker_args: list[str]
         timeout_s = 10.0
         if action == "freeze":
             docker_args = ["pause", container_id]
         elif action == "unfreeze":
             docker_args = ["unpause", container_id]
-        elif action == "stop":
-            docker_args = ["stop", "-t", "1", container_id]
-            timeout_s = 20.0
-        elif action == "kill":
-            msg = (
-                f"Kill container {container_id} for task {task_id}?\n\n"
-                f"{task.prompt_one_line()}\n\n"
-                "This can interrupt the agent immediately."
-            )
-            if (
-                QMessageBox.question(self, "Kill container?", msg)
-                != QMessageBox.StandardButton.Yes
-            ):
-                return
-            docker_args = ["kill", container_id]
         else:
             return
 
@@ -156,7 +212,9 @@ class _MainWindowTaskEventsMixin:
 
         if bridge is not None:
             try:
-                QMetaObject.invokeMethod(bridge, "request_stop", Qt.QueuedConnection)
+                QMetaObject.invokeMethod(
+                    bridge, "request_user_cancel", Qt.QueuedConnection
+                )
             except Exception:
                 pass
         if thread is not None:
@@ -241,6 +299,8 @@ class _MainWindowTaskEventsMixin:
         task = self._tasks.get(bridge.task_id)
         if task is None:
             return
+        if (task.status or "").lower() in {"cancelled", "killed"}:
+            return
 
         self._on_task_log(
             bridge.task_id,
@@ -260,6 +320,8 @@ class _MainWindowTaskEventsMixin:
 
         task = self._tasks.get(bridge.task_id)
         if task is None:
+            return
+        if (task.status or "").lower() in {"cancelled", "killed"}:
             return
 
         self._on_task_log(
@@ -306,7 +368,7 @@ class _MainWindowTaskEventsMixin:
                             bridge.task_id,
                             f"[supervisor] completed after {retry_count} retries",
                         )
-            self._on_task_done(bridge.task_id, exit_code, error)
+            self._on_task_done(bridge.task_id, exit_code, error, metadata=metadata)
 
     def _on_host_log(self, task_id: str, line: str) -> None:
         self._on_task_log(task_id, line)
@@ -374,6 +436,22 @@ class _MainWindowTaskEventsMixin:
             return
 
         current = (task.status or "").lower()
+        if current in {"cancelled", "killed"}:
+            if bridge and bridge.container_id:
+                task.container_id = bridge.container_id
+            finished_at = _parse_docker_time(state.get("FinishedAt"))
+            if finished_at and task.finished_at is None:
+                task.finished_at = finished_at
+            exit_code = state.get("ExitCode")
+            if exit_code is not None:
+                try:
+                    task.exit_code = int(exit_code)
+                except Exception:
+                    pass
+            self._details.update_task(task)
+            self._schedule_save()
+            return
+
         incoming = str(state.get("Status") or task.status or "—").lower()
         if bridge and bridge.container_id:
             task.container_id = bridge.container_id
@@ -422,7 +500,9 @@ class _MainWindowTaskEventsMixin:
         self._details.update_task(task)
         self._schedule_save()
 
-    def _on_task_done(self, task_id: str, exit_code: int, error: object) -> None:
+    def _on_task_done(
+        self, task_id: str, exit_code: int, error: object, *, metadata: dict | None = None
+    ) -> None:
         task = self._tasks.get(task_id)
         if task is None:
             return
@@ -436,11 +516,23 @@ class _MainWindowTaskEventsMixin:
         if task.finished_at is None:
             task.finished_at = datetime.now(tz=timezone.utc)
 
-        if error:
+        user_stop = None
+        status_lower = (task.status or "").lower()
+        if status_lower in {"cancelled", "killed"}:
+            user_stop = "kill" if status_lower == "killed" else "cancel"
+        elif metadata:
+            candidate = str(metadata.get("user_stop") or "").strip().lower()
+            if candidate in {"cancel", "kill"}:
+                user_stop = candidate
+                task.status = "killed" if candidate == "kill" else "cancelled"
+
+        task.exit_code = int(exit_code)
+        if user_stop is not None:
+            task.error = None
+        elif error:
             task.status = "failed"
             task.error = str(error)
         else:
-            task.exit_code = int(exit_code)
             task.status = "done" if int(exit_code) == 0 else "failed"
 
         env = self._environments.get(task.environment_id)
@@ -449,17 +541,21 @@ class _MainWindowTaskEventsMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
-        QApplication.beep()
+        if user_stop is None:
+            QApplication.beep()
 
         self._on_task_log(
             task_id,
             f"[host][finalize] task marked complete: status={task.status} exit_code={task.exit_code}",
         )
-        self._start_artifact_finalization(task)
+        if user_stop is None:
+            self._start_artifact_finalization(task)
 
         self._try_start_queued_tasks()
 
         if (
+            user_stop is None
+            and
             normalize_gh_management_mode(task.gh_management_mode) != GH_MANAGEMENT_NONE
             and task.gh_repo_root
             and task.gh_branch

@@ -409,15 +409,19 @@ class TaskDetailsPage(QWidget):
     def _emit_container_action(self, action: str) -> None:
         task_id = str(self._current_task_id or "").strip()
         if task_id:
+            if str(action or "").strip().lower() in {"stop", "kill"}:
+                self._btn_stop.setEnabled(False)
+                self._btn_kill.setEnabled(False)
             self.container_action_requested.emit(task_id, str(action or "").strip())
 
     def _sync_container_actions(self, task: Task) -> None:
         has_container = bool(str(task.container_id or "").strip())
         is_paused = (task.status or "").lower() == "paused"
-        self._btn_freeze.setEnabled(has_container and not is_paused)
-        self._btn_unfreeze.setEnabled(has_container and is_paused)
-        self._btn_stop.setEnabled(has_container)
-        self._btn_kill.setEnabled(has_container)
+        is_terminal = (task.status or "").lower() in {"cancelled", "killed"}
+        self._btn_freeze.setEnabled(has_container and not is_paused and not is_terminal)
+        self._btn_unfreeze.setEnabled(has_container and is_paused and not is_terminal)
+        self._btn_stop.setEnabled(has_container and not is_terminal)
+        self._btn_kill.setEnabled(has_container and not is_terminal)
 
     def show_task(self, task: Task) -> None:
         self._current_task_id = task.task_id

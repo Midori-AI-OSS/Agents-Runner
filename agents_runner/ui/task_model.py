@@ -116,10 +116,14 @@ class Task:
 
     def is_done(self) -> bool:
         status = (self.status or "").lower()
-        return status == "done" or (status == "exited" and self.exit_code == 0)
+        if status in {"done", "cancelled", "killed"}:
+            return True
+        return status == "exited" and self.exit_code == 0
 
     def is_failed(self) -> bool:
         status = (self.status or "").lower()
+        if status in {"cancelled", "killed"}:
+            return False
         if status in {"failed", "error", "dead"}:
             return True
         return status == "exited" and self.exit_code not in (None, 0)
@@ -129,6 +133,10 @@ def _task_display_status(task: Task) -> str:
     status = (task.status or "").lower()
     if status == "done":
         return "Done"
+    if status == "cancelled":
+        return "Cancelled"
+    if status == "killed":
+        return "Killed"
     if status in {"failed", "error"}:
         return "Failed"
     if status == "pulling":

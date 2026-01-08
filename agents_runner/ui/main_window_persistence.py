@@ -41,7 +41,7 @@ class _MainWindowPersistenceMixin:
             return False
 
         incoming = str(state.get("Status") or "").strip().lower()
-        if incoming:
+        if incoming and (task.status or "").lower() not in {"cancelled", "killed"}:
             task.status = incoming
 
         started_at = _parse_docker_time(state.get("StartedAt"))

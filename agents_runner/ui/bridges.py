@@ -90,5 +90,25 @@ class TaskRunnerBridge(QObject):
     def request_stop(self) -> None:
         self._worker.request_stop()
 
+    @Slot()
+    def request_user_cancel(self) -> None:
+        request = getattr(self._worker, "request_user_cancel", None)
+        if callable(request):
+            request()
+            return
+        self._worker.request_stop()
+
+    @Slot()
+    def request_user_kill(self) -> None:
+        request = getattr(self._worker, "request_user_kill", None)
+        if callable(request):
+            request()
+            return
+        request_kill = getattr(self._worker, "request_kill", None)
+        if callable(request_kill):
+            request_kill()
+            return
+        self._worker.request_stop()
+
     def run(self) -> None:
         self._worker.run()

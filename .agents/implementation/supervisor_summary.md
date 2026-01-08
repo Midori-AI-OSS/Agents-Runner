@@ -142,7 +142,8 @@ Per design requirements, the following are intentionally NOT implemented:
 - ❌ Hang detection
 - ❌ "No output" monitoring
 - ❌ Resource exhaustion detection
-- ❌ User controls (retry now, cancel, force fallback)
+- ❌ User controls (retry now, force fallback)
+- ✅ User Stop/Kill is supported and bypasses retry/fallback
 - ❌ Container restart method (not needed - new container per retry)
 
 These can be added as future enhancements if needed.

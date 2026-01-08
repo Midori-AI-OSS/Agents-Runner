@@ -61,6 +61,14 @@ class DockerPreflightWorker:
                 except Exception:
                     pass
 
+    def request_kill(self) -> None:
+        self._stop.set()
+        if self._container_id:
+            try:
+                _run_docker(["kill", self._container_id], timeout_s=10.0)
+            except Exception:
+                pass
+
     def run(self) -> None:
         preflight_tmp_paths: list[str] = []
         docker_env: dict[str, str] | None = None

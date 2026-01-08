@@ -48,6 +48,8 @@ def _status_color(status: str) -> QColor:
         "cleaning": (56, 189, 248, 220),
         "done": (16, 185, 129, 230),
         "failed": (244, 63, 94, 230),
+        "cancelled": (245, 158, 11, 230),
+        "killed": (244, 63, 94, 230),
         "created": (148, 163, 184, 220),
         "running": (16, 185, 129, 220),
         "paused": (245, 158, 11, 220),

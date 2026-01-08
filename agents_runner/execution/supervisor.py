@@ -14,6 +14,7 @@ from dataclasses import field
 from enum import Enum
 from typing import Any
 from typing import Callable
+from typing import Literal
 
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker_runner import DockerAgentWorker
@@ -215,6 +216,7 @@ class TaskSupervisor:
         self._last_artifacts: list[str] = []
         self._last_logs: list[str] = []
         self._last_container_state: dict[str, Any] = {}
+        self._user_stop_reason: Literal["cancel", "kill"] | None = None
 
     @property
     def container_id(self) -> str | None:
@@ -249,6 +251,26 @@ class TaskSupervisor:
         if self._current_worker:
             self._current_worker.request_stop()
 
+    def request_user_cancel(self) -> None:
+        """User requested graceful cancellation (terminal, no retry/fallback)."""
+        if self._user_stop_reason is None:
+            self._user_stop_reason = "cancel"
+            self._on_log("[supervisor] user_cancel requested")
+        if self._current_worker:
+            self._current_worker.request_stop()
+
+    def request_user_kill(self) -> None:
+        """User requested force kill (terminal, no retry/fallback)."""
+        if self._user_stop_reason is None:
+            self._user_stop_reason = "kill"
+            self._on_log("[supervisor] user_kill requested")
+        if self._current_worker:
+            request_kill = getattr(self._current_worker, "request_kill", None)
+            if callable(request_kill):
+                request_kill()
+            else:
+                self._current_worker.request_stop()
+
     def run(self) -> SupervisorResult:
         """Execute task with supervision.
 
@@ -259,10 +281,38 @@ class TaskSupervisor:
 
         # Main supervision loop
         while self._current_agent_index < len(self._agent_chain):
+            if self._user_stop_reason is not None:
+                result = self._result_for_user_stop()
+                self._on_log("[supervisor] retry skipped due to user stop")
+                if self._on_done:
+                    self._on_done(
+                        result.exit_code,
+                        result.error,
+                        result.artifacts,
+                        result.metadata,
+                    )
+                return result
+
             agent = self._agent_chain[self._current_agent_index]
 
             # Try executing with current agent
             result = self._try_agent(agent)
+
+            if self._user_stop_reason is not None:
+                self._on_log("[supervisor] retry skipped due to user stop")
+                if self._on_done:
+                    self._on_done(
+                        result.exit_code,
+                        None,
+                        result.artifacts,
+                        dict(result.metadata, user_stop=self._user_stop_reason),
+                    )
+                return SupervisorResult(
+                    exit_code=result.exit_code,
+                    error=None,
+                    artifacts=result.artifacts,
+                    metadata=dict(result.metadata, user_stop=self._user_stop_reason),
+                )
 
             # Success
             if result.exit_code == 0:
@@ -310,7 +360,17 @@ class TaskSupervisor:
                     f"[supervisor] retry {retry_count + 1}/{self._supervisor_config.max_retries_per_agent} "
                     f"with {agent.agent_cli} in {delay:.0f}s"
                 )
-                time.sleep(delay)
+                if not self._sleep_with_cancel(delay):
+                    result = self._result_for_user_stop()
+                    self._on_log("[supervisor] retry skipped due to user stop")
+                    if self._on_done:
+                        self._on_done(
+                            result.exit_code,
+                            result.error,
+                            result.artifacts,
+                            result.metadata,
+                        )
+                    return result
                 continue
 
             # Retries exhausted, try fallback
@@ -405,6 +465,9 @@ class TaskSupervisor:
         Returns:
             SupervisorResult from this execution attempt
         """
+        if self._user_stop_reason is not None:
+            return self._result_for_user_stop()
+
         # Build agent-specific config
         agent_config = self._build_agent_config(agent)
 
@@ -440,6 +503,25 @@ class TaskSupervisor:
                 "total_attempts": self._total_attempts,
             },
         )
+
+    def _result_for_user_stop(self) -> SupervisorResult:
+        reason = self._user_stop_reason or "cancel"
+        exit_code = 137 if reason == "kill" else 130
+        return SupervisorResult(
+            exit_code=exit_code,
+            error=None,
+            artifacts=[],
+            metadata={"user_stop": reason},
+        )
+
+    def _sleep_with_cancel(self, seconds: float) -> bool:
+        """Sleep but allow early-exit if a user stop is requested."""
+        deadline = time.monotonic() + max(0.0, float(seconds))
+        while time.monotonic() < deadline:
+            if self._user_stop_reason is not None:
+                return False
+            time.sleep(0.1)
+        return True
 
     def _build_agent_config(self, agent: AgentInstance) -> DockerRunnerConfig:
         """Build DockerRunnerConfig for specific agent.
