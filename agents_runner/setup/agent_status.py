@@ -134,6 +134,8 @@ def check_gemini_login() -> tuple[bool, str]:
     - GEMINI_API_KEY environment variable
     - GOOGLE_GENAI_USE_VERTEXAI environment variable
     - GOOGLE_GENAI_USE_GCA environment variable
+    - ~/.gemini/google_accounts.json (OAuth account data)
+    - ~/.gemini/oauth_creds.json (OAuth credentials)
 
     Returns:
         (logged_in: bool, status_message: str)
@@ -145,6 +147,16 @@ def check_gemini_login() -> tuple[bool, str]:
         return (True, "Logged in (VERTEXAI)")
     if os.environ.get("GOOGLE_GENAI_USE_GCA"):
         return (True, "Logged in (GCA)")
+
+    # Check for OAuth credential files
+    gemini_config_dir = Path.home() / ".gemini"
+    google_accounts = gemini_config_dir / "google_accounts.json"
+    oauth_creds = gemini_config_dir / "oauth_creds.json"
+    
+    if google_accounts.exists() and google_accounts.is_file():
+        return (True, "Logged in (google_accounts.json)")
+    if oauth_creds.exists() and oauth_creds.is_file():
+        return (True, "Logged in (oauth_creds.json)")
 
     return (False, "Not logged in (no auth method found)")
 
