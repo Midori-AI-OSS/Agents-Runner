@@ -16,27 +16,7 @@ class TranscribeError(RuntimeError):
 
 
 def transcribe_audio_file(*, mode: str, audio_path: str) -> str:
-    mode_value = str(mode or "").strip().lower()
-    if mode_value == SttMode.ONLINE:
-        return _transcribe_online(audio_path)
     return _transcribe_offline(audio_path)
-
-
-def _transcribe_online(audio_path: str) -> str:
-    try:
-        import speech_recognition as sr
-    except Exception as exc:
-        raise TranscribeError(
-            "Online speech-to-text requires the `SpeechRecognition` dependency."
-        ) from exc
-
-    recognizer = sr.Recognizer()
-    with sr.AudioFile(audio_path) as source:
-        audio = recognizer.record(source)
-    try:
-        return str(recognizer.recognize_google(audio) or "").strip()
-    except Exception as exc:  # SpeechRecognition has many ad-hoc error types.
-        raise TranscribeError(str(exc) or "Online transcription failed.") from exc
 
 
 def _transcribe_offline(audio_path: str) -> str:
@@ -65,4 +45,3 @@ def _transcribe_offline(audio_path: str) -> str:
         if text:
             parts.append(text)
     return " ".join(parts).strip()
-

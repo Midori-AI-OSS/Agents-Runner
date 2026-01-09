@@ -9,5 +9,4 @@ dependencies = [
     "faster-whisper>=1.2.1",
     "pyside6>=6.10.1",
     "pyspellchecker>=0.8.1",
-    "speechrecognition>=3.14.5",
 ]

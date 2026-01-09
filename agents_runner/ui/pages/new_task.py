@@ -524,10 +524,7 @@ class NewTaskPage(QWidget):
         self._prompt.set_spellcheck_enabled(enabled)
 
     def set_stt_mode(self, mode: str) -> None:
-        mode = str(mode or "").strip().lower()
-        if mode not in {"offline", "online"}:
-            mode = "offline"
-        self._stt_mode = mode
+        self._stt_mode = "offline"
 
     def set_workspace_status(self, *, path: str, ready: bool, message: str) -> None:
         self._workspace.setText(str(path or "—"))
