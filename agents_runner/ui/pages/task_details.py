@@ -312,6 +312,7 @@ class TaskDetailsPage(QWidget):
         self._ticker.start()
 
         self._last_task: Task | None = None
+        self._syncing_desktop = False
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
@@ -426,6 +427,8 @@ class TaskDetailsPage(QWidget):
         return self._desktop_web
 
     def _maybe_load_desktop(self) -> None:
+        if self._last_task is None:
+            return
         if not self._last_task or self._tabs.currentIndex() != self._desktop_tab_index:
             return
         url = str(self._last_task.novnc_url or "").strip()
@@ -441,37 +444,44 @@ class TaskDetailsPage(QWidget):
             pass
 
     def _sync_desktop(self, task: Task) -> None:
-        should_enable = bool(task.is_active() and task.headless_desktop_enabled)
-        if not hasattr(self, "_tabs"):
+        if self._syncing_desktop:
             return
+        self._syncing_desktop = True
+        try:
+            should_enable = bool(task.is_active() and task.headless_desktop_enabled)
+            if not hasattr(self, "_tabs"):
+                return
 
-        self._tabs.setTabEnabled(self._desktop_tab_index, should_enable)
-        if not should_enable:
+            self._tabs.setTabEnabled(self._desktop_tab_index, should_enable)
+            if not should_enable:
+                if self._tabs.currentIndex() == self._desktop_tab_index:
+                    self._tabs.setCurrentIndex(self._task_tab_index)
+                self._desktop_loaded_url = ""
+                self._desktop_url.setText("—")
+                self._desktop_display.setText("—")
+                if self._desktop_web is not None:
+                    try:
+                        self._desktop_web.setUrl(QUrl("about:blank"))
+                    except Exception:
+                        pass
+                return
+
+            url = str(task.novnc_url or "").strip()
+            self._desktop_url.setText(url or "(starting…)")
+            self._desktop_display.setText(str(task.desktop_display or ":1"))
             if self._tabs.currentIndex() == self._desktop_tab_index:
-                self._tabs.setCurrentIndex(self._task_tab_index)
-            self._desktop_loaded_url = ""
-            self._desktop_url.setText("—")
-            self._desktop_display.setText("—")
-            if self._desktop_web is not None:
-                try:
-                    self._desktop_web.setUrl(QUrl("about:blank"))
-                except Exception:
-                    pass
-            return
-
-        url = str(task.novnc_url or "").strip()
-        self._desktop_url.setText(url or "(starting…)")
-        self._desktop_display.setText(str(task.desktop_display or ":1"))
-        if self._tabs.currentIndex() == self._desktop_tab_index:
-            self._maybe_load_desktop()
+                self._maybe_load_desktop()
+        finally:
+            self._syncing_desktop = False
 
     def _sync_artifacts(self, task: Task) -> None:
         has_artifacts = bool(task.artifacts)
         self._tabs.setTabEnabled(self._artifacts_tab_index, has_artifacts)
 
     def _load_artifacts(self) -> None:
-        if self._last_task:
-            self._artifacts_tab.set_task(self._last_task)
+        if self._last_task is None:
+            return
+        self._artifacts_tab.set_task(self._last_task)
 
     def _apply_status(self, task: Task) -> None:
         status = _task_display_status(task)
