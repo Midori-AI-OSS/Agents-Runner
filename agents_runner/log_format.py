@@ -50,6 +50,52 @@ def parse_docker_datetime(value: str | None) -> datetime | None:
         return None
 
 
+_CANONICAL_LOG_RE = re.compile(r"^\[[^/\]]+/[^\]]+\]\[[A-Z]+\]\s")
+
+
+def format_log(scope: str, subscope: str, level: str, message: str) -> str:
+    """Format a log message in canonical format.
+    
+    Canonical format: [{scope}/{subscope}][{LEVEL}] {message}
+    
+    Args:
+        scope: Host logs use ids like host, ui, gh, docker, desktop, artifacts, env, supervisor, cleanup, mcp.
+               Container-origin logs use first 4 chars of container id (cid4), e.g. 6e9f.
+        subscope: Short module/phase name, or "none" if none applies.
+        level: One of DEBUG, INFO, WARN, ERROR (default INFO).
+        message: The log message content.
+    
+    Returns:
+        Formatted log string in canonical format.
+    """
+    level = level.upper()
+    if level not in ("DEBUG", "INFO", "WARN", "ERROR"):
+        level = "INFO"
+    return f"[{scope}/{subscope}][{level}] {message}"
+
+
+def wrap_container_log(cid: str, stream: str, line: str) -> str:
+    """Wrap container output in canonical format.
+    
+    Args:
+        cid: Container ID (will use first 4 chars as scope).
+        stream: Output stream identifier (e.g., 'stdout' or 'stderr').
+        line: The log line to wrap.
+    
+    Returns:
+        Line unchanged if it already has canonical format, otherwise wrapped.
+    """
+    # If already in canonical format, return unchanged
+    if _CANONICAL_LOG_RE.match(line):
+        return line
+    
+    cid4 = cid[:4] if len(cid) >= 4 else cid
+    level = "INFO"  # Default level
+    if stream == "stderr":
+        level = "WARN"  # stderr defaults to WARN
+    return f"[{cid4}/{stream}][{level}] {line}"
+
+
 def prettify_log_line(line: str) -> str:
     text = (line or "").replace("\r", "")
     text = _ANSI_ESCAPE_RE.sub("", text)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[desktop] starting headless desktop (noVNC)"
+echo "[desktop/setup][INFO] starting headless desktop (noVNC)"
 
 export DISPLAY="${DISPLAY:-:1}"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
@@ -12,13 +12,13 @@ RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"
 mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}
 mkdir -p "/tmp/agents-artifacts"
 
-echo "[desktop] Synchronizing package database..."
+echo "[desktop/setup][INFO] Synchronizing package database..."
 if ! yay -Syu --noconfirm; then
-  echo "[desktop] ERROR: Failed to sync package database" >&2
+  echo "[desktop/setup][ERROR] Failed to sync package database" >&2
   exit 1
 fi
 
-echo "[desktop] Installing official repository packages (one-by-one with retries)..."
+echo "[desktop/setup][INFO] Installing official repository packages (one-by-one with retries)..."
 OFFICIAL_PKGS=(
   tigervnc
   fluxbox
@@ -42,10 +42,10 @@ install_pkg_with_retry() {
   local attempt=1
   until yay -S --noconfirm --needed "${pkg}" >/dev/null 2>&1; do
     if [ "${attempt}" -ge "${max_attempts}" ]; then
-      echo "[desktop] ERROR: Failed to install ${pkg} after ${max_attempts} attempts" >&2
+      echo "[desktop/setup][ERROR] Failed to install ${pkg} after ${max_attempts} attempts" >&2
       return 1
     fi
-    echo "[desktop] Retrying install of ${pkg} (attempt $((attempt+1))/${max_attempts})..."
+    echo "[desktop/setup][INFO] Retrying install of ${pkg} (attempt $((attempt+1))/${max_attempts})..."
     attempt=$((attempt+1))
     sleep 2
   done
@@ -54,13 +54,13 @@ install_pkg_with_retry() {
 
 for pkg in "${OFFICIAL_PKGS[@]}"; do
   if ! install_pkg_with_retry "${pkg}"; then
-    echo "[desktop] ERROR: Failed to install required official package: ${pkg}" >&2
-    echo "[desktop] Cannot continue without desktop environment" >&2
+    echo "[desktop/setup][ERROR] Failed to install required official package: ${pkg}" >&2
+    echo "[desktop/setup][ERROR] Cannot continue without desktop environment" >&2
     exit 1
   fi
 done
 
-echo "[desktop] Validating installed components..."
+echo "[desktop/setup][INFO] Validating installed components..."
 REQUIRED_BINS=(Xvnc fluxbox xterm websockify)
 MISSING_BINS=()
 
@@ -71,8 +71,8 @@ for bin in "${REQUIRED_BINS[@]}"; do
 done
 
 if [ ${#MISSING_BINS[@]} -gt 0 ]; then
-  echo "[desktop] ERROR: Required binaries not found: ${MISSING_BINS[*]}" >&2
-  echo "[desktop] Package installation may have failed silently" >&2
+  echo "[desktop/setup][ERROR] Required binaries not found: ${MISSING_BINS[*]}" >&2
+  echo "[desktop/setup][ERROR] Package installation may have failed silently" >&2
   exit 1
 fi
 
@@ -96,13 +96,13 @@ for candidate in "/usr/share/webapps/novnc" "/usr/share/novnc" "/usr/share/noVNC
   fi
 done
 if [ -z "${NOVNC_WEB}" ]; then
-  echo "[desktop] ERROR: noVNC web root not found in expected locations" >&2
-  echo "[desktop] Searched: /usr/share/webapps/novnc, /usr/share/novnc, /usr/share/noVNC" >&2
+  echo "[desktop/setup][ERROR] noVNC web root not found in expected locations" >&2
+  echo "[desktop/setup][ERROR] Searched: /usr/share/webapps/novnc, /usr/share/novnc, /usr/share/noVNC" >&2
   exit 1
 fi
 
 websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 &
 
-echo "[desktop] ready"
-echo "[desktop] DISPLAY=${DISPLAY}"
-echo "[desktop] screenshot: import -display ${DISPLAY} -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"
+echo "[desktop/setup][INFO] ready"
+echo "[desktop/setup][INFO] DISPLAY=${DISPLAY}"
+echo "[desktop/setup][INFO] screenshot: import -display ${DISPLAY} -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"

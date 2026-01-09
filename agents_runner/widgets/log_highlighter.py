@@ -1,3 +1,5 @@
+import re
+
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QSyntaxHighlighter
 from PySide6.QtGui import QTextCharFormat
@@ -5,6 +7,23 @@ from PySide6.QtGui import QTextDocument
 
 
 class LogHighlighter(QSyntaxHighlighter):
+    # Host scopes that should use neutral/accent colors
+    HOST_SCOPES = {
+        "host",
+        "ui",
+        "gh",
+        "docker",
+        "desktop",
+        "artifacts",
+        "env",
+        "supervisor",
+        "cleanup",
+        "mcp",
+    }
+
+    # Canonical log format: [{scope}/{subscope}][{LEVEL}] {message}
+    CANONICAL_LOG_RE = re.compile(r"^\[([^/\]]+)/([^\]]+)\]\[([A-Z]+)\]\s(.*)$")
+
     def __init__(self, document: QTextDocument) -> None:
         super().__init__(document)
 
@@ -42,6 +61,17 @@ class LogHighlighter(QSyntaxHighlighter):
         blue = QColor(59, 130, 246, 235)
         fuchsia = QColor(217, 70, 239, 235)
 
+        # Color mappings for canonical log format
+        self._host_scope_color = slate  # Neutral color for host scopes
+        self._container_scope_color = QColor(56, 189, 248)  # Blue/cyan for container IDs
+        self._level_colors = {
+            "DEBUG": QColor(107, 114, 128),  # Gray/muted
+            "INFO": QColor(209, 213, 219),   # Neutral/normal
+            "WARN": QColor(245, 158, 11),    # Amber/yellow
+            "ERROR": QColor(239, 68, 68),    # Red
+        }
+        self._default_text_color = QColor(209, 213, 219)  # Default for message body
+
         self._rules: list[tuple[object, QTextCharFormat]] = [
             (r"\[host\]", fmt(cyan, True)),
             (r"\[preflight\]", fmt(emerald, True)),
@@ -73,8 +103,6 @@ class LogHighlighter(QSyntaxHighlighter):
         ]
 
     def highlightBlock(self, text: str) -> None:
-        import re
-
         in_fence = self.previousBlockState() == 1
         fence_line = bool(re.match(r"^```", text))
         if fence_line:
@@ -89,6 +117,50 @@ class LogHighlighter(QSyntaxHighlighter):
             self.setFormat(0, len(text), code_format)
             return
 
-        for pattern, style in self._rules:
-            for match in re.finditer(pattern, text, flags=re.IGNORECASE):
-                self.setFormat(match.start(), match.end() - match.start(), style)
+        # Try to match canonical log format first
+        canonical_match = self.CANONICAL_LOG_RE.match(text)
+        if canonical_match:
+            scope = canonical_match.group(1)
+            subscope = canonical_match.group(2)
+            level = canonical_match.group(3)
+            message = canonical_match.group(4)
+
+            # Calculate positions
+            scope_bracket_start = 0
+            scope_bracket_end = len(f"[{scope}/{subscope}]")
+            level_bracket_start = scope_bracket_end
+            level_bracket_end = scope_bracket_end + len(f"[{level}]")
+            message_start = level_bracket_end + 1  # +1 for the space
+
+            # Color the scope bracket
+            scope_format = QTextCharFormat()
+            if scope in self.HOST_SCOPES:
+                scope_format.setForeground(self._host_scope_color)
+            else:
+                # Container scope (4-char container ID)
+                scope_format.setForeground(self._container_scope_color)
+            self.setFormat(scope_bracket_start, scope_bracket_end, scope_format)
+
+            # Color the level bracket
+            level_format = QTextCharFormat()
+            level_color = self._level_colors.get(level, self._default_text_color)
+            level_format.setForeground(level_color)
+            self.setFormat(
+                level_bracket_start, level_bracket_end - level_bracket_start, level_format
+            )
+
+            # Message body uses default color (no explicit formatting needed)
+            # Apply additional highlighting rules to the message portion only
+            for pattern, style in self._rules:
+                for match in re.finditer(pattern, message, flags=re.IGNORECASE):
+                    # Offset match positions to account for the log prefix
+                    self.setFormat(
+                        message_start + match.start(),
+                        match.end() - match.start(),
+                        style,
+                    )
+        else:
+            # Fall back to legacy highlighting rules if not canonical format
+            for pattern, style in self._rules:
+                for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+                    self.setFormat(match.start(), match.end() - match.start(), style)

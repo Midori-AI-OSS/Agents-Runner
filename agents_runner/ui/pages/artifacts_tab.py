@@ -1,15 +1,10 @@
 from __future__ import annotations
 
 import logging
-import os
-import subprocess
-import sys
-import tempfile
-from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QEvent, Qt, QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QToolButton, QFileDialog, QSplitter, QPlainTextEdit,
@@ -17,30 +12,20 @@ from PySide6.QtWidgets import (
 )
 
 from agents_runner.artifacts import (
-    list_artifacts, decrypt_artifact, ArtifactMeta,
+    list_artifacts, ArtifactMeta,
     list_staging_artifacts, get_staging_dir, StagingArtifactMeta
 )
 from agents_runner.docker.artifact_file_watcher import ArtifactFileWatcher
 from agents_runner.ui.task_model import Task
+from agents_runner.ui.pages.artifacts_utils import (
+    format_size, format_timestamp, PreviewLoader,
+    open_staging_artifact, open_encrypted_artifact,
+    edit_staging_artifact, download_artifact, cleanup_temp_files
+)
 from agents_runner.widgets.glass_card import GlassCard
+from agents_runner.widgets.artifact_highlighter import ArtifactSyntaxHighlighter
 
 logger = logging.getLogger(__name__)
-
-
-def _format_size(size_bytes: int) -> str:
-    for unit in ["B", "KB", "MB", "GB"]:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} TB"
-
-
-def _format_timestamp(iso_timestamp: str) -> str:
-    try:
-        dt = datetime.fromisoformat(iso_timestamp)
-        return dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
-    except Exception:
-        return iso_timestamp
 
 
 class ArtifactsTab(QWidget):
@@ -51,10 +36,10 @@ class ArtifactsTab(QWidget):
         self._temp_files: list[Path] = []
         self._mode: str = "encrypted"  # "staging" or "encrypted"
         self._file_watcher: ArtifactFileWatcher | None = None
-        self._thumbnail_original: QPixmap | None = None
         self._refresh_timer = QTimer()
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.timeout.connect(self._refresh_file_list)
+        self._preview_loader: PreviewLoader | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -125,7 +110,24 @@ class ArtifactsTab(QWidget):
         self._text_preview.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._text_preview.setMaximumBlockCount(5000)
         self._text_preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        
+        # Set monospace font
+        font = QFont("Monospace", 9)
+        font.setStyleHint(QFont.StyleHint.TypeWriter)
+        self._text_preview.setFont(font)
+        
         self._text_preview.hide()
+        
+        # Syntax highlighter (created on demand)
+        self._syntax_highlighter: ArtifactSyntaxHighlighter | None = None
+        
+        # Initialize preview loader
+        self._preview_loader = PreviewLoader(
+            self._preview_label,
+            self._thumbnail,
+            self._text_preview,
+            self._syntax_highlighter
+        )
 
         preview_layout.addWidget(self._preview_label)
         preview_layout.addWidget(self._thumbnail, 1)
@@ -181,24 +183,16 @@ class ArtifactsTab(QWidget):
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if watched is self._thumbnail and event.type() == QEvent.Type.Resize:
-            self._update_thumbnail_scale()
+            if self._preview_loader:
+                self._preview_loader.update_thumbnail_scale()
         return super().eventFilter(watched, event)
-
-    def _update_thumbnail_scale(self) -> None:
-        if self._thumbnail_original is None:
-            return
-        target_size = self._thumbnail.contentsRect().size()
-        if target_size.isEmpty():
-            return
-        scaled = self._thumbnail_original.scaled(
-            target_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
-        self._thumbnail.setPixmap(scaled)
 
     def set_task(self, task: Task) -> None:
         """Load artifacts for a task and determine mode based on status."""
         self._current_task = task
-        self._cleanup_temp_files()
+        cleanup_temp_files(self._temp_files)
+        if self._preview_loader:
+            self._preview_loader.cleanup_temp_files()
         
         # Determine mode based on task status
         if task.status in ["running", "queued"]:
@@ -283,7 +277,6 @@ class ArtifactsTab(QWidget):
         if not self._artifacts:
             # Update empty state message based on mode
             if self._mode == "staging" and self._current_task:
-                from agents_runner.artifacts import get_staging_dir
                 staging_dir = get_staging_dir(self._current_task.task_id)
                 self._empty_state.setText(
                     f"No artifacts yet\n\nWatching: {staging_dir}"
@@ -314,13 +307,13 @@ class ArtifactsTab(QWidget):
                 name = QLabel(artifact.filename)
                 name.setStyleSheet("font-weight: 600; color: rgba(100, 255, 100, 235);")
                 
-                info_text = f"{_format_size(artifact.size_bytes)} • {_format_timestamp(artifact.modified_at.isoformat())}"
+                info_text = f"{format_size(artifact.size_bytes)} • {format_timestamp(artifact.modified_at.isoformat())}"
             else:
                 # Encrypted artifact - normal color
                 name = QLabel(artifact.original_filename)
                 name.setStyleSheet("font-weight: 600; color: rgba(237, 239, 245, 235);")
                 
-                info_text = f"{_format_size(artifact.size_bytes)} • {_format_timestamp(artifact.encrypted_at)}"
+                info_text = f"{format_size(artifact.size_bytes)} • {format_timestamp(artifact.encrypted_at)}"
 
             info = QLabel(info_text)
             info.setStyleSheet("font-size: 11px; color: rgba(237, 239, 245, 140);")
@@ -351,7 +344,8 @@ class ArtifactsTab(QWidget):
         self._thumbnail.hide()
         self._text_preview.hide()
         self._preview_label.show()
-        self._thumbnail_original = None
+        if self._preview_loader:
+            self._preview_loader.thumbnail_original = None
         
         # Enable edit only for staging text files
         if isinstance(artifact, StagingArtifactMeta):
@@ -370,7 +364,7 @@ class ArtifactsTab(QWidget):
                 # Show info only, keep Open button as fallback
                 self._preview_label.setText(
                     f"{artifact.filename}\n{artifact.mime_type}\n\n"
-                    f"Size: {_format_size(artifact.size_bytes)}\n"
+                    f"Size: {format_size(artifact.size_bytes)}\n"
                     "Use 'Open' button to view"
                 )
         else:
@@ -389,114 +383,39 @@ class ArtifactsTab(QWidget):
                 # Show info only, keep Open button as fallback
                 self._preview_label.setText(
                     f"{artifact.original_filename}\n{artifact.mime_type}\n\n"
-                    f"Size: {_format_size(artifact.size_bytes)}\n"
+                    f"Size: {format_size(artifact.size_bytes)}\n"
                     "Use 'Open' button to view"
                 )
     
     def _load_staging_thumbnail(self, artifact: StagingArtifactMeta) -> None:
         """Load thumbnail from staging artifact."""
-        try:
-            pixmap = QPixmap(str(artifact.path))
-            if not pixmap.isNull():
-                self._thumbnail_original = pixmap
-                self._update_thumbnail_scale()
-                self._thumbnail.show()
-            else:
-                logger.warning(f"Failed to load image: {artifact.filename}")
-        except Exception as e:
-            logger.error(f"Failed to load staging thumbnail: {e}")
+        if self._preview_loader:
+            self._preview_loader.load_staging_thumbnail(artifact)
 
     def _load_thumbnail(self, artifact: ArtifactMeta) -> None:
-        if not self._current_task:
+        """Load thumbnail from encrypted artifact."""
+        if not self._current_task or not self._preview_loader:
             return
-
-        try:
-            suffix = Path(artifact.original_filename).suffix
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp_path = Path(tmp.name)
-                self._temp_files.append(tmp_path)
-
-                task_dict = {"task_id": self._current_task.task_id}
-                env_name = self._current_task.environment_id or "default"
-
-                if decrypt_artifact(task_dict, env_name, artifact.uuid, tmp_path):
-                    pixmap = QPixmap(str(tmp_path))
-                    if not pixmap.isNull():
-                        self._thumbnail_original = pixmap
-                        self._update_thumbnail_scale()
-                        self._thumbnail.show()
-                    else:
-                        logger.warning(f"Failed to load image: {artifact.original_filename}")
-                else:
-                    msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nFailed to decrypt"
-                    self._preview_label.setText(msg)
-
-        except Exception as e:
-            logger.error(f"Failed to load thumbnail: {e}")
-            msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
-            self._preview_label.setText(msg)
+        self._preview_loader.load_encrypted_thumbnail(
+            artifact,
+            self._current_task.task_id,
+            self._current_task.environment_id
+        )
     
     def _load_staging_text(self, artifact: StagingArtifactMeta) -> None:
         """Load text content from staging artifact."""
-        try:
-            max_size = 1024 * 1024  # 1MB limit
-            if artifact.size_bytes > max_size:
-                self._preview_label.setText(
-                    f"{artifact.filename}\n{artifact.mime_type}\n\n"
-                    f"File too large ({_format_size(artifact.size_bytes)})\n"
-                    "Use 'Open' button to view externally"
-                )
-                self._preview_label.show()
-                return
-            
-            text = artifact.path.read_text(encoding='utf-8', errors='replace')
-            self._text_preview.setPlainText(text)
-            self._text_preview.show()
-            self._preview_label.hide()
-        except Exception as e:
-            logger.error(f"Failed to load text: {e}")
-            self._preview_label.setText(f"{artifact.filename}\n\nError loading text: {str(e)}")
-            self._preview_label.show()
+        if self._preview_loader:
+            self._preview_loader.load_staging_text(artifact)
     
     def _load_encrypted_text(self, artifact: ArtifactMeta) -> None:
         """Load text content from encrypted artifact."""
-        if not self._current_task:
+        if not self._current_task or not self._preview_loader:
             return
-        
-        try:
-            max_size = 1024 * 1024  # 1MB limit
-            if artifact.size_bytes > max_size:
-                self._preview_label.setText(
-                    f"{artifact.original_filename}\n{artifact.mime_type}\n\n"
-                    f"File too large ({_format_size(artifact.size_bytes)})\n"
-                    "Use 'Open' button to view externally"
-                )
-                self._preview_label.show()
-                return
-            
-            suffix = Path(artifact.original_filename).suffix
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp_path = Path(tmp.name)
-                self._temp_files.append(tmp_path)
-
-                task_dict = {"task_id": self._current_task.task_id}
-                env_name = self._current_task.environment_id or "default"
-
-                if decrypt_artifact(task_dict, env_name, artifact.uuid, tmp_path):
-                    text = tmp_path.read_text(encoding='utf-8', errors='replace')
-                    self._text_preview.setPlainText(text)
-                    self._text_preview.show()
-                    self._preview_label.hide()
-                else:
-                    msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nFailed to decrypt"
-                    self._preview_label.setText(msg)
-                    self._preview_label.show()
-
-        except Exception as e:
-            logger.error(f"Failed to load encrypted text: {e}")
-            msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
-            self._preview_label.setText(msg)
-            self._preview_label.show()
+        self._preview_loader.load_encrypted_text(
+            artifact,
+            self._current_task.task_id,
+            self._current_task.environment_id
+        )
 
     def _on_open_clicked(self) -> None:
         current_row = self._artifact_list.currentRow()
@@ -506,52 +425,14 @@ class ArtifactsTab(QWidget):
         artifact = self._artifacts[current_row]
         
         if isinstance(artifact, StagingArtifactMeta):
-            self._open_staging_artifact(artifact)
+            open_staging_artifact(artifact)
         else:
-            self._open_encrypted_artifact(artifact)
-    
-    def _open_staging_artifact(self, artifact: StagingArtifactMeta) -> None:
-        """Open a staging artifact directly."""
-        try:
-            file_path = str(artifact.path)
-            
-            if sys.platform == "darwin":
-                subprocess.Popen(["open", file_path])
-            elif sys.platform == "win32":
-                os.startfile(file_path)
-            else:
-                subprocess.Popen(["xdg-open", file_path])
-            
-            logger.info(f"Opened staging artifact: {artifact.filename}")
-        
-        except Exception as e:
-            logger.error(f"Failed to open staging artifact: {e}")
-    
-    def _open_encrypted_artifact(self, artifact: ArtifactMeta) -> None:
-        """Open an encrypted artifact (existing implementation)."""
-        try:
-            suffix = Path(artifact.original_filename).suffix
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp_path = Path(tmp.name)
-                self._temp_files.append(tmp_path)
-
-                task_dict = {"task_id": self._current_task.task_id}
-                env_name = self._current_task.environment_id or "default"
-
-                if decrypt_artifact(task_dict, env_name, artifact.uuid, tmp_path):
-                    if sys.platform == "darwin":
-                        subprocess.Popen(["open", str(tmp_path)])
-                    elif sys.platform == "win32":
-                        os.startfile(str(tmp_path))
-                    else:
-                        subprocess.Popen(["xdg-open", str(tmp_path)])
-
-                    logger.info(f"Opened artifact: {artifact.original_filename}")
-                else:
-                    logger.error("Failed to decrypt artifact for opening")
-
-        except Exception as e:
-            logger.error(f"Failed to open artifact: {e}")
+            open_encrypted_artifact(
+                artifact,
+                self._current_task.task_id,
+                self._current_task.environment_id,
+                self._temp_files
+            )
     
     def _on_edit_clicked(self) -> None:
         """Edit selected artifact in external editor."""
@@ -571,34 +452,7 @@ class ArtifactsTab(QWidget):
             logger.warning(f"Cannot edit non-text file: {artifact.mime_type}")
             return
         
-        self._edit_staging_artifact(artifact)
-    
-    def _edit_staging_artifact(self, artifact: StagingArtifactMeta) -> None:
-        """Launch external editor for a staging artifact."""
-        try:
-            file_path = str(artifact.path)
-            
-            # Determine editor command
-            if sys.platform == "darwin":
-                editor = ["open", "-e"]  # TextEdit on macOS
-            elif sys.platform == "win32":
-                editor = ["notepad.exe"]  # Notepad on Windows
-            else:
-                # Linux: Try $EDITOR, fall back to xdg-open
-                import os
-                editor_env = os.environ.get("EDITOR")
-                if editor_env:
-                    editor = [editor_env]
-                else:
-                    editor = ["xdg-open"]
-            
-            # Launch editor (non-blocking)
-            subprocess.Popen(editor + [file_path])
-            
-            logger.info(f"Launched editor for: {artifact.filename}")
-        
-        except Exception as e:
-            logger.error(f"Failed to launch editor: {e}")
+        edit_staging_artifact(artifact)
 
     def _on_download_clicked(self) -> None:
         current_row = self._artifact_list.currentRow()
@@ -613,30 +467,18 @@ class ArtifactsTab(QWidget):
         if not dest_path:
             return
 
-        try:
-            task_dict = {"task_id": self._current_task.task_id}
-            env_name = self._current_task.environment_id or "default"
-
-            if decrypt_artifact(task_dict, env_name, artifact.uuid, dest_path):
-                logger.info(f"Downloaded artifact to: {dest_path}")
-            else:
-                logger.error("Failed to decrypt artifact for download")
-
-        except Exception as e:
-            logger.error(f"Failed to download artifact: {e}")
-
-    def _cleanup_temp_files(self) -> None:
-        for tmp_path in self._temp_files:
-            try:
-                if tmp_path.exists():
-                    tmp_path.unlink()
-            except Exception as e:
-                logger.debug(f"Failed to cleanup temp file {tmp_path}: {e}")
-        self._temp_files.clear()
+        download_artifact(
+            artifact,
+            self._current_task.task_id,
+            self._current_task.environment_id,
+            dest_path
+        )
 
     def hideEvent(self, event) -> None:
         super().hideEvent(event)
-        self._cleanup_temp_files()
+        cleanup_temp_files(self._temp_files)
+        if self._preview_loader:
+            self._preview_loader.cleanup_temp_files()
         # Stop file watcher when tab is hidden
         if self._file_watcher:
             self._file_watcher.stop()

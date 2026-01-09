@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[desktop-run] Starting headless desktop (noVNC)"
+echo "[desktop/vnc][INFO] Starting headless desktop (noVNC)"
 
 # Quick runtime validation - check binaries exist
-echo "[desktop-run] Validating required binaries..."
+echo "[desktop/vnc][INFO] Validating required binaries..."
 REQUIRED_BINS=(Xvnc fluxbox xterm websockify)
 MISSING_BINS=()
 
@@ -15,8 +15,8 @@ for bin in "${REQUIRED_BINS[@]}"; do
 done
 
 if [ ${#MISSING_BINS[@]} -gt 0 ]; then
-  echo "[desktop-run] ERROR: Required binaries not found: ${MISSING_BINS[*]}" >&2
-  echo "[desktop-run] Please run desktop_install.sh first" >&2
+  echo "[desktop/vnc][ERROR] Required binaries not found: ${MISSING_BINS[*]}" >&2
+  echo "[desktop/vnc][ERROR] Please run desktop_install.sh first" >&2
   exit 1
 fi
 
@@ -38,7 +38,7 @@ SCREEN_GEOMETRY="${SCREEN_GEOMETRY:-1280x800}"
 SCREEN_DEPTH="${SCREEN_DEPTH:-24}"
 
 # Start Xvnc
-echo "[desktop-run] Starting Xvnc on ${DISPLAY}..."
+echo "[desktop/vnc][INFO] Starting Xvnc on ${DISPLAY}..."
 Xvnc "${DISPLAY}" \
   -geometry "${SCREEN_GEOMETRY}" \
   -depth "${SCREEN_DEPTH}" \
@@ -49,16 +49,16 @@ Xvnc "${DISPLAY}" \
 sleep 0.25
 
 # Start fluxbox window manager
-echo "[desktop-run] Starting fluxbox..."
+echo "[desktop/vnc][INFO] Starting fluxbox..."
 (fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true
 
 # Start xterm
-echo "[desktop-run] Starting xterm..."
+echo "[desktop/vnc][INFO] Starting xterm..."
 (xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true
 
 # Source noVNC path
 if [ ! -f /etc/default/novnc-path ]; then
-  echo "[desktop-run] WARNING: /etc/default/novnc-path not found, attempting discovery..." >&2
+  echo "[desktop/vnc][WARN] /etc/default/novnc-path not found, attempting discovery..." >&2
   NOVNC_WEB=""
   for candidate in "/usr/share/webapps/novnc" "/usr/share/novnc" "/usr/share/noVNC"; do
     if [ -d "${candidate}" ]; then
@@ -67,9 +67,9 @@ if [ ! -f /etc/default/novnc-path ]; then
     fi
   done
   if [ -z "${NOVNC_WEB}" ]; then
-    echo "[desktop-run] ERROR: noVNC web root not found in expected locations" >&2
-    echo "[desktop-run] Searched: /usr/share/webapps/novnc, /usr/share/novnc, /usr/share/noVNC" >&2
-    echo "[desktop-run] Please run desktop_setup.sh first" >&2
+    echo "[desktop/vnc][ERROR] noVNC web root not found in expected locations" >&2
+    echo "[desktop/vnc][ERROR] Searched: /usr/share/webapps/novnc, /usr/share/novnc, /usr/share/noVNC" >&2
+    echo "[desktop/vnc][ERROR] Please run desktop_setup.sh first" >&2
     exit 1
   fi
 else
@@ -78,11 +78,11 @@ else
 fi
 
 # Start websockify with noVNC
-echo "[desktop-run] Starting websockify on port ${NOVNC_PORT}..."
+echo "[desktop/vnc][INFO] Starting websockify on port ${NOVNC_PORT}..."
 websockify --web="${NOVNC_WEB}" "${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" >"${RUNTIME_BASE}/log/novnc.log" 2>&1 &
 
 # Output ready status with noVNC URL
-echo "[desktop-run] ready"
-echo "[desktop-run] DISPLAY=${DISPLAY}"
-echo "[desktop-run] noVNC URL: http://localhost:${NOVNC_PORT}/vnc.html"
-echo "[desktop-run] screenshot: import -display ${DISPLAY} -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"
+echo "[desktop/vnc][INFO] ready"
+echo "[desktop/vnc][INFO] DISPLAY=${DISPLAY}"
+echo "[desktop/vnc][INFO] noVNC URL: http://localhost:${NOVNC_PORT}/vnc.html"
+echo "[desktop/vnc][INFO] screenshot: import -display ${DISPLAY} -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"
