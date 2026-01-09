@@ -38,7 +38,7 @@ def _is_system_directory(path: str) -> bool:
         True if path is a system directory, False otherwise
     """
     system_dirs = {"/etc", "/var", "/usr", "/opt", "/srv", "/root", "/boot", "/sys", "/proc"}
-    path_abs = os.path.abspath(path)
+    path_abs = os.path.realpath(path)
     
     # Exact match
     if path_abs in system_dirs:
@@ -73,8 +73,8 @@ def _is_safe_mount_root(path: str, original_workdir: str, max_depth: int = 3) ->
     Returns:
         True if safe to mount, False otherwise
     """
-    path = os.path.abspath(path)
-    original_workdir = os.path.abspath(original_workdir)
+    path = os.path.realpath(path)
+    original_workdir = os.path.realpath(original_workdir)
     home = os.path.expanduser("~")
     
     # Boundary check 1: Don't mount home directory itself
@@ -128,7 +128,7 @@ def _resolve_workspace_mount(
                    security boundaries
     """
 
-    host_workdir = os.path.abspath(os.path.expanduser(str(host_workdir or "").strip()))
+    host_workdir = os.path.realpath(os.path.expanduser(str(host_workdir or "").strip()))
     container_mount = str(container_mount or "").strip()
     if not host_workdir or not container_mount:
         return host_workdir, container_mount
@@ -151,6 +151,8 @@ def _resolve_workspace_mount(
             cursor = parent
 
     # SECURITY VALIDATION: Check if mount_root is safe
+    # This check must ALWAYS run, even when mount_root == host_workdir
+    # to catch cases where the workdir itself is a sensitive location
     if mount_root != host_workdir:
         # Verify this isn't the same directory (symlinks, etc.)
         try:
@@ -176,6 +178,25 @@ def _resolve_workspace_mount(
                 f"  Requested workdir: {host_workdir}\n"
                 f"  This is a security boundary to prevent exposing sensitive data.\n"
                 f"  Consider changing to the project directory or initializing a git repository there."
+            )
+    else:
+        # Even when mount_root == host_workdir, we must validate it's not home/root/system
+        home = os.path.expanduser("~")
+        if mount_root == home:
+            raise ValueError(
+                f"Refusing to mount home directory: {mount_root}\n"
+                f"  This is a security boundary to prevent exposing sensitive data.\n"
+                f"  Consider working in a subdirectory or project folder."
+            )
+        elif mount_root == "/":
+            raise ValueError(
+                f"Refusing to mount root filesystem: {mount_root}\n"
+                f"  This is a security boundary to prevent exposing the entire filesystem."
+            )
+        elif _is_system_directory(mount_root):
+            raise ValueError(
+                f"Refusing to mount system directory: {mount_root}\n"
+                f"  This is a security boundary to prevent exposing sensitive system files."
             )
 
     rel = os.path.relpath(host_workdir, mount_root)
