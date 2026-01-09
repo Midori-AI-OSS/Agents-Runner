@@ -410,9 +410,18 @@ class _MainWindowTasksAgentMixin:
                     runner_prompt = (
                         f"{runner_prompt}{github_context_prompt_instructions(container_path)}"
                     )
-                    self._on_task_log(
-                        task_id, f"[gh] GitHub context enabled; mounted -> {container_path}"
-                    )
+                    # Clarify two-phase process for git-locked environments
+                    if gh_mode == GH_MANAGEMENT_GITHUB:
+                        self._on_task_log(
+                            task_id, f"[gh] GitHub context file created and mounted -> {container_path}"
+                        )
+                        self._on_task_log(
+                            task_id, "[gh] Repository metadata will be populated after clone completes"
+                        )
+                    else:
+                        self._on_task_log(
+                            task_id, f"[gh] GitHub context enabled; mounted -> {container_path}"
+                        )
 
         # Build config with GitHub repo info if needed
         # Get the context file path if it was created (regardless of mode)

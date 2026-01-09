@@ -147,8 +147,20 @@ class DockerAgentWorker:
                                     github_context=github_context,
                                 )
                                 self._on_log("[gh] updated GitHub context file")
+                            else:
+                                # Fix 1.1: Log when git_info is None (missing else clause)
+                                self._on_log("[gh] WARNING: Could not detect git repository information")
+                                self._on_log(f"[gh] WARNING: Checked path: {self._gh_repo_root}")
+                                self._on_log("[gh] WARNING: Agent will execute without repository context")
+                                self._on_log("[gh] INFO: This may affect code quality but PR creation should still work")
+                                self._on_log("[gh] TIP: Check repository clone logs above for errors")
                         except Exception as exc:
-                            self._on_log(f"[gh] failed to update GitHub context: {exc}")
+                            # Fix 1.2: Improve exception logging with details and impact
+                            self._on_log(f"[gh] ERROR: Failed to update GitHub context: {exc}")
+                            self._on_log(f"[gh] ERROR: Context file path: {self._config.gh_context_file_path}")
+                            self._on_log(f"[gh] ERROR: Repository root: {self._gh_repo_root}")
+                            self._on_log("[gh] WARNING: Agent will execute without repository context")
+                            self._on_log("[gh] INFO: This may affect code quality but PR creation should still work")
                             # Don't fail the task if context update fails
                 except (GhManagementError, Exception) as exc:
                     self._on_log(f"[gh] ERROR: {exc}")

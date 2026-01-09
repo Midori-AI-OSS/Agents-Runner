@@ -135,8 +135,11 @@ def ensure_github_context_file(
         json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
         f.write("\n")
     
+    # Fix 1.3: Use container-compatible permissions
+    # 0o666 allows container user (different UID) to write during Phase 2 update
+    # Safe: file contains only non-sensitive repo metadata (URLs, branches, commit SHAs)
     try:
-        os.chmod(path, 0o600)
+        os.chmod(path, 0o666)
     except OSError:
         pass
 
