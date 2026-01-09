@@ -96,6 +96,76 @@ def wrap_container_log(cid: str, stream: str, line: str) -> str:
     return f"[{cid4}/{stream}][{level}] {line}"
 
 
+def parse_canonical_log(line: str) -> tuple[str, str, str, str] | None:
+    """Parse a canonical log line and return (scope, subscope, level, message).
+    
+    Returns None if the line doesn't match canonical format.
+    """
+    # Match pattern: [scope/subscope][LEVEL] message
+    pattern = r"^\[([^/\]]+)/([^\]]+)\]\[([A-Z]+)\]\s(.*)$"
+    match = re.match(pattern, line)
+    if not match:
+        return None
+    
+    scope, subscope, level, message = match.groups()
+    return (scope, subscope, level, message)
+
+
+def wrap_legacy_log(line: str, fallback_scope: str = "legacy", fallback_subscope: str = "unknown") -> str:
+    """Wrap a non-canonical log line in canonical format.
+    
+    Returns:
+        Wrapped line: [fallback_scope/fallback_subscope][INFO] <original>
+    """
+    return f"[{fallback_scope}/{fallback_subscope}][INFO] {line}"
+
+
+def format_log_display(line: str, scope_width: int = 20, level_width: int = 5) -> str:
+    """Format a log line for UI display with aligned columns.
+    
+    Args:
+        line: Raw log line (canonical or legacy)
+        scope_width: Width for scope/subscope column (default 20, max recommended 24)
+        level_width: Width for level column (default 5)
+    
+    Returns:
+        Formatted line with padded/truncated scope and level columns.
+        For non-canonical lines, wraps them as [legacy/unknown][INFO] <original>
+    
+    Example output:
+        [ gh/repo           ][INFO ] updated GitHub context file
+        [ host/none         ][INFO ] pull complete
+        [ desktop/setup     ][INFO ] cache enabled; checking for cached image
+    """
+    parsed = parse_canonical_log(line)
+    
+    if parsed is None:
+        # Non-canonical line, wrap it first
+        wrapped = wrap_legacy_log(line)
+        parsed = parse_canonical_log(wrapped)
+        if parsed is None:  # Should not happen, but handle gracefully
+            return line
+    
+    scope, subscope, level, message = parsed
+    
+    # Format scope/subscope column
+    scope_text = f"{scope}/{subscope}"
+    
+    # Truncate if too long (leave room for brackets and space: 2 chars for "[ " and 1 for "]")
+    max_scope_len = scope_width - 2
+    if len(scope_text) > max_scope_len:
+        # Truncate with ellipsis
+        scope_text = scope_text[:max_scope_len - 3] + "..."
+    
+    # Pad scope column (content width minus the brackets)
+    scope_formatted = f"[ {scope_text:<{scope_width - 2}}]"
+    
+    # Format level column with padding
+    level_formatted = f"[{level.upper():<{level_width}}]"
+    
+    return f"{scope_formatted}{level_formatted} {message}"
+
+
 def prettify_log_line(line: str) -> str:
     text = (line or "").replace("\r", "")
     text = _ANSI_ESCAPE_RE.sub("", text)
