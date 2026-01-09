@@ -93,6 +93,13 @@ class SettingsPage(QWidget):
         ]:
             self._shell.addItem(label, value)
 
+        self._stt_mode = QComboBox()
+        self._stt_mode.addItem("Offline (local Whisper)", "offline")
+        self._stt_mode.addItem("Online (SpeechRecognition)", "online")
+        self._stt_mode.setToolTip(
+            "Controls the speech-to-text engine used by the Voice button in New task."
+        )
+
         self._host_codex_dir = QLineEdit()
         self._host_codex_dir.setPlaceholderText(os.path.expanduser("~/.codex"))
         browse_codex = QPushButton("Browse…")
@@ -184,6 +191,9 @@ class SettingsPage(QWidget):
         copilot_label = QLabel("Copilot Config folder")
         gemini_label = QLabel("Gemini Config folder")
 
+        grid.addWidget(QLabel("Speech-to-text"), 5, 0)
+        grid.addWidget(self._stt_mode, 5, 1, 1, 3)
+
         grid.addWidget(codex_label, 1, 0)
         grid.addWidget(self._host_codex_dir, 1, 1, 1, 2)
         grid.addWidget(browse_codex, 1, 3)
@@ -263,6 +273,9 @@ class SettingsPage(QWidget):
         shell_value = str(settings.get("shell") or "bash").strip().lower()
         self._set_combo_value(self._shell, shell_value, fallback="bash")
 
+        stt_mode = str(settings.get("stt_mode") or "offline").strip().lower()
+        self._set_combo_value(self._stt_mode, stt_mode, fallback="offline")
+
         host_codex_dir = os.path.expanduser(
             str(settings.get("host_codex_dir") or "").strip()
         )
@@ -310,6 +323,7 @@ class SettingsPage(QWidget):
         return {
             "use": str(self._use.currentData() or "codex"),
             "shell": str(self._shell.currentData() or "bash"),
+            "stt_mode": str(self._stt_mode.currentData() or "offline"),
             "host_codex_dir": os.path.expanduser(
                 str(self._host_codex_dir.text() or "").strip()
             ),
