@@ -30,6 +30,7 @@ from agents_runner.docker.process import _run_docker
 from agents_runner.docker.utils import _resolve_workspace_mount
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
+from agents_runner.ui.shell_templates import shell_log_statement
 from agents_runner.docker.utils import _write_preflight_script
 
 
@@ -196,9 +197,9 @@ class DockerPreflightWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                    'echo "[env/setup][INFO] settings: running"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "settings: running")}; '
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    'echo "[env/setup][INFO] settings: done"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "settings: done")}; '
                 )
 
             if environment_preflight_tmp_path is not None:
@@ -218,9 +219,9 @@ class DockerPreflightWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                    'echo "[env/setup][INFO] environment: running"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "environment: running")}; '
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    'echo "[env/setup][INFO] environment: done"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "environment: done")}; '
                 )
 
             env_args: list[str] = []
@@ -275,7 +276,7 @@ class DockerPreflightWorker:
                 "-lc",
                 "set -euo pipefail; "
                 f"{preflight_clause}"
-                'echo "[docker/preflight][INFO] complete"; ',
+                f'{shell_log_statement("docker", "preflight", "INFO", "complete")}; ',
             ]
             self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
             try:

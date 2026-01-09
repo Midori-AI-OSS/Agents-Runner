@@ -22,9 +22,10 @@ class LogHighlighter(QSyntaxHighlighter):
     }
 
     # Canonical log format - supports both raw and aligned display formats:
-    # Raw:     [{scope}/{subscope}][{LEVEL}] {message}
-    # Aligned: [ {scope}/{subscope}     ][{LEVEL} ] {message}
+    # Raw (from format_log_line):     [{scope}/{subscope}][{LEVEL}] {message}
+    # Aligned (from format_log_display): [ {scope}/{subscope}     ][{LEVEL} ] {message}
     # The regex allows optional spaces after opening bracket and before closing bracket
+    # to match both the tight canonical format and the padded display format.
     CANONICAL_LOG_RE = re.compile(r"^\[\s*([^/\]]+)/([^\]]+?)\s*\]\[\s*([A-Z]+)\s*\]\s(.*)$")
 
     def __init__(self, document: QTextDocument) -> None:
