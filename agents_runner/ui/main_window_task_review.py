@@ -18,7 +18,9 @@ class _MainWindowTaskReviewMixin:
             return
 
         env = self._environments.get(task.environment_id)
-        is_git_locked = bool(getattr(env, "gh_management_locked", False)) if env else False
+        is_git_locked = bool(getattr(task, "gh_management_locked", False))
+        if not is_git_locked and env:
+            is_git_locked = bool(getattr(env, "gh_management_locked", False))
         
         if not is_git_locked:
             QMessageBox.information(

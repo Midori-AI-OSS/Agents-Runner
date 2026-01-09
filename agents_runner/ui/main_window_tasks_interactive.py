@@ -214,6 +214,9 @@ class _MainWindowTasksInteractiveMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
+        if env:
+            task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
+
         task.gh_use_host_cli = bool(task.gh_use_host_cli and is_gh_available())
 
         # Extract gh_repo from environment if GitHub management is enabled

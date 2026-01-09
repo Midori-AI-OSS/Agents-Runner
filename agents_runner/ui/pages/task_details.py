@@ -415,11 +415,8 @@ class TaskDetailsPage(QWidget):
     def _sync_review_menu(self, task: Task) -> None:
         gh_mode = normalize_gh_management_mode(str(task.gh_management_mode or ""))
         
-        # Check if this is a git-locked environment
-        is_git_locked = False
-        if self._environments is not None:
-            env = self._environments.get(task.environment_id)
-            is_git_locked = bool(getattr(env, "gh_management_locked", False)) if env else False
+        # Check if this is a git-locked environment (use task's stored flag)
+        is_git_locked = bool(getattr(task, "gh_management_locked", False))
         
         # Show for GitHub mode (existing) OR for any git-locked environment
         can_pr = bool(

@@ -303,6 +303,7 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "finished_at": _dt_to_str(task.finished_at),
         "gh_management_mode": getattr(task, "gh_management_mode", ""),
         "gh_use_host_cli": bool(getattr(task, "gh_use_host_cli", True)),
+        "gh_management_locked": bool(getattr(task, "gh_management_locked", False)),
         "gh_repo_root": getattr(task, "gh_repo_root", ""),
         "gh_base_branch": getattr(task, "gh_base_branch", ""),
         "gh_branch": getattr(task, "gh_branch", ""),
@@ -342,6 +343,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         gh_use_host_cli=bool(
             data.get("gh_use_host_cli") if "gh_use_host_cli" in data else True
         ),
+        gh_management_locked=bool(data.get("gh_management_locked") or False),
         gh_repo_root=str(data.get("gh_repo_root") or ""),
         gh_base_branch=str(data.get("gh_base_branch") or ""),
         gh_branch=str(data.get("gh_branch") or ""),
