@@ -19,6 +19,7 @@ from agents_runner.gh.git_ops import (
     is_git_repo,
     parse_github_url,
 )
+from agents_runner.log_format import format_log
 
 logger = logging.getLogger(__name__)
 
@@ -65,39 +66,39 @@ def get_git_info(path: str) -> Optional[GitInfo]:
     try:
         # Step 1: Check if git repo
         if not is_git_repo(path):
-            logger.debug(f"[gh] path is not a git repository: {path}")
+            logger.debug(format_log("gh", "detect", "DEBUG", f"path is not a git repository: {path}"))
             return None
         
         # Step 2: Get repo root
         repo_root = git_repo_root(path)
         if not repo_root:
-            logger.warning(f"[gh] could not determine git repo root: {path}")
+            logger.warning(format_log("gh", "detect", "WARN", f"could not determine git repo root: {path}"))
             return None
         
         # Step 3: Get current branch
         branch = git_current_branch(repo_root)
         if not branch:
             # Detached HEAD state or error
-            logger.warning(f"[gh] could not determine current branch: {repo_root}")
+            logger.warning(format_log("gh", "detect", "WARN", f"could not determine current branch: {repo_root}"))
             branch = "HEAD"
         
         # Step 4: Get HEAD commit SHA
         commit_sha = git_head_commit(repo_root)
         if not commit_sha:
-            logger.warning(f"[gh] could not get HEAD commit SHA: {repo_root}")
+            logger.warning(format_log("gh", "detect", "WARN", f"could not get HEAD commit SHA: {repo_root}"))
             return None
         
         # Step 5: Get remote URL (try origin first)
         repo_url = git_remote_url(repo_root, remote="origin")
         if not repo_url:
-            logger.warning(f"[gh] no remote 'origin' configured: {repo_root}")
+            logger.warning(format_log("gh", "detect", "WARN", f"no remote 'origin' configured: {repo_root}"))
             return None
         
         # Step 6: Parse owner/repo from URL (best effort)
         repo_owner, repo_name = parse_github_url(repo_url)
         if not repo_owner or not repo_name:
             logger.debug(
-                f"[gh] could not parse owner/repo from URL (non-GitHub?): {repo_url}"
+                format_log("gh", "detect", "DEBUG", f"could not parse owner/repo from URL (non-GitHub?): {repo_url}")
             )
             # Still return GitInfo with raw URL, just no parsed components
         
@@ -112,5 +113,5 @@ def get_git_info(path: str) -> Optional[GitInfo]:
         
     except Exception as exc:
         # Catch-all to ensure we never raise
-        logger.error(f"[gh] unexpected error during git detection: {exc}", exc_info=True)
+        logger.error(format_log("gh", "detect", "ERROR", f"unexpected error during git detection: {exc}"), exc_info=True)
         return None
