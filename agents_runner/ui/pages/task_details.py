@@ -83,6 +83,7 @@ class TaskDetailsPage(QWidget):
         self._current_task_id: str | None = None
         self._desktop_tab_visible: bool = False
         self._artifacts_tab_visible: bool = False
+        self._environments: dict[str, object] | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -385,8 +386,17 @@ class TaskDetailsPage(QWidget):
 
     def _sync_review_menu(self, task: Task) -> None:
         gh_mode = normalize_gh_management_mode(str(task.gh_management_mode or ""))
+        
+        # Check if this is a git-locked environment
+        is_git_locked = False
+        if self._environments is not None:
+            env = self._environments.get(task.environment_id)
+            is_git_locked = bool(getattr(env, "gh_management_locked", False)) if env else False
+        
+        # Show for GitHub mode (existing) OR for any git-locked environment
         can_pr = bool(
-            gh_mode == GH_MANAGEMENT_GITHUB and task.gh_repo_root and task.gh_branch
+            (gh_mode == GH_MANAGEMENT_GITHUB and task.gh_repo_root and task.gh_branch)
+            or is_git_locked
         )
         pr_url = str(task.gh_pr_url or "").strip()
         self._review_pr.setVisible(can_pr)
@@ -422,6 +432,10 @@ class TaskDetailsPage(QWidget):
         self._btn_unfreeze.setEnabled(has_container and is_paused and not is_terminal)
         self._btn_stop.setEnabled(has_container and not is_terminal)
         self._btn_kill.setEnabled(has_container and not is_terminal)
+
+    def set_environments(self, environments: dict[str, object]) -> None:
+        """Set the environments dict for looking up git-locked status."""
+        self._environments = environments
 
     def show_task(self, task: Task) -> None:
         self._current_task_id = task.task_id
