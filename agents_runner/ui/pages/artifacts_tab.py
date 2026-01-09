@@ -196,7 +196,7 @@ class ArtifactsTab(QWidget):
         self._preview_label.setText(f"{artifact.original_filename}\n{artifact.mime_type}")
 
         if artifact.mime_type.startswith("image/"):
-            QTimer.singleShot(0, lambda: self._load_thumbnail(artifact))
+            QTimer.singleShot(0, lambda a=artifact: self._load_thumbnail(a))
 
     def _load_thumbnail(self, artifact: ArtifactMeta) -> None:
         if not self._current_task:
@@ -230,7 +230,7 @@ class ArtifactsTab(QWidget):
 
     def _on_open_clicked(self) -> None:
         current_row = self._artifact_list.currentRow()
-        if current_row < 0 or not self._current_task:
+        if current_row < 0 or current_row >= len(self._artifacts) or not self._current_task:
             return
 
         artifact = self._artifacts[current_row]
@@ -264,7 +264,7 @@ class ArtifactsTab(QWidget):
 
     def _on_download_clicked(self) -> None:
         current_row = self._artifact_list.currentRow()
-        if current_row < 0 or not self._current_task:
+        if current_row < 0 or current_row >= len(self._artifacts) or not self._current_task:
             return
 
         artifact = self._artifacts[current_row]
