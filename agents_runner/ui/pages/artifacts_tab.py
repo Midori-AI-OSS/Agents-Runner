@@ -12,7 +12,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
-    QListWidgetItem, QToolButton, QFileDialog, QSplitter,
+    QListWidgetItem, QToolButton, QFileDialog, QSplitter, QPlainTextEdit,
 )
 
 from agents_runner.artifacts import (
@@ -112,9 +112,16 @@ class ArtifactsTab(QWidget):
         self._thumbnail.setMinimumSize(200, 200)
         self._thumbnail.hide()
 
+        self._text_preview = QPlainTextEdit()
+        self._text_preview.setReadOnly(True)
+        self._text_preview.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self._text_preview.setMaximumBlockCount(5000)
+        self._text_preview.hide()
+
         preview_layout.addStretch(1)
         preview_layout.addWidget(self._preview_label)
         preview_layout.addWidget(self._thumbnail)
+        preview_layout.addWidget(self._text_preview, 1)
         preview_layout.addStretch(1)
 
         self._empty_state = QLabel("No artifacts collected for this task")
@@ -316,23 +323,51 @@ class ArtifactsTab(QWidget):
         artifact = self._artifacts[current_row]
         self._preview_area.show()
         self._btn_open.setEnabled(True)
+        
+        # Reset preview widgets
         self._thumbnail.hide()
+        self._text_preview.hide()
+        self._preview_label.show()
         
         # Enable edit only for staging text files
         if isinstance(artifact, StagingArtifactMeta):
             self._btn_edit.setEnabled(artifact.mime_type.startswith("text/"))
             self._btn_download.setEnabled(False)  # No download for staging
-            self._preview_label.setText(f"{artifact.filename}\n{artifact.mime_type}")
             
-            if artifact.mime_type.startswith("image/"):
+            # Determine preview type
+            if artifact.mime_type.startswith("text/"):
+                # Load and display text content inline
+                QTimer.singleShot(0, lambda: self._load_staging_text(artifact))
+            elif artifact.mime_type in ("image/png", "image/jpeg", "image/jpg", "image/webp"):
+                # Load and display image thumbnail
+                self._preview_label.setText(f"{artifact.filename}\n{artifact.mime_type}")
                 QTimer.singleShot(0, lambda: self._load_staging_thumbnail(artifact))
+            else:
+                # Show info only, keep Open button as fallback
+                self._preview_label.setText(
+                    f"{artifact.filename}\n{artifact.mime_type}\n\n"
+                    f"Size: {_format_size(artifact.size_bytes)}\n"
+                    "Use 'Open' button to view"
+                )
         else:
             self._btn_edit.setEnabled(False)  # No edit for encrypted
             self._btn_download.setEnabled(True)
-            self._preview_label.setText(f"{artifact.original_filename}\n{artifact.mime_type}")
             
-            if artifact.mime_type.startswith("image/"):
+            # Determine preview type
+            if artifact.mime_type.startswith("text/"):
+                # Load and display text content inline
+                QTimer.singleShot(0, lambda: self._load_encrypted_text(artifact))
+            elif artifact.mime_type in ("image/png", "image/jpeg", "image/jpg", "image/webp"):
+                # Load and display image thumbnail
+                self._preview_label.setText(f"{artifact.original_filename}\n{artifact.mime_type}")
                 QTimer.singleShot(0, lambda: self._load_thumbnail(artifact))
+            else:
+                # Show info only, keep Open button as fallback
+                self._preview_label.setText(
+                    f"{artifact.original_filename}\n{artifact.mime_type}\n\n"
+                    f"Size: {_format_size(artifact.size_bytes)}\n"
+                    "Use 'Open' button to view"
+                )
     
     def _load_staging_thumbnail(self, artifact: StagingArtifactMeta) -> None:
         """Load thumbnail from staging artifact."""
@@ -376,6 +411,68 @@ class ArtifactsTab(QWidget):
             logger.error(f"Failed to load thumbnail: {e}")
             msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
             self._preview_label.setText(msg)
+    
+    def _load_staging_text(self, artifact: StagingArtifactMeta) -> None:
+        """Load text content from staging artifact."""
+        try:
+            max_size = 1024 * 1024  # 1MB limit
+            if artifact.size_bytes > max_size:
+                self._preview_label.setText(
+                    f"{artifact.filename}\n{artifact.mime_type}\n\n"
+                    f"File too large ({_format_size(artifact.size_bytes)})\n"
+                    "Use 'Open' button to view externally"
+                )
+                self._preview_label.show()
+                return
+            
+            text = artifact.path.read_text(encoding='utf-8', errors='replace')
+            self._text_preview.setPlainText(text)
+            self._text_preview.show()
+            self._preview_label.hide()
+        except Exception as e:
+            logger.error(f"Failed to load text: {e}")
+            self._preview_label.setText(f"{artifact.filename}\n\nError loading text: {str(e)}")
+            self._preview_label.show()
+    
+    def _load_encrypted_text(self, artifact: ArtifactMeta) -> None:
+        """Load text content from encrypted artifact."""
+        if not self._current_task:
+            return
+        
+        try:
+            max_size = 1024 * 1024  # 1MB limit
+            if artifact.size_bytes > max_size:
+                self._preview_label.setText(
+                    f"{artifact.original_filename}\n{artifact.mime_type}\n\n"
+                    f"File too large ({_format_size(artifact.size_bytes)})\n"
+                    "Use 'Open' button to view externally"
+                )
+                self._preview_label.show()
+                return
+            
+            suffix = Path(artifact.original_filename).suffix
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp_path = Path(tmp.name)
+                self._temp_files.append(tmp_path)
+
+                task_dict = {"task_id": self._current_task.task_id}
+                env_name = self._current_task.environment_id or "default"
+
+                if decrypt_artifact(task_dict, env_name, artifact.uuid, tmp_path):
+                    text = tmp_path.read_text(encoding='utf-8', errors='replace')
+                    self._text_preview.setPlainText(text)
+                    self._text_preview.show()
+                    self._preview_label.hide()
+                else:
+                    msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nFailed to decrypt"
+                    self._preview_label.setText(msg)
+                    self._preview_label.show()
+
+        except Exception as e:
+            logger.error(f"Failed to load encrypted text: {e}")
+            msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
+            self._preview_label.setText(msg)
+            self._preview_label.show()
 
     def _on_open_clicked(self) -> None:
         current_row = self._artifact_list.currentRow()
