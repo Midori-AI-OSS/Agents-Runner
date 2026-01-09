@@ -22,6 +22,9 @@ class _MainWindowSettingsMixin:
         # Apply spellcheck setting to new task page
         spellcheck_enabled = bool(self._settings_data.get("spellcheck_enabled", True))
         self._new_task.set_spellcheck_enabled(spellcheck_enabled)
+        
+        stt_mode = str(self._settings_data.get("stt_mode") or "offline").strip().lower()
+        self._new_task.set_stt_mode(stt_mode)
 
     def _apply_settings(self, settings: dict) -> None:
         merged = dict(self._settings_data)
@@ -88,6 +91,11 @@ class _MainWindowSettingsMixin:
         merged["headless_desktop_enabled"] = bool(
             merged.get("headless_desktop_enabled") or False
         )
+
+        stt_mode = str(merged.get("stt_mode") or "offline").strip().lower()
+        if stt_mode not in {"offline", "online"}:
+            stt_mode = "offline"
+        merged["stt_mode"] = stt_mode
 
         try:
             merged["max_agents_running"] = int(

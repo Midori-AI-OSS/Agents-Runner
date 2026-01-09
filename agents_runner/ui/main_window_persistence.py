@@ -124,6 +124,7 @@ class _MainWindowPersistenceMixin:
         )
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("spellcheck_enabled", True)
+        self._settings_data.setdefault("stt_mode", "offline")
         host_codex_dir = os.path.normpath(
             os.path.expanduser(
                 str(self._settings_data.get("host_codex_dir") or "").strip()
