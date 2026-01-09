@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Source common log functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/log_common.sh"
+
 HELP_ROOT="${AGENT_HELP_ROOT:-${HOME}/.agent-help}"
 REPOS_DIR="${HELP_ROOT}/repos"
 
@@ -12,17 +16,17 @@ clone_repo() {
   local dest="${REPOS_DIR}/${name}"
 
   if [ -d "${dest}/.git" ]; then
-    echo "[preflight/helpme][INFO] ${name} already cloned"
+    log_info preflight helpme "${name} already cloned"
     return 0
   fi
 
   if [ -e "${dest}" ]; then
     local backup="${dest}.bak.$(date +%s)"
-    echo "[preflight/helpme][WARN] moving existing ${dest} -> ${backup}"
+    log_warn preflight helpme "moving existing ${dest} -> ${backup}"
     mv -- "${dest}" "${backup}"
   fi
 
-  echo "[preflight/helpme][INFO] cloning ${name} from ${url}"
+  log_info preflight helpme "cloning ${name} from ${url}"
   git clone --depth 1 --single-branch "${url}" "${dest}"
 }
 
@@ -32,4 +36,4 @@ clone_repo "copilot-cli" "https://github.com/github/copilot-cli"
 clone_repo "claude-code" "https://github.com/anthropics/claude-code"
 clone_repo "Agents-Runner" "https://github.com/Midori-AI-OSS/Agents-Runner"
 
-echo "[preflight/helpme][INFO] ready at ${REPOS_DIR}"
+log_info preflight helpme "ready at ${REPOS_DIR}"
