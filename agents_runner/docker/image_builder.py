@@ -127,7 +127,7 @@ COPY desktop_install.sh /tmp/desktop_install.sh
 COPY desktop_setup.sh /tmp/desktop_setup.sh
 
 # Run installation and setup
-RUN /bin/bash /tmp/desktop_install.sh && sudo /bin/bash /tmp/desktop_setup.sh && sudo rm -f /tmp/desktop_install.sh /tmp/desktop_setup.sh
+RUN /bin/bash /tmp/desktop_install.sh && /bin/bash /tmp/desktop_setup.sh && sudo rm -f /tmp/desktop_install.sh /tmp/desktop_setup.sh
 
 # Desktop environment is now ready
 """
