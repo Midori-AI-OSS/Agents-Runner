@@ -77,8 +77,8 @@ def _is_safe_mount_root(path: str, original_workdir: str, max_depth: int = 3) ->
     original_workdir = os.path.realpath(original_workdir)
     home = os.path.expanduser("~")
     
-    # Boundary check 1: Don't mount home directory itself
-    if path == home:
+    # Boundary check 1: Don't mount home directory itself or subdirectories
+    if path == home or path.startswith(home + os.sep):
         return False
     
     # Boundary check 2: Don't mount root filesystem
@@ -182,7 +182,7 @@ def _resolve_workspace_mount(
     else:
         # Even when mount_root == host_workdir, we must validate it's not home/root/system
         home = os.path.expanduser("~")
-        if mount_root == home:
+        if mount_root == home or mount_root.startswith(home + os.sep):
             raise ValueError(
                 f"Refusing to mount home directory: {mount_root}\n"
                 f"  This is a security boundary to prevent exposing sensitive data.\n"
