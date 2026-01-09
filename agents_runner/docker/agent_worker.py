@@ -39,6 +39,7 @@ from agents_runner.docker.env_image_builder import ensure_env_image
 from agents_runner.prompts import load_prompt
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
+from agents_runner.ui.shell_templates import shell_log_statement
 
 
 def _headless_desktop_prompt_instructions(*, display: str) -> str:
@@ -352,7 +353,7 @@ class DockerAgentWorker:
                     # Desktop already installed in cached image - just start services
                     self._on_log(format_log("desktop", "setup", "INFO", "using pre-installed desktop from cached image"))
                     preflight_clause += (
-                        'echo "[desktop/vnc][INFO] starting headless desktop (noVNC)"; '
+                        f'{shell_log_statement("desktop", "vnc", "INFO", "starting headless desktop (noVNC)")}; '
                         f"export DISPLAY={desktop_display}; "
                         'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
                         'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
@@ -379,16 +380,16 @@ class DockerAgentWorker:
                         'if [ -n "${NOVNC_WEB}" ]; then '
                         '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
                         'else '
-                        '  echo "[desktop/vnc][ERROR] noVNC web root not found" >&2; '
+                        f'  {shell_log_statement("desktop", "vnc", "ERROR", "noVNC web root not found")} >&2; '
                         'fi; '
-                        'echo "[desktop/vnc][INFO] ready"; '
-                        'echo "[desktop/vnc][INFO] DISPLAY=${DISPLAY}"; '
-                        'echo "[desktop/vnc][INFO] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
+                        f'{shell_log_statement("desktop", "vnc", "INFO", "ready")}; '
+                        f'{shell_log_statement("desktop", "vnc", "INFO", "DISPLAY=${DISPLAY}")}; '
+                        f'{shell_log_statement("desktop", "vnc", "INFO", "screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png")}; '
                     )
                 else:
                     # Original behavior: install packages at runtime
                     preflight_clause += (
-                        'echo "[desktop/vnc][INFO] starting headless desktop (noVNC)"; '
+                        f'{shell_log_statement("desktop", "vnc", "INFO", "starting headless desktop (noVNC)")}; '
                         f"export DISPLAY={desktop_display}; "
                         'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
                         'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
@@ -407,13 +408,13 @@ class DockerAgentWorker:
                         '  if [ -d "${candidate}" ]; then NOVNC_WEB="${candidate}"; break; fi; '
                         "done; "
                         'if [ -z "${NOVNC_WEB}" ]; then '
-                        '  echo "[desktop/vnc][ERROR] noVNC web root not found" >&2; '
+                        f'  {shell_log_statement("desktop", "vnc", "ERROR", "noVNC web root not found")} >&2; '
                         "else "
                         '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
                         "fi; "
-                        'echo "[desktop/vnc][INFO] ready"; '
-                        'echo "[desktop/vnc][INFO] DISPLAY=${DISPLAY}"; '
-                        'echo "[desktop/vnc][INFO] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
+                        f'{shell_log_statement("desktop", "vnc", "INFO", "ready")}; '
+                        f'{shell_log_statement("desktop", "vnc", "INFO", "DISPLAY=${DISPLAY}")}; '
+                        f'{shell_log_statement("desktop", "vnc", "INFO", "screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png")}; '
                     )
             
             if settings_preflight_tmp_path is not None:
@@ -433,9 +434,9 @@ class DockerAgentWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                    'echo "[env/setup][INFO] settings: running"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "settings: running")}; '
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    'echo "[env/setup][INFO] settings: done"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "settings: done")}; '
                 )
 
             if environment_preflight_tmp_path is not None:
@@ -455,9 +456,9 @@ class DockerAgentWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                    'echo "[env/setup][INFO] environment: running"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "environment: running")}; '
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    'echo "[env/setup][INFO] environment: done"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "environment: done")}; '
                 )
 
             env_args: list[str] = []
