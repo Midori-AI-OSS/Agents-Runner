@@ -288,33 +288,10 @@ class AgentsTabWidget(QWidget):
         self.agents_changed.emit()
 
     def _agent_cli_widget(self, row_index: int, inst: AgentInstance) -> QWidget:
-        combo = QComboBox()
-        for agent in SUPPORTED_AGENTS:
-            combo.addItem(agent.title(), agent)
-        current = normalize_agent(inst.agent_cli)
-        idx = combo.findData(current)
-        if idx >= 0:
-            combo.setCurrentIndex(idx)
-        combo.currentIndexChanged.connect(
-            lambda _i: self._set_row_agent_cli(
-                row_index, str(combo.currentData() or "")
-            )
-        )
-        return combo
-
-    def _set_row_agent_cli(self, row_index: int, agent_cli: str) -> None:
-        if row_index < 0 or row_index >= len(self._rows):
-            return
-        agent_cli = normalize_agent(agent_cli)
-        inst = self._rows[row_index]
-        self._rows[row_index] = AgentInstance(
-            agent_id=inst.agent_id,
-            agent_cli=agent_cli,
-            config_dir=inst.config_dir,
-            cli_flags=inst.cli_flags,
-        )
-        self._update_fallback_options()
-        self.agents_changed.emit()
+        label = QLabel(normalize_agent(inst.agent_cli).title())
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("color: rgba(237, 239, 245, 200);")
+        return label
 
     def _agent_id_widget(self, row_index: int, inst: AgentInstance) -> QWidget:
         line = QLineEdit()
