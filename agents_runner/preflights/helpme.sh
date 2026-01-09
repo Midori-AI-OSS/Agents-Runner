@@ -12,17 +12,17 @@ clone_repo() {
   local dest="${REPOS_DIR}/${name}"
 
   if [ -d "${dest}/.git" ]; then
-    echo "[preflight] helpme: ${name} already cloned"
+    echo "[preflight/helpme][INFO] ${name} already cloned"
     return 0
   fi
 
   if [ -e "${dest}" ]; then
     local backup="${dest}.bak.$(date +%s)"
-    echo "[preflight] helpme: moving existing ${dest} -> ${backup}"
+    echo "[preflight/helpme][WARN] moving existing ${dest} -> ${backup}"
     mv -- "${dest}" "${backup}"
   fi
 
-  echo "[preflight] helpme: cloning ${name} from ${url}"
+  echo "[preflight/helpme][INFO] cloning ${name} from ${url}"
   git clone --depth 1 --single-branch "${url}" "${dest}"
 }
 
@@ -32,4 +32,4 @@ clone_repo "copilot-cli" "https://github.com/github/copilot-cli"
 clone_repo "claude-code" "https://github.com/anthropics/claude-code"
 clone_repo "Agents-Runner" "https://github.com/Midori-AI-OSS/Agents-Runner"
 
-echo "[preflight] helpme: ready at ${REPOS_DIR}"
+echo "[preflight/helpme][INFO] ready at ${REPOS_DIR}"
