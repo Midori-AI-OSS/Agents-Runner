@@ -37,6 +37,27 @@ def _configure_qtwebengine_runtime() -> None:
         )
 
 
+def _initialize_qtwebengine() -> None:
+    """Initialize QtWebEngine at startup to prevent lazy-load flash."""
+    try:
+        from PySide6.QtWebEngineWidgets import QWebEngineView
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Create a hidden dummy view to force Chromium initialization
+        # This is garbage collected after initialization
+        dummy = QWebEngineView()
+        dummy.setParent(None)
+        dummy.hide()
+        dummy.deleteLater()
+        
+        logger.info("QtWebEngine initialized successfully")
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"QtWebEngine not available: {e}")
+
+
 def run_app(argv: list[str]) -> None:
     _configure_qtwebengine_runtime()
 
@@ -58,6 +79,9 @@ def run_app(argv: list[str]) -> None:
     if icon is not None:
         app.setWindowIcon(icon)
     app.setStyleSheet(app_stylesheet())
+
+    # Initialize QtWebEngine early to prevent lazy-load flash
+    _initialize_qtwebengine()
 
     # Check if first-run setup is needed
     if not check_setup_complete():

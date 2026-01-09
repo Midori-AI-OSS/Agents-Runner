@@ -244,6 +244,37 @@ class NewTaskPage(QWidget):
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
+    def _confirm_auto_base_branch(self, env_id: str, base_branch: str) -> bool:
+        """Show confirmation dialog for auto base branch in git-locked environments.
+        
+        Args:
+            env_id: The environment ID to check
+            base_branch: The selected base branch (empty string or "auto" for auto mode)
+            
+        Returns:
+            True if user confirmed or confirmation not needed, False if cancelled
+        """
+        # Only show confirmation for git-locked environments with auto base branch
+        is_git_locked = env_id in self._gh_locked_envs
+        is_auto_branch = not base_branch or base_branch.lower() == "auto"
+        
+        if not (is_git_locked and is_auto_branch):
+            return True
+        
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirm Auto Base Branch",
+            "You have selected 'Auto' as the base branch.\n\n"
+            "The agent will automatically determine the best base branch "
+            "for this task based on the repository state.\n\n"
+            "Do you want to proceed?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No  # Default to No for safety
+        )
+        
+        return reply == QMessageBox.Yes
+
     def _update_run_buttons(self) -> None:
         has_terminal = bool(str(self._terminal.currentData() or "").strip())
         can_launch = bool(self._workspace_ready and has_terminal)
@@ -297,6 +328,11 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
+        
+        # Confirm auto base branch for git-locked environments
+        if not self._confirm_auto_base_branch(env_id, base_branch):
+            return
+        
         self.requested_run.emit(prompt, host_codex, env_id, base_branch)
 
     def _on_get_agent_help(self) -> None:
@@ -343,6 +379,10 @@ class NewTaskPage(QWidget):
         host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
+
+        # Confirm auto base branch for git-locked environments
+        if not self._confirm_auto_base_branch(env_id, base_branch):
+            return
 
         command = (self._command.text() or "").strip()
 
@@ -394,6 +434,11 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
+        
+        # Confirm auto base branch for git-locked environments
+        if not self._confirm_auto_base_branch(env_id, base_branch):
+            return
+        
         self.requested_launch.emit(
             prompt,
             command,

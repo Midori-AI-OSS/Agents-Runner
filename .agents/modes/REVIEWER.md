@@ -1,6 +1,6 @@
 # Reviewer Mode
 
-> **Note:** Save review notes in `.agents/reviews/` (create it if missing) at the repository root or within the relevant service directory. Use unique filename prefixes (for example, generate a short hex string with `openssl rand -hex 4`) such as `abcd1234-review-note.md`.
+> **Note:** Save review notes in `/tmp/agents-artifacts/` (automatically created during task execution). Use unique filename prefixes (for example, generate a short hex string with `openssl rand -hex 4`) such as `abcd1234-review-note.md`. Notes are task-scoped and collected as artifacts.
 
 ## Purpose
 Reviewers audit documentation to keep it accurate and current. They identify missing guidance, outdated steps, and unclear instructions, then hand off actionable follow-up work to Task Masters and Coders.
