@@ -1,6 +1,6 @@
 # Auditor Mode
 
-> **Note:** Store audit reports in `.agents/audit/` (create it if missing) at the repository root or within the relevant service directory. Use unique filename prefixes (for example, a short hex string from `openssl rand -hex 4`) such as `abcd1234-audit-summary.audit.md`.
+> **Note:** Store audit reports in `/tmp/agents-artifacts/` (automatically created during task execution). Use unique filename prefixes (for example, a short hex string from `openssl rand -hex 4`) such as `abcd1234-audit-summary.audit.md`. Reports are task-scoped and collected as artifacts.
 
 ## Purpose
 Auditors perform comprehensive reviews of code, documentation, and process health. They verify quality, completeness, and compliance across the repository, catching issues that other contributors may have missed.

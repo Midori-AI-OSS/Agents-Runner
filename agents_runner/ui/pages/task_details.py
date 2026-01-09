@@ -286,13 +286,17 @@ class TaskDetailsPage(QWidget):
         self._desktop_layout = desktop_layout
         self._desktop_web: QWebEngineView | None = None
 
-        desktop_label = QLabel(
-            "Select the Desktop tab to load the noVNC session."
-            if QWebEngineView is not None
-            else "QtWebEngine not available; open the noVNC URL externally."
-        )
-        desktop_label.setWordWrap(True)
-        self._desktop_view: QWidget = desktop_label
+        # Create QWebEngineView immediately if available (not lazily)
+        if QWebEngineView is not None:
+            self._desktop_web = QWebEngineView()
+            self._desktop_view: QWidget = self._desktop_web
+        else:
+            # Fallback label if QtWebEngine is not available
+            desktop_label = QLabel(
+                "QtWebEngine not available; open the noVNC URL externally."
+            )
+            desktop_label.setWordWrap(True)
+            self._desktop_view: QWidget = desktop_label
 
         desktop_cfg = QGridLayout()
         desktop_cfg.setHorizontalSpacing(10)
@@ -508,21 +512,6 @@ class TaskDetailsPage(QWidget):
         if self._artifacts_tab_visible:
             self._artifacts_tab.on_task_status_changed(task)
 
-    def _ensure_desktop_webview(self) -> QWebEngineView | None:
-        if QWebEngineView is None:
-            return None
-        if self._desktop_web is None:
-            self._desktop_web = QWebEngineView()
-            try:
-                self._desktop_layout.replaceWidget(
-                    self._desktop_view, self._desktop_web
-                )
-                self._desktop_view.setParent(None)
-            except Exception:
-                pass
-            self._desktop_view = self._desktop_web
-        return self._desktop_web
-
     def _maybe_load_desktop(self) -> None:
         if not self._last_task or not self._desktop_tab_visible:
             return
@@ -531,17 +520,26 @@ class TaskDetailsPage(QWidget):
         url = str(self._last_task.novnc_url or "").strip()
         if not url or url == self._desktop_loaded_url:
             return
-        web = self._ensure_desktop_webview()
-        if web is None:
+        # Use the pre-created webview directly (no lazy initialization)
+        if self._desktop_web is None:
             return
         self._desktop_loaded_url = url
         try:
-            web.setUrl(QUrl(url))
+            self._desktop_web.setUrl(QUrl(url))
         except Exception:
             pass
 
     def _sync_desktop(self, task: Task) -> None:
-        should_show = bool(task.is_active() and task.headless_desktop_enabled)
+        # Get the URL first to check if desktop is ready
+        url = str(task.novnc_url or "").strip()
+        
+        # Show tab ONLY when desktop is ready (URL is available)
+        should_show = bool(
+            task.is_active() and 
+            task.headless_desktop_enabled and
+            url  # Desktop is ready (not empty)
+        )
+        
         if not hasattr(self, "_tabs"):
             return
 
@@ -558,8 +556,7 @@ class TaskDetailsPage(QWidget):
             return
 
         self._show_desktop_tab()
-        url = str(task.novnc_url or "").strip()
-        self._desktop_url.setText(url or "(starting…)")
+        self._desktop_url.setText(url)
         self._desktop_display.setText(str(task.desktop_display or ":1"))
         if self._desktop_tab_visible and self._tabs.currentIndex() == self._desktop_tab_index:
             self._maybe_load_desktop()
@@ -568,13 +565,14 @@ class TaskDetailsPage(QWidget):
         """
         Update Artifacts tab visibility based on artifact status.
         
-        Shows tab if ANY of these are true:
-        - host_artifacts_dir exists (even if empty)
-        - file_count > 0
-        - task is running AND artifacts feature is enabled
+        Shows tab ONLY when artifacts actually exist:
+        - file_count > 0 (has files in staging directory), OR
+        - task.artifacts is not empty (has encrypted artifacts from completed task)
         
-        Dynamic behavior: checks staging directory during execution,
-        encrypted artifacts after completion.
+        Does NOT show for:
+        - Empty staging directory
+        - Active task with no artifacts yet
+        - When artifact_info.exists is True but file_count is 0
         """
         # Get single source of truth
         artifact_info = get_artifact_info(task.task_id)
@@ -582,12 +580,10 @@ class TaskDetailsPage(QWidget):
         # Check encrypted artifacts (for completed tasks)
         has_encrypted = bool(task.artifacts)
         
-        # Determine if we should show the tab
+        # Show tab ONLY when artifacts actually exist
         should_show = (
-            artifact_info.exists or
             artifact_info.file_count > 0 or
-            has_encrypted or
-            (task.is_active() and artifact_info.host_artifacts_dir.parent.exists())
+            has_encrypted
         )
         
         # Debug logging (REQUIRED)
@@ -610,25 +606,40 @@ class TaskDetailsPage(QWidget):
             self._artifacts_tab.set_task(self._last_task)
 
     def _sync_diff(self, task: Task) -> None:
-        """Update Diff tab visibility based on git status."""
+        """Update Diff tab visibility based on git status and actual changes."""
+        # Import inside method to avoid circular imports
         from agents_runner.environments import GH_MANAGEMENT_GITHUB
         from agents_runner.environments import normalize_gh_management_mode
         
         gh_mode = normalize_gh_management_mode(str(task.gh_management_mode or ""))
         
-        # Show diff tab only for GitHub-managed tasks with repo info
-        should_show = bool(
-            gh_mode == GH_MANAGEMENT_GITHUB and
-            task.gh_repo_root and
-            task.gh_base_branch
+        # Check if this is a git-tracked task (GitHub mode OR git-locked environment)
+        is_git_tracked = bool(
+            (gh_mode == GH_MANAGEMENT_GITHUB and task.gh_repo_root and task.gh_base_branch)
+            or task.gh_management_locked
         )
         
-        if should_show:
+        # If no git tracking, hide the diff tab and return
+        if not is_git_tracked:
+            self._hide_diff_tab()
+            return
+        
+        # Load the diff data
+        self._diff_tab.set_task(task)
+        
+        # Check if there are actual changes
+        has_changes = self._diff_tab.has_changes()
+        
+        # Only show the tab if there are changes
+        if has_changes:
             was_visible = self._diff_tab_visible
+            was_selected = self._diff_tab_visible and self._tabs.currentIndex() == self._diff_tab_index
             self._show_diff_tab()
-            if not was_visible:
+            # If tab was already visible and currently selected, refresh the view
+            if was_visible and was_selected:
                 QTimer.singleShot(0, self._load_diff)
         else:
+            # No changes, hide the tab
             self._hide_diff_tab()
 
     def _load_diff(self) -> None:
