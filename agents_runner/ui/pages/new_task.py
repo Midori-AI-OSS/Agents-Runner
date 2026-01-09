@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize
 from PySide6.QtCore import Signal
 from PySide6.QtCore import QThread
 from PySide6.QtGui import QTextCursor
@@ -18,10 +19,12 @@ from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QStyle
 
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
+from agents_runner.ui.icons import mic_icon
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
@@ -127,8 +130,9 @@ class NewTaskPage(QWidget):
         self._prompt.setTabChangesFocus(True)
         
         self._voice_btn = QToolButton()
-        self._voice_btn.setText("Voice")
-        self._voice_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._voice_btn.setIcon(mic_icon(size=18))
+        self._voice_btn.setIconSize(QSize(18, 18))
+        self._voice_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._voice_btn.setCheckable(True)
         self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
         self._voice_btn.setStyleSheet("margin: 8px;")
@@ -524,10 +528,7 @@ class NewTaskPage(QWidget):
         self._prompt.set_spellcheck_enabled(enabled)
 
     def set_stt_mode(self, mode: str) -> None:
-        mode = str(mode or "").strip().lower()
-        if mode not in {"offline", "online"}:
-            mode = "offline"
-        self._stt_mode = mode
+        self._stt_mode = "offline"
 
     def set_workspace_status(self, *, path: str, ready: bool, message: str) -> None:
         self._workspace.setText(str(path or "—"))
@@ -567,6 +568,7 @@ class NewTaskPage(QWidget):
                 "Voice input unavailable",
                 "Could not find `ffmpeg` in PATH (needed to record audio).",
             )
+            self._voice_btn.setIcon(mic_icon(size=18))
             self._voice_btn.blockSignals(True)
             try:
                 self._voice_btn.setChecked(False)
@@ -581,20 +583,24 @@ class NewTaskPage(QWidget):
             QMessageBox.warning(
                 self, "Microphone error", str(exc) or "Could not start recording."
             )
+            self._voice_btn.setIcon(mic_icon(size=18))
             self._voice_btn.blockSignals(True)
             try:
                 self._voice_btn.setChecked(False)
             finally:
                 self._voice_btn.blockSignals(False)
             return
-
-        self._voice_btn.setText("Stop")
+        self._voice_btn.setIcon(
+            self._voice_btn.style().standardIcon(QStyle.SP_MediaStop)
+        )
+        self._voice_btn.setToolTip("Stop recording and transcribe into the prompt editor.")
 
     def _stop_voice_recording_and_transcribe(self) -> None:
         recording = self._mic_recording
         self._mic_recording = None
         if recording is None:
-            self._voice_btn.setText("Voice")
+            self._voice_btn.setIcon(mic_icon(size=18))
+            self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
             return
 
         recorder = FfmpegPulseRecorder(output_dir=recording.output_path.parent)
@@ -604,11 +610,13 @@ class NewTaskPage(QWidget):
             QMessageBox.warning(
                 self, "Microphone error", str(exc) or "Could not stop recording."
             )
-            self._voice_btn.setText("Voice")
+            self._voice_btn.setIcon(mic_icon(size=18))
+            self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
             return
 
         self._voice_btn.setEnabled(False)
-        self._voice_btn.setText("Transcribing…")
+        self._voice_btn.setIcon(self._voice_btn.style().standardIcon(QStyle.SP_BrowserReload))
+        self._voice_btn.setToolTip("Transcribing speech-to-text…")
 
         worker = SttWorker(mode=self._stt_mode, audio_path=str(audio_path))
         thread = QThread(self)
@@ -660,7 +668,8 @@ class NewTaskPage(QWidget):
     def _on_stt_finished(self) -> None:
         self._stt_thread = None
         self._voice_btn.setEnabled(True)
-        self._voice_btn.setText("Voice")
+        self._voice_btn.setIcon(mic_icon(size=18))
+        self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
 
     def set_repo_controls_visible(self, visible: bool) -> None:
         visible = bool(visible)
