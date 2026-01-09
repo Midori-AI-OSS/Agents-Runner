@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.log_format import format_log
 
 
 class _MainWindowTaskReviewMixin:
@@ -79,7 +80,7 @@ class _MainWindowTaskReviewMixin:
         pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
         is_override = not is_github_mode  # Override if not originally github-managed
         
-        self._on_task_log(task_id, f"[gh] PR requested ({branch} -> {base_display})")
+        self._on_task_log(task_id, format_log("gh", "pr", "INFO", f"PR requested ({branch} -> {base_display})"))
         threading.Thread(
             target=self._finalize_gh_management_worker,
             args=(
