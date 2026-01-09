@@ -51,7 +51,7 @@ def parse_docker_datetime(value: str | None) -> datetime | None:
 
 
 _CANONICAL_LOG_RE = re.compile(r"^\[[^/\]]+/[^\]]+\]\[[A-Z]+\]\s")
-_NESTED_HEADER_RE = re.compile(r"^\[[^\]]+\]\[[A-Z]+\]\s*")
+_NESTED_HEADER_RE = re.compile(r"^\[[^\]]+\]\[[A-Z]+\]\s?")
 
 
 def format_log_line(
@@ -107,11 +107,15 @@ def format_log_line(
         level = "INFO"
     
     # Strip nested/duplicated headers matching /^\[[^\]]+\]\[[A-Z]+\]\s*/
-    original_message = message
-    message = _NESTED_HEADER_RE.sub("", message)
+    # Keep stripping until no more nested headers are found
+    while True:
+        match = _NESTED_HEADER_RE.match(message)
+        if not match:
+            break
+        message = message[match.end():]
     
-    # Skip empty messages after stripping (but preserve messages that are only whitespace)
-    if not message and not original_message:
+    # Skip empty messages after stripping (but allow whitespace-only messages)
+    if not message:
         return ""
     
     if not padded:
