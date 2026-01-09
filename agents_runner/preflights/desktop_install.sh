@@ -4,7 +4,7 @@ set -euo pipefail
 echo "[desktop-install] Installing desktop environment packages"
 
 echo "[desktop-install] Synchronizing package database..."
-if ! yay -Syu --noconfirm; then
+if ! sudo pacman -Syu --noconfirm; then
   echo "[desktop-install] ERROR: Failed to sync package database" >&2
   exit 1
 fi

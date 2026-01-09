@@ -13,9 +13,8 @@ mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}
 mkdir -p "/tmp/agents-artifacts"
 
 echo "[desktop] Synchronizing package database..."
-if ! yay -Syu --noconfirm; then
-  echo "[desktop] ERROR: Failed to sync package database" >&2
-  exit 1
+if ! yay -Syu --noconfirm 2>/dev/null; then
+  echo "[desktop] WARNING: Failed to sync package database; continuing with existing packages" >&2
 fi
 
 echo "[desktop] Installing official repository packages (one-by-one with retries)..."
