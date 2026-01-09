@@ -17,14 +17,14 @@ OFFICIAL_PKGS=(
   imagemagick
   xorg-xwininfo
   xcb-util-cursor
-  websockify
   wmctrl
   xdotool
   xorg-xprop
   xorg-xauth
   ttf-dejavu
   xorg-fonts-misc
-  novnc
+  python-pip
+  git
 )
 
 install_pkg_with_retry() {
@@ -51,8 +51,24 @@ for pkg in "${OFFICIAL_PKGS[@]}"; do
   fi
 done
 
+echo "[desktop-install] Installing websockify via pip..."
+if ! pip install websockify --break-system-packages >/dev/null 2>&1; then
+  echo "[desktop-install] ERROR: Failed to install websockify via pip" >&2
+  exit 1
+fi
+
+echo "[desktop-install] Installing noVNC via git clone..."
+if [ -d /usr/share/novnc ]; then
+  echo "[desktop-install] noVNC already exists at /usr/share/novnc, skipping..."
+else
+  if ! git clone --depth 1 https://github.com/novnc/noVNC.git /usr/share/novnc >/dev/null 2>&1; then
+    echo "[desktop-install] ERROR: Failed to clone noVNC repository" >&2
+    exit 1
+  fi
+fi
+
 echo "[desktop-install] Validating installed components..."
-REQUIRED_BINS=(Xvnc fluxbox xterm websockify)
+REQUIRED_BINS=(Xvnc fluxbox xterm)
 MISSING_BINS=()
 
 for bin in "${REQUIRED_BINS[@]}"; do
@@ -64,6 +80,18 @@ done
 if [ ${#MISSING_BINS[@]} -gt 0 ]; then
   echo "[desktop-install] ERROR: Required binaries not found: ${MISSING_BINS[*]}" >&2
   echo "[desktop-install] Package installation may have failed silently" >&2
+  exit 1
+fi
+
+echo "[desktop-install] Validating websockify installation..."
+if ! command -v websockify >/dev/null 2>&1 && ! python -m websockify --version >/dev/null 2>&1; then
+  echo "[desktop-install] ERROR: websockify not accessible via command or python module" >&2
+  exit 1
+fi
+
+echo "[desktop-install] Validating noVNC installation..."
+if [ ! -d /usr/share/novnc ] || [ ! -f /usr/share/novnc/vnc.html ]; then
+  echo "[desktop-install] ERROR: noVNC not found at /usr/share/novnc or vnc.html missing" >&2
   exit 1
 fi
 
