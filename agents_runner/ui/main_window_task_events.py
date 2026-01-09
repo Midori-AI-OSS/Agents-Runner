@@ -16,6 +16,7 @@ from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments.cleanup import cleanup_task_workspace
+from agents_runner.log_format import format_log
 from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_task_payload
@@ -80,7 +81,7 @@ class _MainWindowTaskEventsMixin:
 
             self._on_task_log(
                 task_id,
-                "[host] user_kill requested" if is_kill else "[host] user_cancel requested",
+                format_log("host", "action", "INFO", "user_kill requested" if is_kill else "user_cancel requested"),
             )
 
             watch = self._interactive_watch.get(task_id)
@@ -104,7 +105,7 @@ class _MainWindowTaskEventsMixin:
                     if is_kill
                     else ["stop", "-t", "1", container_id]
                 )
-                self._on_task_log(task_id, f"[docker] docker {' '.join(docker_args)}")
+                self._on_task_log(task_id, format_log("docker", "cmd", "INFO", f"docker {' '.join(docker_args)}"))
                 try:
                     completed = subprocess.run(
                         ["docker", *docker_args],
@@ -114,13 +115,13 @@ class _MainWindowTaskEventsMixin:
                         timeout=10.0 if is_kill else 20.0,
                     )
                 except Exception as exc:
-                    self._on_task_log(task_id, f"[docker] ERROR: {exc}")
+                    self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", str(exc)))
                     completed = None
 
                 if completed is not None and completed.returncode != 0:
                     detail = (completed.stderr or completed.stdout or "").strip()
                     if detail:
-                        self._on_task_log(task_id, f"[docker] ERROR: {detail}")
+                        self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", detail))
 
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
@@ -148,7 +149,7 @@ class _MainWindowTaskEventsMixin:
         else:
             return
 
-        self._on_task_log(task_id, f"[docker] docker {' '.join(docker_args)}")
+        self._on_task_log(task_id, format_log("docker", "cmd", "INFO", f"docker {' '.join(docker_args)}"))
         try:
             completed = subprocess.run(
                 ["docker", *docker_args],
@@ -158,7 +159,7 @@ class _MainWindowTaskEventsMixin:
                 timeout=timeout_s,
             )
         except Exception as exc:
-            self._on_task_log(task_id, f"[docker] ERROR: {exc}")
+            self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", str(exc)))
             QMessageBox.warning(self, "Docker command failed", str(exc))
             return
 
@@ -166,7 +167,7 @@ class _MainWindowTaskEventsMixin:
             detail = (
                 completed.stderr or completed.stdout or ""
             ).strip() or f"docker exited {completed.returncode}"
-            self._on_task_log(task_id, f"[docker] ERROR: {detail}")
+            self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", detail))
             QMessageBox.warning(self, "Docker command failed", detail)
 
         self._try_sync_container_state(task)
@@ -304,7 +305,7 @@ class _MainWindowTaskEventsMixin:
 
         self._on_task_log(
             bridge.task_id,
-            f"[supervisor] retry {retry_count}/3 with {agent} in {delay:.0f}s",
+            format_log("supervisor", "retry", "INFO", f"retry {retry_count}/3 with {agent} in {delay:.0f}s"),
         )
         task.status = f"retrying ({retry_count}/3)"
         env = self._environments.get(task.environment_id)
@@ -326,7 +327,7 @@ class _MainWindowTaskEventsMixin:
 
         self._on_task_log(
             bridge.task_id,
-            f"[supervisor] switching from {from_agent} to {to_agent} (fallback)",
+            format_log("supervisor", "fallback", "INFO", f"switching from {from_agent} to {to_agent} (fallback)"),
         )
         task.agent_cli = to_agent
         env = self._environments.get(task.environment_id)
@@ -366,7 +367,7 @@ class _MainWindowTaskEventsMixin:
                     if retry_count > 0:
                         self._on_task_log(
                             bridge.task_id,
-                            f"[supervisor] completed after {retry_count} retries",
+                            format_log("supervisor", "retry", "INFO", f"completed after {retry_count} retries"),
                         )
             self._on_task_done(bridge.task_id, exit_code, error, metadata=metadata)
 
@@ -507,7 +508,7 @@ class _MainWindowTaskEventsMixin:
         if task is None:
             return
 
-        self._on_task_log(task_id, "[host][finalize] finalization started")
+        self._on_task_log(task_id, format_log("host", "finalize", "INFO", "finalization started"))
 
         if task.started_at is None:
             started_s = self._run_started_s.get(task_id)
@@ -546,7 +547,7 @@ class _MainWindowTaskEventsMixin:
 
         self._on_task_log(
             task_id,
-            f"[host][finalize] task marked complete: status={task.status} exit_code={task.exit_code}",
+            format_log("host", "finalize", "INFO", f"task marked complete: status={task.status} exit_code={task.exit_code}"),
         )
         if user_stop is None:
             self._start_artifact_finalization(task)
@@ -594,7 +595,7 @@ class _MainWindowTaskEventsMixin:
                 daemon=True,
             ).start()
         else:
-            self._on_task_log(task_id, f"[gh] PR creation skipped: {skip_reason}")
+            self._on_task_log(task_id, format_log("gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"))
 
     def _start_artifact_finalization(self, task: Task) -> None:
         if getattr(task, "_artifact_finalization_started", False):
@@ -625,7 +626,7 @@ class _MainWindowTaskEventsMixin:
 
         def _worker() -> None:
             start = time.monotonic()
-            self.host_log.emit(task.task_id, "[host] collecting artifacts from container...")
+            self.host_log.emit(task.task_id, format_log("host", "artifacts", "INFO", "collecting artifacts from container..."))
             try:
                 artifact_uuids = collect_artifacts_from_container_with_timeout(
                     container_id,
@@ -636,7 +637,7 @@ class _MainWindowTaskEventsMixin:
                 elapsed_s = time.monotonic() - start
                 self.host_log.emit(
                     task.task_id,
-                    f"[host][finalize] artifact collection finished in {elapsed_s:.1f}s ({len(artifact_uuids)} artifact(s))",
+                    format_log("host", "finalize", "INFO", f"artifact collection finished in {elapsed_s:.1f}s ({len(artifact_uuids)} artifact(s))"),
                 )
                 if artifact_uuids:
                     self.host_artifacts.emit(task.task_id, artifact_uuids)
@@ -644,7 +645,7 @@ class _MainWindowTaskEventsMixin:
                 elapsed_s = time.monotonic() - start
                 self.host_log.emit(
                     task.task_id,
-                    f"[host] artifact collection failed/timeout: {exc} (elapsed {elapsed_s:.1f}s)",
+                    format_log("host", "artifacts", "ERROR", f"artifact collection failed/timeout: {exc} (elapsed {elapsed_s:.1f}s)"),
                 )
 
         threading.Thread(target=_worker, daemon=True).start()
