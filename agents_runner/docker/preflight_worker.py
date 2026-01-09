@@ -275,7 +275,7 @@ class DockerPreflightWorker:
                 "-lc",
                 "set -euo pipefail; "
                 f"{preflight_clause}"
-                'echo "[preflight] complete"; ',
+                'echo "[docker/preflight][INFO] complete"; ',
             ]
             self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
             try:
