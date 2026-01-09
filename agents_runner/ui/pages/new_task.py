@@ -614,8 +614,8 @@ class NewTaskPage(QWidget):
         thread = QThread(self)
         worker.moveToThread(thread)
         thread.started.connect(worker.run)
-        worker.done.connect(lambda text: self._on_stt_done(text, audio_path))
-        worker.error.connect(lambda message: self._on_stt_error(message, audio_path))
+        worker.done.connect(self._on_stt_done)
+        worker.error.connect(self._on_stt_error)
         worker.done.connect(thread.quit)
         worker.error.connect(thread.quit)
         worker.done.connect(worker.deleteLater)
@@ -626,7 +626,8 @@ class NewTaskPage(QWidget):
         self._stt_thread = thread
         thread.start()
 
-    def _on_stt_done(self, text: str, audio_path: Path) -> None:
+    def _on_stt_done(self, text: str, audio_path: str) -> None:
+        audio_path_p = Path(str(audio_path or ""))
         text = str(text or "").strip()
         if text:
             cursor = self._prompt.textCursor()
@@ -643,15 +644,16 @@ class NewTaskPage(QWidget):
             )
 
         try:
-            audio_path.unlink(missing_ok=True)
+            audio_path_p.unlink(missing_ok=True)
         except Exception:
             pass
 
-    def _on_stt_error(self, message: str, audio_path: Path) -> None:
+    def _on_stt_error(self, message: str, audio_path: str) -> None:
+        audio_path_p = Path(str(audio_path or ""))
         msg = str(message or "").strip() or "Speech-to-text failed."
         QMessageBox.warning(self, "Speech-to-text error", msg)
         try:
-            audio_path.unlink(missing_ok=True)
+            audio_path_p.unlink(missing_ok=True)
         except Exception:
             pass
 
