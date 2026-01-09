@@ -108,7 +108,7 @@ class DockerAgentWorker:
 
     def run(self) -> None:
         preflight_tmp_paths: list[str] = []
-        docker_env: dict[str, str] | None = None
+        docker_env: dict[str, str] = dict(os.environ)
         try:
             # GitHub repo preparation (clone + branch prep) - happens first, before Docker
             if self._config.gh_repo:
