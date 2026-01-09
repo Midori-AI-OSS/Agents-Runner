@@ -1,8 +1,10 @@
+import logging
 import os
 import platform
 import shutil
 import subprocess
 
+logger = logging.getLogger(__name__)
 
 ROSETTA_INSTALL_COMMAND = "softwareupdate --install-rosetta --agree-to-license"
 
@@ -18,8 +20,20 @@ def _mac_hardware_is_apple_silicon() -> bool:
             text=True,
             check=False,
         )
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.warning(
+            "Failed to detect Apple Silicon via sysctl: %s",
+            e,
+            exc_info=True,
+        )
         return False
+    except Exception as e:
+        logger.error(
+            "Unexpected error detecting Apple Silicon hardware: %s",
+            e,
+            exc_info=True,
+        )
+        raise
     return str(completed.stdout or "").strip() == "1"
 
 
@@ -55,6 +69,18 @@ def has_rosetta() -> bool | None:
             text=True,
             check=False,
         )
-    except Exception:
+    except (subprocess.SubprocessError, OSError) as e:
+        logger.warning(
+            "Failed to check Rosetta installation via pkgutil: %s",
+            e,
+            exc_info=True,
+        )
         return None
+    except Exception as e:
+        logger.error(
+            "Unexpected error checking Rosetta installation: %s",
+            e,
+            exc_info=True,
+        )
+        raise
     return completed.returncode == 0

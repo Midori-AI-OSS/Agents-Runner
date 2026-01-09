@@ -85,7 +85,7 @@ def ensure_pr_metadata_file(path: str, *, task_id: str) -> None:
         json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
         f.write("\n")
     try:
-        os.chmod(path, 0o666)
+        os.chmod(path, 0o600)
     except OSError:
         pass
 
@@ -136,7 +136,7 @@ def ensure_github_context_file(
         f.write("\n")
     
     try:
-        os.chmod(path, 0o666)
+        os.chmod(path, 0o600)
     except OSError:
         pass
 

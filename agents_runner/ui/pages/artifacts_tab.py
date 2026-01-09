@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 import tempfile
@@ -396,7 +397,7 @@ class ArtifactsTab(QWidget):
             if sys.platform == "darwin":
                 subprocess.Popen(["open", file_path])
             elif sys.platform == "win32":
-                subprocess.Popen(["start", file_path], shell=True)
+                os.startfile(file_path)
             else:
                 subprocess.Popen(["xdg-open", file_path])
             
@@ -420,7 +421,7 @@ class ArtifactsTab(QWidget):
                     if sys.platform == "darwin":
                         subprocess.Popen(["open", str(tmp_path)])
                     elif sys.platform == "win32":
-                        subprocess.Popen(["start", str(tmp_path)], shell=True)
+                        os.startfile(str(tmp_path))
                     else:
                         subprocess.Popen(["xdg-open", str(tmp_path)])
 
