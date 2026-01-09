@@ -21,8 +21,11 @@ class LogHighlighter(QSyntaxHighlighter):
         "mcp",
     }
 
-    # Canonical log format: [{scope}/{subscope}][{LEVEL}] {message}
-    CANONICAL_LOG_RE = re.compile(r"^\[([^/\]]+)/([^\]]+)\]\[([A-Z]+)\]\s(.*)$")
+    # Canonical log format - supports both raw and aligned display formats:
+    # Raw:     [{scope}/{subscope}][{LEVEL}] {message}
+    # Aligned: [ {scope}/{subscope}     ][{LEVEL} ] {message}
+    # The regex allows optional spaces after opening bracket and before closing bracket
+    CANONICAL_LOG_RE = re.compile(r"^\[\s*([^/\]]+)/([^\]]+?)\s*\]\[\s*([A-Z]+)\s*\]\s(.*)$")
 
     def __init__(self, document: QTextDocument) -> None:
         super().__init__(document)
@@ -103,6 +106,10 @@ class LogHighlighter(QSyntaxHighlighter):
         ]
 
     def highlightBlock(self, text: str) -> None:
+        # Skip blank lines - don't apply any formatting
+        if not text or text.isspace():
+            return
+
         in_fence = self.previousBlockState() == 1
         fence_line = bool(re.match(r"^```", text))
         if fence_line:
@@ -120,17 +127,29 @@ class LogHighlighter(QSyntaxHighlighter):
         # Try to match canonical log format first
         canonical_match = self.CANONICAL_LOG_RE.match(text)
         if canonical_match:
-            scope = canonical_match.group(1)
-            subscope = canonical_match.group(2)
-            level = canonical_match.group(3)
+            scope = canonical_match.group(1).strip()
+            subscope = canonical_match.group(2).strip()
+            level = canonical_match.group(3).strip()
             message = canonical_match.group(4)
 
-            # Calculate positions
-            scope_bracket_start = 0
-            scope_bracket_end = len(f"[{scope}/{subscope}]")
+            # Find actual positions in the original text to handle aligned format
+            # The format could be either:
+            # Raw:     [scope/subscope][LEVEL] message
+            # Aligned: [ scope/subscope     ][LEVEL ] message
+            
+            # Find the scope bracket (from start to first ']')
+            scope_bracket_end = text.find(']') + 1
+            
+            # Find the level bracket (from scope_bracket_end to next ']')
             level_bracket_start = scope_bracket_end
-            level_bracket_end = scope_bracket_end + len(f"[{level}]")
-            message_start = level_bracket_end + 1  # +1 for the space
+            level_bracket_end = text.find(']', level_bracket_start) + 1
+            
+            # Message starts after the level bracket and any whitespace
+            # The regex captures message after '\s', so we need to find where it actually starts
+            message_start = level_bracket_end
+            # Skip the space(s) that separate level bracket from message
+            while message_start < len(text) and text[message_start] == ' ':
+                message_start += 1
 
             # Color the scope bracket
             scope_format = QTextCharFormat()
@@ -139,7 +158,7 @@ class LogHighlighter(QSyntaxHighlighter):
             else:
                 # Container scope (4-char container ID)
                 scope_format.setForeground(self._container_scope_color)
-            self.setFormat(scope_bracket_start, scope_bracket_end, scope_format)
+            self.setFormat(0, scope_bracket_end, scope_format)
 
             # Color the level bracket
             level_format = QTextCharFormat()

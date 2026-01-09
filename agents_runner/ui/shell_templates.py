@@ -45,17 +45,17 @@ def build_git_clone_or_update_snippet(
     """
     quoted_repo = shlex.quote(gh_repo)
 
-    parts = [f'echo "[host] preparing {gh_repo} -> {host_workdir}"']
+    parts = [f'echo "[host/clone][INFO] preparing {gh_repo} -> {host_workdir}"']
 
     if is_locked_env:
         # Locked environment: update existing repo
         update_step = (
             f"if [ -d {quoted_dest}/.git ]; then "
             f"cd {quoted_dest} && "
-            f'echo "[host] updating locked repo" && '
+            f'echo "[host/git][INFO] updating locked repo" && '
             f"git fetch origin; "
             f"else "
-            f'echo "[host] error: locked environment requires existing repo at {host_workdir}"; '
+            f'echo "[host/clone][ERROR] locked environment requires existing repo at {host_workdir}"; '
             f"exit 1; "
             f"fi"
         )
@@ -70,9 +70,9 @@ def build_git_clone_or_update_snippet(
         )
         clone_step = (
             f"if [ -d {quoted_dest} ] && [ -d {quoted_dest}/.git ]; then "
-            f'echo "[host] repo already exists, skipping clone"; '
+            f'echo "[host/clone][INFO] repo already exists, skipping clone"; '
             f"else {clone_cmd} || {{ "
-            f'STATUS=$?; echo "[host] git clone failed (exit $STATUS)"; '
+            f'STATUS=$?; echo "[host/clone][ERROR] git clone failed (exit $STATUS)"; '
             f'write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; '
             f"}}; fi"
         )
@@ -83,11 +83,11 @@ def build_git_clone_or_update_snippet(
         quoted_base = shlex.quote(desired_base)
         base_step = (
             f"cd {quoted_dest} && "
-            f'echo "[host] checking out base branch {desired_base}" && '
+            f'echo "[host/git][INFO] checking out base branch {desired_base}" && '
             f"git fetch origin && "
             f"(git checkout {quoted_base} 2>/dev/null || "
             f"git checkout -b {quoted_base} origin/{quoted_base} 2>/dev/null || "
-            f'echo "[host] warning: could not checkout {desired_base}, using default branch")'
+            f'echo "[host/git][WARN] could not checkout {desired_base}, using default branch")'
         )
         parts.append(base_step)
 
@@ -97,14 +97,14 @@ def build_git_clone_or_update_snippet(
         quoted_branch = shlex.quote(branch_name)
         branch_step = (
             f"cd {quoted_dest} && "
-            f'echo "[host] creating task branch {branch_name}" && '
+            f'echo "[host/git][INFO] creating task branch {branch_name}" && '
             f"(git checkout -b {quoted_branch} 2>/dev/null || "
             f"git checkout {quoted_branch} 2>/dev/null || "
-            f'echo "[host] warning: could not create branch {branch_name}")'
+            f'echo "[host/git][WARN] could not create branch {branch_name}")'
         )
         parts.append(branch_step)
-        parts.append(f'echo "[host] ready on branch {branch_name}"')
+        parts.append(f'echo "[host/clone][INFO] ready on branch {branch_name}"')
     else:
-        parts.append('echo "[host] repo ready"')
+        parts.append('echo "[host/clone][INFO] repo ready"')
 
     return " ; ".join(parts)
