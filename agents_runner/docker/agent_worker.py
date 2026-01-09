@@ -371,7 +371,11 @@ class DockerAgentWorker:
                         'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
                         'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
                         "if command -v yay >/dev/null 2>&1; then "
-                        "  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify wmctrl xdotool xorg-xprop xorg-xauth ttf-dejavu xorg-fonts-misc || true; "
+                        "  yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor wmctrl xdotool xorg-xprop xorg-xauth ttf-dejavu xorg-fonts-misc python-pip git || true; "
+                        "  pip install websockify --break-system-packages >/dev/null 2>&1 || true; "
+                        "  if [ ! -d /usr/share/novnc ]; then "
+                        "    git clone --depth 1 https://github.com/novnc/noVNC.git /usr/share/novnc >/dev/null 2>&1 || true; "
+                        "  fi; "
                         "fi; "
                         'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & '
                         "sleep 0.25; "
