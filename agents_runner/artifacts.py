@@ -75,7 +75,14 @@ def get_artifact_key(task_dict: dict[str, Any], env_name: str) -> bytes:
 
 def _get_artifacts_dir(task_id: str) -> Path:
     """Get artifacts directory for a task, creating if needed."""
-    artifacts_dir = Path.home() / ".midoriai" / "agents-runner" / "artifacts" / task_id
+    # Sanitize task_id to prevent path traversal
+    safe_task_id = "".join(
+        ch for ch in str(task_id or "") if ch.isalnum() or ch in {"-", "_", "."}
+    ).strip()
+    if not safe_task_id or safe_task_id in {".", "..", "..."}:
+        safe_task_id = "default"
+    
+    artifacts_dir = Path.home() / ".midoriai" / "agents-runner" / "artifacts" / safe_task_id
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     return artifacts_dir
 
@@ -494,18 +501,28 @@ def get_staging_artifact_path(task_id: str, filename: str) -> Path | None:
     Returns:
         Path to staging file, or None if not found
     """
+    # Sanitize filename BEFORE path construction (prevent path traversal)
+    safe_filename = "".join(
+        ch for ch in str(filename or "") if ch.isalnum() or ch in {"-", "_", ".", " "}
+    ).strip()
+    
+    if not safe_filename or safe_filename in {".", "..", "..."} or "/" in filename or "\\" in filename:
+        logger.error(f"Invalid or unsafe filename: {filename}")
+        return None
+    
     staging_dir = get_staging_dir(task_id)
-    file_path = staging_dir / filename
+    file_path = staging_dir / safe_filename
+    
+    # Security: Verify file is within staging directory (defense in depth)
+    try:
+        if file_path.resolve().parent != staging_dir.resolve():
+            logger.error(f"Path traversal attempt detected: {filename}")
+            return None
+    except Exception as e:
+        logger.error(f"Failed to resolve path {filename}: {e}")
+        return None
     
     if file_path.exists() and file_path.is_file():
-        # Security: Verify file is within staging directory (prevent path traversal)
-        try:
-            if file_path.resolve().parent != staging_dir.resolve():
-                logger.error(f"Path traversal attempt: {filename}")
-                return None
-        except Exception as e:
-            logger.error(f"Failed to resolve path {filename}: {e}")
-            return None
         return file_path
     
     return None

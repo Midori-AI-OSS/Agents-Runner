@@ -86,6 +86,6 @@ class AnimatedToolButton(QToolButton):
         self._glow_anim = QPropertyAnimation(self._glow_effect, b"opacity")
         self._glow_anim.setDuration(200)
         self._glow_anim.setStartValue(self._glow_effect.opacity())
-        self._glow_anim.setEndValue(1.0)
+        self._glow_anim.setEndValue(target)
         self._glow_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._glow_anim.start()

@@ -48,8 +48,36 @@ def _delete_checkout_dir(
     path = os.path.abspath(os.path.expanduser((dest_dir or "").strip()))
     if not path:
         raise GhManagementError("missing destination directory")
-    if path in {os.path.abspath(os.sep), os.path.expanduser("~")}:
-        raise GhManagementError(f"refusing to delete unsafe path: {path}")
+    
+    # Comprehensive protection against deleting critical system directories
+    unsafe_paths = {
+        os.path.abspath(os.sep),           # /
+        os.path.expanduser("~"),            # /home/user
+        "/usr",
+        "/etc",
+        "/var",
+        "/home",
+        "/opt",
+        "/boot",
+        "/sys",
+        "/proc",
+        "/dev",
+        "/lib",
+        "/lib64",
+        "/bin",
+        "/sbin",
+        "/root",
+        "/tmp",
+    }
+    
+    # Check if path is or starts with any unsafe path
+    for unsafe in unsafe_paths:
+        if path == unsafe or path.startswith(unsafe + os.sep):
+            # Allow paths under user's home directory (except home itself)
+            home_dir = os.path.expanduser("~")
+            if not (path.startswith(home_dir + os.sep) and path != home_dir):
+                raise GhManagementError(f"refusing to delete unsafe path: {path}")
+    
     if not os.path.isdir(path):
         return
     if on_log is not None:
