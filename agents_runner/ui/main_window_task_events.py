@@ -17,6 +17,7 @@ from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.log_format import format_log
+from agents_runner.log_format import format_log_display
 from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_task_payload
@@ -43,7 +44,7 @@ class _MainWindowTaskEventsMixin:
             task = deserialize_task(Task, payload)
             if task.logs:
                 task.logs = [
-                    prettify_log_line(line)
+                    format_log_display(prettify_log_line(line))
                     for line in task.logs
                     if isinstance(line, str)
                 ]
@@ -408,10 +409,11 @@ class _MainWindowTaskEventsMixin:
         if task is None:
             return
         cleaned = prettify_log_line(line)
-        task.logs.append(cleaned)
+        task.logs.append(cleaned)  # Store raw canonical format
         if len(task.logs) > 6000:
             task.logs = task.logs[-5000:]
-        self._details.append_log(task_id, cleaned)
+        display_line = format_log_display(cleaned)  # Format for display
+        self._details.append_log(task_id, display_line)
         self._schedule_save()
         if cleaned and self._dashboard.isVisible() and task.is_active():
             now_s = time.time()
