@@ -126,8 +126,14 @@ def _get_dockerfile_template() -> str:
 COPY desktop_install.sh /tmp/desktop_install.sh
 COPY desktop_setup.sh /tmp/desktop_setup.sh
 
+# Switch to root for system-level operations
+USER root
+
 # Run installation and setup
 RUN /bin/bash /tmp/desktop_install.sh && /bin/bash /tmp/desktop_setup.sh && rm -f /tmp/desktop_install.sh /tmp/desktop_setup.sh
+
+# Switch back to non-root user for runtime security
+USER midori-ai
 
 # Desktop environment is now ready
 """
