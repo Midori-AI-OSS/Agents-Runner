@@ -39,7 +39,7 @@ from agents_runner.docker.env_image_builder import ensure_env_image
 from agents_runner.prompts import load_prompt
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
-from agents_runner.ui.shell_templates import shell_log_statement
+from agents_runner.docker.shell_templates import shell_log_statement
 
 
 def _headless_desktop_prompt_instructions(*, display: str) -> str:
