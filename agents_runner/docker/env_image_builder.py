@@ -17,6 +17,7 @@ from typing import Callable
 
 from agents_runner.docker.process import _run_docker
 from agents_runner.docker.process import _has_image
+from agents_runner.log_format import format_log
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def _get_base_image_digest(base_image: str) -> str:
                 image_id = image_id[7:]
             return image_id[:16]
     except Exception as exc:
-        logger.warning(f"Failed to get image digest for {base_image}: {exc}")
+        logger.warning(format_log("env", "image", "WARN", f"Failed to get image digest for {base_image}: {exc}"))
     
     # Fallback to image name hash if inspect fails
     return hashlib.sha256(base_image.encode()).hexdigest()[:16]
@@ -83,7 +84,7 @@ def compute_env_cache_key(base_image_or_key: str, cached_preflight: str) -> str:
         try:
             base_digest = _get_base_image_digest(base_image_or_key)
         except Exception as exc:
-            logger.warning(f"Failed to get base image digest: {exc}, using fallback")
+            logger.warning(format_log("env", "image", "WARN", f"Failed to get base image digest: {exc}, using fallback"))
             base_digest = hashlib.sha256(base_image_or_key.encode()).hexdigest()[:16]
         base_key = base_digest
     
@@ -132,8 +133,8 @@ def build_env_image(
     if on_log is None:
         on_log = logger.info
     
-    on_log(f"[env-builder] building environment image: {tag}")
-    on_log(f"[env-builder] base image: {base_image}")
+    on_log(format_log("env", "build", "INFO", f"building environment image: {tag}"))
+    on_log(format_log("env", "build", "INFO", f"base image: {base_image}"))
     
     # Create temporary directory for build context
     with tempfile.TemporaryDirectory() as build_dir:
@@ -148,7 +149,7 @@ def build_env_image(
         dockerfile_path = build_path / "Dockerfile"
         dockerfile_path.write_text(dockerfile_content, encoding="utf-8")
         
-        on_log(f"[env-builder] build context prepared in {build_dir}")
+        on_log(format_log("env", "build", "INFO", f"build context prepared in {build_dir}"))
         
         # Build image
         try:
@@ -173,7 +174,7 @@ def build_env_image(
                 for line in process.stdout:
                     line = line.rstrip()
                     if line:
-                        on_log(f"[env-builder] {line}")
+                        on_log(format_log("env", "build", "INFO", line))
             
             # Wait for completion
             return_code = process.wait(timeout=600.0)  # 10 minute timeout
@@ -181,7 +182,7 @@ def build_env_image(
             if return_code != 0:
                 raise RuntimeError(f"Docker build failed with exit code {return_code}")
             
-            on_log(f"[env-builder] successfully built: {tag}")
+            on_log(format_log("env", "build", "INFO", f"successfully built: {tag}"))
             
         except subprocess.TimeoutExpired:
             process.kill()
@@ -219,7 +220,7 @@ def ensure_env_image(
     
     # If no cached preflight, return the base image
     if not (cached_preflight or "").strip():
-        on_log("[env-builder] no cached preflight script; skipping env cache")
+        on_log(format_log("env", "image", "INFO", "no cached preflight script; skipping env cache"))
         return base_image
     
     try:
@@ -227,7 +228,7 @@ def ensure_env_image(
         if desktop_key:
             # Use desktop image as base
             actual_base = f"agent-runner-desktop:{desktop_key}"
-            on_log(f"[env-builder] using desktop image as base: {actual_base}")
+            on_log(format_log("env", "image", "INFO", f"using desktop image as base: {actual_base}"))
             base_key_for_hash = desktop_key
         else:
             # Use original base image
@@ -238,16 +239,16 @@ def ensure_env_image(
         cache_key = compute_env_cache_key(base_key_for_hash, cached_preflight)
         cached_image_tag = f"agent-runner-env:{cache_key}"
         
-        on_log(f"[env-builder] checking for cached environment image: {cached_image_tag}")
+        on_log(format_log("env", "image", "INFO", f"checking for cached environment image: {cached_image_tag}"))
         
         # Check if cached image exists
         if _has_image(cached_image_tag):
-            on_log(f"[env-builder] cache HIT: reusing existing image")
+            on_log(format_log("env", "image", "INFO", "cache HIT: reusing existing image"))
             return cached_image_tag
         
         # Cache miss - need to build
-        on_log(f"[env-builder] cache MISS: building new image")
-        on_log(f"[env-builder] cache key: {cache_key}")
+        on_log(format_log("env", "image", "INFO", "cache MISS: building new image"))
+        on_log(format_log("env", "image", "INFO", f"cache key: {cache_key}"))
         
         # Build the image
         build_env_image(actual_base, cached_image_tag, cached_preflight, on_log=on_log)
@@ -256,7 +257,7 @@ def ensure_env_image(
         
     except Exception as exc:
         # Log error but don't fail - fall back to runtime installation
-        on_log(f"[env-builder] ERROR: {exc}")
-        on_log(f"[env-builder] falling back to runtime preflight execution")
-        logger.exception("Failed to build environment image, falling back to runtime")
+        on_log(format_log("env", "image", "ERROR", str(exc)))
+        on_log(format_log("env", "image", "WARN", "falling back to runtime preflight execution"))
+        logger.exception(format_log("env", "image", "ERROR", "Failed to build environment image, falling back to runtime"))
         return base_image
