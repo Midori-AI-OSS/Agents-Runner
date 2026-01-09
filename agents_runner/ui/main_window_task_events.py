@@ -553,13 +553,24 @@ class _MainWindowTaskEventsMixin:
 
         self._try_start_queued_tasks()
 
-        if (
-            user_stop is None
-            and
-            normalize_gh_management_mode(task.gh_management_mode) == GH_MANAGEMENT_GITHUB
-            and task.gh_repo_root
-            and task.gh_branch
-        ):
+        # Determine if PR should be created and log skip reason if not
+        should_create_pr = False
+        skip_reason = None
+
+        if user_stop is not None:
+            skip_reason = f"user stopped task ({user_stop})"
+        elif normalize_gh_management_mode(task.gh_management_mode) != GH_MANAGEMENT_GITHUB:
+            skip_reason = f"not a GitHub-managed environment (mode={task.gh_management_mode})"
+        elif not task.gh_repo_root:
+            skip_reason = "missing repository root information"
+        elif not task.gh_branch:
+            skip_reason = "missing branch information"
+        elif task.gh_pr_url:
+            skip_reason = "PR already created"
+        else:
+            should_create_pr = True
+
+        if should_create_pr:
             repo_root = str(task.gh_repo_root or "").strip()
             branch = str(task.gh_branch or "").strip()
             base_branch = str(task.gh_base_branch or "").strip()
@@ -582,6 +593,8 @@ class _MainWindowTaskEventsMixin:
                 ),
                 daemon=True,
             ).start()
+        else:
+            self._on_task_log(task_id, f"[gh] PR creation skipped: {skip_reason}")
 
     def _start_artifact_finalization(self, task: Task) -> None:
         if getattr(task, "_artifact_finalization_started", False):
