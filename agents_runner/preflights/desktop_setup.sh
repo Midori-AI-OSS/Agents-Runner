@@ -28,20 +28,20 @@ fi
 
 echo "[desktop-setup] Found noVNC at: ${NOVNC_WEB}"
 echo "[desktop-setup] Saving noVNC path to /etc/default/novnc-path..."
-mkdir -p /etc/default
-echo "NOVNC_WEB=${NOVNC_WEB}" > /etc/default/novnc-path
-chmod 644 /etc/default/novnc-path
+sudo mkdir -p /etc/default
+echo "NOVNC_WEB=${NOVNC_WEB}" | sudo tee /etc/default/novnc-path > /dev/null
+sudo chmod 644 /etc/default/novnc-path
 
 # Set environment defaults
 echo "[desktop-setup] Setting environment defaults in /etc/profile.d/desktop-env.sh..."
-mkdir -p /etc/profile.d
-cat > /etc/profile.d/desktop-env.sh <<'EOF'
+sudo mkdir -p /etc/profile.d
+sudo tee /etc/profile.d/desktop-env.sh > /dev/null <<'EOF'
 # Desktop environment defaults
 export DISPLAY="${DISPLAY:-:1}"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"
 EOF
-chmod 644 /etc/profile.d/desktop-env.sh
+sudo chmod 644 /etc/profile.d/desktop-env.sh
 
 echo "[desktop-setup] Desktop environment setup complete"
 echo "[desktop-setup] noVNC path: ${NOVNC_WEB}"
