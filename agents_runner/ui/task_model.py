@@ -32,6 +32,7 @@ class Task:
     gh_branch: str = ""
     gh_pr_url: str = ""
     gh_pr_metadata_path: str = ""
+    gh_management_locked: bool = False
     agent_cli: str = ""
     agent_instance_id: str = ""
     agent_cli_args: str = ""

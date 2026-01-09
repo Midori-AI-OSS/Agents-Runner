@@ -104,6 +104,9 @@ class _MainWindowPreflightMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
+        if env:
+            task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
+
         config = DockerRunnerConfig(
             task_id=task_id,
             image=image,
