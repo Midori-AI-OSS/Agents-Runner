@@ -28,6 +28,8 @@ from agents_runner.docker.process import _inspect_state
 from agents_runner.docker.process import _pull_image
 from agents_runner.docker.process import _run_docker
 from agents_runner.docker.utils import _resolve_workspace_mount
+from agents_runner.log_format import format_log
+from agents_runner.log_format import wrap_container_log
 from agents_runner.docker.utils import _write_preflight_script
 
 
@@ -86,9 +88,9 @@ class DockerPreflightWorker:
                         on_log=self._on_log,
                     )
                     if result.get("branch"):
-                        self._on_log(f"[gh] ready on branch {result['branch']}")
+                        self._on_log(format_log("gh", "repo", "INFO", f"ready on branch {result['branch']}"))
                 except (GhManagementError, Exception) as exc:
-                    self._on_log(f"[gh] ERROR: {exc}")
+                    self._on_log(format_log("gh", "repo", "ERROR", str(exc)))
                     self._on_done(1, str(exc))
                     return
 
@@ -96,11 +98,16 @@ class DockerPreflightWorker:
             forced_platform = docker_platform_for_pixelarch()
             platform_args = docker_platform_args_for_pixelarch()
             if forced_platform:
-                self._on_log(f"[host] forcing Docker platform: {forced_platform}")
+                self._on_log(format_log("host", "none", "INFO", f"forcing Docker platform: {forced_platform}"))
                 rosetta = has_rosetta()
                 if rosetta is False:
                     self._on_log(
-                        f"[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"
+                        format_log(
+                            "host",
+                            "none",
+                            "WARN",
+                            f"Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}",
+                        )
                     )
             agent_cli = normalize_agent(self._config.agent_cli)
             config_container_dir = container_config_dir(agent_cli)
@@ -112,10 +119,15 @@ class DockerPreflightWorker:
             )
             if host_mount != self._config.host_workdir:
                 self._on_log(
-                    f"[host] mounting workspace root: {host_mount} (selected {self._config.host_workdir})"
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"mounting workspace root: {host_mount} (selected {self._config.host_workdir})",
+                    )
                 )
             if container_cwd != self._config.container_workdir:
-                self._on_log(f"[host] container workdir: {container_cwd}")
+                self._on_log(format_log("host", "none", "INFO", f"container workdir: {container_cwd}"))
             container_name = f"codex-preflight-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
             settings_container_path = (
@@ -149,27 +161,32 @@ class DockerPreflightWorker:
 
             if self._config.pull_before_run:
                 self._on_state({"Status": "pulling"})
-                self._on_log(f"[host] docker pull {self._config.image}")
+                self._on_log(format_log("host", "none", "INFO", f"docker pull {self._config.image}"))
                 _pull_image(self._config.image, platform_args=platform_args)
-                self._on_log("[host] pull complete")
+                self._on_log(format_log("host", "none", "INFO", "pull complete"))
             elif forced_platform and not _has_platform_image(
                 self._config.image, forced_platform
             ):
                 self._on_state({"Status": "pulling"})
-                self._on_log(f"[host] image missing; docker pull {self._config.image}")
+                self._on_log(format_log("host", "none", "INFO", f"image missing; docker pull {self._config.image}"))
                 _pull_image(self._config.image, platform_args=platform_args)
-                self._on_log("[host] pull complete")
+                self._on_log(format_log("host", "none", "INFO", "pull complete"))
             elif not forced_platform and not _has_image(self._config.image):
                 self._on_state({"Status": "pulling"})
-                self._on_log(f"[host] image missing; docker pull {self._config.image}")
+                self._on_log(format_log("host", "none", "INFO", f"image missing; docker pull {self._config.image}"))
                 _pull_image(self._config.image, platform_args=platform_args)
-                self._on_log("[host] pull complete")
+                self._on_log(format_log("host", "none", "INFO", "pull complete"))
 
             preflight_clause = ""
             preflight_mounts: list[str] = []
             if settings_preflight_tmp_path is not None:
                 self._on_log(
-                    f"[host] settings preflight enabled; mounting -> {settings_container_path} (ro)"
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"settings preflight enabled; mounting -> {settings_container_path} (ro)",
+                    )
                 )
                 preflight_mounts.extend(
                     [
@@ -179,14 +196,19 @@ class DockerPreflightWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                    'echo "[preflight] settings: running"; '
+                    'echo "[env/setup][INFO] settings: running"; '
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    'echo "[preflight] settings: done"; '
+                    'echo "[env/setup][INFO] settings: done"; '
                 )
 
             if environment_preflight_tmp_path is not None:
                 self._on_log(
-                    f"[host] environment preflight enabled; mounting -> {environment_container_path} (ro)"
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"environment preflight enabled; mounting -> {environment_container_path} (ro)",
+                    )
                 )
                 preflight_mounts.extend(
                     [
@@ -196,9 +218,9 @@ class DockerPreflightWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                    'echo "[preflight] environment: running"; '
+                    'echo "[env/setup][INFO] environment: running"; '
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    'echo "[preflight] environment: done"; '
+                    'echo "[env/setup][INFO] environment: done"; '
                 )
 
             env_args: list[str] = []
@@ -298,7 +320,8 @@ class DockerPreflightWorker:
                         except Exception:
                             chunk = ""
                         if chunk:
-                            self._on_log(chunk.rstrip("\n"))
+                            stream = "stdout" if key.fileobj == logs_proc.stdout else "stderr"
+                            self._on_log(wrap_container_log(self._container_id, stream, chunk.rstrip("\n")))
             finally:
                 if logs_proc.poll() is None:
                     logs_proc.terminate()

@@ -37,6 +37,8 @@ from agents_runner.docker.image_builder import ensure_desktop_image
 from agents_runner.docker.image_builder import compute_desktop_cache_key
 from agents_runner.docker.env_image_builder import ensure_env_image
 from agents_runner.prompts import load_prompt
+from agents_runner.log_format import format_log
+from agents_runner.log_format import wrap_container_log
 
 
 def _headless_desktop_prompt_instructions(*, display: str) -> str:
@@ -123,7 +125,7 @@ class DockerAgentWorker:
                     self._gh_base_branch = str(result.get("base_branch") or "") or None
                     self._gh_branch = str(result.get("branch") or "") or None
                     if self._gh_branch:
-                        self._on_log(f"[gh] ready on branch {self._gh_branch}")
+                        self._on_log(format_log("gh", "repo", "INFO", f"ready on branch {self._gh_branch}"))
                     
                     # Update GitHub context file after clone (if context file exists)
                     if self._config.gh_context_file_path and self._gh_repo_root:
@@ -146,25 +148,25 @@ class DockerAgentWorker:
                                     self._config.gh_context_file_path,
                                     github_context=github_context,
                                 )
-                                self._on_log("[gh] updated GitHub context file")
+                                self._on_log(format_log("gh", "repo", "INFO", "updated GitHub context file"))
                             else:
                                 # Fix 1.1: Log when git_info is None (missing else clause)
-                                self._on_log("[gh] WARNING: Could not detect git repository information")
-                                self._on_log(f"[gh] WARNING: Checked path: {self._gh_repo_root}")
-                                self._on_log("[gh] WARNING: Agent will execute without repository context")
-                                self._on_log("[gh] INFO: This may affect code quality but PR creation should still work")
-                                self._on_log("[gh] TIP: Check repository clone logs above for errors")
+                                self._on_log(format_log("gh", "repo", "WARN", "Could not detect git repository information"))
+                                self._on_log(format_log("gh", "repo", "WARN", f"Checked path: {self._gh_repo_root}"))
+                                self._on_log(format_log("gh", "repo", "WARN", "Agent will execute without repository context"))
+                                self._on_log(format_log("gh", "repo", "INFO", "This may affect code quality but PR creation should still work"))
+                                self._on_log(format_log("gh", "repo", "INFO", "TIP: Check repository clone logs above for errors"))
                         except Exception as exc:
                             # Fix 1.2: Improve exception logging with details and impact
-                            self._on_log(f"[gh] ERROR: Failed to update GitHub context: {exc}")
-                            self._on_log(f"[gh] ERROR: Context file path: {self._config.gh_context_file_path}")
-                            self._on_log(f"[gh] ERROR: Repository root: {self._gh_repo_root}")
-                            self._on_log("[gh] WARNING: Agent will execute without repository context")
-                            self._on_log("[gh] INFO: This may affect code quality but PR creation should still work")
+                            self._on_log(format_log("gh", "repo", "ERROR", f"Failed to update GitHub context: {exc}"))
+                            self._on_log(format_log("gh", "repo", "ERROR", f"Context file path: {self._config.gh_context_file_path}"))
+                            self._on_log(format_log("gh", "repo", "ERROR", f"Repository root: {self._gh_repo_root}"))
+                            self._on_log(format_log("gh", "repo", "WARN", "Agent will execute without repository context"))
+                            self._on_log(format_log("gh", "repo", "INFO", "This may affect code quality but PR creation should still work"))
                             # Don't fail the task if context update fails
                 except (GhManagementError, Exception) as exc:
-                    self._on_log(f"[gh] ERROR: {exc}")
-                    self._on_log("[gh] GitHub setup failed; PR creation will be unavailable for this task")
+                    self._on_log(format_log("gh", "repo", "ERROR", str(exc)))
+                    self._on_log(format_log("gh", "repo", "ERROR", "GitHub setup failed; PR creation will be unavailable for this task"))
                     self._on_done(1, str(exc), [])
                     return
 
@@ -172,11 +174,16 @@ class DockerAgentWorker:
             forced_platform = docker_platform_for_pixelarch()
             platform_args = docker_platform_args_for_pixelarch()
             if forced_platform:
-                self._on_log(f"[host] forcing Docker platform: {forced_platform}")
+                self._on_log(format_log("host", "none", "INFO", f"forcing Docker platform: {forced_platform}"))
                 rosetta = has_rosetta()
                 if rosetta is False:
                     self._on_log(
-                        f"[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"
+                        format_log(
+                            "host",
+                            "none",
+                            "WARN",
+                            f"Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}",
+                        )
                     )
             agent_cli = normalize_agent(self._config.agent_cli)
             config_container_dir = container_config_dir(agent_cli)
@@ -188,10 +195,15 @@ class DockerAgentWorker:
             )
             if host_mount != self._config.host_workdir:
                 self._on_log(
-                    f"[host] mounting workspace root: {host_mount} (selected {self._config.host_workdir})"
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"mounting workspace root: {host_mount} (selected {self._config.host_workdir})",
+                    )
                 )
             if container_cwd != self._config.container_workdir:
-                self._on_log(f"[host] container workdir: {container_cwd}")
+                self._on_log(format_log("host", "none", "INFO", f"container workdir: {container_cwd}"))
             container_name = f"agents-runner-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
             
@@ -201,7 +213,7 @@ class DockerAgentWorker:
                 / task_token / "staging"
             )
             artifacts_staging_dir.mkdir(parents=True, exist_ok=True)
-            self._on_log(f"[host] artifacts staging: {artifacts_staging_dir}")
+            self._on_log(format_log("host", "none", "INFO", f"artifacts staging: {artifacts_staging_dir}"))
             
             settings_container_path = (
                 self._config.container_settings_preflight_path.replace(
@@ -234,21 +246,21 @@ class DockerAgentWorker:
 
             if self._config.pull_before_run:
                 self._on_state({"Status": "pulling"})
-                self._on_log(f"[host] docker pull {self._config.image}")
+                self._on_log(format_log("host", "none", "INFO", f"docker pull {self._config.image}"))
                 _pull_image(self._config.image, platform_args=platform_args)
-                self._on_log("[host] pull complete")
+                self._on_log(format_log("host", "none", "INFO", "pull complete"))
             elif forced_platform and not _has_platform_image(
                 self._config.image, forced_platform
             ):
                 self._on_state({"Status": "pulling"})
-                self._on_log(f"[host] image missing; docker pull {self._config.image}")
+                self._on_log(format_log("host", "none", "INFO", f"image missing; docker pull {self._config.image}"))
                 _pull_image(self._config.image, platform_args=platform_args)
-                self._on_log("[host] pull complete")
+                self._on_log(format_log("host", "none", "INFO", "pull complete"))
             elif not forced_platform and not _has_image(self._config.image):
                 self._on_state({"Status": "pulling"})
-                self._on_log(f"[host] image missing; docker pull {self._config.image}")
+                self._on_log(format_log("host", "none", "INFO", f"image missing; docker pull {self._config.image}"))
                 _pull_image(self._config.image, platform_args=platform_args)
-                self._on_log("[host] pull complete")
+                self._on_log(format_log("host", "none", "INFO", "pull complete"))
             
             # Determine which image to use based on desktop cache setting
             runtime_image = self._config.image
@@ -258,20 +270,20 @@ class DockerAgentWorker:
             
             if desktop_enabled and desktop_cached:
                 # Try to use/build cached desktop image
-                self._on_log("[desktop] cache enabled; checking for cached image")
+                self._on_log(format_log("desktop", "setup", "INFO", "cache enabled; checking for cached image"))
                 try:
                     runtime_image = ensure_desktop_image(
                         self._config.image,
                         on_log=self._on_log,
                     )
                     if runtime_image != self._config.image:
-                        self._on_log(f"[desktop] using cached image: {runtime_image}")
+                        self._on_log(format_log("desktop", "setup", "INFO", f"using cached image: {runtime_image}"))
                         # Extract cache key from tag for env caching
                         desktop_cache_key = compute_desktop_cache_key(self._config.image)
                     else:
-                        self._on_log("[desktop] cache build failed; falling back to runtime install")
+                        self._on_log(format_log("desktop", "setup", "WARN", "cache build failed; falling back to runtime install"))
                 except Exception as exc:
-                    self._on_log(f"[desktop] cache error: {exc}; falling back to runtime install")
+                    self._on_log(format_log("desktop", "setup", "ERROR", f"cache error: {exc}; falling back to runtime install"))
                     runtime_image = self._config.image
 
             # Apply environment-level caching if enabled
@@ -280,7 +292,7 @@ class DockerAgentWorker:
             
             if container_caching_enabled and cached_preflight_script:
                 # Try to use/build cached environment image
-                self._on_log("[env-cache] container caching enabled; checking for cached image")
+                self._on_log(format_log("env", "cache", "INFO", "container caching enabled; checking for cached image"))
                 try:
                     runtime_image = ensure_env_image(
                         self._config.image,
@@ -289,18 +301,18 @@ class DockerAgentWorker:
                         on_log=self._on_log,
                     )
                     if runtime_image.startswith("agent-runner-env:"):
-                        self._on_log(f"[env-cache] using cached environment image: {runtime_image}")
+                        self._on_log(format_log("env", "cache", "INFO", f"using cached environment image: {runtime_image}"))
                     else:
-                        self._on_log("[env-cache] cache build failed; falling back to runtime preflight")
+                        self._on_log(format_log("env", "cache", "WARN", "cache build failed; falling back to runtime preflight"))
                 except Exception as exc:
-                    self._on_log(f"[env-cache] error: {exc}; falling back to runtime preflight")
+                    self._on_log(format_log("env", "cache", "ERROR", f"error: {exc}; falling back to runtime preflight"))
                     # runtime_image stays as-is (desktop or base image)
             elif container_caching_enabled and not cached_preflight_script:
-                self._on_log("[env-cache] container caching enabled but no cached preflight script configured")
+                self._on_log(format_log("env", "cache", "WARN", "container caching enabled but no cached preflight script configured"))
 
             if agent_cli == "codex" and not _is_git_repo_root(host_mount):
                 self._on_log(
-                    "[host] .git missing in workdir; adding --skip-git-repo-check"
+                    format_log("host", "none", "INFO", ".git missing in workdir; adding --skip-git-repo-check")
                 )
 
             desktop_enabled = bool(self._config.headless_desktop_enabled)
@@ -312,7 +324,7 @@ class DockerAgentWorker:
                     f"{prompt_for_agent.rstrip()}{_headless_desktop_prompt_instructions(display=desktop_display)}"
                 )
                 self._on_log(
-                    "[desktop] added desktop context to prompt (non-interactive)"
+                    format_log("desktop", "setup", "INFO", "added desktop context to prompt (non-interactive)")
                 )
 
             agent_args = build_noninteractive_cmd(
@@ -338,9 +350,9 @@ class DockerAgentWorker:
                 
                 if using_cached_image:
                     # Desktop already installed in cached image - just start services
-                    self._on_log("[desktop] using pre-installed desktop from cached image")
+                    self._on_log(format_log("desktop", "setup", "INFO", "using pre-installed desktop from cached image"))
                     preflight_clause += (
-                        'echo "[desktop] starting headless desktop (noVNC)"; '
+                        'echo "[desktop/vnc][INFO] starting headless desktop (noVNC)"; '
                         f"export DISPLAY={desktop_display}; "
                         'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
                         'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
@@ -367,16 +379,16 @@ class DockerAgentWorker:
                         'if [ -n "${NOVNC_WEB}" ]; then '
                         '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
                         'else '
-                        '  echo "[desktop] ERROR: noVNC web root not found" >&2; '
+                        '  echo "[desktop/vnc][ERROR] noVNC web root not found" >&2; '
                         'fi; '
-                        'echo "[desktop] ready"; '
-                        'echo "[desktop] DISPLAY=${DISPLAY}"; '
-                        'echo "[desktop] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
+                        'echo "[desktop/vnc][INFO] ready"; '
+                        'echo "[desktop/vnc][INFO] DISPLAY=${DISPLAY}"; '
+                        'echo "[desktop/vnc][INFO] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
                     )
                 else:
                     # Original behavior: install packages at runtime
                     preflight_clause += (
-                        'echo "[desktop] starting headless desktop (noVNC)"; '
+                        'echo "[desktop/vnc][INFO] starting headless desktop (noVNC)"; '
                         f"export DISPLAY={desktop_display}; "
                         'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
                         'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
@@ -395,18 +407,23 @@ class DockerAgentWorker:
                         '  if [ -d "${candidate}" ]; then NOVNC_WEB="${candidate}"; break; fi; '
                         "done; "
                         'if [ -z "${NOVNC_WEB}" ]; then '
-                        '  echo "[desktop] ERROR: noVNC web root not found" >&2; '
+                        '  echo "[desktop/vnc][ERROR] noVNC web root not found" >&2; '
                         "else "
                         '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
                         "fi; "
-                        'echo "[desktop] ready"; '
-                        'echo "[desktop] DISPLAY=${DISPLAY}"; '
-                        'echo "[desktop] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
+                        'echo "[desktop/vnc][INFO] ready"; '
+                        'echo "[desktop/vnc][INFO] DISPLAY=${DISPLAY}"; '
+                        'echo "[desktop/vnc][INFO] screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png"; '
                     )
             
             if settings_preflight_tmp_path is not None:
                 self._on_log(
-                    f"[host] settings preflight enabled; mounting -> {settings_container_path} (ro)"
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"settings preflight enabled; mounting -> {settings_container_path} (ro)",
+                    )
                 )
                 preflight_mounts.extend(
                     [
@@ -416,14 +433,19 @@ class DockerAgentWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                    'echo "[preflight] settings: running"; '
+                    'echo "[env/setup][INFO] settings: running"; '
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    'echo "[preflight] settings: done"; '
+                    'echo "[env/setup][INFO] settings: done"; '
                 )
 
             if environment_preflight_tmp_path is not None:
                 self._on_log(
-                    f"[host] environment preflight enabled; mounting -> {environment_container_path} (ro)"
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"environment preflight enabled; mounting -> {environment_container_path} (ro)",
+                    )
                 )
                 preflight_mounts.extend(
                     [
@@ -433,9 +455,9 @@ class DockerAgentWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                    'echo "[preflight] environment: running"; '
+                    'echo "[env/setup][INFO] environment: running"; '
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    'echo "[preflight] environment: done"; '
+                    'echo "[env/setup][INFO] environment: done"; '
                 )
 
             env_args: list[str] = []
@@ -534,10 +556,10 @@ class DockerAgentWorker:
                             f"http://127.0.0.1:{host_port}/vnc.html"
                         )
                         self._on_log(
-                            f"[desktop] noVNC URL: {desktop_state['NoVncUrl']}"
+                            format_log("desktop", "vnc", "INFO", f"noVNC URL: {desktop_state['NoVncUrl']}")
                         )
                 except Exception as exc:
-                    self._on_log(f"[desktop] ERROR: {exc}")
+                    self._on_log(format_log("desktop", "vnc", "ERROR", str(exc)))
 
             try:
                 state = _inspect_state(self._container_id)
@@ -588,7 +610,8 @@ class DockerAgentWorker:
                         except Exception:
                             chunk = ""
                         if chunk:
-                            self._on_log(chunk.rstrip("\n"))
+                            stream = "stdout" if key.fileobj == logs_proc.stdout else "stderr"
+                            self._on_log(wrap_container_log(self._container_id, stream, chunk.rstrip("\n")))
             finally:
                 if logs_proc.poll() is None:
                     logs_proc.terminate()
