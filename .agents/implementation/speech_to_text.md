@@ -2,8 +2,8 @@
 
 ## UI
 
-- `New task` page includes a `Voice` button overlaid in the bottom-right of the prompt editor.
-- Clicking `Voice` starts microphone recording; clicking `Stop` ends recording and transcribes into the prompt.
+- `New task` page includes a microphone icon button overlaid in the bottom-right of the prompt editor.
+- Clicking the microphone starts recording; clicking again stops recording and transcribes into the prompt.
 
 ## Settings
 
