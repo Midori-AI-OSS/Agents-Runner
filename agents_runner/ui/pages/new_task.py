@@ -266,8 +266,9 @@ class NewTaskPage(QWidget):
             self,
             "Confirm Auto Base Branch",
             "You have selected 'Auto' as the base branch.\n\n"
-            "The agent will automatically determine the best base branch "
-            "for this task based on the repository state.\n\n"
+            "Auto uses the repository's default branch as the base "
+            "(commonly 'main' or 'master').\n\n"
+            "If you need a specific base branch, select it from the dropdown.\n\n"
             "Do you want to proceed?",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No  # Default to No for safety
@@ -728,7 +729,7 @@ class NewTaskPage(QWidget):
         self._base_branch.blockSignals(True)
         try:
             self._base_branch.clear()
-            self._base_branch.addItem("Auto (default)", "")
+            self._base_branch.addItem("Auto (repo default)", "")
             for name in branches or []:
                 b = str(name or "").strip()
                 if not b:

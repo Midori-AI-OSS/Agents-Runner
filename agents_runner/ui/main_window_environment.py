@@ -175,7 +175,14 @@ class _MainWindowEnvironmentMixin:
         self._new_task.set_environment_stains(stains)
         self._new_task.set_environment_management_modes(management_modes)
         self._new_task.set_gh_locked_envs(
-            {e.env_id for e in envs if bool(getattr(e, "gh_management_locked", False))}
+            {
+                e.env_id
+                for e in envs
+                if normalize_gh_management_mode(
+                    str(getattr(e, "gh_management_mode", GH_MANAGEMENT_NONE) or "")
+                )
+                == GH_MANAGEMENT_GITHUB
+            }
         )
         self._dashboard.set_environment_filter_options(
             [(e.env_id, e.name or e.env_id) for e in envs]

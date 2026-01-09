@@ -8,11 +8,12 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QObject, QEvent, Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QToolButton, QFileDialog, QSplitter, QPlainTextEdit,
+    QSizePolicy,
 )
 
 from agents_runner.artifacts import (
@@ -50,6 +51,7 @@ class ArtifactsTab(QWidget):
         self._temp_files: list[Path] = []
         self._mode: str = "encrypted"  # "staging" or "encrypted"
         self._file_watcher: ArtifactFileWatcher | None = None
+        self._thumbnail_original: QPixmap | None = None
         self._refresh_timer = QTimer()
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.timeout.connect(self._refresh_file_list)
@@ -62,6 +64,7 @@ class ArtifactsTab(QWidget):
         splitter.setChildrenCollapsible(False)
 
         left_panel = GlassCard()
+        left_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(18, 16, 18, 16)
         left_layout.setSpacing(10)
@@ -90,6 +93,7 @@ class ArtifactsTab(QWidget):
         left_layout.addWidget(self._artifact_list, 1)
 
         right_panel = GlassCard()
+        right_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(18, 16, 18, 16)
         right_layout.setSpacing(12)
@@ -98,6 +102,7 @@ class ArtifactsTab(QWidget):
         preview_title.setStyleSheet("font-size: 14px; font-weight: 650;")
 
         self._preview_area = QWidget()
+        self._preview_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         preview_layout = QVBoxLayout(self._preview_area)
         preview_layout.setContentsMargins(0, 0, 0, 0)
         preview_layout.setSpacing(8)
@@ -106,23 +111,25 @@ class ArtifactsTab(QWidget):
         self._preview_label.setAlignment(Qt.AlignCenter)
         self._preview_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
         self._preview_label.setWordWrap(True)
+        self._preview_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self._thumbnail = QLabel()
         self._thumbnail.setAlignment(Qt.AlignCenter)
-        self._thumbnail.setMinimumSize(200, 200)
+        self._thumbnail.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self._thumbnail.setMinimumSize(1, 1)
+        self._thumbnail.installEventFilter(self)
         self._thumbnail.hide()
 
         self._text_preview = QPlainTextEdit()
         self._text_preview.setReadOnly(True)
         self._text_preview.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._text_preview.setMaximumBlockCount(5000)
+        self._text_preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._text_preview.hide()
 
-        preview_layout.addStretch(1)
         preview_layout.addWidget(self._preview_label)
-        preview_layout.addWidget(self._thumbnail)
+        preview_layout.addWidget(self._thumbnail, 1)
         preview_layout.addWidget(self._text_preview, 1)
-        preview_layout.addStretch(1)
 
         self._empty_state = QLabel("No artifacts collected for this task")
         self._empty_state.setAlignment(Qt.AlignCenter)
@@ -171,6 +178,22 @@ class ArtifactsTab(QWidget):
 
         self._empty_state.show()
         self._preview_area.hide()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is self._thumbnail and event.type() == QEvent.Type.Resize:
+            self._update_thumbnail_scale()
+        return super().eventFilter(watched, event)
+
+    def _update_thumbnail_scale(self) -> None:
+        if self._thumbnail_original is None:
+            return
+        target_size = self._thumbnail.contentsRect().size()
+        if target_size.isEmpty():
+            return
+        scaled = self._thumbnail_original.scaled(
+            target_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+        )
+        self._thumbnail.setPixmap(scaled)
 
     def set_task(self, task: Task) -> None:
         """Load artifacts for a task and determine mode based on status."""
@@ -328,6 +351,7 @@ class ArtifactsTab(QWidget):
         self._thumbnail.hide()
         self._text_preview.hide()
         self._preview_label.show()
+        self._thumbnail_original = None
         
         # Enable edit only for staging text files
         if isinstance(artifact, StagingArtifactMeta):
@@ -374,8 +398,8 @@ class ArtifactsTab(QWidget):
         try:
             pixmap = QPixmap(str(artifact.path))
             if not pixmap.isNull():
-                scaled = pixmap.scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                self._thumbnail.setPixmap(scaled)
+                self._thumbnail_original = pixmap
+                self._update_thumbnail_scale()
                 self._thumbnail.show()
             else:
                 logger.warning(f"Failed to load image: {artifact.filename}")
@@ -398,8 +422,8 @@ class ArtifactsTab(QWidget):
                 if decrypt_artifact(task_dict, env_name, artifact.uuid, tmp_path):
                     pixmap = QPixmap(str(tmp_path))
                     if not pixmap.isNull():
-                        scaled = pixmap.scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                        self._thumbnail.setPixmap(scaled)
+                        self._thumbnail_original = pixmap
+                        self._update_thumbnail_scale()
                         self._thumbnail.show()
                     else:
                         logger.warning(f"Failed to load image: {artifact.original_filename}")
