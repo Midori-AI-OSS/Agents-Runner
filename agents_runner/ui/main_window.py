@@ -188,6 +188,7 @@ class MainWindow(
         self._new_task.environment_changed.connect(self._on_new_task_env_changed)
         self._new_task.back_requested.connect(self._show_dashboard)
         self._details = TaskDetailsPage()
+        self._details.set_environments(self._environments)
         self._details.back_requested.connect(self._show_dashboard)
         self._details.pr_requested.connect(self._on_task_pr_requested)
         self._details.container_action_requested.connect(self._on_task_container_action)

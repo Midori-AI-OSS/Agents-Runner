@@ -93,6 +93,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         pr_metadata_path: str | None = None,
         agent_cli: str = "",
         agent_cli_args: str = "",
+        is_override: bool = False,
     ) -> None:
         if not repo_root or not branch:
             return
@@ -139,6 +140,10 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             body = str(metadata.body or "").strip() if metadata is not None else ""
             if not body:
                 body = default_body
+            
+            # Add override note for non-GitHub management modes
+            if is_override:
+                body += "\n\n---\n**Note:** This is an override PR created manually for a git-locked environment."
 
             self.host_log.emit(
                 task_id, f"[gh] preparing PR from {branch} -> {base_branch or 'auto'}"

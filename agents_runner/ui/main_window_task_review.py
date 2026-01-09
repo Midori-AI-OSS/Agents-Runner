@@ -18,29 +18,38 @@ class _MainWindowTaskReviewMixin:
             return
 
         env = self._environments.get(task.environment_id)
-        if env is not None and not bool(getattr(env, "gh_management_locked", False)):
+        is_git_locked = bool(getattr(env, "gh_management_locked", False)) if env else False
+        
+        if not is_git_locked:
             QMessageBox.information(
                 self,
                 "PR not available",
-                "PR creation is only available for GitHub-locked environments.",
+                "PR creation is only available for git-locked environments.",
             )
             return
 
-        if (
-            normalize_gh_management_mode(task.gh_management_mode)
-            != GH_MANAGEMENT_GITHUB
-        ):
-            return
+        gh_mode = normalize_gh_management_mode(task.gh_management_mode)
+        is_github_mode = gh_mode == GH_MANAGEMENT_GITHUB
 
+        # Handle existing PR URL
         pr_url = str(task.gh_pr_url or "").strip()
         if pr_url.startswith("http"):
             if not QDesktopServices.openUrl(QUrl(pr_url)):
                 QMessageBox.warning(self, "Failed to open PR", pr_url)
             return
 
+        # Get repo root and branch, setting defaults for non-GitHub modes
         repo_root = str(task.gh_repo_root or "").strip()
         branch = str(task.gh_branch or "").strip()
-        if not repo_root or not branch:
+        
+        # For non-GitHub locked envs, we need to set up branch/repo if missing
+        if not repo_root and env:
+            repo_root = str(getattr(env, "host_repo_root", "") or getattr(env, "host_folder", "") or "").strip()
+        
+        if not branch:
+            branch = f"midoriaiagents/{task_id}"
+        
+        if not repo_root:
             QMessageBox.warning(
                 self, "PR not available", "This task is missing repo/branch metadata."
             )
@@ -66,6 +75,8 @@ class _MainWindowTaskReviewMixin:
         prompt_text = str(task.prompt or "")
         task_token = str(task.task_id or task_id)
         pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
+        is_override = not is_github_mode  # Override if not originally github-managed
+        
         self._on_task_log(task_id, f"[gh] PR requested ({branch} -> {base_display})")
         threading.Thread(
             target=self._finalize_gh_management_worker,
@@ -80,6 +91,7 @@ class _MainWindowTaskReviewMixin:
                 pr_metadata_path,
                 str(task.agent_cli or "").strip(),
                 str(task.agent_cli_args or "").strip(),
+                is_override,
             ),
             daemon=True,
         ).start()
