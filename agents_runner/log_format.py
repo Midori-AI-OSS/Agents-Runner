@@ -51,10 +51,97 @@ def parse_docker_datetime(value: str | None) -> datetime | None:
 
 
 _CANONICAL_LOG_RE = re.compile(r"^\[[^/\]]+/[^\]]+\]\[[A-Z]+\]\s")
+_NESTED_HEADER_RE = re.compile(r"^\[[^\]]+\]\[[A-Z]+\]\s*")
+
+
+def format_log_line(
+    scope: str,
+    subscope: str = "none",
+    level: str = "INFO",
+    message: str = "",
+    *,
+    padded: bool = False,
+    scope_width: int = 20,
+    level_width: int = 5,
+) -> str:
+    """Central log line formatter - single source of truth.
+    
+    This function provides a unified interface for creating log lines in both
+    raw canonical format and padded display format. It removes all padding/spaces
+    inside brackets, ensures exactly one space between header and message, strips
+    nested/duplicated headers, and skips empty messages after stripping.
+    
+    Args:
+        scope: Host logs use ids like host, ui, gh, docker, desktop, artifacts, env, supervisor, cleanup, mcp.
+               Container-origin logs use first 4 chars of container id (cid4), e.g. 6e9f.
+        subscope: Short module/phase name, or "none" if none applies (default: "none").
+        level: One of DEBUG, INFO, WARN, ERROR (default: "INFO").
+        message: The log message content.
+        padded: If True, return aligned format for UI display (default: False).
+        scope_width: Column width for scope (when padded=True) (default: 20).
+        level_width: Column width for level (when padded=True) (default: 5).
+    
+    Returns:
+        Formatted log line:
+        - Raw (padded=False): [{scope}/{subscope}][{LEVEL}] {message}
+        - Padded (padded=True): [ {scope}/{subscope}     ][{LEVEL} ] {message}
+        
+        Returns empty string if message is empty after nested header stripping.
+    
+    Examples:
+        >>> format_log_line("host", "test", "INFO", "hello")
+        '[host/test][INFO] hello'
+        
+        >>> format_log_line("host", "test", "INFO", "hello", padded=True)
+        '[ host/test          ][INFO ] hello'
+        
+        >>> format_log_line("host", "test", "INFO", "[nested/header][INFO] real message")
+        '[host/test][INFO] real message'
+        
+        >>> format_log_line("host", "test", "INFO", "  leading spaces preserved")
+        '[host/test][INFO]   leading spaces preserved'
+    """
+    # Normalize level to uppercase without trailing spaces
+    level = level.upper().strip()
+    if level not in ("DEBUG", "INFO", "WARN", "ERROR"):
+        level = "INFO"
+    
+    # Strip nested/duplicated headers matching /^\[[^\]]+\]\[[A-Z]+\]\s*/
+    original_message = message
+    message = _NESTED_HEADER_RE.sub("", message)
+    
+    # Skip empty messages after stripping (but preserve messages that are only whitespace)
+    if not message and not original_message:
+        return ""
+    
+    if not padded:
+        # Raw canonical format - no padding/spaces inside brackets
+        # Ensures exactly ONE space between header and message
+        return f"[{scope}/{subscope}][{level}] {message}"
+    
+    # Padded display format for UI
+    scope_text = f"{scope}/{subscope}"
+    
+    # Truncate if too long (leave room for brackets and space: 2 chars for "[ " and 1 for "]")
+    max_scope_len = scope_width - 2
+    if len(scope_text) > max_scope_len:
+        # Truncate with ellipsis
+        scope_text = scope_text[:max_scope_len - 3] + "..."
+    
+    # Pad scope column (content width minus the brackets)
+    scope_formatted = f"[ {scope_text:<{scope_width - 2}}]"
+    
+    # Format level column with padding
+    level_formatted = f"[{level:<{level_width}}]"
+    
+    return f"{scope_formatted}{level_formatted} {message}"
 
 
 def format_log(scope: str, subscope: str, level: str, message: str) -> str:
     """Format a log message in canonical format.
+    
+    This is a compatibility wrapper around format_log_line(). Use format_log_line()
+    directly for new code.
     
     Canonical format: [{scope}/{subscope}][{LEVEL}] {message}
     
@@ -68,10 +155,7 @@ def format_log(scope: str, subscope: str, level: str, message: str) -> str:
     Returns:
         Formatted log string in canonical format.
     """
-    level = level.upper()
-    if level not in ("DEBUG", "INFO", "WARN", "ERROR"):
-        level = "INFO"
-    return f"[{scope}/{subscope}][{level}] {message}"
+    return format_log_line(scope, subscope, level, message, padded=False)
 
 
 def wrap_container_log(cid: str, stream: str, line: str) -> str:
@@ -90,10 +174,8 @@ def wrap_container_log(cid: str, stream: str, line: str) -> str:
         return line
     
     cid4 = cid[:4] if len(cid) >= 4 else cid
-    level = "INFO"  # Default level
-    if stream == "stderr":
-        level = "WARN"  # stderr defaults to WARN
-    return f"[{cid4}/{stream}][{level}] {line}"
+    level = "WARN" if stream == "stderr" else "INFO"
+    return format_log_line(cid4, stream, level, line, padded=False)
 
 
 def parse_canonical_log(line: str) -> tuple[str, str, str, str] | None:
@@ -117,7 +199,7 @@ def wrap_legacy_log(line: str, fallback_scope: str = "legacy", fallback_subscope
     Returns:
         Wrapped line: [fallback_scope/fallback_subscope][INFO] <original>
     """
-    return f"[{fallback_scope}/{fallback_subscope}][INFO] {line}"
+    return format_log_line(fallback_scope, fallback_subscope, "INFO", line, padded=False)
 
 
 def format_log_display(line: str, scope_width: int = 20, level_width: int = 5) -> str:
@@ -148,22 +230,9 @@ def format_log_display(line: str, scope_width: int = 20, level_width: int = 5) -
     
     scope, subscope, level, message = parsed
     
-    # Format scope/subscope column
-    scope_text = f"{scope}/{subscope}"
-    
-    # Truncate if too long (leave room for brackets and space: 2 chars for "[ " and 1 for "]")
-    max_scope_len = scope_width - 2
-    if len(scope_text) > max_scope_len:
-        # Truncate with ellipsis
-        scope_text = scope_text[:max_scope_len - 3] + "..."
-    
-    # Pad scope column (content width minus the brackets)
-    scope_formatted = f"[ {scope_text:<{scope_width - 2}}]"
-    
-    # Format level column with padding
-    level_formatted = f"[{level.upper():<{level_width}}]"
-    
-    return f"{scope_formatted}{level_formatted} {message}"
+    # Use format_log_line with padded=True
+    return format_log_line(scope, subscope, level, message, padded=True, 
+                          scope_width=scope_width, level_width=level_width)
 
 
 def prettify_log_line(line: str) -> str:
