@@ -1,9 +1,9 @@
 import math
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPointF
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor, QPaintEvent
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPainter, QPolygonF
 from PySide6.QtGui import QPainterPath
 from PySide6.QtWidgets import QWidget
 
@@ -57,22 +57,29 @@ class StatusGlyph(QWidget):
                 x = center.x() + math.cos(math.radians(angle_deg)) * ring_r
                 y = center.y() + math.sin(math.radians(angle_deg)) * ring_r
                 r = max(2.0, size * 0.14)
-                painter.drawEllipse(int(x - r), int(y - r), int(r * 2), int(r * 2))
+                # Draw diamond shape instead of ellipse
+                diamond = QPolygonF([
+                    QPointF(x, y - r),      # top
+                    QPointF(x + r, y),      # right
+                    QPointF(x, y + r),      # bottom
+                    QPointF(x - r, y)       # left
+                ])
+                painter.drawPolygon(diamond)
             return
 
         painter.setPen(Qt.NoPen)
         painter.setBrush(
             QColor(self._color.red(), self._color.green(), self._color.blue(), 45)
         )
-        painter.drawEllipse(rect.adjusted(1, 1, -1, -1))
+        painter.drawRect(rect.adjusted(1, 1, -1, -1))
 
         pen = painter.pen()
         pen.setWidthF(max(1.6, size * 0.12))
         pen.setColor(
             QColor(self._color.red(), self._color.green(), self._color.blue(), 220)
         )
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
+        pen.setCapStyle(Qt.SquareCap)
+        pen.setJoinStyle(Qt.MiterJoin)
         painter.setPen(pen)
 
         if self._mode == "check":

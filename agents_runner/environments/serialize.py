@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from .model import ENVIRONMENT_VERSION
@@ -11,6 +12,8 @@ from .model import AgentInstance
 from .prompt_storage import save_prompt_to_file
 from .prompt_storage import load_prompt_from_file
 from .prompt_storage import delete_prompt_file
+
+logger = logging.getLogger(__name__)
 
 
 def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) -> str:
@@ -53,9 +56,11 @@ def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
         if not text and prompt_path:
             try:
                 delete_prompt_file(prompt_path)
-            except Exception:
-                # File might not exist, or deletion failed
-                pass
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to delete prompt file {prompt_path}: {type(exc).__name__}: {exc}. "
+                    f"File will be orphaned but prompt will be cleared."
+                )
             prompt_path = ""  # Clear the path reference
         
         # Case 2: Text exists -> SAVE/UPDATE the file
@@ -68,9 +73,11 @@ def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
                 else:
                     # Create new file
                     prompt_path = save_prompt_to_file(text)
-            except Exception:
-                # If save fails, keep inline text as fallback
-                pass
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to save prompt to file: {type(exc).__name__}: {exc}. "
+                    f"Prompt will be stored inline as fallback."
+                )
         
         # Case 3: Empty text with no file -> No action needed
         

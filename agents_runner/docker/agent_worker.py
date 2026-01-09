@@ -92,19 +92,41 @@ class DockerAgentWorker:
         if self._container_id:
             try:
                 _run_docker(["stop", "-t", "1", self._container_id], timeout_s=10.0)
-            except Exception:
+            except Exception as stop_exc:
+                self._on_log(
+                    format_log(
+                        "docker",
+                        "cleanup",
+                        "WARN",
+                        f"Container stop failed, attempting kill: {type(stop_exc).__name__}: {stop_exc}"
+                    )
+                )
                 try:
                     _run_docker(["kill", self._container_id], timeout_s=10.0)
-                except Exception:
-                    pass
+                except Exception as kill_exc:
+                    self._on_log(
+                        format_log(
+                            "docker",
+                            "cleanup",
+                            "ERROR",
+                            f"Failed to kill container {self._container_id}: {type(kill_exc).__name__}: {kill_exc}"
+                        )
+                    )
 
     def request_kill(self) -> None:
         self._stop.set()
         if self._container_id:
             try:
                 _run_docker(["kill", self._container_id], timeout_s=10.0)
-            except Exception:
-                pass
+            except Exception as exc:
+                self._on_log(
+                    format_log(
+                        "docker",
+                        "cleanup",
+                        "ERROR",
+                        f"Failed to kill container {self._container_id}: {type(exc).__name__}: {exc}"
+                    )
+                )
 
     def run(self) -> None:
         preflight_tmp_paths: list[str] = []
