@@ -152,6 +152,7 @@ class DockerAgentWorker:
                             # Don't fail the task if context update fails
                 except (GhManagementError, Exception) as exc:
                     self._on_log(f"[gh] ERROR: {exc}")
+                    self._on_log("[gh] GitHub setup failed; PR creation will be unavailable for this task")
                     self._on_done(1, str(exc), [])
                     return
 

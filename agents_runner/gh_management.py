@@ -82,10 +82,23 @@ def prepare_github_repo_for_task(
     if dest_dir:
         lock_file = os.path.join(dest_dir, ".git", "index.lock")
         if os.path.exists(lock_file):
-            _log(
-                "[gh] WARNING: found .git/index.lock - another git operation may be in progress"
-            )
-            _log(f"[gh] If this is a stale lock, remove it: rm {lock_file}")
+            import time
+            try:
+                lock_mtime = os.path.getmtime(lock_file)
+                age_seconds = time.time() - lock_mtime
+                if age_seconds > 300:  # 5 minutes
+                    _log(f"[gh] Found stale .git/index.lock ({age_seconds:.0f}s old), removing")
+                    try:
+                        os.unlink(lock_file)
+                        _log("[gh] Stale lock file removed successfully")
+                    except OSError as rm_exc:
+                        _log(f"[gh] WARNING: Could not remove stale lock: {rm_exc}")
+                else:
+                    _log("[gh] WARNING: found .git/index.lock - another git operation may be in progress")
+                    _log(f"[gh] Lock file age: {age_seconds:.0f}s (will auto-remove after 300s)")
+            except Exception as exc:
+                _log(f"[gh] Could not check lock file age: {exc}")
+                _log(f"[gh] If this is a stale lock, remove it: rm {lock_file}")
 
     for attempt in range(2):
         try:
