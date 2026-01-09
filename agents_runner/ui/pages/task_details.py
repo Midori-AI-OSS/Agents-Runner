@@ -29,6 +29,7 @@ except Exception:  # pragma: no cover
     QWebEngineView = None
 
 from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
+from agents_runner.ui.pages.diff_tab import DiffTab
 
 from agents_runner.artifacts import get_artifact_info
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
@@ -83,6 +84,7 @@ class TaskDetailsPage(QWidget):
         self._current_task_id: str | None = None
         self._desktop_tab_visible: bool = False
         self._artifacts_tab_visible: bool = False
+        self._diff_tab_visible: bool = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -306,16 +308,22 @@ class TaskDetailsPage(QWidget):
         artifacts_tab = ArtifactsTab()
         self._artifacts_tab = artifacts_tab
 
+        # Diff tab
+        diff_tab = DiffTab()
+        self._diff_tab = diff_tab
+
         # Store tab widgets for dynamic show/hide
         self._task_tab_widget = task_tab
         self._desktop_tab_widget = desktop_tab
         self._artifacts_tab_widget = artifacts_tab
+        self._diff_tab_widget = diff_tab
 
         # Add only the Task tab initially (always visible)
         self._task_tab_index = self._tabs.addTab(task_tab, "Task")
         # Desktop and Artifacts tabs will be added dynamically when needed
         self._desktop_tab_index = -1
         self._artifacts_tab_index = -1
+        self._diff_tab_index = -1
         layout.addWidget(self._tabs, 1)
 
         self._ticker = QTimer(self)
@@ -341,6 +349,9 @@ class TaskDetailsPage(QWidget):
 
         if index == getattr(self, "_artifacts_tab_index", -1) and index >= 0:
             QTimer.singleShot(0, self._load_artifacts)
+
+        if index == getattr(self, "_diff_tab_index", -1) and index >= 0:
+            QTimer.singleShot(0, self._load_diff)
 
     def _show_desktop_tab(self) -> None:
         """Show the Desktop tab if not already visible."""
@@ -377,6 +388,23 @@ class TaskDetailsPage(QWidget):
         self._tabs.removeTab(self._artifacts_tab_index)
         self._artifacts_tab_index = -1
         self._artifacts_tab_visible = False
+
+    def _show_diff_tab(self) -> None:
+        """Show the Diff tab if not already visible."""
+        if self._diff_tab_visible:
+            return
+        self._diff_tab_index = self._tabs.addTab(self._diff_tab_widget, "Diff")
+        self._diff_tab_visible = True
+
+    def _hide_diff_tab(self) -> None:
+        """Hide the Diff tab if currently visible."""
+        if not self._diff_tab_visible:
+            return
+        if self._tabs.currentIndex() == self._diff_tab_index:
+            self._tabs.setCurrentIndex(self._task_tab_index)
+        self._tabs.removeTab(self._diff_tab_index)
+        self._diff_tab_index = -1
+        self._diff_tab_visible = False
 
     def _on_pr_triggered(self) -> None:
         task_id = str(self._current_task_id or "").strip()
@@ -435,6 +463,7 @@ class TaskDetailsPage(QWidget):
         self._tabs.setCurrentIndex(self._task_tab_index)
         self._sync_desktop(task)
         self._sync_artifacts(task)
+        self._sync_diff(task)
         self._sync_container_actions(task)
         self._logs.setPlainText("\n".join(task.logs[-5000:]))
         QTimer.singleShot(0, self._scroll_logs_to_bottom)
@@ -457,6 +486,7 @@ class TaskDetailsPage(QWidget):
         self._container.setText(task.container_id or "—")
         self._sync_desktop(task)
         self._sync_artifacts(task)
+        self._sync_diff(task)
         self._sync_container_actions(task)
         self._exit.setText("—" if task.exit_code is None else str(task.exit_code))
         self._apply_status(task)
@@ -567,6 +597,33 @@ class TaskDetailsPage(QWidget):
     def _load_artifacts(self) -> None:
         if self._last_task:
             self._artifacts_tab.set_task(self._last_task)
+
+    def _sync_diff(self, task: Task) -> None:
+        """Update Diff tab visibility based on git status."""
+        from agents_runner.environments import GH_MANAGEMENT_GITHUB
+        from agents_runner.environments import normalize_gh_management_mode
+        
+        gh_mode = normalize_gh_management_mode(str(task.gh_management_mode or ""))
+        
+        # Show diff tab only for GitHub-managed tasks with repo info
+        should_show = bool(
+            gh_mode == GH_MANAGEMENT_GITHUB and
+            task.gh_repo_root and
+            task.gh_base_branch
+        )
+        
+        if should_show:
+            was_visible = self._diff_tab_visible
+            self._show_diff_tab()
+            if not was_visible:
+                QTimer.singleShot(0, self._load_diff)
+        else:
+            self._hide_diff_tab()
+
+    def _load_diff(self) -> None:
+        """Load diff for current task."""
+        if self._last_task:
+            self._diff_tab.set_task(self._last_task)
 
     def _apply_status(self, task: Task) -> None:
         status = _task_display_status(task)
