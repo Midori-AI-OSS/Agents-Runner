@@ -28,6 +28,7 @@ from agents_runner.setup.orchestrator import (
     mark_setup_complete,
     mark_setup_skipped,
 )
+from agents_runner.style.palette import TEXT_MUTED
 
 
 class FirstRunSetupDialog(QDialog):
@@ -99,7 +100,7 @@ class FirstRunSetupDialog(QDialog):
             "before moving to the next."
         )
         instructions_label.setWordWrap(True)
-        instructions_label.setStyleSheet("color: #666; font-size: 11px;")
+        instructions_label.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px;")
         instructions_label.setToolTip(
             "You can configure individual agents later in Settings → Agent CLI section."
         )

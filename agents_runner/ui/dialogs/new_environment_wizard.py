@@ -16,6 +16,9 @@ from agents_runner.environments import (
     Environment, GH_MANAGEMENT_LOCAL, GH_MANAGEMENT_GITHUB, save_environment,
     load_environments, delete_environment,
 )
+from agents_runner.style.palette import (
+    STATUS_SUCCESS, STATUS_ERROR, STATUS_WARNING, TEXT_MUTED, STATUS_WARNING_BG
+)
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
 from agents_runner.widgets import GlassCard
 
@@ -127,7 +130,7 @@ class NewEnvironmentWizard(QDialog):
         card_layout.addStretch()
         warning = QLabel("⚠ Step 1 choices (workspace source + path/URL) cannot be edited later. To change them, create a new environment.")
         warning.setWordWrap(True)
-        warning.setStyleSheet("color: #ff9800; font-weight: bold; margin-top: 10px; padding: 8px; background: rgba(255,152,0,0.1);")
+        warning.setStyleSheet(f"color: {STATUS_WARNING}; font-weight: bold; margin-top: 10px; padding: 8px; background: {STATUS_WARNING_BG};")
         card_layout.addWidget(warning)
         layout.addWidget(card)
 
@@ -172,7 +175,7 @@ class NewEnvironmentWizard(QDialog):
         card_layout.addStretch()
 
         note = QLabel("You can change these later in Environments.")
-        note.setStyleSheet("color: #aaa; font-size: 10px; margin-top: 20px;")
+        note.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 10px; margin-top: 20px;")
         card_layout.addWidget(note)
         layout.addWidget(card)
 
@@ -213,22 +216,22 @@ class NewEnvironmentWizard(QDialog):
             return
         if not os.path.exists(path):
             self._folder_validation.setText("✗ Path does not exist")
-            self._folder_validation.setStyleSheet("color: #f44336; font-size: 11px;")
+            self._folder_validation.setStyleSheet(f"color: {STATUS_ERROR}; font-size: 11px;")
             return
         if not os.path.isdir(path):
             self._folder_validation.setText("✗ Path is not a directory")
-            self._folder_validation.setStyleSheet("color: #f44336; font-size: 11px;")
+            self._folder_validation.setStyleSheet(f"color: {STATUS_ERROR}; font-size: 11px;")
             return
         if not os.access(path, os.R_OK):
             self._folder_validation.setText("✗ Path is not readable")
-            self._folder_validation.setStyleSheet("color: #f44336; font-size: 11px;")
+            self._folder_validation.setStyleSheet(f"color: {STATUS_ERROR}; font-size: 11px;")
             return
         if not os.access(path, os.W_OK):
             self._folder_validation.setText("✗ Path is not writable")
-            self._folder_validation.setStyleSheet("color: #f44336; font-size: 11px;")
+            self._folder_validation.setStyleSheet(f"color: {STATUS_ERROR}; font-size: 11px;")
             return
         self._folder_validation.setText("✓ Valid folder")
-        self._folder_validation.setStyleSheet("color: #4caf50; font-size: 11px;")
+        self._folder_validation.setStyleSheet(f"color: {STATUS_SUCCESS}; font-size: 11px;")
         self._update_next_button()
 
     def _expand_repo_url(self, url: str) -> str:
@@ -251,7 +254,7 @@ class NewEnvironmentWizard(QDialog):
         # Check for spaces (invalid)
         if ' ' in url:
             self._clone_validation.setText("✗ URL cannot contain spaces")
-            self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
+            self._clone_validation.setStyleSheet(f"color: {STATUS_ERROR}; font-size: 11px;")
             self._update_next_button()
             return
         # Accept GitHub shorthand (owner/repo) or full URLs
@@ -259,10 +262,10 @@ class NewEnvironmentWizard(QDialog):
         url_pattern = r'^(https?://|git@|ssh://)'
         if re.match(shorthand_pattern, url) or re.match(url_pattern, url):
             self._clone_validation.setText("✓ Valid format")
-            self._clone_validation.setStyleSheet("color: #4caf50; font-size: 11px;")
+            self._clone_validation.setStyleSheet(f"color: {STATUS_SUCCESS}; font-size: 11px;")
         else:
             self._clone_validation.setText("✗ Use owner/repo or valid URL (https://, git@, ssh://)")
-            self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
+            self._clone_validation.setStyleSheet(f"color: {STATUS_ERROR}; font-size: 11px;")
         self._update_next_button()
 
     def _update_next_button(self) -> None:
@@ -319,7 +322,7 @@ class NewEnvironmentWizard(QDialog):
         terminals = detect_terminal_options()
         if not terminals:
             self._clone_validation.setText("✗ No terminal found on system")
-            self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
+            self._clone_validation.setStyleSheet(f"color: {STATUS_ERROR}; font-size: 11px;")
             self._next_btn.setText("Try test again")
             return
         script = f"""
@@ -343,7 +346,7 @@ read
                 continue
         if not terminal_launched:
             self._clone_validation.setText("✗ Failed to launch terminal")
-            self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
+            self._clone_validation.setStyleSheet(f"color: {STATUS_ERROR}; font-size: 11px;")
             self._next_btn.setText("Try test again")
 
     def _check_clone_result(self) -> None:
@@ -351,11 +354,11 @@ read
         if os.path.isdir(self._test_folder) and os.path.isdir(os.path.join(self._test_folder, ".git")):
             self._clone_test_passed = True
             self._clone_validation.setText("✓ Clone test passed")
-            self._clone_validation.setStyleSheet("color: #4caf50; font-size: 11px;")
+            self._clone_validation.setStyleSheet(f"color: {STATUS_SUCCESS}; font-size: 11px;")
             self._update_next_button()
         elif self._clone_check_count >= 30:
             self._clone_validation.setText("✗ Clone test timeout (60s)")
-            self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
+            self._clone_validation.setStyleSheet(f"color: {STATUS_ERROR}; font-size: 11px;")
             self._next_btn.setText("Try test again")
         else:
             QTimer.singleShot(2000, self._check_clone_result)

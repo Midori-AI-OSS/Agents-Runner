@@ -8,6 +8,8 @@ from PySide6.QtGui import QSyntaxHighlighter
 from PySide6.QtGui import QTextCharFormat
 from PySide6.QtGui import QColor
 
+from agents_runner.style.palette import SPELL_ERROR
+
 if TYPE_CHECKING:
     from PySide6.QtGui import QTextDocument
 
@@ -45,7 +47,14 @@ class SpellHighlighter(QSyntaxHighlighter):
         
         # Format for misspelled words
         self._error_format = QTextCharFormat()
-        self._error_format.setUnderlineColor(QColor("#E06C75"))  # Red color
+        # Parse rgba string to QColor
+        match = re.match(r'rgba\((\d+),\s*(\d+),\s*(\d+),\s*(\d+)\)', SPELL_ERROR)
+        if match:
+            r, g, b, a = map(int, match.groups())
+            self._error_format.setUnderlineColor(QColor(r, g, b, a))
+        else:
+            # Fallback to default red if parsing fails
+            self._error_format.setUnderlineColor(QColor("#E06C75"))
         self._error_format.setUnderlineStyle(
             QTextCharFormat.UnderlineStyle.WaveUnderline
         )

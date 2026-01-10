@@ -1,9 +1,9 @@
 import math
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPointF
 from PySide6.QtCore import QTimer
 from PySide6.QtGui import QColor
-from PySide6.QtGui import QPainter, QPaintEvent
+from PySide6.QtGui import QPainter, QPaintEvent, QPolygonF
 from PySide6.QtWidgets import QWidget
 
 
@@ -47,4 +47,11 @@ class ArcSpinner(QWidget):
             x = center.x() + math.cos(math.radians(angle_deg)) * ring_r
             y = center.y() + math.sin(math.radians(angle_deg)) * ring_r
             r = 3.4
-            painter.drawEllipse(int(x - r), int(y - r), int(r * 2), int(r * 2))
+            # Draw diamond shape instead of ellipse
+            diamond = QPolygonF([
+                QPointF(x, y - r),      # top
+                QPointF(x + r, y),      # right
+                QPointF(x, y + r),      # bottom
+                QPointF(x - r, y)       # left
+            ])
+            painter.drawPolygon(diamond)

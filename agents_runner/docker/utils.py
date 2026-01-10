@@ -27,6 +27,82 @@ def _write_preflight_script(
     return tmp_path
 
 
+def _is_system_directory(path: str) -> bool:
+    """
+    Check if path is a system directory that should never be mounted.
+    
+    Args:
+        path: Path to check
+        
+    Returns:
+        True if path is a system directory, False otherwise
+    """
+    system_dirs = {"/etc", "/var", "/usr", "/opt", "/srv", "/root", "/boot", "/sys", "/proc"}
+    path_abs = os.path.realpath(path)
+    
+    # Exact match
+    if path_abs in system_dirs:
+        return True
+    
+    # Starts with system dir
+    for sys_dir in system_dirs:
+        if path_abs == sys_dir or path_abs.startswith(sys_dir + os.sep):
+            return True
+    
+    return False
+
+
+def _is_safe_mount_root(path: str, original_workdir: str, max_depth: int = 3) -> bool:
+    """
+    Validate that a mount root is safe to mount.
+    
+    This function enforces security boundaries to prevent mounting sensitive
+    directories like home directories, root filesystem, or system directories.
+    
+    Security boundaries:
+    1. Home directory itself cannot be mounted
+    2. Root filesystem (/) cannot be mounted
+    3. System directories (/etc, /var, etc.) cannot be mounted
+    4. Maximum traversal depth is enforced
+    
+    Args:
+        path: Candidate mount root to validate
+        original_workdir: Original user-requested working directory
+        max_depth: Maximum allowed traversal depth (default: 3)
+        
+    Returns:
+        True if safe to mount, False otherwise
+    """
+    path = os.path.realpath(path)
+    original_workdir = os.path.realpath(original_workdir)
+    home = os.path.expanduser("~")
+    
+    # Boundary check 1: Don't mount home directory itself or subdirectories
+    if path == home or path.startswith(home + os.sep):
+        return False
+    
+    # Boundary check 2: Don't mount root filesystem
+    if path == "/":
+        return False
+    
+    # Boundary check 3: Don't mount system directories
+    if _is_system_directory(path):
+        return False
+    
+    # Boundary check 4: Limit traversal depth
+    try:
+        rel = os.path.relpath(original_workdir, path)
+        # Count directory levels (ignore '.' components)
+        depth = len([p for p in rel.split(os.sep) if p and p != "."])
+        if depth > max_depth:
+            return False
+    except ValueError:
+        # Paths on different drives (Windows) or other errors
+        return False
+    
+    return True
+
+
 def _resolve_workspace_mount(
     host_workdir: str,
     *,
@@ -39,9 +115,20 @@ def _resolve_workspace_mount(
     subdirectory can break tooling that searches parent directories (e.g. for
     `.git/` or `pyproject.toml`). This helper finds a suitable ancestor to mount
     while preserving the original working directory inside the container.
+    
+    SECURITY: This function enforces strict boundaries to prevent mounting
+    sensitive directories:
+    - Home directory (~) cannot be mounted
+    - Root filesystem (/) cannot be mounted
+    - System directories (/etc, /var, etc.) cannot be mounted
+    - Maximum traversal depth of 3 levels is enforced
+    
+    Raises:
+        ValueError: If a parent directory mount is detected that violates
+                   security boundaries
     """
 
-    host_workdir = os.path.abspath(os.path.expanduser(str(host_workdir or "").strip()))
+    host_workdir = os.path.realpath(os.path.expanduser(str(host_workdir or "").strip()))
     container_mount = str(container_mount or "").strip()
     if not host_workdir or not container_mount:
         return host_workdir, container_mount
@@ -62,6 +149,55 @@ def _resolve_workspace_mount(
             if parent == cursor:
                 break
             cursor = parent
+
+    # SECURITY VALIDATION: Check if mount_root is safe
+    # This check must ALWAYS run, even when mount_root == host_workdir
+    # to catch cases where the workdir itself is a sensitive location
+    if mount_root != host_workdir:
+        # Verify this isn't the same directory (symlinks, etc.)
+        try:
+            is_same = os.path.samefile(mount_root, host_workdir)
+        except (OSError, FileNotFoundError):
+            is_same = False
+        
+        if not is_same and not _is_safe_mount_root(mount_root, host_workdir):
+            # Determine which boundary was violated for clear error message
+            home = os.path.expanduser("~")
+            if mount_root == home:
+                reason = f"home directory ({home})"
+            elif mount_root == "/":
+                reason = "root filesystem (/)"
+            elif _is_system_directory(mount_root):
+                reason = f"system directory ({mount_root})"
+            else:
+                reason = "maximum traversal depth exceeded (3 levels)"
+            
+            raise ValueError(
+                f"Refusing to mount unsafe directory: {mount_root}\n"
+                f"  Reason: {reason}\n"
+                f"  Requested workdir: {host_workdir}\n"
+                f"  This is a security boundary to prevent exposing sensitive data.\n"
+                f"  Consider changing to the project directory or initializing a git repository there."
+            )
+    else:
+        # Even when mount_root == host_workdir, we must validate it's not home/root/system
+        home = os.path.expanduser("~")
+        if mount_root == home or mount_root.startswith(home + os.sep):
+            raise ValueError(
+                f"Refusing to mount home directory: {mount_root}\n"
+                f"  This is a security boundary to prevent exposing sensitive data.\n"
+                f"  Consider working in a subdirectory or project folder."
+            )
+        elif mount_root == "/":
+            raise ValueError(
+                f"Refusing to mount root filesystem: {mount_root}\n"
+                f"  This is a security boundary to prevent exposing the entire filesystem."
+            )
+        elif _is_system_directory(mount_root):
+            raise ValueError(
+                f"Refusing to mount system directory: {mount_root}\n"
+                f"  This is a security boundary to prevent exposing sensitive system files."
+            )
 
     rel = os.path.relpath(host_workdir, mount_root)
     if rel in {"", "."}:

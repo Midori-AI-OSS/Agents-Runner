@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import (
     QEasingCurve,
     QPointF,
+    QRectF,
     Property,
     QPropertyAnimation,
     Qt,
@@ -362,7 +363,9 @@ class GlassRoot(QWidget):
                 )
                 grad.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
                 painter.setBrush(grad)
-                painter.drawEllipse(center, float(r), float(r))
+                # Draw rectangle instead of ellipse
+                rect = QRectF(center.x() - r, center.y() - r, r * 2, r * 2)
+                painter.fillRect(rect, grad)
 
         painter.restore()
 
