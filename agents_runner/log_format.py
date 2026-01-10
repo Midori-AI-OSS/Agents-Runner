@@ -78,13 +78,13 @@ def format_log_line(
         level: One of DEBUG, INFO, WARN, ERROR (default: "INFO").
         message: The log message content.
         padded: If True, return aligned format for UI display (default: False).
-        scope_width: Column width for scope (when padded=True) (default: 20).
-        level_width: Column width for level (when padded=True) (default: 5).
+        scope_width: Max length for scope (truncates if longer, no padding) (default: 20).
+        level_width: Unused, kept for compatibility (default: 5).
     
     Returns:
-        Formatted log line:
+        Formatted log line with no internal padding:
         - Raw (padded=False): [{scope}/{subscope}][{LEVEL}] {message}
-        - Padded (padded=True): [ {scope}/{subscope}     ][{LEVEL} ] {message}
+        - Padded (padded=True): [{scope}/{subscope}][{LEVEL}] {message}
         
         Returns empty string if message is empty after nested header stripping.
     
@@ -93,7 +93,7 @@ def format_log_line(
         '[host/test][INFO] hello'
         
         >>> format_log_line("host", "test", "INFO", "hello", padded=True)
-        '[ host/test          ][INFO ] hello'
+        '[host/test][INFO] hello'
         
         >>> format_log_line("host", "test", "INFO", "[nested/header][INFO] real message")
         '[host/test][INFO] real message'
@@ -126,17 +126,16 @@ def format_log_line(
     # Padded display format for UI
     scope_text = f"{scope}/{subscope}"
     
-    # Truncate if too long (leave room for brackets and space: 2 chars for "[ " and 1 for "]")
-    max_scope_len = scope_width - 2
-    if len(scope_text) > max_scope_len:
+    # Truncate if too long (no padding, but still enforce max length)
+    if len(scope_text) > scope_width:
         # Truncate with ellipsis
-        scope_text = scope_text[:max_scope_len - 3] + "..."
+        scope_text = scope_text[:scope_width - 3] + "..."
     
-    # Pad scope column (content width minus the brackets)
-    scope_formatted = f"[ {scope_text:<{scope_width - 2}}]"
+    # No padding - use compact format
+    scope_formatted = f"[{scope_text}]"
     
-    # Format level column with padding
-    level_formatted = f"[{level:<{level_width}}]"
+    # No padding - use compact format
+    level_formatted = f"[{level}]"
     
     return f"{scope_formatted}{level_formatted} {message}"
 
@@ -207,21 +206,21 @@ def wrap_legacy_log(line: str, fallback_scope: str = "legacy", fallback_subscope
 
 
 def format_log_display(line: str, scope_width: int = 20, level_width: int = 5) -> str:
-    """Format a log line for UI display with aligned columns.
+    """Format a log line for UI display with compact format.
     
     Args:
         line: Raw log line (canonical or legacy)
-        scope_width: Width for scope/subscope column (default 20, max recommended 24)
-        level_width: Width for level column (default 5)
+        scope_width: Max length for scope/subscope (truncates if longer, no padding) (default 20)
+        level_width: Unused, kept for compatibility (default 5)
     
     Returns:
-        Formatted line with padded/truncated scope and level columns.
+        Formatted line with compact brackets and no internal padding.
         For non-canonical lines, wraps them as [legacy/unknown][INFO] <original>
     
     Example output:
-        [ gh/repo           ][INFO ] updated GitHub context file
-        [ host/none         ][INFO ] pull complete
-        [ desktop/setup     ][INFO ] cache enabled; checking for cached image
+        [gh/repo][INFO] updated GitHub context file
+        [host/none][INFO] pull complete
+        [desktop/setup][INFO] cache enabled; checking for cached image
     """
     parsed = parse_canonical_log(line)
     
