@@ -95,7 +95,7 @@ class _MainWindowTaskEventsMixin:
                     QMetaObject.invokeMethod(
                         bridge,
                         "request_user_kill" if is_kill else "request_user_cancel",
-                        Qt.QueuedConnection,
+                        Qt.DirectConnection,
                     )
                 except Exception:
                     bridge = None
@@ -215,7 +215,7 @@ class _MainWindowTaskEventsMixin:
         if bridge is not None:
             try:
                 QMetaObject.invokeMethod(
-                    bridge, "request_user_cancel", Qt.QueuedConnection
+                    bridge, "request_user_cancel", Qt.DirectConnection
                 )
             except Exception:
                 pass
