@@ -93,6 +93,7 @@ class _MainWindowPersistenceMixin:
         settings = payload.get("settings")
         if isinstance(settings, dict):
             self._settings_data.update(settings)
+        self._settings_data.pop("stt_mode", None)
         self._settings_data["use"] = normalize_agent(
             str(self._settings_data.get("use") or "codex")
         )

@@ -12,6 +12,10 @@ from agents_runner.gh.git_diff import (
     git_merge_base, git_changed_files, git_file_at_commit,
     read_workspace_file, ChangedFile
 )
+from agents_runner.style.palette import (
+    GIT_STATUS_ADDED, GIT_STATUS_MODIFIED, GIT_STATUS_DELETED,
+    GIT_STATUS_RENAMED, GIT_STATUS_UNTRACKED
+)
 from agents_runner.ui.diff_utils import compute_side_by_side_diff, DiffLine, format_line_number
 from agents_runner.ui.task_model import Task
 from agents_runner.widgets.glass_card import GlassCard
@@ -21,11 +25,11 @@ logger = logging.getLogger(__name__)
 
 # Status colors
 STATUS_COLORS = {
-    "A": "rgba(100, 255, 100, 200)",  # Added - green
-    "M": "rgba(255, 200, 100, 200)",  # Modified - orange
-    "D": "rgba(255, 100, 100, 200)",  # Deleted - red
-    "R": "rgba(100, 200, 255, 200)",  # Renamed - cyan
-    "U": "rgba(180, 180, 180, 200)",  # Untracked - gray
+    "A": GIT_STATUS_ADDED,
+    "M": GIT_STATUS_MODIFIED,
+    "D": GIT_STATUS_DELETED,
+    "R": GIT_STATUS_RENAMED,
+    "U": GIT_STATUS_UNTRACKED,
 }
 
 STATUS_LABELS = {

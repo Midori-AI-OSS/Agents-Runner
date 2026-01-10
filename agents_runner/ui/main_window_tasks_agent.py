@@ -22,6 +22,7 @@ from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh_management import is_gh_available
 from agents_runner.docker_runner import DockerRunnerConfig
+from agents_runner.log_format import format_log
 from agents_runner.pr_metadata import ensure_github_context_file
 from agents_runner.pr_metadata import github_context_container_path
 from agents_runner.pr_metadata import github_context_host_path
@@ -210,7 +211,7 @@ class _MainWindowTasksAgentMixin:
             try:
                 os.makedirs(effective_workdir, exist_ok=True)
             except Exception as exc:
-                logger.error(f"Failed to create directory {effective_workdir}: {exc}")
+                logger.error(format_log("host", "workspace", "ERROR", f"Failed to create directory {effective_workdir}: {exc}"))
                 QMessageBox.warning(
                     self,
                     "Directory Creation Failed",
@@ -335,7 +336,7 @@ class _MainWindowTasksAgentMixin:
             )
             self._on_task_log(
                 task_id,
-                f"[env] appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)",
+                format_log("env", "prompts", "INFO", f"appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)"),
             )
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
@@ -372,16 +373,16 @@ class _MainWindowTasksAgentMixin:
                                 head_commit=git_info.commit_sha,
                             )
                             self._on_task_log(
-                                task_id, f"[gh] detected git repo: {git_info.repo_url}"
+                                task_id, format_log("gh", "context", "INFO", f"detected git repo: {git_info.repo_url}")
                             )
                         else:
                             self._on_task_log(
-                                task_id, "[gh] folder is not a git repository; skipping context"
+                                task_id, format_log("gh", "context", "INFO", "folder is not a git repository; skipping context")
                             )
                     except Exception as exc:
-                        logger.warning(f"[gh] git detection failed: {exc}")
+                        logger.warning(format_log("gh", "context", "WARN", f"git detection failed: {exc}"))
                         self._on_task_log(
-                            task_id, f"[gh] git detection failed: {exc}; continuing without context"
+                            task_id, format_log("gh", "context", "WARN", f"git detection failed: {exc}; continuing without context")
                         )
             elif gh_mode == GH_MANAGEMENT_GITHUB:
                 # Git-locked: Will populate after clone
@@ -400,9 +401,9 @@ class _MainWindowTasksAgentMixin:
                         github_context=github_context,
                     )
                 except Exception as exc:
-                    logger.error(f"[gh] failed to create GitHub context file: {exc}")
+                    logger.error(format_log("gh", "context", "ERROR", f"failed to create GitHub context file: {exc}"))
                     self._on_task_log(
-                        task_id, f"[gh] failed to create GitHub context file: {exc}; continuing without context"
+                        task_id, format_log("gh", "context", "ERROR", f"failed to create GitHub context file: {exc}; continuing without context")
                     )
                 else:
                     task.gh_pr_metadata_path = host_path
@@ -410,9 +411,18 @@ class _MainWindowTasksAgentMixin:
                     runner_prompt = (
                         f"{runner_prompt}{github_context_prompt_instructions(container_path)}"
                     )
-                    self._on_task_log(
-                        task_id, f"[gh] GitHub context enabled; mounted -> {container_path}"
-                    )
+                    # Clarify two-phase process for git-locked environments
+                    if gh_mode == GH_MANAGEMENT_GITHUB:
+                        self._on_task_log(
+                            task_id, format_log("gh", "context", "INFO", f"GitHub context file created and mounted -> {container_path}")
+                        )
+                        self._on_task_log(
+                            task_id, format_log("gh", "context", "INFO", "Repository metadata will be populated after clone completes")
+                        )
+                    else:
+                        self._on_task_log(
+                            task_id, format_log("gh", "context", "INFO", f"GitHub context enabled; mounted -> {container_path}")
+                        )
 
         # Build config with GitHub repo info if needed
         # Get the context file path if it was created (regardless of mode)
@@ -452,7 +462,7 @@ class _MainWindowTasksAgentMixin:
         if self._can_start_new_agent_for_env(env_id):
             self._actually_start_task(task)
         else:
-            self._on_task_log(task_id, "[queue] Waiting for available slot...")
+            self._on_task_log(task_id, format_log("queue", "slot", "INFO", "Waiting for available slot..."))
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
 

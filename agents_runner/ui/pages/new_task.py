@@ -4,7 +4,10 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize
 from PySide6.QtCore import Signal
+from PySide6.QtCore import QThread
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
@@ -16,16 +19,22 @@ from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QStyle
 
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
+from agents_runner.ui.icons import mic_icon
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
 from agents_runner.widgets import GlassCard
 from agents_runner.widgets import SpellTextEdit
 from agents_runner.widgets import StainedGlassButton
+from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
+from agents_runner.stt.mic_recorder import MicRecorderError
+from agents_runner.stt.mic_recorder import MicRecording
+from agents_runner.stt.qt_worker import SttWorker
 
 
 class NewTaskPage(QWidget):
@@ -43,6 +52,9 @@ class NewTaskPage(QWidget):
         self._workspace_ready = False
         self._workspace_error = ""
         self._spellcheck_enabled = True  # Default to enabled
+        self._stt_mode = "offline"
+        self._mic_recording: MicRecording | None = None
+        self._stt_thread: QThread | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -116,6 +128,24 @@ class NewTaskPage(QWidget):
         self._prompt.setPlaceholderText("Describe what you want the agent to do…")
         self._prompt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._prompt.setTabChangesFocus(True)
+        
+        self._voice_btn = QToolButton()
+        self._voice_btn.setIcon(mic_icon(size=18))
+        self._voice_btn.setIconSize(QSize(18, 18))
+        self._voice_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._voice_btn.setCheckable(True)
+        self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
+        self._voice_btn.setStyleSheet("margin: 8px;")
+        self._voice_btn.toggled.connect(self._on_voice_toggled)
+
+        prompt_container = QWidget()
+        prompt_container_layout = QGridLayout(prompt_container)
+        prompt_container_layout.setContentsMargins(0, 0, 0, 0)
+        prompt_container_layout.setSpacing(0)
+        prompt_container_layout.addWidget(self._prompt, 0, 0)
+        prompt_container_layout.addWidget(
+            self._voice_btn, 0, 0, Qt.AlignRight | Qt.AlignBottom
+        )
 
         interactive_hint = QLabel(
             "Interactive: opens a terminal and runs the container with TTY/stdin for agent TUIs."
@@ -198,7 +228,7 @@ class NewTaskPage(QWidget):
         buttons.addWidget(self._run_agent)
 
         card_layout.addLayout(prompt_title_row)
-        card_layout.addWidget(self._prompt, 1)
+        card_layout.addWidget(prompt_container, 1)
         card_layout.addWidget(interactive_hint)
         card_layout.addLayout(interactive_grid)
         card_layout.addLayout(cfg_grid)
@@ -213,6 +243,38 @@ class NewTaskPage(QWidget):
         super().resizeEvent(event)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
+
+    def _confirm_auto_base_branch(self, env_id: str, base_branch: str) -> bool:
+        """Show confirmation dialog for auto base branch in git-locked environments.
+        
+        Args:
+            env_id: The environment ID to check
+            base_branch: The selected base branch (empty string or "auto" for auto mode)
+            
+        Returns:
+            True if user confirmed or confirmation not needed, False if cancelled
+        """
+        # Only show confirmation for git-locked environments with auto base branch
+        is_git_locked = env_id in self._gh_locked_envs
+        is_auto_branch = not base_branch or base_branch.lower() == "auto"
+        
+        if not (is_git_locked and is_auto_branch):
+            return True
+        
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirm Auto Base Branch",
+            "You have selected 'Auto' as the base branch.\n\n"
+            "Auto uses the repository's default branch as the base "
+            "(commonly 'main' or 'master').\n\n"
+            "If you need a specific base branch, select it from the dropdown.\n\n"
+            "Do you want to proceed?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No  # Default to No for safety
+        )
+        
+        return reply == QMessageBox.Yes
 
     def _update_run_buttons(self) -> None:
         has_terminal = bool(str(self._terminal.currentData() or "").strip())
@@ -267,6 +329,11 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
+        
+        # Confirm auto base branch for git-locked environments
+        if not self._confirm_auto_base_branch(env_id, base_branch):
+            return
+        
         self.requested_run.emit(prompt, host_codex, env_id, base_branch)
 
     def _on_get_agent_help(self) -> None:
@@ -313,6 +380,10 @@ class NewTaskPage(QWidget):
         host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
+
+        # Confirm auto base branch for git-locked environments
+        if not self._confirm_auto_base_branch(env_id, base_branch):
+            return
 
         command = (self._command.text() or "").strip()
 
@@ -364,6 +435,11 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
+        
+        # Confirm auto base branch for git-locked environments
+        if not self._confirm_auto_base_branch(env_id, base_branch):
+            return
+        
         self.requested_launch.emit(
             prompt,
             command,
@@ -497,6 +573,9 @@ class NewTaskPage(QWidget):
         self._spellcheck_enabled = enabled
         self._prompt.set_spellcheck_enabled(enabled)
 
+    def set_stt_mode(self, mode: str) -> None:
+        self._stt_mode = "offline"
+
     def set_workspace_status(self, *, path: str, ready: bool, message: str) -> None:
         self._workspace.setText(str(path or "—"))
         self._terminal_workspace.setText(str(path or "—"))  # Also update terminal line
@@ -514,6 +593,130 @@ class NewTaskPage(QWidget):
         self._update_run_buttons()
         self._update_workspace_visibility()  # Update visibility after status change
 
+    def _on_voice_toggled(self, enabled: bool) -> None:
+        if self._stt_thread is not None:
+            self._voice_btn.blockSignals(True)
+            try:
+                self._voice_btn.setChecked(False)
+            finally:
+                self._voice_btn.blockSignals(False)
+            return
+
+        if enabled:
+            self._start_voice_recording()
+            return
+        self._stop_voice_recording_and_transcribe()
+
+    def _start_voice_recording(self) -> None:
+        if not FfmpegPulseRecorder.is_available():
+            QMessageBox.warning(
+                self,
+                "Voice input unavailable",
+                "Could not find `ffmpeg` in PATH (needed to record audio).",
+            )
+            self._voice_btn.setIcon(mic_icon(size=18))
+            self._voice_btn.blockSignals(True)
+            try:
+                self._voice_btn.setChecked(False)
+            finally:
+                self._voice_btn.blockSignals(False)
+            return
+
+        try:
+            recorder = FfmpegPulseRecorder()
+            self._mic_recording = recorder.start()
+        except MicRecorderError as exc:
+            QMessageBox.warning(
+                self, "Microphone error", str(exc) or "Could not start recording."
+            )
+            self._voice_btn.setIcon(mic_icon(size=18))
+            self._voice_btn.blockSignals(True)
+            try:
+                self._voice_btn.setChecked(False)
+            finally:
+                self._voice_btn.blockSignals(False)
+            return
+        self._voice_btn.setIcon(
+            self._voice_btn.style().standardIcon(QStyle.SP_MediaStop)
+        )
+        self._voice_btn.setToolTip("Stop recording and transcribe into the prompt editor.")
+
+    def _stop_voice_recording_and_transcribe(self) -> None:
+        recording = self._mic_recording
+        self._mic_recording = None
+        if recording is None:
+            self._voice_btn.setIcon(mic_icon(size=18))
+            self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
+            return
+
+        recorder = FfmpegPulseRecorder(output_dir=recording.output_path.parent)
+        try:
+            audio_path = recorder.stop(recording)
+        except MicRecorderError as exc:
+            QMessageBox.warning(
+                self, "Microphone error", str(exc) or "Could not stop recording."
+            )
+            self._voice_btn.setIcon(mic_icon(size=18))
+            self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
+            return
+
+        self._voice_btn.setEnabled(False)
+        self._voice_btn.setIcon(self._voice_btn.style().standardIcon(QStyle.SP_BrowserReload))
+        self._voice_btn.setToolTip("Transcribing speech-to-text…")
+
+        worker = SttWorker(mode=self._stt_mode, audio_path=str(audio_path))
+        thread = QThread(self)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.done.connect(self._on_stt_done)
+        worker.error.connect(self._on_stt_error)
+        worker.done.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        worker.done.connect(worker.deleteLater)
+        worker.error.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._on_stt_finished)
+
+        self._stt_thread = thread
+        thread.start()
+
+    def _on_stt_done(self, text: str, audio_path: str) -> None:
+        audio_path_p = Path(str(audio_path or ""))
+        text = str(text or "").strip()
+        if text:
+            cursor = self._prompt.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            if self._prompt.toPlainText().strip():
+                cursor.insertText("\n")
+            cursor.insertText(text)
+            self._prompt.setTextCursor(cursor)
+        else:
+            QMessageBox.information(
+                self,
+                "No speech detected",
+                "Speech-to-text did not return any text.",
+            )
+
+        try:
+            audio_path_p.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    def _on_stt_error(self, message: str, audio_path: str) -> None:
+        audio_path_p = Path(str(audio_path or ""))
+        msg = str(message or "").strip() or "Speech-to-text failed."
+        QMessageBox.warning(self, "Speech-to-text error", msg)
+        try:
+            audio_path_p.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    def _on_stt_finished(self) -> None:
+        self._stt_thread = None
+        self._voice_btn.setEnabled(True)
+        self._voice_btn.setIcon(mic_icon(size=18))
+        self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
+
     def set_repo_controls_visible(self, visible: bool) -> None:
         visible = bool(visible)
         self._title_separator.setVisible(visible)
@@ -526,7 +729,7 @@ class NewTaskPage(QWidget):
         self._base_branch.blockSignals(True)
         try:
             self._base_branch.clear()
-            self._base_branch.addItem("Auto (default)", "")
+            self._base_branch.addItem("Auto (repo default)", "")
             for name in branches or []:
                 b = str(name or "").strip()
                 if not b:

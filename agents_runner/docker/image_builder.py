@@ -16,6 +16,7 @@ from typing import Callable
 
 from agents_runner.docker.process import _run_docker
 from agents_runner.docker.process import _has_image
+from agents_runner.log_format import format_log
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def _get_base_image_digest(base_image: str) -> str:
                 image_id = image_id[7:]
             return image_id[:16]
     except Exception as exc:
-        logger.warning(f"Failed to get image digest for {base_image}: {exc}")
+        logger.warning(format_log("docker", "image", "WARN", f"Failed to get image digest for {base_image}: {exc}"))
     
     # Fallback to image name hash if inspect fails
     return hashlib.sha256(base_image.encode()).hexdigest()[:16]
@@ -92,19 +93,19 @@ def compute_desktop_cache_key(base_image: str) -> str:
     try:
         base_digest = _get_base_image_digest(base_image)
     except Exception as exc:
-        logger.warning(f"Failed to get base image digest: {exc}, using fallback")
+        logger.warning(format_log("docker", "image", "WARN", f"Failed to get base image digest: {exc}, using fallback"))
         base_digest = "unknown"
     
     try:
         install_hash = _compute_file_hash(DESKTOP_INSTALL_SCRIPT)
     except Exception as exc:
-        logger.warning(f"Failed to hash desktop_install.sh: {exc}")
+        logger.warning(format_log("docker", "image", "WARN", f"Failed to hash desktop_install.sh: {exc}"))
         install_hash = "missing"
     
     try:
         setup_hash = _compute_file_hash(DESKTOP_SETUP_SCRIPT)
     except Exception as exc:
-        logger.warning(f"Failed to hash desktop_setup.sh: {exc}")
+        logger.warning(format_log("docker", "image", "WARN", f"Failed to hash desktop_setup.sh: {exc}"))
         setup_hash = "missing"
     
     # Dockerfile template hash (inline template, hash the template string)
@@ -159,8 +160,8 @@ def build_desktop_image(
     if not DESKTOP_SETUP_SCRIPT.exists():
         raise FileNotFoundError(f"Desktop setup script not found: {DESKTOP_SETUP_SCRIPT}")
     
-    on_log(f"[image-builder] building desktop image: {tag}")
-    on_log(f"[image-builder] base image: {base_image}")
+    on_log(format_log("docker", "build", "INFO", f"building desktop image: {tag}"))
+    on_log(format_log("docker", "build", "INFO", f"base image: {base_image}"))
     
     # Create temporary directory for build context
     with tempfile.TemporaryDirectory() as build_dir:
@@ -176,7 +177,7 @@ def build_desktop_image(
         dockerfile_path = build_path / "Dockerfile"
         dockerfile_path.write_text(dockerfile_content, encoding="utf-8")
         
-        on_log(f"[image-builder] build context prepared in {build_dir}")
+        on_log(format_log("docker", "build", "INFO", f"build context prepared in {build_dir}"))
         
         # Build image
         try:
@@ -201,7 +202,7 @@ def build_desktop_image(
                 for line in process.stdout:
                     line = line.rstrip()
                     if line:
-                        on_log(f"[image-builder] {line}")
+                        on_log(format_log("docker", "build", "INFO", line))
             
             # Wait for completion
             return_code = process.wait(timeout=600.0)  # 10 minute timeout
@@ -209,7 +210,7 @@ def build_desktop_image(
             if return_code != 0:
                 raise RuntimeError(f"Docker build failed with exit code {return_code}")
             
-            on_log(f"[image-builder] successfully built: {tag}")
+            on_log(format_log("docker", "build", "INFO", f"successfully built: {tag}"))
             
         except subprocess.TimeoutExpired:
             process.kill()
@@ -245,16 +246,16 @@ def ensure_desktop_image(
         cache_key = compute_desktop_cache_key(base_image)
         cached_image_tag = f"agent-runner-desktop:{cache_key}"
         
-        on_log(f"[image-builder] checking for cached desktop image: {cached_image_tag}")
+        on_log(format_log("docker", "image", "INFO", f"checking for cached desktop image: {cached_image_tag}"))
         
         # Check if cached image exists
         if _has_image(cached_image_tag):
-            on_log(f"[image-builder] cache HIT: reusing existing image")
+            on_log(format_log("docker", "image", "INFO", "cache HIT: reusing existing image"))
             return cached_image_tag
         
         # Cache miss - need to build
-        on_log(f"[image-builder] cache MISS: building new image")
-        on_log(f"[image-builder] cache key: {cache_key}")
+        on_log(format_log("docker", "image", "INFO", "cache MISS: building new image"))
+        on_log(format_log("docker", "image", "INFO", f"cache key: {cache_key}"))
         
         # Build the image
         build_desktop_image(base_image, cached_image_tag, on_log=on_log)
@@ -263,7 +264,7 @@ def ensure_desktop_image(
         
     except Exception as exc:
         # Log error but don't fail - fall back to runtime installation
-        on_log(f"[image-builder] ERROR: {exc}")
-        on_log(f"[image-builder] falling back to runtime desktop installation")
-        logger.exception("Failed to build desktop image, falling back to runtime install")
+        on_log(format_log("docker", "image", "ERROR", str(exc)))
+        on_log(format_log("docker", "image", "INFO", "falling back to runtime desktop installation"))
+        logger.exception(format_log("docker", "image", "ERROR", "Failed to build desktop image, falling back to runtime install"))
         return base_image

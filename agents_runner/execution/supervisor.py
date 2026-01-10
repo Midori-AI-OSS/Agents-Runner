@@ -20,6 +20,7 @@ from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker_runner import DockerAgentWorker
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
+from agents_runner.log_format import format_log
 
 
 class ErrorType(Enum):
@@ -259,7 +260,7 @@ class TaskSupervisor:
         """User requested graceful cancellation (terminal, no retry/fallback)."""
         if self._user_stop_reason is None:
             self._user_stop_reason = "cancel"
-            self._on_log("[supervisor] user_cancel requested")
+            self._on_log(format_log("supervisor", "none", "INFO", "user_cancel requested"))
         if self._current_worker:
             self._current_worker.request_stop()
 
@@ -267,7 +268,7 @@ class TaskSupervisor:
         """User requested force kill (terminal, no retry/fallback)."""
         if self._user_stop_reason is None:
             self._user_stop_reason = "kill"
-            self._on_log("[supervisor] user_kill requested")
+            self._on_log(format_log("supervisor", "none", "INFO", "user_kill requested"))
         if self._current_worker:
             request_kill = getattr(self._current_worker, "request_kill", None)
             if callable(request_kill):
@@ -287,7 +288,7 @@ class TaskSupervisor:
         while self._current_agent_index < len(self._agent_chain):
             if self._user_stop_reason is not None:
                 result = self._result_for_user_stop()
-                self._on_log("[supervisor] retry skipped due to user stop")
+                self._on_log(format_log("supervisor", "task", "INFO", "retry skipped due to user stop"))
                 if self._on_done:
                     self._on_done(
                         result.exit_code,
@@ -303,7 +304,7 @@ class TaskSupervisor:
             result = self._try_agent(agent)
 
             if self._user_stop_reason is not None:
-                self._on_log("[supervisor] retry skipped due to user stop")
+                self._on_log(format_log("supervisor", "task", "INFO", "retry skipped due to user stop"))
                 if self._on_done:
                     self._on_done(
                         result.exit_code,
@@ -342,7 +343,7 @@ class TaskSupervisor:
 
             # Fatal errors don't retry
             if error_type == ErrorType.FATAL:
-                self._on_log(f"[supervisor] fatal error detected, no retry")
+                self._on_log(format_log("supervisor", "task", "ERROR", "fatal error detected, no retry"))
                 if self._on_done:
                     self._on_done(
                         result.exit_code,
@@ -361,12 +362,17 @@ class TaskSupervisor:
                 delay = calculate_backoff(retry_count, error_type)
                 self._on_retry(retry_count + 1, agent.agent_cli, delay)
                 self._on_log(
-                    f"[supervisor] retry {retry_count + 1}/{self._supervisor_config.max_retries_per_agent} "
-                    f"with {agent.agent_cli} in {delay:.0f}s"
+                    format_log(
+                        "supervisor",
+                        "task",
+                        "INFO",
+                        f"retry {retry_count + 1}/{self._supervisor_config.max_retries_per_agent} "
+                        f"with {agent.agent_cli} in {delay:.0f}s",
+                    )
                 )
                 if not self._sleep_with_cancel(delay):
                     result = self._result_for_user_stop()
-                    self._on_log("[supervisor] retry skipped due to user stop")
+                    self._on_log(format_log("supervisor", "task", "INFO", "retry skipped due to user stop"))
                     if self._on_done:
                         self._on_done(
                             result.exit_code,
@@ -383,13 +389,18 @@ class TaskSupervisor:
                 self._current_agent_index += 1
                 new_agent = self._agent_chain[self._current_agent_index]
                 self._on_log(
-                    f"[supervisor] switching from {old_agent} to {new_agent.agent_cli} (fallback)"
+                    format_log(
+                        "supervisor",
+                        "task",
+                        "INFO",
+                        f"switching from {old_agent} to {new_agent.agent_cli} (fallback)",
+                    )
                 )
                 self._on_agent_switch(old_agent, new_agent.agent_cli)
                 continue
 
             # No more fallback agents
-            self._on_log(f"[supervisor] all agents exhausted")
+            self._on_log(format_log("supervisor", "task", "INFO", "all agents exhausted"))
             if self._on_done:
                 self._on_done(
                     result.exit_code,
@@ -442,13 +453,13 @@ class TaskSupervisor:
             next_id = fallbacks[current_id]
             if next_id in visited:
                 # Circular fallback detected
-                self._on_log(f"[supervisor] circular fallback detected, stopping chain")
+                self._on_log(format_log("supervisor", "task", "WARN", "circular fallback detected, stopping chain"))
                 break
 
             next_agent = next((a for a in agents if a.agent_id == next_id), None)
             if not next_agent:
                 # Invalid fallback reference
-                self._on_log(f"[supervisor] invalid fallback reference: {next_id}")
+                self._on_log(format_log("supervisor", "task", "WARN", f"invalid fallback reference: {next_id}"))
                 break
 
             chain.append(next_agent)
@@ -457,7 +468,12 @@ class TaskSupervisor:
 
         self._agent_chain = chain
         self._on_log(
-            f"[supervisor] agent chain: {' -> '.join(a.agent_cli for a in chain)}"
+            format_log(
+                "supervisor",
+                "task",
+                "INFO",
+                f"agent chain: {' -> '.join(a.agent_cli for a in chain)}",
+            )
         )
 
     def _try_agent(self, agent: AgentInstance) -> SupervisorResult:
@@ -645,6 +661,10 @@ class TaskSupervisor:
         cooldown_mgr.set_cooldown(agent.agent_cli, cooldown_seconds, reason)
 
         self._on_log(
-            f"[supervisor] rate-limit detected for {agent.agent_cli}, "
-            f"cooldown for {cooldown_seconds}s"
+            format_log(
+                "supervisor",
+                "task",
+                "WARN",
+                f"rate-limit detected for {agent.agent_cli}, cooldown for {cooldown_seconds}s",
+            )
         )

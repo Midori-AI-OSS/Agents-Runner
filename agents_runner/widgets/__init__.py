@@ -2,6 +2,7 @@ from .agent_chain_status import AgentChainStatusWidget, AgentStatusIndicator
 from .animated_button import AnimatedPushButton, AnimatedToolButton
 from .animated_checkbox import AnimatedCheckBox
 from .arc_spinner import ArcSpinner
+from .artifact_highlighter import ArtifactSyntaxHighlighter, detect_language
 from .glass_card import GlassCard
 from .loading_bar import BouncingLoadingBar
 from .log_highlighter import LogHighlighter
@@ -18,6 +19,7 @@ __all__ = [
     "AnimatedPushButton",
     "AnimatedToolButton",
     "ArcSpinner",
+    "ArtifactSyntaxHighlighter",
     "BouncingLoadingBar",
     "GlassCard",
     "LogHighlighter",
@@ -26,4 +28,5 @@ __all__ = [
     "SpellTextEdit",
     "StainedGlassButton",
     "StatusGlyph",
+    "detect_language",
 ]

@@ -21,8 +21,10 @@ from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
 from agents_runner.environments import Environment
+from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
-from agents_runner.ui.shell_templates import build_git_clone_or_update_snippet
+from agents_runner.docker.shell_templates import build_git_clone_or_update_snippet
+from agents_runner.docker.shell_templates import shell_log_statement
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _safe_str
 
@@ -221,7 +223,7 @@ def launch_docker_terminal_task(
         # Build Rosetta warning snippet
         rosetta_snippet = ""
         if has_rosetta() is False:
-            rosetta_snippet = f'echo "[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"'
+            rosetta_snippet = shell_log_statement("host", "docker", "WARN", f"Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}")
 
         # Build git clone snippet if gh_repo is specified
         gh_clone_snippet = ""
@@ -263,7 +265,9 @@ def launch_docker_terminal_task(
 
         # Log base branch if specified
         if (desired_base or "").strip():
-            main_window._on_task_log(task_id, f"[gh] base branch: {desired_base}")
+            main_window._on_task_log(
+                task_id, format_log("gh", "branch", "INFO", f"base branch: {desired_base}")
+            )
 
         # Update settings
         main_window._settings_data["host_workdir"] = host_workdir
@@ -295,7 +299,10 @@ def launch_docker_terminal_task(
         # Log launch
         main_window._on_task_log(
             task_id,
-            f"[interactive] launched in {_safe_str(getattr(terminal_opt, 'label', 'Terminal'))}",
+            format_log(
+                "ui", "launch", "INFO",
+                f"launched in {_safe_str(getattr(terminal_opt, 'label', 'Terminal'))}"
+            ),
         )
 
         # Launch terminal
@@ -381,9 +388,9 @@ def _prepare_preflight_scripts(
         )
         preflight_clause += (
             f"PREFLIGHT_SYSTEM={shlex.quote(system_container_path)}; "
-            'echo "[preflight] system: starting"; '
+            f'{shell_log_statement("docker", "preflight", "INFO", "system: starting")}; '
             '/bin/bash "${PREFLIGHT_SYSTEM}"; '
-            'echo "[preflight] system: done"; '
+            f'{shell_log_statement("docker", "preflight", "INFO", "system: done")}; '
         )
 
         # Settings preflight (optional)
@@ -396,9 +403,9 @@ def _prepare_preflight_scripts(
             )
             preflight_clause += (
                 f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                'echo "[preflight] settings: running"; '
+                f'{shell_log_statement("docker", "preflight", "INFO", "settings: running")}; '
                 '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                'echo "[preflight] settings: done"; '
+                f'{shell_log_statement("docker", "preflight", "INFO", "settings: done")}; '
             )
 
         # Environment preflight (optional)
@@ -411,9 +418,9 @@ def _prepare_preflight_scripts(
             )
             preflight_clause += (
                 f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                'echo "[preflight] environment: running"; '
+                f'{shell_log_statement("docker", "preflight", "INFO", "environment: running")}; '
                 '/bin/bash "${PREFLIGHT_ENV}"; '
-                'echo "[preflight] environment: done"; '
+                f'{shell_log_statement("docker", "preflight", "INFO", "environment: done")}; '
             )
 
         # Extra preflight (optional, help mode, etc.)
@@ -426,9 +433,9 @@ def _prepare_preflight_scripts(
             )
             preflight_clause += (
                 f"PREFLIGHT_HELP={shlex.quote(helpme_container_path)}; "
-                'echo "[preflight] helpme: running"; '
+                f'{shell_log_statement("docker", "preflight", "INFO", "helpme: running")}; '
                 '/bin/bash "${PREFLIGHT_HELP}"; '
-                'echo "[preflight] helpme: done"; '
+                f'{shell_log_statement("docker", "preflight", "INFO", "helpme: done")}; '
             )
 
         return preflight_clause, preflight_mounts, tmp_paths
@@ -552,8 +559,8 @@ def _build_host_shell_script(
 
     host_script_parts.extend(
         [
-            f'{docker_pull_cmd} || {{ STATUS=$?; echo "[host] docker pull failed (exit $STATUS)"; write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; }}',
-            f'{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then echo "[host] container command failed (exit $STATUS)"; fi; write_finish "$STATUS"; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS',
+            f'{docker_pull_cmd} || {{ STATUS=$?; {shell_log_statement("host", "docker", "ERROR", "docker pull failed (exit $STATUS)")}; write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; }}',
+            f'{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then {shell_log_statement("host", "docker", "ERROR", "container command failed (exit $STATUS)")}; fi; write_finish "$STATUS"; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS',
         ]
     )
 

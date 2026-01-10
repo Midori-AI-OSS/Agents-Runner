@@ -398,8 +398,10 @@ def collect_artifacts_from_container_with_timeout(
         if proc.is_alive():
             try:
                 proc.kill()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    f"Failed to kill artifact collection process (PID {proc.pid}): {type(exc).__name__}: {exc}"
+                )
             proc.join(timeout=2.0)
         raise TimeoutError(
             f"artifact collection timed out after {timeout_s:.0f}s (elapsed {time.monotonic() - start:.1f}s)"
@@ -416,8 +418,10 @@ def collect_artifacts_from_container_with_timeout(
         try:
             result_q.close()
             result_q.cancel_join_thread()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(
+                f"Failed to clean up artifact collection queue: {type(exc).__name__}: {exc}"
+            )
 
     if kind == "ok":
         return cast(list[str], payload)

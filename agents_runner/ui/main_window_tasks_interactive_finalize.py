@@ -17,6 +17,7 @@ from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.gh_management import commit_push_and_pr
 from agents_runner.gh_management import GhManagementError
+from agents_runner.log_format import format_log
 from agents_runner.pr_metadata import load_pr_metadata
 from agents_runner.pr_metadata import normalize_pr_title
 from agents_runner.ui.utils import _stain_color
@@ -48,7 +49,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         self._details.update_task(task)
         self._schedule_save()
         QApplication.beep()
-        self._on_task_log(task_id, f"[interactive] exited with {task.exit_code}")
+        self._on_task_log(task_id, format_log("host", "interactive", "INFO", f"exited with {task.exit_code}"))
 
         if (
             normalize_gh_management_mode(task.gh_management_mode)
@@ -99,7 +100,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             return
 
         start_s = time.monotonic()
-        self.host_log.emit(task_id, "[host][finalize] PR preparation started")
+        self.host_log.emit(task_id, format_log("host", "finalize", "INFO", "PR preparation started"))
 
         # Get task info for cleanup - extract environment_id safely
         task = self._tasks.get(task_id)
@@ -130,7 +131,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             )
             if metadata is not None and (metadata.title or metadata.body):
                 self.host_log.emit(
-                    task_id, f"[gh] using PR metadata from {pr_metadata_path}"
+                    task_id, format_log("gh", "pr", "INFO", f"using PR metadata from {pr_metadata_path}")
                 )
             title = (
                 normalize_pr_title(str(metadata.title or ""), fallback=default_title)
@@ -146,7 +147,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                 body += "\n\n---\n**Note:** This is an override PR created manually for a git-locked environment."
 
             self.host_log.emit(
-                task_id, f"[gh] preparing PR from {branch} -> {base_branch or 'auto'}"
+                task_id, format_log("gh", "pr", "INFO", f"preparing PR from {branch} -> {base_branch or 'auto'}")
             )
             try:
                 pr_url = commit_push_and_pr(
@@ -160,23 +161,23 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                     agent_cli_args=agent_cli_args,
                 )
             except GhManagementError as exc:
-                self.host_log.emit(task_id, f"[gh] failed: {exc}")
+                self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}"))
                 return
             except Exception as exc:
-                self.host_log.emit(task_id, f"[gh] failed: {exc}")
+                self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}"))
                 return
 
             if pr_url is None:
-                self.host_log.emit(task_id, "[gh] no changes to commit; skipping PR")
+                self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "no changes to commit; skipping PR"))
                 return
             if pr_url == "":
                 self.host_log.emit(
                     task_id,
-                    "[gh] pushed branch; PR creation skipped (gh disabled or missing)",
+                    format_log("gh", "pr", "INFO", "pushed branch; PR creation skipped (gh disabled or missing)"),
                 )
                 return
             self.host_pr_url.emit(task_id, pr_url)
-            self.host_log.emit(task_id, f"[gh] PR: {pr_url}")
+            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", f"PR: {pr_url}"))
         finally:
             # Clean up task-specific repo after PR creation (or failure)
             # This ensures each task gets a fresh clone and prevents git conflicts
@@ -186,10 +187,10 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                     state_path = getattr(self, "_state_path", "")
                     if not state_path:
                         self.host_log.emit(
-                            task_id, "[gh] cleanup skipped: state path not available"
+                            task_id, format_log("gh", "cleanup", "WARN", "cleanup skipped: state path not available")
                         )
                     else:
-                        self.host_log.emit(task_id, "[gh] cleaning up task workspace")
+                        self.host_log.emit(task_id, format_log("gh", "cleanup", "INFO", "cleaning up task workspace"))
                         data_dir = os.path.dirname(state_path)
                         cleanup_success = cleanup_task_workspace(
                             env_id=env_id,
@@ -198,12 +199,12 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                             on_log=lambda msg: self.host_log.emit(task_id, msg),
                         )
                         if cleanup_success:
-                            self.host_log.emit(task_id, "[gh] task workspace cleaned")
+                            self.host_log.emit(task_id, format_log("gh", "cleanup", "INFO", "task workspace cleaned"))
                 except Exception as cleanup_exc:
                     self.host_log.emit(
-                        task_id, f"[gh] cleanup failed: {cleanup_exc}"
+                        task_id, format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}")
                     )
             elapsed_s = time.monotonic() - start_s
             self.host_log.emit(
-                task_id, f"[host][finalize] PR preparation finished in {elapsed_s:.1f}s"
+                task_id, format_log("host", "finalize", "INFO", f"PR preparation finished in {elapsed_s:.1f}s")
             )

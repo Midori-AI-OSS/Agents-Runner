@@ -1,7 +1,10 @@
 import json
+import logging
 import os
 
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from agents_runner.persistence import default_state_path
 from agents_runner.persistence import load_state
@@ -33,7 +36,8 @@ def _load_legacy_environments(data_dir: str) -> dict[str, Environment]:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 payload = json.load(f)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to read legacy environment file {path}: {e}. Skipping this environment.")
             continue
         env = _environment_from_payload(payload)
         if env is None:
@@ -55,7 +59,8 @@ def load_environments(data_dir: str | None = None) -> dict[str, Environment]:
             default_max_agents_running = int(
                 str(settings.get("max_agents_running", -1)).strip()
             )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to parse max_agents_running setting: {e}. Using default value of -1.")
             default_max_agents_running = -1
     raw = state.get("environments")
     envs: dict[str, Environment] = {}
@@ -134,9 +139,9 @@ def delete_environment(env_id: str, data_dir: str | None = None) -> None:
                         if prompt.prompt_path:
                             try:
                                 delete_prompt_file(prompt.prompt_path)
-                            except Exception:
+                            except Exception as e:
                                 # Best-effort cleanup: ignore errors while deleting prompt files.
-                                pass
+                                logger.warning(f"Failed to delete prompt file {prompt.prompt_path} for environment {env_id}: {e}")
                 break
     
     # Remove from state
@@ -157,5 +162,5 @@ def delete_environment(env_id: str, data_dir: str | None = None) -> None:
     try:
         if os.path.exists(path):
             os.unlink(path)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Failed to delete legacy environment file {path}: {e}")

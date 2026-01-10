@@ -22,10 +22,12 @@ class _MainWindowSettingsMixin:
         # Apply spellcheck setting to new task page
         spellcheck_enabled = bool(self._settings_data.get("spellcheck_enabled", True))
         self._new_task.set_spellcheck_enabled(spellcheck_enabled)
+        self._new_task.set_stt_mode("offline")
 
     def _apply_settings(self, settings: dict) -> None:
         merged = dict(self._settings_data)
         merged.update(settings or {})
+        merged.pop("stt_mode", None)
         merged["use"] = normalize_agent(str(merged.get("use") or "codex"))
 
         shell_value = str(merged.get("shell") or "bash").lower()
