@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
@@ -22,6 +24,7 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import ALLOWED_STAINS
 from agents_runner.ui.pages.dashboard_animations import PastTaskAnimator
+from agents_runner.ui.pages.dashboard_loader import PastTaskProgressiveLoader
 from agents_runner.ui.pages.dashboard_row import TaskRow
 from agents_runner.ui.task_model import Task
 
@@ -30,12 +33,17 @@ class DashboardPage(QWidget):
     task_selected = Signal(str)
     clean_old_requested = Signal()
     task_discard_requested = Signal(str)
-    past_load_more_requested = Signal(int)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        load_past_batch_callback: Callable[[int, int], int] | None = None,
+    ) -> None:
         super().__init__(parent)
         self._selected_task_id: str | None = None
         self._filter_text_tokens: list[str] = []
+        self._load_past_batch_callback = load_past_batch_callback
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -168,12 +176,14 @@ class DashboardPage(QWidget):
         self._list_layout_past.addStretch(1)
         self._scroll_past.setWidget(self._list_past)
 
-        self._btn_load_more = QPushButton("Load more")
-        self._btn_load_more.setCursor(Qt.PointingHandCursor)
-        self._btn_load_more.clicked.connect(self._request_more_past_tasks)
+        self._past_loading_indicator = QLabel("Loading more tasks...")
+        self._past_loading_indicator.setStyleSheet(
+            "color: rgba(237, 239, 245, 150); font-size: 11px; padding: 8px;"
+        )
+        self._past_loading_indicator.hide()
 
         past_layout.addWidget(self._scroll_past, 1)
-        past_layout.addWidget(self._btn_load_more, 0, Qt.AlignRight)
+        past_layout.addWidget(self._past_loading_indicator, 0, Qt.AlignCenter)
 
         self._stack.addWidget(active_page)
         self._stack.addWidget(past_page)
@@ -195,8 +205,16 @@ class DashboardPage(QWidget):
             lambda: self._rows_past
         )
 
+        # Initialize progressive loader
+        self._past_loader = PastTaskProgressiveLoader(
+            load_callback=self._request_load_batch,
+            indicator_callback=self._set_loading_indicator_visible,
+            parent=self,  # Add parent for proper Qt lifecycle
+        )
+
     def hideEvent(self, event: QHideEvent) -> None:
         self._past_animator.cancel_entrances()
+        self._past_loader.cancel()
         super().hideEvent(event)
 
     def showEvent(self, event: QShowEvent) -> None:
@@ -362,27 +380,47 @@ class DashboardPage(QWidget):
                 if self._selected_task_id == task_id:
                     self._selected_task_id = None
 
-    def set_past_load_more_enabled(
-        self, enabled: bool, label: str | None = None
-    ) -> None:
-        self._btn_load_more.setEnabled(bool(enabled))
-        if label is not None:
-            self._btn_load_more.setText(str(label))
-        elif enabled and self._btn_load_more.text() != "Load more":
-            self._btn_load_more.setText("Load more")
+    def _request_load_batch(self, offset: int, limit: int) -> int:
+        """Request loading a batch of past tasks.
+        
+        This is called by the progressive loader. It calls the callback
+        that the main window provides.
+        
+        Args:
+            offset: Starting offset for loading.
+            limit: Maximum number of tasks to load.
+            
+        Returns:
+            Number of tasks actually loaded.
+        """
+        if self._load_past_batch_callback is not None:
+            return self._load_past_batch_callback(offset, limit)
+        return 0
 
-    def _request_more_past_tasks(self) -> None:
-        if not self._btn_load_more.isEnabled():
-            return
-        self._btn_load_more.setEnabled(False)
-        self.past_load_more_requested.emit(len(self._rows_past))
+    def _set_loading_indicator_visible(self, visible: bool) -> None:
+        """Show or hide the loading indicator.
+        
+        Args:
+            visible: True to show indicator, False to hide.
+        """
+        self._past_loading_indicator.setVisible(visible)
 
     def _on_tab_changed(self, index: int) -> None:
         if index >= 0:
             self._stack.setCurrentIndex(index)
+        
+        # Always cancel any active loader when switching tabs
         if index != 1:
             self._past_animator.cancel_entrances()
+            self._past_loader.cancel()
             return
-        if not self._rows_past and self._btn_load_more.isEnabled():
-            self._request_more_past_tasks()
+        
+        # Cancel any existing loader before starting new one
+        self._past_loader.cancel()
+        
+        # Start progressive loading
+        # Check if we need to load OR if loading was interrupted
+        if not self._rows_past or self._past_loader.has_more():
+            self._past_loader.start()
+        
         self._past_animator.on_tab_shown()
