@@ -217,10 +217,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             "When enabled, after a pull request creation task finishes, the program waits about 30 seconds\n"
             "and then starts a merge-agent task that resolves merge conflicts (if any) and merges the pull request."
         )
-        self._merge_agent_auto_start_enabled.setEnabled(False)
-        self._merge_agent_auto_start_enabled.setStyleSheet(
-            "QCheckBox:disabled { color: #EDEFF5; }"
-        )
 
         self._merge_agent_label = QLabel("Merge agent")
         self._merge_agent_row = QWidget(general_tab)
@@ -542,7 +538,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._gh_context_label.setVisible(False)
             self._gh_context_row.setVisible(False)
             self._merge_agent_auto_start_enabled.setChecked(False)
-            self._merge_agent_auto_start_enabled.setEnabled(False)
             self._merge_agent_label.setVisible(False)
             self._merge_agent_row.setVisible(False)
             self._gh_management_mode.setCurrentIndex(0)
@@ -623,7 +618,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._merge_agent_auto_start_enabled.setChecked(
             bool(getattr(env, "merge_agent_auto_start_enabled", False))
         )
-        self._merge_agent_auto_start_enabled.setEnabled(merge_supported)
 
         idx = self._gh_management_mode.findData(
             normalize_gh_management_mode(env.gh_management_mode)
