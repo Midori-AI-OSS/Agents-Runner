@@ -113,7 +113,39 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             return
 
         start_s = time.monotonic()
-        self.host_log.emit(task_id, format_log("host", "finalize", "INFO", "PR preparation started"))
+        
+        # Step 1: Pre-flight validation
+        self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[1/6] Validating repository..."))
+        
+        from agents_runner.gh.pr_validation import validate_pr_prerequisites
+        from agents_runner.gh.pr_validation import check_existing_pr
+        
+        checks = validate_pr_prerequisites(
+            repo_root=repo_root,
+            branch=branch,
+            use_gh=use_gh,
+        )
+        
+        # Check for failures
+        failed_checks = [(name, msg) for name, passed, msg in checks if not passed]
+        if failed_checks:
+            for name, msg in failed_checks:
+                self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"validation failed: {name}: {msg}"))
+            return
+        
+        # Check for existing PR (informational)
+        existing_pr = check_existing_pr(repo_root, branch)
+        if existing_pr:
+            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", f"[2/6] Pull request already exists: {existing_pr}"))
+            self.host_pr_url.emit(task_id, existing_pr)
+            # Update task PR URL
+            task = self._tasks.get(task_id)
+            if task:
+                task.gh_pr_url = existing_pr
+                self._schedule_save()
+            return
+        
+        self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[2/6] No existing PR found, proceeding..."))
 
         # Get task info for cleanup - extract environment_id safely
         task = self._tasks.get(task_id)
@@ -122,6 +154,8 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             env_id = str(task.environment_id or "").strip()
         
         try:
+            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[3/6] Preparing PR metadata..."))
+            
             prompt_line = (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
             default_title = f"Agent Runner: {prompt_line or task_id}"
             default_title = normalize_pr_title(default_title, fallback=default_title)
@@ -160,7 +194,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                 body += "\n\n---\n**Note:** This is an override PR created manually for a git-locked environment."
 
             self.host_log.emit(
-                task_id, format_log("gh", "pr", "INFO", f"preparing PR from {branch} -> {base_branch or 'auto'}")
+                task_id, format_log("gh", "pr", "INFO", f"[4/6] Creating PR from {branch} -> {base_branch or 'auto'}")
             )
             try:
                 pr_url = commit_push_and_pr(
@@ -181,16 +215,22 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                 return
 
             if pr_url is None:
-                self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "no changes to commit; skipping PR"))
+                self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[5/6] No changes to commit; skipping PR"))
                 return
             if pr_url == "":
                 self.host_log.emit(
                     task_id,
-                    format_log("gh", "pr", "INFO", "pushed branch; PR creation skipped (gh disabled or missing)"),
+                    format_log("gh", "pr", "INFO", "[5/6] Branch pushed; PR creation skipped (gh disabled or missing)"),
                 )
                 return
+            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", f"[6/6] PR created successfully: {pr_url}"))
             self.host_pr_url.emit(task_id, pr_url)
-            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", f"PR: {pr_url}"))
+            
+            # Update task PR URL
+            task = self._tasks.get(task_id)
+            if task:
+                task.gh_pr_url = pr_url
+                self._schedule_save()
         finally:
             # Clean up task-specific repo after PR creation (or failure)
             # This ensures each task gets a fresh clone and prevents git conflicts
