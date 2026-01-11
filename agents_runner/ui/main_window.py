@@ -169,10 +169,19 @@ class MainWindow(
         )
         self._btn_settings.clicked.connect(self._show_settings)
 
+        self._btn_report_issue = QToolButton()
+        self._btn_report_issue.setText("Report Issue")
+        self._btn_report_issue.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_report_issue.setIcon(
+            self.style().standardIcon(QStyle.SP_MessageBoxInformation)
+        )
+        self._btn_report_issue.clicked.connect(self._show_report_issue_dialog)
+
         top_layout.addWidget(self._btn_home)
         top_layout.addWidget(self._btn_new)
         top_layout.addWidget(self._btn_envs)
         top_layout.addWidget(self._btn_settings)
+        top_layout.addWidget(self._btn_report_issue)
         top_layout.addStretch(1)
 
         outer.addWidget(top)

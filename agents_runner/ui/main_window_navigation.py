@@ -122,6 +122,12 @@ class _MainWindowNavigationMixin:
         self._settings.set_settings(self._settings_data)
         self._transition_to_page(self._settings)
 
+    def _show_report_issue_dialog(self) -> None:
+        """Show the diagnostics bundle creation dialog."""
+        from agents_runner.ui.dialogs.diagnostics_dialog import DiagnosticsDialog
+        dialog = DiagnosticsDialog(self, self._settings_data)
+        dialog.exec()
+
     def _try_autosave_before_navigation(self) -> bool:
         if self._envs_page.isVisible() and not self._envs_page.try_autosave():
             return False
