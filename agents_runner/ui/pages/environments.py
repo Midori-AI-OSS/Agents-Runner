@@ -210,22 +210,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._gh_context_enabled.setEnabled(False)
         self._gh_context_enabled.setVisible(True)
 
-        self._merge_agent_auto_start_enabled = QCheckBox(
-            "Auto merge pull request"
-        )
-        self._merge_agent_auto_start_enabled.setToolTip(
-            "When enabled, after a pull request creation task finishes, the program waits about 30 seconds\n"
-            "and then starts a merge-agent task that resolves merge conflicts (if any) and merges the pull request."
-        )
-
-        self._merge_agent_label = QLabel("Merge agent")
-        self._merge_agent_row = QWidget(general_tab)
-        merge_agent_layout = QHBoxLayout(self._merge_agent_row)
-        merge_agent_layout.setContentsMargins(0, 0, 0, 0)
-        merge_agent_layout.setSpacing(BUTTON_ROW_SPACING)
-        merge_agent_layout.addWidget(self._merge_agent_auto_start_enabled)
-        merge_agent_layout.addStretch(1)
-
         max_agents_row = QWidget(general_tab)
         max_agents_row_layout = QHBoxLayout(max_agents_row)
         max_agents_row_layout.setContentsMargins(0, 0, 0, 0)
@@ -254,10 +238,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         grid.addWidget(headless_desktop_row, 5, 1, 1, 2)
         grid.addWidget(QLabel("Container caching"), 6, 0)
         grid.addWidget(container_caching_row, 6, 1, 1, 2)
-        self._merge_agent_label.setVisible(False)
-        self._merge_agent_row.setVisible(False)
-        grid.addWidget(self._merge_agent_label, 7, 0)
-        grid.addWidget(self._merge_agent_row, 7, 1, 1, 2)
 
         self._gh_context_label = QLabel("GitHub context")
         self._gh_context_row = QWidget(general_tab)
@@ -537,9 +517,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._gh_context_enabled.setEnabled(False)
             self._gh_context_label.setVisible(False)
             self._gh_context_row.setVisible(False)
-            self._merge_agent_auto_start_enabled.setChecked(False)
-            self._merge_agent_label.setVisible(False)
-            self._merge_agent_row.setVisible(False)
             self._gh_management_mode.setCurrentIndex(0)
             self._gh_management_target.setText("")
             self._gh_use_host_cli.setChecked(bool(is_gh_available()))
@@ -604,14 +581,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._gh_context_enabled.setEnabled(context_available)
         self._gh_context_label.setVisible(context_available)
         self._gh_context_row.setVisible(context_available)
-
-        is_git_locked = bool(getattr(env, "gh_management_locked", False))
-        show_merge_controls = is_github_env and is_git_locked
-        self._merge_agent_label.setVisible(show_merge_controls)
-        self._merge_agent_row.setVisible(show_merge_controls)
-        self._merge_agent_auto_start_enabled.setChecked(
-            bool(getattr(env, "merge_agent_auto_start_enabled", False))
-        )
 
         idx = self._gh_management_mode.findData(
             normalize_gh_management_mode(env.gh_management_mode)

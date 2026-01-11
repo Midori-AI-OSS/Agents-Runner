@@ -29,9 +29,9 @@ def derive_task_git_metadata(task: Any) -> dict[str, object] | None:
       - repo_url: str (optional)
       - repo_owner: str (optional)
       - repo_name: str (optional)
-      - base_branch: str (required for merge flows)
-      - target_branch: str (required for merge flows; PR head branch)
-      - pull_request_number: int (required for merge flows)
+      - base_branch: str (optional)
+      - target_branch: str (optional; PR head branch)
+      - pull_request_number: int (optional)
       - pull_request_url: str (optional)
       - head_commit: str (optional)
 
@@ -88,15 +88,3 @@ def derive_task_git_metadata(task: Any) -> dict[str, object] | None:
         metadata["target_branch"] = target_fallback
 
     return metadata or None
-
-
-def has_merge_pr_metadata(task: Any) -> bool:
-    """Return True if task has the required metadata for merge-agent flows."""
-    metadata = getattr(task, "git", None)
-    if not isinstance(metadata, dict):
-        return False
-    base = str(metadata.get("base_branch") or "").strip()
-    target = str(metadata.get("target_branch") or "").strip()
-    pr = metadata.get("pull_request_number")
-    return bool(base and target and isinstance(pr, int) and pr > 0)
-

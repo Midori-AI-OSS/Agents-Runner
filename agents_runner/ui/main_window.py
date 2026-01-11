@@ -192,7 +192,6 @@ class MainWindow(
         self._details.set_environments(self._environments)
         self._details.back_requested.connect(self._show_dashboard)
         self._details.pr_requested.connect(self._on_task_pr_requested)
-        self._details.merge_agent_requested.connect(self._on_task_merge_agent_requested)
         self._details.container_action_requested.connect(self._on_task_container_action)
         self._envs_page = EnvironmentsPage()
         self._envs_page.back_requested.connect(self._show_dashboard)
@@ -226,7 +225,6 @@ class MainWindow(
         self._load_state()
         self._apply_window_prefs()
         self._reload_environments()
-        self._resume_merge_agent_followups()
         self._apply_settings_to_pages()
         self._try_start_queued_tasks()
 

@@ -137,10 +137,6 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
                     payload.get("gh_pr_metadata_enabled", False))
     )
 
-    merge_agent_auto_start_enabled = bool(
-        payload.get("merge_agent_auto_start_enabled", False)
-    )
-
     prompts_data = payload.get("prompts", [])
     prompts = []
     if isinstance(prompts_data, list):
@@ -297,7 +293,6 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         gh_last_base_branch=gh_last_base_branch,
         gh_use_host_cli=gh_use_host_cli,
         gh_context_enabled=gh_context_enabled,  # Use migrated field name
-        merge_agent_auto_start_enabled=merge_agent_auto_start_enabled,
         prompts=prompts,
         prompts_unlocked=prompts_unlocked,
         agent_selection=agent_selection,
@@ -372,9 +367,6 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gh_context_enabled": bool(env.gh_context_enabled),  # Save with new name
         # Also save with old name for backward compatibility with older builds
         "gh_pr_metadata_enabled": bool(env.gh_context_enabled),
-        "merge_agent_auto_start_enabled": bool(
-            getattr(env, "merge_agent_auto_start_enabled", False)
-        ),
         "prompts": _serialize_prompts(env.prompts or []),
         "prompts_unlocked": bool(env.prompts_unlocked),
         "agent_selection": selection_payload,
