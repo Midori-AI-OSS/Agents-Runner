@@ -443,6 +443,15 @@ class _MainWindowTasksAgentMixin:
                                 task_branch=None,
                                 head_commit=git_info.commit_sha,
                             )
+                            # Populate task.git immediately for folder-locked environments
+                            task.git = {
+                                "repo_url": git_info.repo_url,
+                                "repo_owner": git_info.repo_owner,
+                                "repo_name": git_info.repo_name,
+                                "base_branch": git_info.branch,
+                                "target_branch": None,
+                                "head_commit": git_info.commit_sha,
+                            }
                             self._on_task_log(
                                 task_id, format_log("gh", "context", "INFO", f"detected git repo: {git_info.repo_url}")
                             )
