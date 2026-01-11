@@ -22,38 +22,52 @@ class CooldownManager:
         """
         self._watch_states = watch_states
 
-    def check_cooldown(self, agent_name: str) -> AgentWatchState | None:
-        """Check cooldown state for agent.
+    def check_cooldown(self, agent_key: str) -> AgentWatchState | None:
+        """Check cooldown state for an agent selection key.
 
         Args:
-            agent_name: Agent CLI name (e.g., "codex", "claude")
+            agent_key: Agent selection key (e.g., "copilot::<dir>::<args>")
 
         Returns:
             AgentWatchState if exists, None otherwise
         """
-        return self._watch_states.get(agent_name)
+        agent_key = str(agent_key or "").strip()
+        if not agent_key:
+            return None
+        watch_state = self._watch_states.get(agent_key)
+        if watch_state is not None:
+            return watch_state
 
-    def is_on_cooldown(self, agent_name: str) -> bool:
-        """Check if agent is currently on cooldown.
+        # Backwards compatibility: callers may pass the bare agent CLI (e.g. "copilot").
+        agent_cli = agent_key.lower()
+        if "::" not in agent_cli:
+            watch_state = self._watch_states.get(agent_cli)
+            if watch_state is not None:
+                return watch_state
+            for key, candidate in self._watch_states.items():
+                if key.startswith(f"{agent_cli}::") and candidate.is_on_cooldown():
+                    return candidate
+        return None
+
+    def is_on_cooldown(self, agent_key: str) -> bool:
+        """Check if an agent selection key is currently on cooldown.
 
         Args:
-            agent_name: Agent CLI name
+            agent_key: Agent selection key or bare agent CLI name
 
         Returns:
             True if agent is on cooldown, False otherwise
         """
-        watch_state = self._watch_states.get(agent_name)
-        if not watch_state:
-            return False
-        return watch_state.is_on_cooldown()
+        watch_state = self.check_cooldown(agent_key)
+        return bool(watch_state and watch_state.is_on_cooldown())
 
     def set_cooldown(
-        self, agent_name: str, duration_seconds: int, reason: str = ""
+        self, agent_key: str, duration_seconds: int, reason: str = ""
     ) -> AgentWatchState:
-        """Set cooldown for agent.
+        """Set cooldown for an agent selection key.
 
         Args:
-            agent_name: Agent CLI name
+            agent_key: Agent selection key or bare agent CLI name
             duration_seconds: Cooldown duration in seconds
             reason: Reason for cooldown (error message)
 
@@ -63,13 +77,14 @@ class CooldownManager:
         from agents_runner.core.agent.rate_limit import RateLimitDetector
 
         # Get or create watch state
-        watch_state = self._watch_states.get(agent_name)
+        agent_key = str(agent_key or "").strip()
+        watch_state = self._watch_states.get(agent_key)
         if not watch_state:
             watch_state = AgentWatchState(
-                provider_name=agent_name,
+                provider_name=agent_key,
                 support_level=SupportLevel.BEST_EFFORT,
             )
-            self._watch_states[agent_name] = watch_state
+            self._watch_states[agent_key] = watch_state
 
         # Record rate-limit event
         RateLimitDetector.record_rate_limit(
@@ -78,15 +93,16 @@ class CooldownManager:
 
         return watch_state
 
-    def clear_cooldown(self, agent_name: str) -> None:
-        """Clear cooldown for agent (user bypass).
+    def clear_cooldown(self, agent_key: str) -> None:
+        """Clear cooldown for an agent selection key (user bypass).
 
         Args:
-            agent_name: Agent CLI name
+            agent_key: Agent selection key or bare agent CLI name
         """
         from agents_runner.core.agent.rate_limit import RateLimitDetector
 
-        watch_state = self._watch_states.get(agent_name)
+        agent_key = str(agent_key or "").strip()
+        watch_state = self._watch_states.get(agent_key)
         if watch_state:
             RateLimitDetector.clear_cooldown(watch_state)
 

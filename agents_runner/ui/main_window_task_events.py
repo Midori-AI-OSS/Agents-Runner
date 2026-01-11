@@ -291,7 +291,7 @@ class _MainWindowTaskEventsMixin:
             self._on_task_log(bridge.task_id, line)
 
     def _on_bridge_retry_attempt(
-        self, retry_count: int, agent: str, delay: float
+        self, attempt_number: int, agent: str, delay: float
     ) -> None:
         """Handle retry attempt signal from supervisor."""
         bridge = self.sender()
@@ -306,9 +306,9 @@ class _MainWindowTaskEventsMixin:
 
         self._on_task_log(
             bridge.task_id,
-            format_log("supervisor", "retry", "INFO", f"retry {retry_count}/3 with {agent} in {delay:.0f}s"),
+            format_log("supervisor", "retry", "INFO", f"starting attempt {attempt_number} with {agent} (fallback)"),
         )
-        task.status = f"retrying ({retry_count}/3)"
+        task.status = f"retrying (attempt {attempt_number})"
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
         spinner = _stain_color(env.color) if env else None
@@ -359,12 +359,15 @@ class _MainWindowTaskEventsMixin:
                     agent_used = metadata.get("agent_used")
                     agent_id = metadata.get("agent_id")
                     retry_count = metadata.get("retry_count", 0)
-                    
+                    attempt_history = metadata.get("attempt_history")
+                     
                     if agent_used:
                         task.agent_cli = agent_used
                     if agent_id:
                         task.agent_instance_id = agent_id
-                    
+                    if isinstance(attempt_history, list):
+                        task.attempt_history = attempt_history
+                     
                     if retry_count > 0:
                         self._on_task_log(
                             bridge.task_id,

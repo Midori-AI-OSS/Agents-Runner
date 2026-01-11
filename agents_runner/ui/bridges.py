@@ -16,7 +16,7 @@ class TaskRunnerBridge(QObject):
     state = Signal(dict)
     log = Signal(str)
     done = Signal(int, object, list, dict)  # Added dict for metadata
-    retry_attempt = Signal(int, str, float)  # retry_count, agent, delay
+    retry_attempt = Signal(int, str, float)  # attempt_number, agent, delay_seconds (always 0 for fallback)
     agent_switched = Signal(str, str)  # from_agent, to_agent
 
     def __init__(
@@ -43,7 +43,7 @@ class TaskRunnerBridge(QObject):
         elif use_supervisor and mode != "preflight":
             # Use supervisor for agent runs
             supervisor_config = SupervisorConfig(
-                max_retries_per_agent=3,
+                max_retries_per_agent=0,
                 enable_fallback=True,
             )
             self._worker = TaskSupervisor(

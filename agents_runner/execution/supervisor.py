@@ -7,8 +7,8 @@ fallback to alternate agents, and intelligent error classification.
 
 from __future__ import annotations
 
+import os
 import re
-import time
 from dataclasses import dataclass
 from dataclasses import field
 from enum import Enum
@@ -37,7 +37,7 @@ class ErrorType(Enum):
 class SupervisorConfig:
     """Configuration for task supervision."""
 
-    max_retries_per_agent: int = 3
+    max_retries_per_agent: int = 0
     enable_fallback: bool = True
     backoff_base_seconds: float = 5.0
     rate_limit_backoff_base: float = 60.0
@@ -51,6 +51,23 @@ class SupervisorResult:
     error: str | None
     artifacts: list[str]
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+FailureCategory = Literal["rate_limit", "auth", "network", "tool_error", "unknown"]
+
+
+@dataclass(frozen=True, slots=True)
+class FailureReason:
+    failure_category: FailureCategory
+    failure_message: str
+    matched_signals: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class AttemptKey:
+    agent_cli: str
+    host_config_dir: str
+    agent_cli_args: tuple[str, ...]
 
 
 def classify_error(
@@ -135,7 +152,7 @@ def classify_error(
     return ErrorType.RETRYABLE
 
 
-def calculate_backoff(retry_count: int, error_type: ErrorType) -> float:
+def calculate_backoff(retry_count: int, error_type: ErrorType) -> float:  # pragma: no cover
     """Calculate backoff delay in seconds for retry attempt.
 
     Args:
@@ -159,11 +176,10 @@ class TaskSupervisor:
     """Supervises task execution with retry and fallback capabilities.
 
     Manages agent task execution with:
-    - Automatic retry on transient failures (up to 3 times per agent)
-    - Exponential backoff between retries
-    - Fallback to alternate agents after retry exhaustion
-    - Container restart on crash
-    - Clean state between retries
+    - Fallback to alternate agents after any failure
+    - No same-agent+config retries within a task run
+    - Structured failure reasons for each attempt
+    - Per agent+config cooldown on rate limit/quota errors
     """
 
     def __init__(
@@ -207,8 +223,9 @@ class TaskSupervisor:
         # State tracking
         self._agent_chain: list[AgentInstance] = []
         self._current_agent_index = 0
-        self._retry_counts: dict[str, int] = {}
         self._total_attempts = 0
+        self._attempted: set[AttemptKey] = set()
+        self._attempt_history: list[dict[str, Any]] = []
         self._current_worker: DockerAgentWorker | None = None
         self._last_container_id: str | None = None
         self._last_gh_repo_root: str | None = None
@@ -285,6 +302,7 @@ class TaskSupervisor:
         self._initialize_agent_chain()
 
         # Main supervision loop
+        current_agent_cli: str | None = None
         while self._current_agent_index < len(self._agent_chain):
             if self._user_stop_reason is not None:
                 result = self._result_for_user_stop()
@@ -298,7 +316,28 @@ class TaskSupervisor:
                     )
                 return result
 
-            agent = self._agent_chain[self._current_agent_index]
+            next_agent = self._next_available_agent(start_index=self._current_agent_index)
+            if next_agent is None:
+                result = self._result_for_exhausted_agents()
+                if self._on_done:
+                    self._on_done(
+                        result.exit_code,
+                        result.error,
+                        result.artifacts,
+                        result.metadata,
+                    )
+                return result
+
+            next_index, agent = next_agent
+            if next_index != self._current_agent_index:
+                self._current_agent_index = next_index
+
+            if current_agent_cli and current_agent_cli != agent.agent_cli:
+                self._on_agent_switch(current_agent_cli, agent.agent_cli)
+            current_agent_cli = agent.agent_cli
+
+            attempt_key = self._attempt_key(agent)
+            self._attempted.add(attempt_key)
 
             # Try executing with current agent
             result = self._try_agent(agent)
@@ -321,94 +360,75 @@ class TaskSupervisor:
 
             # Success
             if result.exit_code == 0:
+                self._attempt_history.append(
+                    {
+                        "attempt_number": int(self._total_attempts),
+                        "agent_cli": agent.agent_cli,
+                        "agent_id": agent.agent_id,
+                        "host_config_dir": attempt_key.host_config_dir,
+                        "agent_cli_args": list(attempt_key.agent_cli_args),
+                        "exit_code": int(result.exit_code),
+                    }
+                )
+                final_metadata = dict(result.metadata)
+                final_metadata["attempt_history"] = list(self._attempt_history)
                 if self._on_done:
                     self._on_done(
                         result.exit_code,
                         result.error,
                         result.artifacts,
-                        result.metadata,
+                        final_metadata,
                     )
-                return result
+                return SupervisorResult(
+                    exit_code=result.exit_code,
+                    error=result.error,
+                    artifacts=result.artifacts,
+                    metadata=final_metadata,
+                )
 
-            # Classify error
-            error_type = classify_error(
-                result.exit_code,
-                self._last_container_state,
-                self._last_logs,
+            # Record attempt and failure reason
+            failure = self._classify_failure_reason(
+                exit_code=result.exit_code,
+                container_state=self._last_container_state,
+                logs=self._last_logs,
+                exit_summary=result.error,
+            )
+            self._attempt_history.append(
+                {
+                    "attempt_number": int(self._total_attempts),
+                    "agent_cli": agent.agent_cli,
+                    "agent_id": agent.agent_id,
+                    "host_config_dir": attempt_key.host_config_dir,
+                    "agent_cli_args": list(attempt_key.agent_cli_args),
+                    "exit_code": int(result.exit_code),
+                    "failure_category": failure.failure_category,
+                    "failure_message": failure.failure_message,
+                    "matched_signals": list(failure.matched_signals),
+                }
             )
 
-            # Record cooldown if rate-limited
-            if error_type == ErrorType.RATE_LIMIT:
-                self._record_cooldown(agent)
+            # Record cooldown if rate-limited (agent+config specific)
+            if failure.failure_category == "rate_limit":
+                self._record_cooldown(attempt_key, reason=failure.failure_message)
 
-            # Fatal errors don't retry
-            if error_type == ErrorType.FATAL:
-                self._on_log(format_log("supervisor", "task", "ERROR", "fatal error detected, no retry"))
+            # Select the next distinct agent+config in the fallback chain.
+            self._current_agent_index += 1
+            next_candidate = self._next_available_agent(start_index=self._current_agent_index)
+            if next_candidate is None:
+                exhausted = self._result_for_exhausted_agents(last_exit_code=result.exit_code)
                 if self._on_done:
                     self._on_done(
-                        result.exit_code,
-                        result.error,
-                        result.artifacts,
-                        result.metadata,
+                        exhausted.exit_code,
+                        exhausted.error,
+                        exhausted.artifacts,
+                        exhausted.metadata,
                     )
-                return result
+                return exhausted
 
-            # Check retry count for current agent
-            retry_count = self._retry_counts.get(agent.agent_id, 0)
-
-            # Retry if under limit
-            if retry_count < self._supervisor_config.max_retries_per_agent:
-                self._retry_counts[agent.agent_id] = retry_count + 1
-                delay = calculate_backoff(retry_count, error_type)
-                self._on_retry(retry_count + 1, agent.agent_cli, delay)
-                self._on_log(
-                    format_log(
-                        "supervisor",
-                        "task",
-                        "INFO",
-                        f"retry {retry_count + 1}/{self._supervisor_config.max_retries_per_agent} "
-                        f"with {agent.agent_cli} in {delay:.0f}s",
-                    )
-                )
-                if not self._sleep_with_cancel(delay):
-                    result = self._result_for_user_stop()
-                    self._on_log(format_log("supervisor", "task", "INFO", "retry skipped due to user stop"))
-                    if self._on_done:
-                        self._on_done(
-                            result.exit_code,
-                            result.error,
-                            result.artifacts,
-                            result.metadata,
-                        )
-                    return result
-                continue
-
-            # Retries exhausted, try fallback
-            if self._current_agent_index + 1 < len(self._agent_chain):
-                old_agent = agent.agent_cli
-                self._current_agent_index += 1
-                new_agent = self._agent_chain[self._current_agent_index]
-                self._on_log(
-                    format_log(
-                        "supervisor",
-                        "task",
-                        "INFO",
-                        f"switching from {old_agent} to {new_agent.agent_cli} (fallback)",
-                    )
-                )
-                self._on_agent_switch(old_agent, new_agent.agent_cli)
-                continue
-
-            # No more fallback agents
-            self._on_log(format_log("supervisor", "task", "INFO", "all agents exhausted"))
-            if self._on_done:
-                self._on_done(
-                    result.exit_code,
-                    result.error,
-                    result.artifacts,
-                    result.metadata,
-                )
-            return result
+            next_attempt_number = int(self._total_attempts) + 1
+            _, candidate = next_candidate
+            self._on_retry(next_attempt_number, candidate.agent_cli, 0.0)
+            continue
 
         # Should not reach here
         result = SupervisorResult(
@@ -476,6 +496,27 @@ class TaskSupervisor:
             )
         )
 
+    def _next_available_agent(
+        self, *, start_index: int
+    ) -> tuple[int, AgentInstance] | None:
+        for index in range(max(0, int(start_index)), len(self._agent_chain)):
+            agent = self._agent_chain[index]
+            key = self._attempt_key(agent)
+            if key in self._attempted:
+                continue
+            if self._is_on_cooldown(key):
+                self._on_log(
+                    format_log(
+                        "supervisor",
+                        "cooldown",
+                        "INFO",
+                        f"skipping {agent.agent_cli} (agent+config) due to cooldown",
+                    )
+                )
+                continue
+            return index, agent
+        return None
+
     def _try_agent(self, agent: AgentInstance) -> SupervisorResult:
         """Try executing task with given agent.
 
@@ -523,7 +564,7 @@ class TaskSupervisor:
             metadata={
                 "agent_used": agent.agent_cli,
                 "agent_id": agent.agent_id,
-                "retry_count": self._retry_counts.get(agent.agent_id, 0),
+                "retry_count": max(0, int(self._total_attempts) - 1),
                 "total_attempts": self._total_attempts,
             },
         )
@@ -537,15 +578,6 @@ class TaskSupervisor:
             artifacts=[],
             metadata={"user_stop": reason},
         )
-
-    def _sleep_with_cancel(self, seconds: float) -> bool:
-        """Sleep but allow early-exit if a user stop is requested."""
-        deadline = time.monotonic() + max(0.0, float(seconds))
-        while time.monotonic() < deadline:
-            if self._user_stop_reason is not None:
-                return False
-            time.sleep(0.1)
-        return True
 
     def _build_agent_config(self, agent: AgentInstance) -> DockerRunnerConfig:
         """Build DockerRunnerConfig for specific agent.
@@ -630,41 +662,207 @@ class TaskSupervisor:
         # we would need to capture container state before removal
         self._last_container_state = {}
 
-    def _record_cooldown(self, agent: AgentInstance) -> None:
-        """Record rate-limit cooldown for agent.
+    def _attempt_key(self, agent: AgentInstance) -> AttemptKey:
+        agent_cli = str(agent.agent_cli or "").strip().lower() or "codex"
+        host_config_dir = os.path.expanduser(
+            str(agent.config_dir or self._config.host_codex_dir or "").strip()
+        )
+        if host_config_dir:
+            host_config_dir = os.path.abspath(host_config_dir)
 
-        Args:
-            agent: Agent instance that was rate-limited
-        """
-        from agents_runner.core.agent.cooldown_manager import CooldownManager
-        from agents_runner.core.agent.rate_limit import RateLimitDetector
-
-        # Detect rate limit and extract cooldown duration
-        is_rate_limited, cooldown_seconds = RateLimitDetector.detect(
-            agent.agent_cli,
-            self._last_exit_code,
-            self._last_logs,
-            self._last_container_state,
+        agent_cli_args = self._effective_agent_cli_args(agent)
+        return AttemptKey(
+            agent_cli=agent_cli,
+            host_config_dir=host_config_dir,
+            agent_cli_args=tuple(agent_cli_args),
         )
 
-        if not is_rate_limited:
-            return
+    def _effective_agent_cli_args(self, agent: AgentInstance) -> list[str]:
+        if agent.cli_flags:
+            import shlex
 
-        # Get cooldown manager
+            try:
+                return list(shlex.split(agent.cli_flags))
+            except ValueError:
+                return []
+        return list(self._config.agent_cli_args or [])
+
+    def _is_on_cooldown(self, attempt_key: AttemptKey) -> bool:
+        from agents_runner.core.agent.cooldown_manager import CooldownManager
+        from agents_runner.core.agent.keys import cooldown_key
+
         cooldown_mgr = CooldownManager(self._watch_states)
+        key = cooldown_key(
+            agent_cli=attempt_key.agent_cli,
+            host_config_dir=attempt_key.host_config_dir,
+            agent_cli_args=list(attempt_key.agent_cli_args),
+        )
+        watch_state = cooldown_mgr.check_cooldown(key)
+        return bool(watch_state and watch_state.is_on_cooldown())
 
-        # Extract reason from recent logs
-        reason_lines = self._last_logs[-10:] if self._last_logs else []
-        reason = "\n".join(reason_lines)[-200:]  # Limit to 200 chars
+    def _record_cooldown(self, attempt_key: AttemptKey, *, reason: str) -> None:
+        """Record a one-hour cooldown for a specific agent+config selection."""
+        from agents_runner.core.agent.cooldown_manager import CooldownManager
+        from agents_runner.core.agent.keys import cooldown_key
 
-        # Record cooldown
-        cooldown_mgr.set_cooldown(agent.agent_cli, cooldown_seconds, reason)
+        cooldown_mgr = CooldownManager(self._watch_states)
+        key = cooldown_key(
+            agent_cli=attempt_key.agent_cli,
+            host_config_dir=attempt_key.host_config_dir,
+            agent_cli_args=list(attempt_key.agent_cli_args),
+        )
+        cooldown_mgr.set_cooldown(key, 3600, reason[:200])
 
         self._on_log(
             format_log(
                 "supervisor",
                 "task",
                 "WARN",
-                f"rate-limit detected for {agent.agent_cli}, cooldown for {cooldown_seconds}s",
+                f"rate-limit detected for {attempt_key.agent_cli} (agent+config); cooldown for 3600s",
             )
+        )
+
+    def _classify_failure_reason(
+        self,
+        *,
+        exit_code: int,
+        container_state: dict[str, Any],
+        logs: list[str],
+        exit_summary: str | None,
+    ) -> FailureReason:
+        combined = "\n".join([*(logs or []), str(exit_summary or "")])
+        combined_lower = combined.lower()
+
+        # Rate limit/quota signals (minimum required set)
+        rate_signals = [
+            ("429", "contains: 429"),
+            ("rate limit", "contains: rate limit"),
+            ("quota", "contains: quota"),
+            ("exceeded your copilot token usage", "contains: exceeded your Copilot token usage"),
+            ("capierror: 429", "contains: CAPIError: 429"),
+        ]
+        matched_rate: list[str] = []
+        for token, label in rate_signals:
+            if token in combined_lower:
+                matched_rate.append(label)
+        if matched_rate:
+            return FailureReason(
+                failure_category="rate_limit",
+                failure_message="rate limit or quota exhaustion detected",
+                matched_signals=tuple(matched_rate),
+            )
+
+        # Container crash
+        if container_state.get("OOMKilled", False) or exit_code == 137:
+            return FailureReason(
+                failure_category="tool_error",
+                failure_message="container crashed (OOMKilled or SIGKILL)",
+                matched_signals=("container_crash",),
+            )
+
+        # Auth signals
+        auth_patterns = [
+            (r"authentication.?failed", "authentication failed"),
+            (r"invalid.?api.?key", "invalid api key"),
+            (r"unauthorized", "unauthorized"),
+            (r"forbidden", "forbidden"),
+            (r"invalid.?credentials", "invalid credentials"),
+        ]
+        auth_hits: list[str] = []
+        for pattern, label in auth_patterns:
+            if re.search(pattern, combined_lower):
+                auth_hits.append(label)
+        if auth_hits:
+            return FailureReason(
+                failure_category="auth",
+                failure_message="authentication/authorization failure detected",
+                matched_signals=tuple(auth_hits),
+            )
+
+        # Tooling signals
+        tool_patterns = [
+            (r"command.?not.?found", "command not found"),
+            (r"no such file", "no such file"),
+            (r"not installed", "not installed"),
+        ]
+        tool_hits: list[str] = []
+        for pattern, label in tool_patterns:
+            if re.search(pattern, combined_lower):
+                tool_hits.append(label)
+        if exit_code in {126, 127}:
+            tool_hits.append(f"exit_code={exit_code}")
+        if tool_hits:
+            return FailureReason(
+                failure_category="tool_error",
+                failure_message="agent/tool execution failure detected",
+                matched_signals=tuple(tool_hits),
+            )
+
+        # Network signals
+        network_patterns = [
+            (r"timed? out", "timeout"),
+            (r"connection (refused|reset)", "connection reset/refused"),
+            (r"temporary failure", "temporary failure"),
+            (r"network is unreachable", "network unreachable"),
+            (r"dns", "dns"),
+            (r"tls|ssl", "tls/ssl"),
+        ]
+        network_hits: list[str] = []
+        for pattern, label in network_patterns:
+            if re.search(pattern, combined_lower):
+                network_hits.append(label)
+        if network_hits:
+            return FailureReason(
+                failure_category="network",
+                failure_message="network failure detected",
+                matched_signals=tuple(network_hits),
+            )
+
+        return FailureReason(
+            failure_category="unknown",
+            failure_message="unknown failure",
+            matched_signals=(),
+        )
+
+    def _result_for_exhausted_agents(
+        self, *, last_exit_code: int | None = None
+    ) -> SupervisorResult:
+        from agents_runner.core.agent.keys import cooldown_key
+
+        attempted = [
+            f"{a.get('agent_cli')}[{a.get('agent_id')}]"
+            for a in self._attempt_history
+            if a.get("agent_cli")
+        ]
+
+        on_cooldown: list[str] = []
+        for agent in self._agent_chain:
+            key = self._attempt_key(agent)
+            ckey = cooldown_key(
+                agent_cli=key.agent_cli,
+                host_config_dir=key.host_config_dir,
+                agent_cli_args=list(key.agent_cli_args),
+            )
+            watch_state = self._watch_states.get(ckey)
+            if watch_state and watch_state.is_on_cooldown() and ckey:
+                until = getattr(watch_state, "cooldown_until", None)
+                until_s = until.isoformat() if until else "unknown"
+                on_cooldown.append(f"{agent.agent_cli}[{agent.agent_id}] until {until_s}")
+
+        parts = []
+        if attempted:
+            parts.append("attempted: " + ", ".join(attempted))
+        if on_cooldown:
+            parts.append("on cooldown: " + ", ".join(on_cooldown))
+        message = "all agents unavailable"
+        if parts:
+            message = message + " (" + " | ".join(parts) + ")"
+        return SupervisorResult(
+            exit_code=int(last_exit_code or 1),
+            error=message,
+            artifacts=list(self._last_artifacts or []),
+            metadata={
+                "attempt_history": list(self._attempt_history),
+                "total_attempts": int(self._total_attempts),
+            },
         )

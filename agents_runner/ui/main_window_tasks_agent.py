@@ -123,13 +123,43 @@ class _MainWindowTasksAgentMixin:
 
         # Check cooldown for selected agent
         from agents_runner.core.agent.cooldown_manager import CooldownManager
+        from agents_runner.core.agent.keys import cooldown_key
         from agents_runner.ui.dialogs.cooldown_modal import (
             CooldownAction,
             CooldownModal,
         )
 
         cooldown_mgr = CooldownManager(self._watch_states)
-        watch_state = cooldown_mgr.check_cooldown(agent_cli)
+        selected_cli_flags = ""
+        if env and env.agent_selection and agent_instance_id:
+            inst = next(
+                (
+                    a
+                    for a in (env.agent_selection.agents or [])
+                    if str(getattr(a, "agent_id", "") or "").strip() == agent_instance_id
+                ),
+                None,
+            )
+            selected_cli_flags = str(getattr(inst, "cli_flags", "") or "").strip() if inst else ""
+
+        cooldown_args: list[str] = []
+        if selected_cli_flags:
+            try:
+                cooldown_args = shlex.split(selected_cli_flags)
+            except ValueError:
+                cooldown_args = []
+        elif env and env.agent_cli_args.strip():
+            try:
+                cooldown_args = shlex.split(env.agent_cli_args)
+            except ValueError:
+                cooldown_args = []
+
+        selected_key = cooldown_key(
+            agent_cli=agent_cli,
+            host_config_dir=auto_config_dir,
+            agent_cli_args=cooldown_args,
+        )
+        watch_state = cooldown_mgr.check_cooldown(selected_key)
 
         # Show cooldown modal if agent is on cooldown
         if watch_state and watch_state.is_on_cooldown():
@@ -182,7 +212,7 @@ class _MainWindowTasksAgentMixin:
 
             elif action == CooldownAction.BYPASS:
                 # Clear cooldown and continue with original agent
-                cooldown_mgr.clear_cooldown(agent_cli)
+                cooldown_mgr.clear_cooldown(selected_key)
                 self._schedule_save()  # Persist cooldown clear
 
             elif action == CooldownAction.USE_FALLBACK:
