@@ -626,9 +626,11 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             and bool(getattr(env, "gh_management_locked", False))
             and bool(getattr(env, "gh_context_enabled", False))
         )
+        is_github_env = env.gh_management_mode == GH_MANAGEMENT_GITHUB
         is_git_locked = bool(getattr(env, "gh_management_locked", False))
-        self._merge_agent_label.setVisible(is_git_locked)
-        self._merge_agent_row.setVisible(is_git_locked)
+        show_merge_controls = is_github_env and is_git_locked
+        self._merge_agent_label.setVisible(show_merge_controls)
+        self._merge_agent_row.setVisible(show_merge_controls)
         self._merge_agent_auto_start_enabled.setChecked(
             bool(getattr(env, "merge_agent_auto_start_enabled", False))
         )
