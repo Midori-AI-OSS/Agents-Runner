@@ -20,6 +20,7 @@ from agents_runner.gh_management import GhManagementError
 from agents_runner.log_format import format_log
 from agents_runner.pr_metadata import load_pr_metadata
 from agents_runner.pr_metadata import normalize_pr_title
+from agents_runner.ui.task_git_metadata import derive_task_git_metadata
 from agents_runner.ui.utils import _stain_color
 
 
@@ -41,6 +42,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             task.exit_code = 1
         task.finished_at = datetime.now(tz=timezone.utc)
         task.status = "done" if (task.exit_code or 0) == 0 else "failed"
+        task.git = derive_task_git_metadata(task)
 
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None

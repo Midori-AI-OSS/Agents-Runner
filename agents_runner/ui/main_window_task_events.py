@@ -25,6 +25,7 @@ from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.ui.bridges import TaskRunnerBridge
+from agents_runner.ui.task_git_metadata import derive_task_git_metadata
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _parse_docker_time
 from agents_runner.ui.utils import _stain_color
@@ -79,6 +80,7 @@ class _MainWindowTaskEventsMixin:
             task.status = "killed" if is_kill else "cancelled"
             if task.finished_at is None:
                 task.finished_at = datetime.now(tz=timezone.utc)
+            task.git = derive_task_git_metadata(task)
 
             self._on_task_log(
                 task_id,
@@ -200,6 +202,7 @@ class _MainWindowTaskEventsMixin:
         task.status = "discarded"
         if task.finished_at is None:
             task.finished_at = datetime.now(tz=timezone.utc)
+        task.git = derive_task_git_metadata(task)
         save_task_payload(self._state_path, serialize_task(task), archived=True)
 
         bridge = self._bridges.get(task_id)
@@ -383,6 +386,7 @@ class _MainWindowTaskEventsMixin:
         if task is None:
             return
         task.gh_pr_url = str(pr_url or "").strip()
+        task.git = derive_task_git_metadata(task)
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
         spinner = _stain_color(env.color) if env else None
@@ -540,6 +544,8 @@ class _MainWindowTaskEventsMixin:
             task.error = str(error)
         else:
             task.status = "done" if int(exit_code) == 0 else "failed"
+
+        task.git = derive_task_git_metadata(task)
 
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None

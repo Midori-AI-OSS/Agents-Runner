@@ -287,6 +287,10 @@ def serialize_task(task: Any) -> dict[str, Any]:
         except Exception:
             runner_config_payload = None
     runner_prompt = getattr(task, "_runner_prompt", None)
+    git_payload: dict[str, Any] | None = None
+    raw_git = getattr(task, "git", None)
+    if isinstance(raw_git, dict) and raw_git:
+        git_payload = dict(raw_git)
     return {
         "task_id": task.task_id,
         "prompt": task.prompt,
@@ -309,6 +313,7 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "gh_branch": getattr(task, "gh_branch", ""),
         "gh_pr_url": getattr(task, "gh_pr_url", ""),
         "gh_pr_metadata_path": getattr(task, "gh_pr_metadata_path", ""),
+        "git": git_payload,
         "agent_cli": getattr(task, "agent_cli", ""),
         "agent_instance_id": getattr(task, "agent_instance_id", ""),
         "agent_cli_args": getattr(task, "agent_cli_args", ""),
@@ -326,6 +331,9 @@ def serialize_task(task: Any) -> dict[str, Any]:
 
 
 def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
+    git_payload = data.get("git")
+    if not isinstance(git_payload, dict) or not git_payload:
+        git_payload = None
     task = task_cls(
         task_id=str(data.get("task_id") or ""),
         prompt=sanitize_prompt(str(data.get("prompt") or "")),
@@ -350,6 +358,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         gh_branch=str(data.get("gh_branch") or ""),
         gh_pr_url=str(data.get("gh_pr_url") or ""),
         gh_pr_metadata_path=str(data.get("gh_pr_metadata_path") or ""),
+        git=git_payload,
         agent_cli=str(data.get("agent_cli") or ""),
         agent_instance_id=str(data.get("agent_instance_id") or ""),
         agent_cli_args=str(data.get("agent_cli_args") or ""),
