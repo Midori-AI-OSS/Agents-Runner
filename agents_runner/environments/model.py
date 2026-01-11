@@ -91,6 +91,9 @@ class Environment:
     prompts: list[PromptConfig] = field(default_factory=list)
     prompts_unlocked: bool = False
     agent_selection: AgentSelection | None = None
+    midoriai_template_likelihood: float = 0.0
+    midoriai_template_detected: bool = False
+    midoriai_template_detected_path: str | None = None
     _cached_is_git_repo: bool | None = None
 
     def normalized_color(self) -> str:

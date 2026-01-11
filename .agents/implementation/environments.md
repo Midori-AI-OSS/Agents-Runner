@@ -86,3 +86,11 @@ All file operations include exception handling:
 - **Load failures**: Fall back to inline text (if available)
 - **Delete failures**: Silently continue (best effort cleanup)
 - **Missing directory**: Automatically created on first save
+
+## Midori AI Agents Template Detection
+
+Environments persist repo-level detection fields used to auto-inject a mandatory prompt snippet when a Midori AI Agents Template is present in the workspace:
+
+- `midoriai_template_likelihood` (float, `0.0`–`1.0`)
+- `midoriai_template_detected` (bool)
+- `midoriai_template_detected_path` (string or null)

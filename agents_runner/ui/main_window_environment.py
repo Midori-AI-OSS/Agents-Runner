@@ -171,9 +171,13 @@ class _MainWindowEnvironmentMixin:
         envs = self._environment_list()
         stains = {e.env_id: e.color for e in envs}
         management_modes = {e.env_id: str(getattr(e, "gh_management_mode", "none")) for e in envs}
+        template_statuses = {
+            e.env_id: bool(getattr(e, "midoriai_template_detected", False)) for e in envs
+        }
 
         self._new_task.set_environment_stains(stains)
         self._new_task.set_environment_management_modes(management_modes)
+        self._new_task.set_environment_template_injection_status(template_statuses)
         self._new_task.set_gh_locked_envs(
             {
                 e.env_id
@@ -208,6 +212,26 @@ class _MainWindowEnvironmentMixin:
                 pass
         current_agent, next_agent = self._get_next_agent_info(env=env)
         workdir, ready, message = self._new_task_workspace(env)
+
+        gh_mode = (
+            normalize_gh_management_mode(
+                str(getattr(env, "gh_management_mode", GH_MANAGEMENT_NONE) or "")
+            )
+            if env
+            else GH_MANAGEMENT_NONE
+        )
+        if env and ready and gh_mode == GH_MANAGEMENT_LOCAL and os.path.isdir(workdir):
+            try:
+                from agents_runner.environments.midoriai_template import (
+                    apply_midoriai_template_detection,
+                )
+
+                apply_midoriai_template_detection(env, workspace_root=workdir)
+                save_environment(env)
+                self._environments[env.env_id] = env
+            except Exception:
+                pass
+
         self._new_task.set_defaults(host_codex=host_codex)
         self._new_task.set_workspace_status(path=workdir, ready=ready, message=message)
         self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)

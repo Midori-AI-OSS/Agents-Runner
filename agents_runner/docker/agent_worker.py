@@ -40,6 +40,7 @@ from agents_runner.prompts import load_prompt
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
 from agents_runner.ui.shell_templates import shell_log_statement
+from agents_runner.midoriai_template import scan_midoriai_agents_template
 
 
 def _headless_desktop_prompt_instructions(*, display: str) -> str:
@@ -205,6 +206,43 @@ class DockerAgentWorker:
                 )
             if container_cwd != self._config.container_workdir:
                 self._on_log(format_log("host", "none", "INFO", f"container workdir: {container_cwd}"))
+
+            template_detection = scan_midoriai_agents_template(host_mount)
+            if self._config.environment_id:
+                try:
+                    from agents_runner.environments import load_environments
+                    from agents_runner.environments import save_environment
+
+                    env = load_environments().get(str(self._config.environment_id))
+                    if env is not None:
+                        env.midoriai_template_likelihood = (
+                            template_detection.midoriai_template_likelihood
+                        )
+                        env.midoriai_template_detected = (
+                            template_detection.midoriai_template_detected
+                        )
+                        env.midoriai_template_detected_path = (
+                            template_detection.midoriai_template_detected_path
+                        )
+                        save_environment(env)
+                except Exception as exc:
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "template",
+                            "WARN",
+                            f"failed to persist template detection: {exc}",
+                        )
+                    )
+            if template_detection.midoriai_template_detected:
+                self._on_log(
+                    format_log(
+                        "env",
+                        "template",
+                        "INFO",
+                        "Midori AI Agents Template detected; will inject template.md prompt",
+                    )
+                )
             container_name = f"agents-runner-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
             
@@ -321,6 +359,17 @@ class DockerAgentWorker:
                 )
                 self._on_log(
                     format_log("desktop", "setup", "INFO", "added desktop context to prompt (non-interactive)")
+                )
+
+            if template_detection.midoriai_template_detected:
+                prompt_for_agent = sanitize_prompt(f"{prompt_for_agent.rstrip()}\n\nHello World")
+                self._on_log(
+                    format_log(
+                        "env",
+                        "template",
+                        "INFO",
+                        "injected template.md prompt (Hello World)",
+                    )
                 )
 
             agent_args = build_noninteractive_cmd(

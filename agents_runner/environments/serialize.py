@@ -137,6 +137,22 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
                     payload.get("gh_pr_metadata_enabled", False))
     )
 
+    try:
+        midoriai_template_likelihood = float(
+            payload.get("midoriai_template_likelihood", 0.0)
+        )
+    except (TypeError, ValueError):
+        midoriai_template_likelihood = 0.0
+    midoriai_template_likelihood = max(0.0, min(1.0, midoriai_template_likelihood))
+    midoriai_template_detected = bool(payload.get("midoriai_template_detected", False))
+    midoriai_template_detected_path_raw = payload.get("midoriai_template_detected_path")
+    midoriai_template_detected_path = (
+        str(midoriai_template_detected_path_raw).strip()
+        if isinstance(midoriai_template_detected_path_raw, str)
+        else ""
+    )
+    midoriai_template_detected_path = midoriai_template_detected_path or None
+
     prompts_data = payload.get("prompts", [])
     prompts = []
     if isinstance(prompts_data, list):
@@ -296,6 +312,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         prompts=prompts,
         prompts_unlocked=prompts_unlocked,
         agent_selection=agent_selection,
+        midoriai_template_likelihood=midoriai_template_likelihood,
+        midoriai_template_detected=midoriai_template_detected,
+        midoriai_template_detected_path=midoriai_template_detected_path,
     )
 
 
@@ -367,6 +386,16 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gh_context_enabled": bool(env.gh_context_enabled),  # Save with new name
         # Also save with old name for backward compatibility with older builds
         "gh_pr_metadata_enabled": bool(env.gh_context_enabled),
+        "midoriai_template_likelihood": float(
+            max(0.0, min(1.0, float(getattr(env, "midoriai_template_likelihood", 0.0))))
+        ),
+        "midoriai_template_detected": bool(
+            getattr(env, "midoriai_template_detected", False)
+        ),
+        "midoriai_template_detected_path": (
+            str(getattr(env, "midoriai_template_detected_path", "") or "").strip()
+            or None
+        ),
         "prompts": _serialize_prompts(env.prompts or []),
         "prompts_unlocked": bool(env.prompts_unlocked),
         "agent_selection": selection_payload,

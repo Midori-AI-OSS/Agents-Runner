@@ -32,6 +32,7 @@ from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
 from agents_runner.ui.shell_templates import shell_log_statement
 from agents_runner.docker.utils import _write_preflight_script
+from agents_runner.midoriai_template import scan_midoriai_agents_template
 
 
 class DockerPreflightWorker:
@@ -129,6 +130,43 @@ class DockerPreflightWorker:
                 )
             if container_cwd != self._config.container_workdir:
                 self._on_log(format_log("host", "none", "INFO", f"container workdir: {container_cwd}"))
+
+            template_detection = scan_midoriai_agents_template(host_mount)
+            if self._config.environment_id:
+                try:
+                    from agents_runner.environments import load_environments
+                    from agents_runner.environments import save_environment
+
+                    env = load_environments().get(str(self._config.environment_id))
+                    if env is not None:
+                        env.midoriai_template_likelihood = (
+                            template_detection.midoriai_template_likelihood
+                        )
+                        env.midoriai_template_detected = (
+                            template_detection.midoriai_template_detected
+                        )
+                        env.midoriai_template_detected_path = (
+                            template_detection.midoriai_template_detected_path
+                        )
+                        save_environment(env)
+                except Exception as exc:
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "template",
+                            "WARN",
+                            f"failed to persist template detection: {exc}",
+                        )
+                    )
+            if template_detection.midoriai_template_detected:
+                self._on_log(
+                    format_log(
+                        "env",
+                        "template",
+                        "INFO",
+                        "Midori AI Agents Template detected (preflight)",
+                    )
+                )
             container_name = f"codex-preflight-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
             settings_container_path = (

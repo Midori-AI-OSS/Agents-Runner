@@ -94,6 +94,21 @@ class _MainWindowTasksInteractiveMixin:
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return
 
+        if env and os.path.isdir(host_workdir):
+            try:
+                from agents_runner.midoriai_template import scan_midoriai_agents_template
+
+                detection = scan_midoriai_agents_template(host_workdir)
+                env.midoriai_template_likelihood = detection.midoriai_template_likelihood
+                env.midoriai_template_detected = detection.midoriai_template_detected
+                env.midoriai_template_detected_path = detection.midoriai_template_detected_path
+                save_environment(env)
+                self._environments[env.env_id] = env
+                if detection.midoriai_template_detected:
+                    prompt = sanitize_prompt(f"{prompt.rstrip()}\n\nHello World")
+            except Exception:
+                pass
+
         desired_base = str(base_branch or "").strip()
 
         # Save the selected branch for locked environments

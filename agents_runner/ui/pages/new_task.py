@@ -48,6 +48,7 @@ class NewTaskPage(QWidget):
         self._env_stains: dict[str, str] = {}
         self._gh_locked_envs: set[str] = set()
         self._env_management_modes: dict[str, str] = {}  # Track environment management modes
+        self._env_template_injection: dict[str, bool] = {}
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
@@ -128,6 +129,15 @@ class NewTaskPage(QWidget):
         self._prompt.setPlaceholderText("Describe what you want the agent to do…")
         self._prompt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._prompt.setTabChangesFocus(True)
+
+        self._template_prompt_indicator = QLabel("(i)")
+        self._template_prompt_indicator.setVisible(False)
+        self._template_prompt_indicator.setToolTip(
+            "Midori AI Agents Template detected, adding prompt to enforce usage."
+        )
+        self._template_prompt_indicator.setStyleSheet(
+            "color: rgba(237, 239, 245, 160); margin: 8px;"
+        )
         
         self._voice_btn = QToolButton()
         self._voice_btn.setIcon(mic_icon(size=18))
@@ -143,6 +153,9 @@ class NewTaskPage(QWidget):
         prompt_container_layout.setContentsMargins(0, 0, 0, 0)
         prompt_container_layout.setSpacing(0)
         prompt_container_layout.addWidget(self._prompt, 0, 0)
+        prompt_container_layout.addWidget(
+            self._template_prompt_indicator, 0, 0, Qt.AlignRight | Qt.AlignTop
+        )
         prompt_container_layout.addWidget(
             self._voice_btn, 0, 0, Qt.AlignRight | Qt.AlignBottom
         )
@@ -474,6 +487,7 @@ class NewTaskPage(QWidget):
         self._apply_environment_tints()
         self._sync_interactive_options()
         self._update_workspace_visibility()
+        self._sync_template_prompt_indicator()
         self.environment_changed.emit(str(self._environment.currentData() or ""))
 
     def _apply_environment_tints(self) -> None:
@@ -512,6 +526,17 @@ class NewTaskPage(QWidget):
         """
         self._env_management_modes = {str(k): str(v) for k, v in (modes or {}).items()}
         self._update_workspace_visibility()
+
+    def set_environment_template_injection_status(self, statuses: dict[str, bool]) -> None:
+        self._env_template_injection = {
+            str(k): bool(v) for k, v in (statuses or {}).items()
+        }
+        self._sync_template_prompt_indicator()
+
+    def _sync_template_prompt_indicator(self) -> None:
+        env_id = str(self._environment.currentData() or "")
+        should_show = bool(self._env_template_injection.get(env_id, False))
+        self._template_prompt_indicator.setVisible(should_show)
 
     def _update_workspace_visibility(self) -> None:
         """Update workspace line visibility based on environment type."""
