@@ -12,6 +12,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - **Design constraint:** Keep sharp/square corners (avoid non-`0px` `border-radius` values and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
 - **Docs:** Do not update the readme unless asked to; ensure `.agents/` documentation stays current with code changes
+- **Commits:** Commit early and often — prefer many small, focused commits with clear `[TYPE]` messages and concise descriptions.
 - **Test:** Do not build tests unless asked to; delegate testing to Tester Mode when requested
 
 ---
