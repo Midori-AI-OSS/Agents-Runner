@@ -222,21 +222,12 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             "QCheckBox:disabled { color: #EDEFF5; }"
         )
 
-        self._merge_agent_auto_start_info = QToolButton(general_tab)
-        self._merge_agent_auto_start_info.setAutoRaise(True)
-        self._merge_agent_auto_start_info.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._merge_agent_auto_start_info.setIcon(
-            self.style().standardIcon(QStyle.SP_MessageBoxInformation)
-        )
-        self._merge_agent_auto_start_info.setVisible(False)
-
         self._merge_agent_label = QLabel("Merge agent")
         self._merge_agent_row = QWidget(general_tab)
         merge_agent_layout = QHBoxLayout(self._merge_agent_row)
         merge_agent_layout.setContentsMargins(0, 0, 0, 0)
         merge_agent_layout.setSpacing(BUTTON_ROW_SPACING)
         merge_agent_layout.addWidget(self._merge_agent_auto_start_enabled)
-        merge_agent_layout.addWidget(self._merge_agent_auto_start_info)
         merge_agent_layout.addStretch(1)
 
         max_agents_row = QWidget(general_tab)
@@ -554,8 +545,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._merge_agent_auto_start_enabled.setEnabled(False)
             self._merge_agent_label.setVisible(False)
             self._merge_agent_row.setVisible(False)
-            self._merge_agent_auto_start_info.setVisible(False)
-            self._merge_agent_auto_start_info.setToolTip("")
             self._gh_management_mode.setCurrentIndex(0)
             self._gh_management_target.setText("")
             self._gh_use_host_cli.setChecked(bool(is_gh_available()))
@@ -635,18 +624,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             bool(getattr(env, "merge_agent_auto_start_enabled", False))
         )
         self._merge_agent_auto_start_enabled.setEnabled(merge_supported)
-        merge_blocked_reason = ""
-        if is_git_locked and not merge_supported:
-            if not is_github_env:
-                merge_blocked_reason = (
-                    "Available only for environments locked to a GitHub repo (clone)."
-                )
-            elif not bool(getattr(env, "gh_context_enabled", False)):
-                merge_blocked_reason = "Enable GitHub context to use auto merge."
-        self._merge_agent_auto_start_info.setVisible(
-            bool(is_git_locked and not merge_supported and merge_blocked_reason)
-        )
-        self._merge_agent_auto_start_info.setToolTip(merge_blocked_reason)
 
         idx = self._gh_management_mode.findData(
             normalize_gh_management_mode(env.gh_management_mode)
