@@ -44,6 +44,17 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         task.status = "done" if (task.exit_code or 0) == 0 else "failed"
         task.git = derive_task_git_metadata(task)
 
+        # Validate git metadata for git-locked tasks
+        if task.requires_git_metadata():
+            from agents_runner.ui.task_git_metadata import validate_git_metadata
+            is_valid, error_msg = validate_git_metadata(task.git)
+            if not is_valid:
+                self._on_task_log(
+                    task_id,
+                    format_log("host", "metadata", "WARN", 
+                               f"git metadata validation failed: {error_msg}")
+                )
+
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
         spinner = _stain_color(env.color) if env else None

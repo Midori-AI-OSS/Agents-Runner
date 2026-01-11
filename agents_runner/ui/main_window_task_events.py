@@ -547,6 +547,19 @@ class _MainWindowTaskEventsMixin:
 
         task.git = derive_task_git_metadata(task)
 
+        # Validate git metadata for git-locked tasks
+        if task.requires_git_metadata():
+            from agents_runner.ui.task_git_metadata import validate_git_metadata
+            is_valid, error_msg = validate_git_metadata(task.git)
+            if not is_valid:
+                self._on_task_log(
+                    task_id,
+                    format_log("host", "metadata", "WARN", 
+                               f"git metadata validation failed: {error_msg}")
+                )
+                # Note: We don't fail the task itself, as the code execution may have succeeded
+                # The metadata issue will be flagged but won't affect task completion status
+
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
         spinner = _stain_color(env.color) if env else None

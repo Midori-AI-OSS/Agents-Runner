@@ -131,6 +131,13 @@ class Task:
             return True
         return status == "exited" and self.exit_code not in (None, 0)
 
+    def requires_git_metadata(self) -> bool:
+        """Check if this task requires git metadata to be populated.
+        
+        Returns True if task is git-locked (gh_management_locked == True).
+        """
+        return bool(getattr(self, "gh_management_locked", False))
+
 
 def _task_display_status(task: Task) -> str:
     status = (task.status or "").lower()
