@@ -311,11 +311,6 @@ class DockerAgentWorker:
             elif container_caching_enabled and not cached_preflight_script:
                 self._on_log(format_log("env", "cache", "WARN", "container caching enabled but no cached preflight script configured"))
 
-            if agent_cli == "codex" and not _is_git_repo_root(host_mount):
-                self._on_log(
-                    format_log("host", "none", "INFO", ".git missing in workdir; adding --skip-git-repo-check")
-                )
-
             desktop_enabled = bool(self._config.headless_desktop_enabled)
             desktop_display = ":1"
 
