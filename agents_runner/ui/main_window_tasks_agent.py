@@ -20,6 +20,7 @@ from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
+from agents_runner.diagnostics.breadcrumbs import add_breadcrumb
 from agents_runner.gh_management import is_gh_available
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.log_format import format_log
@@ -506,6 +507,9 @@ class _MainWindowTasksAgentMixin:
         agent_selection = getattr(task, "_agent_selection", None)
         if config is None or prompt is None:
             return
+
+        # Add breadcrumb for task queued
+        add_breadcrumb(f"Task {task.task_id[:8]} queued (agent: {task.agent_cli})")
 
         task.status = "pulling"
         env = self._environments.get(task.environment_id)

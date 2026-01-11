@@ -10,6 +10,7 @@ from typing import Callable
 
 from threading import Event
 
+from agents_runner.diagnostics.breadcrumbs import add_breadcrumb
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import build_noninteractive_cmd
@@ -533,6 +534,9 @@ class DockerAgentWorker:
                 f"exec {agent_cmd}",
             ]
             self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
+            
+            # Add breadcrumb for container launch
+            add_breadcrumb(f"Container {self._container_id[:12]} launched for task {self._config.task_id[:8]}")
 
             if desktop_enabled and self._container_id:
                 try:

@@ -25,6 +25,7 @@ from agents_runner.persistence import load_task_payload
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
+from agents_runner.diagnostics.breadcrumbs import add_breadcrumb
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.merge_agent_followups import MERGE_AGENT_FOLLOWUP_VERSION
 from agents_runner.ui.merge_agent_followups import ensure_followups_list
@@ -726,6 +727,9 @@ class _MainWindowTaskEventsMixin:
         finished_at = _parse_docker_time(state.get("FinishedAt"))
         if started_at:
             task.started_at = started_at
+            # Add breadcrumb when task starts
+            if current != "running":
+                add_breadcrumb(f"Task {task_id[:8]} started (agent: {task.agent_cli})")
         if finished_at:
             task.finished_at = finished_at
 
@@ -795,11 +799,17 @@ class _MainWindowTaskEventsMixin:
         task.exit_code = int(exit_code)
         if user_stop is not None:
             task.error = None
+            add_breadcrumb(f"Task {task_id[:8]} stopped by user: {user_stop}")
         elif error:
             task.status = "failed"
             task.error = str(error)
+            add_breadcrumb(f"Task {task_id[:8]} failed: {str(error)[:100]}")
         else:
             task.status = "done" if int(exit_code) == 0 else "failed"
+            if task.status == "done":
+                add_breadcrumb(f"Task {task_id[:8]} completed successfully")
+            else:
+                add_breadcrumb(f"Task {task_id[:8]} failed with exit code {exit_code}")
 
         task.git = derive_task_git_metadata(task)
 
