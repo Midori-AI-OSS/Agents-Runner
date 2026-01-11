@@ -20,6 +20,7 @@ _CANDIDATE_DIRS: tuple[str, ...] = (
 _KNOWN_NAMES_BY_DIR: dict[str, tuple[str, ...]] = {
     ".agents/modes": (
         "AUDITOR.md",
+        "CLEANER.md",
         "CODER.md",
         "MANAGER.md",
         "QA.md",
@@ -29,6 +30,7 @@ _KNOWN_NAMES_BY_DIR: dict[str, tuple[str, ...]] = {
     ),
     ".codex/modes": (
         "AUDITOR.md",
+        "CLEANER.md",
         "CODER.md",
         "MANAGER.md",
         "QA.md",
@@ -38,6 +40,7 @@ _KNOWN_NAMES_BY_DIR: dict[str, tuple[str, ...]] = {
     ),
     ".github/agents": (
         "auditor.md",
+        "cleaner.md",
         "coder.md",
         "mode-picker.md",
         "qa.md",
