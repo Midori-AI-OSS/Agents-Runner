@@ -87,6 +87,28 @@ def run_app(argv: list[str]) -> None:
     # Initialize QtWebEngine early to prevent lazy-load flash
     _initialize_qtwebengine()
 
+    # Check for crash reports from previous session
+    from agents_runner.diagnostics.crash_detection import should_notify_crash
+    from agents_runner.diagnostics.crash_detection import mark_crashes_notified
+    from agents_runner.diagnostics.paths import crash_reports_dir
+    from PySide6.QtWidgets import QMessageBox
+    from PySide6.QtGui import QDesktopServices
+    from PySide6.QtCore import QUrl
+    
+    if should_notify_crash():
+        msg = QMessageBox()
+        msg.setWindowTitle("Crash Detected")
+        msg.setText("A crash was detected from a previous session.")
+        msg.setInformativeText("A crash report was saved. Would you like to open the crash reports folder?")
+        msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+        msg.setDefaultButton(QMessageBox.No)
+        result = msg.exec()
+        
+        if result == QMessageBox.Yes:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(crash_reports_dir()))
+        
+        mark_crashes_notified()
+
     # Check if first-run setup is needed
     if not check_setup_complete():
         dialog = FirstRunSetupDialog(parent=None)
