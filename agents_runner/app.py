@@ -59,6 +59,10 @@ def _initialize_qtwebengine() -> None:
 
 
 def run_app(argv: list[str]) -> None:
+    # Install crash handler as early as possible
+    from agents_runner.diagnostics.crash_handler import install_crash_handler
+    install_crash_handler()
+
     _configure_qtwebengine_runtime()
 
     from PySide6.QtWidgets import QApplication
