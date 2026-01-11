@@ -104,8 +104,6 @@ class _MainWindowTasksInteractiveMixin:
                 env.midoriai_template_detected_path = detection.midoriai_template_detected_path
                 save_environment(env)
                 self._environments[env.env_id] = env
-                if detection.midoriai_template_detected:
-                    prompt = sanitize_prompt(f"{prompt.rstrip()}\n\nHello World")
             except Exception:
                 pass
 

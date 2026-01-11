@@ -362,15 +362,30 @@ class DockerAgentWorker:
                 )
 
             if template_detection.midoriai_template_detected:
-                prompt_for_agent = sanitize_prompt(f"{prompt_for_agent.rstrip()}\n\nHello World")
-                self._on_log(
-                    format_log(
-                        "env",
-                        "template",
-                        "INFO",
-                        "injected template.md prompt (Hello World)",
+                try:
+                    template_prompt = load_prompt("template").strip()
+                except Exception as exc:
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "template",
+                            "WARN",
+                            f"failed to load template.md prompt: {exc}",
+                        )
                     )
-                )
+                else:
+                    if template_prompt:
+                        prompt_for_agent = sanitize_prompt(
+                            f"{prompt_for_agent.rstrip()}\n\n{template_prompt}"
+                        )
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "template",
+                            "INFO",
+                            "injected template.md prompt",
+                        )
+                    )
 
             agent_args = build_noninteractive_cmd(
                 agent=agent_cli,
