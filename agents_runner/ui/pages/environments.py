@@ -605,12 +605,6 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._gh_context_label.setVisible(context_available)
         self._gh_context_row.setVisible(context_available)
 
-        merge_supported = bool(
-            is_github_env
-            and bool(getattr(env, "gh_management_locked", False))
-            and bool(getattr(env, "gh_context_enabled", False))
-        )
-        is_github_env = env.gh_management_mode == GH_MANAGEMENT_GITHUB
         is_git_locked = bool(getattr(env, "gh_management_locked", False))
         show_merge_controls = is_github_env and is_git_locked
         self._merge_agent_label.setVisible(show_merge_controls)
