@@ -88,7 +88,7 @@ class _MainWindowTasksAgentMixin:
         host_codex: str,
         env_id: str,
         base_branch: str,
-    ) -> None:
+    ) -> str | None:
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -498,6 +498,7 @@ class _MainWindowTasksAgentMixin:
 
         self._show_dashboard()
         self._new_task.reset_for_new_run()
+        return task_id
 
     def _actually_start_task(self, task: Task) -> None:
         config = getattr(task, "_runner_config", None)

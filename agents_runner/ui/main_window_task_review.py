@@ -9,6 +9,8 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.log_format import format_log
+from agents_runner.merge_pull_request import build_merge_pull_request_prompt
+from agents_runner.ui.task_git_metadata import has_merge_pr_metadata
 
 
 class _MainWindowTaskReviewMixin:
@@ -98,3 +100,74 @@ class _MainWindowTaskReviewMixin:
             ),
             daemon=True,
         ).start()
+
+    def _on_task_merge_agent_requested(self, task: object) -> None:
+        if not has_merge_pr_metadata(task):
+            QMessageBox.information(
+                self,
+                "Merge agent not available",
+                "This task is missing saved pull request metadata (base branch, target branch, pull request number).",
+            )
+            return
+
+        git = getattr(task, "git", None) if task is not None else None
+        if not isinstance(git, dict):
+            return
+        base_branch = str(git.get("base_branch") or "").strip()
+        target_branch = str(git.get("target_branch") or "").strip()
+        pr_number = git.get("pull_request_number")
+        if not (base_branch and target_branch and isinstance(pr_number, int) and pr_number > 0):
+            return
+
+        env_id = str(getattr(task, "environment_id", "") or "").strip()
+        if not env_id or env_id not in self._environments:
+            QMessageBox.warning(
+                self,
+                "Unknown environment",
+                "This task does not have a usable environment ID for starting a merge agent.",
+            )
+            return
+
+        prompt = build_merge_pull_request_prompt(
+            base_branch=base_branch,
+            target_branch=target_branch,
+            pull_request_number=pr_number,
+        )
+        host_codex_dir = str(getattr(task, "host_codex_dir", "") or "").strip()
+
+        new_task_id = self._start_task_from_ui(
+            prompt,
+            host_codex_dir,
+            env_id,
+            base_branch,
+        )
+        if not new_task_id:
+            return
+
+        new_task = self._tasks.get(new_task_id)
+        if new_task is None:
+            return
+
+        pr_url = str(git.get("pull_request_url") or getattr(task, "gh_pr_url", "") or "").strip()
+        if not pr_url:
+            repo_url = str(git.get("repo_url") or "").strip()
+            if repo_url:
+                pr_url = f"{repo_url.rstrip('/')}/pull/{pr_number}"
+
+        if pr_url:
+            new_task.gh_pr_url = pr_url
+
+        new_task.git = {
+            **dict(git),
+            "task_role": "merge_agent",
+            "pull_request_number": pr_number,
+            "base_branch": base_branch,
+            "target_branch": target_branch,
+            "pull_request_url": pr_url,
+        }
+
+        self._on_task_log(
+            str(getattr(task, "task_id", "") or ""),
+            format_log("merge", "agent", "INFO", f"merge agent started: {new_task_id} (pull request #{pr_number})"),
+        )
+        self._schedule_save()

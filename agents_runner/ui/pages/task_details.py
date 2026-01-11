@@ -35,6 +35,7 @@ from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import _task_display_status
+from agents_runner.ui.task_git_metadata import has_merge_pr_metadata
 from agents_runner.ui.utils import _format_duration
 from agents_runner.ui.utils import _rgba
 from agents_runner.ui.utils import _status_color
@@ -76,6 +77,7 @@ def _diamond_icon(size: int = 16, color: QColor | None = None) -> QIcon:
 class TaskDetailsPage(QWidget):
     back_requested = Signal()
     pr_requested = Signal(str)
+    merge_agent_requested = Signal(object)
     container_action_requested = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -107,6 +109,8 @@ class TaskDetailsPage(QWidget):
         self._review_menu = QMenu(self)
         self._review_pr = self._review_menu.addAction("Create PR")
         self._review_pr.triggered.connect(self._on_pr_triggered)
+        self._review_merge_agent = self._review_menu.addAction("Start merge agent")
+        self._review_merge_agent.triggered.connect(self._on_merge_agent_triggered)
         self._review = QToolButton()
         self._review.setText("Review")
         self._review.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -388,6 +392,10 @@ class TaskDetailsPage(QWidget):
         if task_id:
             self.pr_requested.emit(task_id)
 
+    def _on_merge_agent_triggered(self) -> None:
+        if self._last_task is not None:
+            self.merge_agent_requested.emit(self._last_task)
+
     def _sync_review_menu(self, task: Task) -> None:
         gh_mode = normalize_gh_management_mode(str(task.gh_management_mode or ""))
         
@@ -403,6 +411,17 @@ class TaskDetailsPage(QWidget):
         self._review_pr.setVisible(can_pr)
         self._review_pr.setEnabled(can_pr and not task.is_active())
         self._review_pr.setText("Open PR" if pr_url.startswith("http") else "Create PR")
+
+        can_merge = has_merge_pr_metadata(task)
+        self._review_merge_agent.setVisible(can_pr)
+        self._review_merge_agent.setEnabled(can_pr and can_merge and not task.is_active())
+        if can_pr and not can_merge:
+            self._review_merge_agent.setToolTip(
+                "Unavailable: this task does not have saved base branch, target branch, and pull request number."
+            )
+        else:
+            self._review_merge_agent.setToolTip("")
+
         self._review.setVisible(can_pr)
         self._review.setEnabled(can_pr and not task.is_active())
 
