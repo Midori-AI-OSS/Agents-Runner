@@ -52,8 +52,10 @@ PEM_KEY_PATTERN = re.compile(
 )
 
 # Database connection strings with credentials
+# Matches passwords that may contain special chars like @, :, /, ?, #, %
+# Uses greedy match (.+) which backtracks to find the last @ before the host
 DB_URL_PATTERN = re.compile(
-    r'([a-zA-Z][a-zA-Z0-9+.-]*://[^:/@\s]+:)([^@\s]+)(@[^\s]+)'
+    r'([a-zA-Z][a-zA-Z0-9+.-]*://[^:/@\s]+:)(.+)(@[a-zA-Z0-9.-]+(?::\d+)?(?:/[^\s]*)?)'
 )
 
 
