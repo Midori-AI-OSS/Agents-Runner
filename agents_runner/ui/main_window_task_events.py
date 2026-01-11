@@ -9,6 +9,7 @@ from datetime import timezone
 
 from PySide6.QtCore import QMetaObject
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
@@ -25,10 +26,15 @@ from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.ui.bridges import TaskRunnerBridge
+from agents_runner.ui.merge_agent_followups import MERGE_AGENT_FOLLOWUP_VERSION
+from agents_runner.ui.merge_agent_followups import ensure_followups_list
+from agents_runner.ui.merge_agent_followups import followup_key_for_pr
 from agents_runner.ui.task_git_metadata import derive_task_git_metadata
+from agents_runner.ui.task_git_metadata import has_merge_pr_metadata
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _parse_docker_time
 from agents_runner.ui.utils import _stain_color
+from agents_runner.merge_pull_request import build_merge_pull_request_prompt
 
 
 class _MainWindowTaskEventsMixin:
@@ -393,6 +399,256 @@ class _MainWindowTaskEventsMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
+        self._maybe_schedule_merge_agent_followup(task)
+
+    def _merge_agent_followup_timers(self) -> dict[str, QTimer]:
+        timers = getattr(self, "_merge_agent_followup_timers", None)
+        if not isinstance(timers, dict):
+            timers = {}
+            try:
+                setattr(self, "_merge_agent_followup_timers", timers)
+            except Exception:
+                return {}
+        return timers
+
+    def _cancel_pending_merge_agent_followup(
+        self,
+        *,
+        pull_request_url: str,
+        repo_url: str,
+        pull_request_number: int,
+    ) -> None:
+        key = followup_key_for_pr(
+            pull_request_url=pull_request_url,
+            repo_url=repo_url,
+            pull_request_number=pull_request_number,
+        )
+        timers = self._merge_agent_followup_timers()
+        timer = timers.pop(key, None)
+        if timer is not None:
+            try:
+                timer.stop()
+            except Exception:
+                pass
+        followups = ensure_followups_list(self._settings_data)
+        before = len(followups)
+        followups[:] = [
+            item
+            for item in followups
+            if str(item.get("key") or "").strip() != key
+            or str(item.get("started_task_id") or "").strip()
+        ]
+        if len(followups) != before:
+            self._schedule_save()
+
+    def _is_merge_agent_running_for_key(self, key: str) -> bool:
+        key = str(key or "").strip()
+        if not key:
+            return False
+        for candidate in self._tasks.values():
+            git = getattr(candidate, "git", None)
+            if not isinstance(git, dict):
+                continue
+            if str(git.get("task_role") or "").strip() != "merge_agent":
+                continue
+            pr_number = git.get("pull_request_number")
+            if not isinstance(pr_number, int) or pr_number <= 0:
+                continue
+            pr_url = str(git.get("pull_request_url") or candidate.gh_pr_url or "").strip()
+            repo_url = str(git.get("repo_url") or "").strip()
+            candidate_key = followup_key_for_pr(
+                pull_request_url=pr_url,
+                repo_url=repo_url,
+                pull_request_number=pr_number,
+            )
+            if candidate_key == key and candidate.is_active():
+                return True
+        return False
+
+    def _maybe_schedule_merge_agent_followup(self, task: Task) -> None:
+        if not has_merge_pr_metadata(task):
+            return
+        git = getattr(task, "git", None)
+        if not isinstance(git, dict):
+            return
+        if str(git.get("task_role") or "").strip() == "merge_agent":
+            return
+
+        env_id = str(getattr(task, "environment_id", "") or "").strip()
+        env = self._environments.get(env_id)
+        if env is None:
+            return
+
+        if not bool(getattr(env, "merge_agent_auto_start_enabled", False)):
+            return
+
+        supports_flow = bool(
+            normalize_gh_management_mode(str(env.gh_management_mode or ""))
+            == GH_MANAGEMENT_GITHUB
+            and bool(getattr(env, "gh_management_locked", False))
+            and bool(getattr(env, "gh_context_enabled", False))
+        )
+        if not supports_flow:
+            return
+
+        pr_number = git.get("pull_request_number")
+        if not isinstance(pr_number, int) or pr_number <= 0:
+            return
+
+        pr_url = str(git.get("pull_request_url") or task.gh_pr_url or "").strip()
+        repo_url = str(git.get("repo_url") or "").strip()
+        key = followup_key_for_pr(
+            pull_request_url=pr_url,
+            repo_url=repo_url,
+            pull_request_number=pr_number,
+        )
+
+        if self._is_merge_agent_running_for_key(key):
+            return
+
+        followups = ensure_followups_list(self._settings_data)
+        for item in followups:
+            if str(item.get("key") or "").strip() == key:
+                return
+
+        base_branch = str(git.get("base_branch") or "").strip()
+        target_branch = str(git.get("target_branch") or "").strip()
+        if not (base_branch and target_branch):
+            return
+
+        now_s = time.time()
+        due_at_s = now_s + 30.0
+        followups.append(
+            {
+                "version": MERGE_AGENT_FOLLOWUP_VERSION,
+                "key": key,
+                "env_id": env_id,
+                "source_task_id": str(task.task_id or ""),
+                "created_at_s": now_s,
+                "due_at_s": due_at_s,
+                "repo_url": repo_url,
+                "pull_request_url": pr_url,
+                "pull_request_number": pr_number,
+                "base_branch": base_branch,
+                "target_branch": target_branch,
+                "started_task_id": "",
+            }
+        )
+
+        self._schedule_merge_agent_followup_timer(key=key, due_at_s=due_at_s)
+        self._schedule_save()
+
+    def _schedule_merge_agent_followup_timer(self, *, key: str, due_at_s: float) -> None:
+        key = str(key or "").strip()
+        if not key:
+            return
+        timers = self._merge_agent_followup_timers()
+        if key in timers:
+            return
+        delay_ms = max(0, int((float(due_at_s) - time.time()) * 1000))
+
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(lambda k=key: self._run_merge_agent_followup(k))
+        timer.start(delay_ms)
+        timers[key] = timer
+
+    def _run_merge_agent_followup(self, key: str) -> None:
+        key = str(key or "").strip()
+        if not key:
+            return
+
+        timers = self._merge_agent_followup_timers()
+        timers.pop(key, None)
+
+        followups = ensure_followups_list(self._settings_data)
+        entry = next(
+            (item for item in followups if str(item.get("key") or "").strip() == key),
+            None,
+        )
+        if not isinstance(entry, dict):
+            return
+        if str(entry.get("started_task_id") or "").strip():
+            return
+
+        if self._is_merge_agent_running_for_key(key):
+            self._cancel_pending_merge_agent_followup(
+                pull_request_url=str(entry.get("pull_request_url") or ""),
+                repo_url=str(entry.get("repo_url") or ""),
+                pull_request_number=int(entry.get("pull_request_number") or 0),
+            )
+            return
+
+        env_id = str(entry.get("env_id") or "").strip()
+        env = self._environments.get(env_id)
+        if env is None or not bool(getattr(env, "merge_agent_auto_start_enabled", False)):
+            self._cancel_pending_merge_agent_followup(
+                pull_request_url=str(entry.get("pull_request_url") or ""),
+                repo_url=str(entry.get("repo_url") or ""),
+                pull_request_number=int(entry.get("pull_request_number") or 0),
+            )
+            return
+
+        pr_number = entry.get("pull_request_number")
+        base_branch = str(entry.get("base_branch") or "").strip()
+        target_branch = str(entry.get("target_branch") or "").strip()
+        if not (isinstance(pr_number, int) and pr_number > 0 and base_branch and target_branch):
+            self._cancel_pending_merge_agent_followup(
+                pull_request_url=str(entry.get("pull_request_url") or ""),
+                repo_url=str(entry.get("repo_url") or ""),
+                pull_request_number=int(entry.get("pull_request_number") or 0),
+            )
+            return
+
+        prompt = build_merge_pull_request_prompt(
+            base_branch=base_branch,
+            target_branch=target_branch,
+            pull_request_number=pr_number,
+        )
+
+        new_task_id = self._start_task_from_ui(prompt, "", env_id, base_branch)
+        if not new_task_id:
+            return
+
+        new_task = self._tasks.get(new_task_id)
+        if new_task is not None:
+            pr_url = str(entry.get("pull_request_url") or "").strip()
+            repo_url = str(entry.get("repo_url") or "").strip()
+            if not pr_url:
+                pr_url = followup_key_for_pr(
+                    pull_request_url="",
+                    repo_url=repo_url,
+                    pull_request_number=pr_number,
+                )
+            new_task.gh_pr_url = pr_url
+            new_task.git = {
+                "task_role": "merge_agent",
+                "repo_url": repo_url,
+                "pull_request_url": pr_url,
+                "pull_request_number": pr_number,
+                "base_branch": base_branch,
+                "target_branch": target_branch,
+            }
+
+        entry["started_task_id"] = new_task_id
+        self._schedule_save()
+
+    def _resume_merge_agent_followups(self) -> None:
+        followups = ensure_followups_list(self._settings_data)
+        for item in followups:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("key") or "").strip()
+            if not key:
+                continue
+            if str(item.get("started_task_id") or "").strip():
+                continue
+            due_at_s = item.get("due_at_s")
+            try:
+                due = float(due_at_s)
+            except Exception:
+                continue
+            self._schedule_merge_agent_followup_timer(key=key, due_at_s=due)
 
     def _on_host_artifacts(self, task_id: str, artifacts: object) -> None:
         task = self._tasks.get(task_id)
@@ -553,6 +809,7 @@ class _MainWindowTaskEventsMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
+        self._maybe_schedule_merge_agent_followup(task)
         if user_stop is None:
             QApplication.beep()
 

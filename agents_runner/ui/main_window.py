@@ -226,6 +226,7 @@ class MainWindow(
         self._load_state()
         self._apply_window_prefs()
         self._reload_environments()
+        self._resume_merge_agent_followups()
         self._apply_settings_to_pages()
         self._try_start_queued_tasks()
 

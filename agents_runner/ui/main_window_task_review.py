@@ -166,6 +166,12 @@ class _MainWindowTaskReviewMixin:
             "pull_request_url": pr_url,
         }
 
+        self._cancel_pending_merge_agent_followup(
+            pull_request_url=pr_url,
+            repo_url=str(git.get("repo_url") or "").strip(),
+            pull_request_number=pr_number,
+        )
+
         self._on_task_log(
             str(getattr(task, "task_id", "") or ""),
             format_log("merge", "agent", "INFO", f"merge agent started: {new_task_id} (pull request #{pr_number})"),

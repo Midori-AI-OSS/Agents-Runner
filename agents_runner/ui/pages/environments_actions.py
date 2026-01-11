@@ -190,6 +190,9 @@ class _EnvironmentsPageActionsMixin:
             gh_management_locked=gh_locked,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=gh_context_enabled,
+            merge_agent_auto_start_enabled=bool(
+                self._merge_agent_auto_start_enabled.isChecked()
+            ),
             prompts=prompts,
             prompts_unlocked=prompts_unlocked,
             agent_selection=agent_selection,
@@ -288,6 +291,9 @@ class _EnvironmentsPageActionsMixin:
             gh_management_locked=gh_locked,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=gh_context_enabled,
+            merge_agent_auto_start_enabled=bool(
+                self._merge_agent_auto_start_enabled.isChecked()
+            ),
             prompts=prompts,
             prompts_unlocked=prompts_unlocked,
             agent_selection=agent_selection,

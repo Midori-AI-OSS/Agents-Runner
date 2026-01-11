@@ -88,6 +88,7 @@ class Environment:
     gh_last_base_branch: str = ""
     gh_use_host_cli: bool = True
     gh_context_enabled: bool = False  # Renamed from gh_pr_metadata_enabled
+    merge_agent_auto_start_enabled: bool = False
     prompts: list[PromptConfig] = field(default_factory=list)
     prompts_unlocked: bool = False
     agent_selection: AgentSelection | None = None
