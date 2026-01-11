@@ -2,7 +2,7 @@
 
 ## Overview
 
-The execution supervisor adds retry, fallback, and error classification capabilities to task execution. It sits between the UI bridge and the Docker agent worker, managing the execution lifecycle with automatic recovery.
+The execution supervisor adds safe fallback, error classification, and cooldown handling to task execution. It sits between the UI bridge and the Docker agent worker and ensures a task run never re-attempts the same agent+configuration.
 
 ## Architecture
 
@@ -50,17 +50,14 @@ Classifies execution errors into 5 categories:
 
 ### Backoff Calculation
 
-`calculate_backoff(retry_count, error_type)` returns delay in seconds:
-
-- **Standard backoff**: 5s, 15s, 45s (exponential)
-- **Rate limit backoff**: 60s, 120s, 300s (longer delays)
+Backoff delays are intentionally not used for supervised retries. A failed attempt immediately switches to the next fallback agent+configuration.
 
 ### SupervisorConfig
 
 ```python
 @dataclass
 class SupervisorConfig:
-    max_retries_per_agent: int = 3
+    max_retries_per_agent: int = 0
     enable_fallback: bool = True
     backoff_base_seconds: float = 5.0
     rate_limit_backoff_base: float = 60.0
@@ -117,22 +114,14 @@ agent_fallbacks = {"agent_a": "agent_b", "agent_b": "agent_c"}
 `run()` method:
 
 1. **Initialize agent chain**
-2. **For each agent in chain**:
-   a. Try agent execution (`_try_agent`)
-   b. If success (exit 0): return result
-   c. Classify error
-   d. If FATAL: return result (no retry)
-   e. If retry_count < max_retries:
-      - Increment retry_count
-      - Calculate backoff
-      - Emit retry signal
-      - Sleep backoff duration
-      - Continue loop (retry same agent)
-   f. If more agents in chain:
-      - Switch to next agent
-      - Emit agent_switch signal
-      - Continue loop (try fallback)
-   g. Otherwise: return result (exhausted)
+2. **For each agent+config in chain (once each)**:
+   a. Skip entries on cooldown
+   b. Try agent execution (`_try_agent`)
+   c. If success (exit 0): return result
+   d. Classify failure reason and record it on the attempt history
+   e. If rate-limited/quota-exhausted: set a 1-hour cooldown for that agent+config
+   f. Immediately switch to the next fallback agent+config (no delay)
+   g. If none available: stop and report attempted + cooldown entries
 
 ### User Stop Handling (Stop/Kill)
 
@@ -140,7 +129,7 @@ User-initiated Stop/Kill is treated as a terminal outcome and bypasses retry/fal
 
 - `request_user_cancel()` sets `user_stop=cancel`, stops the current worker, and logs `user_cancel requested`
 - `request_user_kill()` sets `user_stop=kill`, force-kills the current worker/container, and logs `user_kill requested`
-- Retry backoff sleep is interruptible; if a user stop is requested during backoff, the supervisor exits early and logs `retry skipped due to user stop`
+User-initiated Stop/Kill is terminal; no retry/fallback is scheduled afterward.
 
 ### Agent Execution
 
@@ -170,7 +159,7 @@ User-initiated Stop/Kill is treated as a terminal outcome and bypasses retry/fal
 Added to TaskRunnerBridge:
 
 ```python
-retry_attempt = Signal(int, str, float)  # retry_count, agent, delay
+retry_attempt = Signal(int, str, float)  # attempt_number, agent, delay_seconds (always 0 for fallback)
 agent_switched = Signal(str, str)  # from_agent, to_agent
 done = Signal(int, object, list, dict)  # exit_code, error, artifacts, metadata
 ```
@@ -194,9 +183,9 @@ TaskRunnerBridge(
 
 ### Event Handlers
 
-`_on_bridge_retry_attempt(retry_count, agent, delay)`:
-- Log retry message
-- Update task.status = "retrying (X/3)"
+`_on_bridge_retry_attempt(attempt_number, agent, delay)`:
+- Log attempt message
+- Update task.status = "retrying (attempt N)"
 - Refresh dashboard
 
 `_on_bridge_agent_switched(from_agent, to_agent)`:
@@ -241,25 +230,7 @@ These properties delegate to `_current_worker` (set during execution).
 
 ## Error Handling
 
-### Fatal Errors
-
-No retry, immediate failure:
-- Authentication failures
-- Invalid API keys
-- Permission denied
-
-### Retryable Errors
-
-Up to 3 retries per agent:
-- Network errors
-- Temporary failures
-- Generic exit code 1
-
-### Rate Limits
-
-Up to 3 retries with longer backoff:
-- 60s, 120s, 300s delays
-- Detected from HTTP 429, "rate limit" in logs
+All failures (including auth, tool errors, and unknown) advance to the next fallback agent+config. Rate limit / quota failures additionally place the failing agent+config on a one-hour cooldown.
 
 ### Agent Failures
 
@@ -270,26 +241,20 @@ Try fallback agent:
 
 ### Container Crashes
 
-Retry with clean container:
+Try fallback agent:
 - OOMKilled
 - SIGKILL (exit 137)
 
 ## Testing
 
-Unit tests in `test_supervisor.py`:
-
-- Error classification for all types
-- Priority ordering (crash > rate limit > fatal > agent > retryable)
-- Case-insensitive pattern matching
-- Backoff calculation (standard and rate limit)
-- Edge cases (multiple patterns, priority)
+No dedicated automated tests are currently included for the supervisor behavior.
 
 ## Configuration
 
 Default configuration:
 ```python
 SupervisorConfig(
-    max_retries_per_agent=3,
+    max_retries_per_agent=0,
     enable_fallback=True,
 )
 ```
@@ -317,8 +282,6 @@ Per design requirements:
 Possible additions (not in current scope):
 
 1. **User controls**:
-   - "Retry Now" button (skip backoff delay)
-   - "Cancel Retry" button (stop retry loop)
    - "Force Fallback" button (skip to next agent)
 
 2. **Advanced metrics**:
@@ -329,7 +292,7 @@ Possible additions (not in current scope):
 3. **Configurable patterns**:
    - User-defined error patterns
    - Per-environment error classification
-   - Custom backoff strategies
+   - Optional retry delays (not recommended)
 
 4. **Container restart**:
    - Explicit restart after crash (currently creates new)
@@ -351,7 +314,7 @@ Possible additions (not in current scope):
 - `agents_runner/ui/bridges.py` (modified, +30 lines)
 - `agents_runner/ui/main_window_tasks_agent.py` (modified, +5 lines)
 - `agents_runner/ui/main_window_task_events.py` (modified, +70 lines)
-- `test_supervisor.py` (new, 14 tests)
+Supervisor changes are reflected in the runtime code and UI integration; no new test files are added.
 
 ## Code Style
 

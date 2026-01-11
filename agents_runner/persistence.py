@@ -318,6 +318,7 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "novnc_url": getattr(task, "novnc_url", ""),
         "desktop_display": getattr(task, "desktop_display", ""),
         "artifacts": list(getattr(task, "artifacts", [])),
+        "attempt_history": list(getattr(task, "attempt_history", [])),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
         "logs": list(task.logs[-2000:]),
@@ -357,6 +358,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         vnc_password="",
         desktop_display=str(data.get("desktop_display") or ""),
         artifacts=list(data.get("artifacts") or []),
+        attempt_history=list(data.get("attempt_history") or []),
         logs=list(data.get("logs") or []),
     )
     runner_prompt = data.get("runner_prompt")
