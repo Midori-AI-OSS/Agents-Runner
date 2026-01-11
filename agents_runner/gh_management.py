@@ -125,6 +125,23 @@ def prepare_github_repo_for_task(
                 _log(format_log("gh", "repo", "INFO", "not a git repo; skipping branch/PR"))
                 return result
 
+            current_branch = git_current_branch(plan.repo_root)
+            if current_branch and current_branch == plan.branch:
+                _log(format_log("gh", "branch", "INFO", f"already on task branch {plan.branch}; skipping branch prep"))
+                return {
+                    "repo_root": plan.repo_root,
+                    "base_branch": plan.base_branch,
+                    "branch": current_branch,
+                }
+
+            if not git_is_clean(plan.repo_root):
+                _log(format_log("gh", "branch", "WARN", "repo has uncommitted changes; skipping branch prep to avoid data loss"))
+                return {
+                    "repo_root": plan.repo_root,
+                    "base_branch": plan.base_branch,
+                    "branch": current_branch or "",
+                }
+
             _log(format_log("gh", "branch", "INFO", f"creating branch {plan.branch} (base {plan.base_branch})"))
             resolved_base_branch, branch = prepare_branch_for_task(
                 plan.repo_root,
