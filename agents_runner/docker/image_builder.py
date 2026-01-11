@@ -21,8 +21,10 @@ from agents_runner.log_format import format_log
 logger = logging.getLogger(__name__)
 
 # Default paths to desktop scripts
+PREFLIGHTS_DIR = Path(__file__).parent.parent / "preflights"
 DESKTOP_INSTALL_SCRIPT = Path(__file__).parent.parent / "preflights" / "desktop_install.sh"
 DESKTOP_SETUP_SCRIPT = Path(__file__).parent.parent / "preflights" / "desktop_setup.sh"
+LOG_COMMON_SCRIPT = Path(__file__).parent.parent / "preflights" / "log_common.sh"
 
 
 def _compute_file_hash(file_path: Path) -> str:
@@ -82,6 +84,7 @@ def compute_desktop_cache_key(base_image: str) -> str:
     - Base image digest
     - Hash of desktop_install.sh
     - Hash of desktop_setup.sh
+    - Hash of log_common.sh
     - Hash of Dockerfile template
     
     Args:
@@ -107,12 +110,18 @@ def compute_desktop_cache_key(base_image: str) -> str:
     except Exception as exc:
         logger.warning(format_log("docker", "image", "WARN", f"Failed to hash desktop_setup.sh: {exc}"))
         setup_hash = "missing"
+
+    try:
+        log_common_hash = _compute_file_hash(LOG_COMMON_SCRIPT)
+    except Exception as exc:
+        logger.warning(format_log("docker", "image", "WARN", f"Failed to hash log_common.sh: {exc}"))
+        log_common_hash = "missing"
     
     # Dockerfile template hash (inline template, hash the template string)
     dockerfile_template = _get_dockerfile_template()
     dockerfile_hash = hashlib.sha256(dockerfile_template.encode()).hexdigest()[:16]
     
-    return f"emerald-{base_digest}-{install_hash}-{setup_hash}-{dockerfile_hash}"
+    return f"emerald-{base_digest}-{install_hash}-{setup_hash}-{log_common_hash}-{dockerfile_hash}"
 
 
 def _get_dockerfile_template() -> str:
@@ -123,12 +132,11 @@ def _get_dockerfile_template() -> str:
     """
     return """FROM {base_image}
 
-# Copy desktop installation scripts
-COPY desktop_install.sh /tmp/desktop_install.sh
-COPY desktop_setup.sh /tmp/desktop_setup.sh
+# Copy preflight scripts folder (includes shared dependencies like log_common.sh)
+COPY preflights/ /tmp/agents-runner-preflights/
 
 # Run installation and setup
-RUN /bin/bash /tmp/desktop_install.sh && /bin/bash /tmp/desktop_setup.sh && sudo rm -f /tmp/desktop_install.sh /tmp/desktop_setup.sh
+RUN /bin/bash /tmp/agents-runner-preflights/desktop_install.sh && /bin/bash /tmp/agents-runner-preflights/desktop_setup.sh && sudo rm -rf /tmp/agents-runner-preflights
 
 # Desktop environment is now ready
 """
@@ -155,10 +163,14 @@ def build_desktop_image(
         on_log = logger.info
     
     # Validate that required scripts exist
+    if not PREFLIGHTS_DIR.exists():
+        raise FileNotFoundError(f"Preflights directory not found: {PREFLIGHTS_DIR}")
     if not DESKTOP_INSTALL_SCRIPT.exists():
         raise FileNotFoundError(f"Desktop install script not found: {DESKTOP_INSTALL_SCRIPT}")
     if not DESKTOP_SETUP_SCRIPT.exists():
         raise FileNotFoundError(f"Desktop setup script not found: {DESKTOP_SETUP_SCRIPT}")
+    if not LOG_COMMON_SCRIPT.exists():
+        raise FileNotFoundError(f"log_common script not found: {LOG_COMMON_SCRIPT}")
     
     on_log(format_log("docker", "build", "INFO", f"building desktop image: {tag}"))
     on_log(format_log("docker", "build", "INFO", f"base image: {base_image}"))
@@ -169,8 +181,7 @@ def build_desktop_image(
         
         # Copy scripts to build context
         import shutil
-        shutil.copy(DESKTOP_INSTALL_SCRIPT, build_path / "desktop_install.sh")
-        shutil.copy(DESKTOP_SETUP_SCRIPT, build_path / "desktop_setup.sh")
+        shutil.copytree(PREFLIGHTS_DIR, build_path / "preflights")
         
         # Write Dockerfile
         dockerfile_content = _get_dockerfile_template().format(base_image=base_image)
