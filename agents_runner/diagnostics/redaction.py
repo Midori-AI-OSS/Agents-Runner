@@ -47,7 +47,7 @@ SSH_KEY_PATTERN = re.compile(
 
 # PEM-encoded private keys
 PEM_KEY_PATTERN = re.compile(
-    r'-----BEGIN [A-Z ]+PRIVATE KEY-----.*?-----END [A-Z ]+PRIVATE KEY-----',
+    r'-----BEGIN[^\n]*PRIVATE KEY[^\n]*-----.*?-----END[^\n]*PRIVATE KEY[^\n]*-----',
     re.DOTALL | re.IGNORECASE
 )
 
