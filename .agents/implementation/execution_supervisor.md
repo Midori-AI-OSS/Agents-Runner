@@ -149,8 +149,29 @@ User-initiated Stop/Kill is terminal; no retry/fallback is scheduled afterward.
 - Copies all fields from base config
 - Overrides:
   - `agent_cli` from agent.agent_cli
-  - `host_codex_dir` from agent.config_dir (if set)
+  - `host_codex_dir` from agent.config_dir (if set), otherwise uses a per-agent default host config dir:
+    - `codex`: base `host_codex_dir` (or `$CODEX_HOST_CODEX_DIR` / `~/.codex`)
+    - `claude`: `~/.claude`
+    - `copilot`: `~/.copilot`
+    - `gemini`: `~/.gemini`
   - `agent_cli_args` from agent.cli_flags (parsed with shlex)
+
+### Retry Prompt Preamble
+
+When attempt number is greater than 1, the supervisor prepends a `RETRY CONTEXT` block to the prompt for that attempt. The preamble includes:
+
+- Attempt number (and total configured attempts when available)
+- The previous agent + config directory
+- A failure category and short summary
+- Explicit instructions to inspect the workspace and continue from partial progress (avoid redoing work or resetting the workspace unless asked)
+
+### Diagnostics
+
+Each attempt logs a non-secret diagnostic line describing the selection and its config mounts:
+
+- Selected agent CLI
+- Selected host config directory
+- A short list of config mount source paths
 
 ## UI Integration
 

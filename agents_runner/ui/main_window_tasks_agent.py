@@ -35,6 +35,8 @@ from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import PIXELARCH_AGENT_CONTEXT_SUFFIX
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.constants import PIXELARCH_GIT_CONTEXT_SUFFIX
+from agents_runner.environments.model import AgentInstance
+from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _stain_color
 
@@ -219,7 +221,15 @@ class _MainWindowTasksAgentMixin:
                 # Override agent for this task only (task-scoped)
                 if fallback_agent:
                     agent_cli = fallback_agent.agent_cli
-                    auto_config_dir = fallback_agent.config_dir
+                    auto_config_dir = os.path.expanduser(
+                        str(getattr(fallback_agent, "config_dir", "") or "").strip()
+                    )
+                    if not auto_config_dir:
+                        auto_config_dir = self._resolve_config_dir_for_agent(
+                            agent_cli=agent_cli,
+                            env=env,
+                            settings=self._settings_data,
+                        )
                     agent_instance_id = fallback_agent.agent_id
                     # Don't modify environment, just use fallback for this task
 
@@ -253,12 +263,43 @@ class _MainWindowTasksAgentMixin:
             return
 
         self._settings_data["host_workdir"] = effective_workdir
+
+        resolved_agent_selection: AgentSelection | None = None
+        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            resolved_agents: list[AgentInstance] = []
+            for inst in list(env.agent_selection.agents or []):
+                inst_cli = str(getattr(inst, "agent_cli", "") or "").strip()
+                inst_dir = os.path.expanduser(str(getattr(inst, "config_dir", "") or "").strip())
+                if not inst_dir:
+                    inst_dir = self._resolve_config_dir_for_agent(
+                        agent_cli=inst_cli,
+                        env=env,
+                        settings=self._settings_data,
+                    )
+                resolved_agents.append(
+                    AgentInstance(
+                        agent_id=str(getattr(inst, "agent_id", "") or "").strip() or inst_cli,
+                        agent_cli=inst_cli,
+                        config_dir=inst_dir,
+                        cli_flags=str(getattr(inst, "cli_flags", "") or "").strip(),
+                    )
+                )
+            resolved_agent_selection = AgentSelection(
+                agents=resolved_agents,
+                selection_mode=str(getattr(env.agent_selection, "selection_mode", "") or "round-robin"),
+                agent_fallbacks=dict(getattr(env.agent_selection, "agent_fallbacks", {}) or {}),
+            )
+
         host_codex = os.path.expanduser(str(host_codex or "").strip())
-        if not host_codex:
-            host_codex = auto_config_dir
-        if not self._ensure_agent_config_dir(agent_cli, host_codex):
+        host_config_dir = auto_config_dir
+        if agent_cli == "codex" and host_codex:
+            host_config_dir = host_codex
+        if not host_config_dir:
+            host_config_dir = auto_config_dir
+
+        if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
             return
-        self._settings_data[self._host_config_dir_key(agent_cli)] = host_codex
+        self._settings_data[self._host_config_dir_key(agent_cli)] = host_config_dir
 
         image = PIXELARCH_EMERALD_IMAGE
 
@@ -307,7 +348,7 @@ class _MainWindowTasksAgentMixin:
             prompt=prompt,
             image=image,
             host_workdir=effective_workdir,
-            host_codex_dir=host_codex,
+            host_codex_dir=host_config_dir,
             environment_id=env_id,
             created_at_s=time.time(),
             status="queued",
@@ -464,7 +505,7 @@ class _MainWindowTasksAgentMixin:
         config = DockerRunnerConfig(
             task_id=task_id,
             image=image,
-            host_codex_dir=host_codex,
+            host_codex_dir=host_config_dir,
             host_workdir=effective_workdir,
             agent_cli=agent_cli,
             environment_id=env_id,
@@ -487,7 +528,7 @@ class _MainWindowTasksAgentMixin:
         )
         task._runner_config = config
         task._runner_prompt = runner_prompt
-        task._agent_selection = env.agent_selection if env else None
+        task._agent_selection = resolved_agent_selection or (env.agent_selection if env else None)
 
         if self._can_start_new_agent_for_env(env_id):
             self._actually_start_task(task)

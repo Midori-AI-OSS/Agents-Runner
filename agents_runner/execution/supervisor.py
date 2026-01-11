@@ -16,11 +16,15 @@ from typing import Any
 from typing import Callable
 from typing import Literal
 
+from agents_runner.agent_cli import additional_config_mounts
+from agents_runner.agent_cli import default_host_config_dir
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker_runner import DockerAgentWorker
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
 from agents_runner.log_format import format_log
+from agents_runner.prompts import RetryContext
+from agents_runner.prompts import build_task_prompt
 
 
 class ErrorType(Enum):
@@ -529,8 +533,47 @@ class TaskSupervisor:
         if self._user_stop_reason is not None:
             return self._result_for_user_stop()
 
+        attempt_number = int(self._total_attempts) + 1
+        prompt_for_attempt = self._prompt
+        if attempt_number > 1:
+            previous = self._attempt_history[-1] if self._attempt_history else {}
+            prompt_for_attempt = build_task_prompt(
+                self._prompt,
+                retry_context=RetryContext(
+                    attempt_number=attempt_number,
+                    total_configured_attempts=len(self._agent_chain) or None,
+                    previous_agent=str(previous.get("agent_cli") or "unknown"),
+                    previous_config=str(previous.get("host_config_dir") or "unknown"),
+                    previous_failure_category=str(
+                        previous.get("failure_category") or "unknown"
+                    ),
+                    previous_failure_summary=str(
+                        previous.get("failure_message") or "unknown"
+                    ),
+                ),
+            )
+
         # Build agent-specific config
         agent_config = self._build_agent_config(agent)
+        config_mount_sources = [str(agent_config.host_codex_dir or "").strip()]
+        for mount_spec in additional_config_mounts(
+            agent.agent_cli, agent_config.host_codex_dir
+        ):
+            src = str(mount_spec or "").split(":", 1)[0].strip()
+            if src:
+                config_mount_sources.append(src)
+        config_mount_sources = [p for p in dict.fromkeys(config_mount_sources) if p]
+        preview = ", ".join(config_mount_sources[:6])
+        if len(config_mount_sources) > 6:
+            preview = f"{preview}, …(+{len(config_mount_sources) - 6})"
+        self._on_log(
+            format_log(
+                "supervisor",
+                "attempt",
+                "INFO",
+                f"selected agent={agent.agent_cli} config={agent_config.host_codex_dir} config_mounts=[{preview}]",
+            )
+        )
 
         # Reset worker results
         self._last_exit_code = 0
@@ -542,7 +585,7 @@ class TaskSupervisor:
         # Create and run worker
         worker = DockerAgentWorker(
             config=agent_config,
-            prompt=self._prompt,
+            prompt=prompt_for_attempt,
             on_state=self._on_state,
             on_log=self._on_log_capture,
             on_done=self._on_worker_done,
@@ -588,6 +631,7 @@ class TaskSupervisor:
         Returns:
             DockerRunnerConfig configured for this agent
         """
+        host_config_dir = self._resolve_host_config_dir(agent)
         # Parse agent CLI args
         agent_cli_args: list[str] = []
         if agent.cli_flags:
@@ -602,7 +646,7 @@ class TaskSupervisor:
         config = DockerRunnerConfig(
             task_id=self._config.task_id,
             image=self._config.image,
-            host_codex_dir=agent.config_dir or self._config.host_codex_dir,
+            host_codex_dir=host_config_dir,
             host_workdir=self._config.host_workdir,
             agent_cli=agent.agent_cli,
             container_codex_dir=self._config.container_codex_dir,
@@ -629,6 +673,16 @@ class TaskSupervisor:
             artifact_collection_timeout_s=self._config.artifact_collection_timeout_s,
         )
         return config
+
+    def _resolve_host_config_dir(self, agent: AgentInstance) -> str:
+        configured = os.path.expanduser(str(agent.config_dir or "").strip())
+        host_config_dir = configured or default_host_config_dir(
+            agent.agent_cli, codex_default=self._config.host_codex_dir
+        )
+        host_config_dir = str(host_config_dir or "").strip()
+        if host_config_dir:
+            host_config_dir = os.path.abspath(host_config_dir)
+        return host_config_dir
 
     def _on_log_capture(self, log_line: str) -> None:
         """Capture log lines for error classification.
@@ -664,11 +718,7 @@ class TaskSupervisor:
 
     def _attempt_key(self, agent: AgentInstance) -> AttemptKey:
         agent_cli = str(agent.agent_cli or "").strip().lower() or "codex"
-        host_config_dir = os.path.expanduser(
-            str(agent.config_dir or self._config.host_codex_dir or "").strip()
-        )
-        if host_config_dir:
-            host_config_dir = os.path.abspath(host_config_dir)
+        host_config_dir = self._resolve_host_config_dir(agent)
 
         agent_cli_args = self._effective_agent_cli_args(agent)
         return AttemptKey(

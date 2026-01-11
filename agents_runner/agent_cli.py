@@ -9,6 +9,12 @@ SUPPORTED_AGENTS = ("codex", "claude", "copilot", "gemini")
 CONTAINER_HOME = "/home/midori-ai"
 CONTAINER_WORKDIR = "/home/midori-ai/workspace"
 
+DEFAULT_HOST_CONFIG_DIRS: dict[str, str] = {
+    "claude": "~/.claude",
+    "copilot": "~/.copilot",
+    "gemini": "~/.gemini",
+}
+
 
 def normalize_agent(value: str | None) -> str:
     agent = str(value or "").strip().lower()
@@ -24,6 +30,18 @@ def container_config_dir(agent: str) -> str:
     if agent == "gemini":
         return f"{CONTAINER_HOME}/.gemini"
     return f"{CONTAINER_HOME}/.codex"
+
+
+def default_host_config_dir(agent: str, *, codex_default: str | None = None) -> str:
+    agent = normalize_agent(agent)
+    if agent == "codex":
+        fallback = (
+            str(codex_default or "").strip()
+            or os.environ.get("CODEX_HOST_CODEX_DIR", "").strip()
+            or "~/.codex"
+        )
+        return os.path.expanduser(fallback)
+    return os.path.expanduser(DEFAULT_HOST_CONFIG_DIRS.get(agent, "~/.codex"))
 
 
 def additional_config_mounts(agent: str, host_config_dir: str) -> list[str]:
