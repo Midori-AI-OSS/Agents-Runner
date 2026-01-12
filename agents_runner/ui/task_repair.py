@@ -142,7 +142,11 @@ def _repair_from_environment(task: Any, environments: dict[str, Any]) -> tuple[b
     if not env:
         return (False, "environment not found")
     
-    repo_path = getattr(env, "host_repo_root", None) or getattr(env, "host_folder", None)
+    # Try to get repository path from environment's host_workdir or task's host_workdir
+    repo_path = getattr(env, "host_workdir", None)
+    if not repo_path:
+        repo_path = getattr(task, "host_workdir", None)
+    
     if not repo_path or not os.path.isdir(repo_path):
         return (False, "environment has no accessible repository")
     
@@ -176,6 +180,7 @@ def _repair_from_environment(task: Any, environments: dict[str, Any]) -> tuple[b
     except Exception as exc:
         logger.debug(f"[repair] failed to query environment repository: {exc}")
         return (False, f"repository query error: {exc}")
+
 
 
 def _repair_partial_metadata(task: Any) -> tuple[bool, str]:
