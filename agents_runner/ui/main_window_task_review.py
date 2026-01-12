@@ -46,8 +46,33 @@ class _MainWindowTaskReviewMixin:
         branch = str(task.gh_branch or "").strip()
         
         # For non-GitHub locked envs, we need to set up branch/repo if missing
+        # Try getting from environment's host_workdir
         if not repo_root and env:
-            repo_root = str(getattr(env, "host_repo_root", "") or getattr(env, "host_folder", "") or "").strip()
+            repo_root = str(getattr(env, "host_workdir", "") or "").strip()
+            # Persist the repo_root to the task for future use
+            if repo_root:
+                task.gh_repo_root = repo_root
+        
+        # If still missing, try to get from task's host_workdir
+        if not repo_root:
+            repo_root = str(task.host_workdir or "").strip()
+            if repo_root:
+                task.gh_repo_root = repo_root
+        
+        # If still missing, try to repair git metadata
+        if not repo_root and task.requires_git_metadata():
+            from agents_runner.ui.task_repair import repair_task_git_metadata
+            success, msg = repair_task_git_metadata(
+                task,
+                state_path=self._state_path,
+                environments=self._environments,
+            )
+            if success:
+                # After repair, check if we can get repo_root from task's host_workdir
+                repo_root = str(task.host_workdir or "").strip()
+                if repo_root:
+                    task.gh_repo_root = repo_root
+                self._schedule_save()
         
         if not branch:
             branch = f"midoriaiagents/{task_id}"
