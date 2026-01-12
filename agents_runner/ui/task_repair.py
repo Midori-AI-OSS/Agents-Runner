@@ -105,6 +105,18 @@ def _repair_from_github_context(task: Any, state_path: str) -> tuple[bool, str]:
             "head_commit": github.head_commit,
         }
         
+        # Also set gh_repo_root if we can find it
+        if not hasattr(task, "gh_repo_root") or not task.gh_repo_root:
+            # Try environment's host_workdir first, then task's host_workdir
+            env_id = getattr(task, "environment_id", "")
+            if env_id:
+                # Note: We don't have access to environments dict here
+                # Fall back to task.host_workdir
+                pass
+            repo_root_candidate = str(getattr(task, "host_workdir", "") or "").strip()
+            if repo_root_candidate and os.path.isdir(repo_root_candidate):
+                task.gh_repo_root = repo_root_candidate
+        
         # Add PR info if available from task
         pr_url = str(getattr(task, "gh_pr_url", "") or "").strip()
         if pr_url:
@@ -128,6 +140,11 @@ def _repair_from_task_fields(task: Any) -> tuple[bool, str]:
     derived = derive_task_git_metadata(task)
     if derived and derived.get("base_branch"):
         task.git = derived
+        # Also set gh_repo_root if we can find it
+        if not hasattr(task, "gh_repo_root") or not task.gh_repo_root:
+            repo_root_candidate = str(getattr(task, "host_workdir", "") or "").strip()
+            if repo_root_candidate and os.path.isdir(repo_root_candidate):
+                task.gh_repo_root = repo_root_candidate
         return (True, "repaired from task fields")
     
     return (False, "task fields incomplete")
@@ -165,6 +182,10 @@ def _repair_from_environment(task: Any, environments: dict[str, Any]) -> tuple[b
             "target_branch": getattr(task, "gh_branch", None) or None,
             "head_commit": git_info.commit_sha,
         }
+        
+        # Also set gh_repo_root with the repo_path we just used
+        if repo_path and os.path.isdir(str(repo_path)):
+            task.gh_repo_root = str(repo_path)
         
         # Add PR info if available
         pr_url = str(getattr(task, "gh_pr_url", "") or "").strip()
@@ -215,6 +236,11 @@ def _repair_partial_metadata(task: Any) -> tuple[bool, str]:
     
     # Check if we have at least base_branch
     if task.git.get("base_branch"):
+        # Also try to set gh_repo_root if we can find it
+        if not hasattr(task, "gh_repo_root") or not task.gh_repo_root:
+            repo_root_candidate = str(getattr(task, "host_workdir", "") or "").strip()
+            if repo_root_candidate and os.path.isdir(repo_root_candidate):
+                task.gh_repo_root = repo_root_candidate
         return (True, "partial metadata created (minimal fields only)")
     
     return (False, "could not create even partial metadata")

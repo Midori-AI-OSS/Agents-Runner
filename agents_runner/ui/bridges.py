@@ -111,4 +111,11 @@ class TaskRunnerBridge(QObject):
         self._worker.request_stop()
 
     def run(self) -> None:
-        self._worker.run()
+        try:
+            self._worker.run()
+        except Exception as exc:
+            # Ensure done signal is always emitted, even on unhandled exceptions
+            # This guarantees finalization (including cleanup) always runs
+            import traceback
+            error_msg = f"Worker exception: {exc}\n{traceback.format_exc()}"
+            self.done.emit(1, error_msg, [], {})

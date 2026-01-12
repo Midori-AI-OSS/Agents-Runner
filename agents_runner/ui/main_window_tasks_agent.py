@@ -452,6 +452,9 @@ class _MainWindowTasksAgentMixin:
                                 "target_branch": None,
                                 "head_commit": git_info.commit_sha,
                             }
+                            # Also set gh_repo_root for folder-locked tasks
+                            if folder_path and os.path.isdir(folder_path):
+                                task.gh_repo_root = folder_path
                             self._on_task_log(
                                 task_id, format_log("gh", "context", "INFO", f"detected git repo: {git_info.repo_url}")
                             )
