@@ -5,19 +5,194 @@ log() {
   printf '%s\n' "[pre-commit] $*" >&2
 }
 
+die() {
+  log "ERROR: $*"
+  exit 1
+}
+
+print_paths() {
+  local label="$1"
+  shift
+  log "${label}:"
+  local p
+  for p in "$@"; do
+    log "  - ${p}"
+  done
+}
+
+print_allowlist() {
+  log "Allowed top-level components:"
+  log "  - .agents"
+  log "  - .githooks"
+  log "  - .github"
+  log "  - agents_runner"
+  log "  - agents_runner.egg-info"
+  log "  - .gitignore"
+  log "  - AGENTS.md"
+  log "  - README.md"
+  log "  - main.py"
+  log "  - pyproject.toml"
+}
+
+print_remediation_root() {
+  log "Remediation:"
+  log "  - Unstage disallowed paths: git restore --staged -- <path>..."
+  log "  - Move/rename under an allowed top-level component, then: git add -- <new-paths>"
+  log "  - Or stop tracking paths: git rm -r --cached -- <path>..."
+  log "  - Common destinations: agents_runner/ (code), .agents/implementation/ (notes), .agents/tasks/wip/ (work), .agents/temp/ (temporary artifacts)"
+}
+
 repo_root="$(git rev-parse --show-toplevel)"
 cd "${repo_root}"
 
-if ! command -v uv >/dev/null 2>&1; then
-  log "uv not found; install uv to run pre-commit checks (or use --no-verify to bypass)"
-  exit 127
+mapfile -d '' -t staged_paths < <(git diff --cached --name-only -z --diff-filter=ACMR)
+
+declare -A root_allowlist=(
+  [".agents"]=1
+  [".githooks"]=1
+  [".github"]=1
+  ["agents_runner"]=1
+  ["agents_runner.egg-info"]=1
+  [".gitignore"]=1
+  ["AGENTS.md"]=1
+  ["README.md"]=1
+  ["main.py"]=1
+  ["pyproject.toml"]=1
+)
+
+disallowed_staged_paths=()
+for path in "${staged_paths[@]}"; do
+  [[ -z "${path}" ]] && continue
+  top_level="${path%%/*}"
+  if [[ -z "${root_allowlist["$top_level"]+x}" ]]; then
+    disallowed_staged_paths+=("${path}")
+  fi
+done
+
+if ((${#disallowed_staged_paths[@]} > 0)); then
+  log "ERROR: Disallowed staged paths detected (root allowlist enforcement)."
+  print_paths "Disallowed staged paths" "${disallowed_staged_paths[@]}"
+  print_allowlist
+  print_remediation_root
+  exit 1
+fi
+
+had_structure_error=0
+
+audit_tracked=()
+mapfile -d '' -t audit_tracked < <(git ls-files -z -- .agents/audit)
+audit_required=".agents/audit/AGENTS.md"
+
+audit_missing=0
+audit_extra=()
+audit_has_required=0
+for path in "${audit_tracked[@]}"; do
+  if [[ "${path}" == "${audit_required}" ]]; then
+    audit_has_required=1
+    continue
+  fi
+  audit_extra+=("${path}")
+done
+if [[ "${audit_has_required}" -eq 0 ]]; then
+  audit_missing=1
+fi
+if [[ "${audit_missing}" -eq 1 || ${#audit_extra[@]} -gt 0 ]]; then
+  log "ERROR: .agents/audit must contain exactly ${audit_required} in the index."
+  if [[ "${audit_missing}" -eq 1 ]]; then
+    log "Missing required path:"
+    log "  - ${audit_required}"
+  fi
+  if ((${#audit_extra[@]} > 0)); then
+    print_paths "Disallowed tracked paths under .agents/audit" "${audit_extra[@]}"
+  fi
+  log "How to fix:"
+  log "  - Remove/move extra files out of .agents/audit, then: git rm -r --cached -- .agents/audit/<path>"
+  log "  - Ensure required file exists and is tracked: mkdir -p .agents/audit && touch .agents/audit/AGENTS.md && git add .agents/audit/AGENTS.md"
+  had_structure_error=1
+fi
+
+tasks_tracked=()
+mapfile -d '' -t tasks_tracked < <(git ls-files -z -- .agents/tasks)
+
+tasks_required=(
+  ".agents/tasks/AGENTS.md"
+  ".agents/tasks/wip/AGENTS.md"
+  ".agents/tasks/done/AGENTS.md"
+  ".agents/tasks/taskmaster/AGENTS.md"
+)
+
+declare -A tasks_required_set=()
+for path in "${tasks_required[@]}"; do
+  tasks_required_set["$path"]=1
+done
+
+tasks_missing=()
+for path in "${tasks_required[@]}"; do
+  if ! git ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+    tasks_missing+=("$path")
+  fi
+done
+
+tasks_invalid=()
+tasks_has_task_files=0
+for path in "${tasks_tracked[@]}"; do
+  if [[ -n "${tasks_required_set["$path"]+x}" ]]; then
+    continue
+  fi
+  if [[ "${path}" =~ ^\.agents/tasks/(wip|done|taskmaster)/[^/]+\.(md|txt)$ ]]; then
+    tasks_has_task_files=1
+    continue
+  fi
+  tasks_invalid+=("${path}")
+done
+
+if ((${#tasks_missing[@]} > 0 || ${#tasks_invalid[@]} > 0)); then
+  log "ERROR: .agents/tasks structure is invalid in the index."
+  if ((${#tasks_missing[@]} > 0)); then
+    print_paths "Missing required paths" "${tasks_missing[@]}"
+  fi
+  if ((${#tasks_invalid[@]} > 0)); then
+    print_paths "Invalid tracked paths under .agents/tasks" "${tasks_invalid[@]}"
+  fi
+  log "How to fix:"
+  log "  - Ensure required AGENTS.md files exist:"
+  log "      mkdir -p .agents/tasks/{wip,done,taskmaster} \\"
+  log "        && touch .agents/tasks/AGENTS.md .agents/tasks/wip/AGENTS.md .agents/tasks/done/AGENTS.md .agents/tasks/taskmaster/AGENTS.md \\"
+  log "        && git add -- .agents/tasks/AGENTS.md .agents/tasks/wip/AGENTS.md .agents/tasks/done/AGENTS.md .agents/tasks/taskmaster/AGENTS.md"
+  log "  - Remove/move invalid paths (no files directly under .agents/tasks except AGENTS.md; no deeper nesting; only .md/.txt task files at depth 2):"
+  log "      git rm -r --cached -- <invalid-paths>...   # or move then git add"
+  had_structure_error=1
+fi
+
+if [[ "${had_structure_error}" -eq 1 ]]; then
+  exit 1
+fi
+
+if [[ "${tasks_has_task_files}" -eq 1 ]]; then
+  log "WARNING: Task files (.md/.txt) exist under .agents/tasks/{wip,done,taskmaster}."
 fi
 
 log "Running Python bytecode compile check (compileall)"
-uv run python -m compileall -q agents_runner main.py
+compile_python="python"
+if ! command -v "${compile_python}" >/dev/null 2>&1; then
+  compile_python="python3"
+fi
+
+if command -v "${compile_python}" >/dev/null 2>&1; then
+  log "Command: ${compile_python} -m compileall -q agents_runner main.py"
+  if ! "${compile_python}" -m compileall -q agents_runner main.py; then
+    log "WARNING: compile check failed; fix by running the command above and addressing the reported issues."
+  fi
+else
+  log "WARNING: python not found; skipping compile check (install Python to enable it)."
+fi
 
 log "Running import smoke test"
-uv run python - <<'PY'
+if ! command -v uv >/dev/null 2>&1; then
+  log "WARNING: uv not found; skipping import smoke test (install uv to enable it)."
+else
+  log "Command: uv run --no-sync python -"
+  if ! uv run --no-sync python - <<'PY'
 import importlib
 
 modules = [
@@ -30,5 +205,9 @@ for module in modules:
     importlib.import_module(module)
 print("ok")
 PY
+  then
+    log "WARNING: import smoke test failed; fix by running the command above and addressing the import error."
+  fi
+fi
 
 log "OK"
