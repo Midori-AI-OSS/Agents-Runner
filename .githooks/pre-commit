@@ -173,26 +173,19 @@ if [[ "${tasks_has_task_files}" -eq 1 ]]; then
 fi
 
 log "Running Python bytecode compile check (compileall)"
-compile_python="python"
-if ! command -v "${compile_python}" >/dev/null 2>&1; then
-  compile_python="python3"
+if ! command -v uv >/dev/null 2>&1; then
+  die "uv not found; install uv to run compile checks (or use --no-verify to bypass)"
 fi
 
-if command -v "${compile_python}" >/dev/null 2>&1; then
-  log "Command: ${compile_python} -m compileall -q agents_runner main.py"
-  if ! "${compile_python}" -m compileall -q agents_runner main.py; then
-    log "WARNING: compile check failed; fix by running the command above and addressing the reported issues."
-  fi
-else
-  log "WARNING: python not found; skipping compile check (install Python to enable it)."
+uv_project_env="${UV_PROJECT_ENVIRONMENT:-/tmp/agents-runner-precommit-uv-env}"
+log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run --no-sync python -m compileall -q agents_runner main.py"
+if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run --no-sync python -m compileall -q agents_runner main.py; then
+  die "Compile check failed. Fix by running the command above and addressing the reported issues."
 fi
 
 log "Running import smoke test"
-if ! command -v uv >/dev/null 2>&1; then
-  log "WARNING: uv not found; skipping import smoke test (install uv to enable it)."
-else
-  log "Command: uv run --no-sync python -"
-  if ! uv run --no-sync python - <<'PY'
+log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run --no-sync python -"
+if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run --no-sync python - <<'PY'
 import importlib
 
 modules = [
@@ -205,9 +198,8 @@ for module in modules:
     importlib.import_module(module)
 print("ok")
 PY
-  then
-    log "WARNING: import smoke test failed; fix by running the command above and addressing the import error."
-  fi
+then
+  log "WARNING: import smoke test failed; fix by running the command above and addressing the import error."
 fi
 
 log "OK"
