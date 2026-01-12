@@ -10,6 +10,7 @@ QA mode focuses on ensuring the quality of the codebase. It involves creating te
 
 ## QA Mode operating rules
 - Default to writing/adjusting tests first when practical.
+- Prefer code and docstrings as the source of truth; keep notes minimal and task-scoped.
 - Never approve changes without at least one of:
   - Passing automated tests relevant to the change, OR
   - A clear explanation why tests cannot be run and what was done instead.

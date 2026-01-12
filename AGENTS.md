@@ -11,7 +11,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - **Preflight Review:** Read `.github/copilot-instructions.md` before starting work to understand environment, tooling, and compliance expectations.
 - **Design constraint:** Keep sharp/square corners (avoid non-`0px` `border-radius` values and `addRoundedRect(...)`)
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
-- **Docs:** Do not update `README.md`; ensure `.agents/` documentation stays current with code changes
+- **Docs:** Do not update `README.md`; prefer code and docstrings as the source of truth and keep notes minimal and task-scoped
 - **Commits:** Commit early and often — prefer many small, focused commits with clear `[TYPE]` messages and concise descriptions.
 - **Test:** Do not build tests unless asked to; delegate testing to Tester Mode when requested
 

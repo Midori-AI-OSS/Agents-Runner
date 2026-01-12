@@ -1,6 +1,6 @@
 # Task Master Mode
 
-> **Note:** Keep Task Master process notes in `.agents/instructions/` (create it if missing) and store active work in the root `.agents/tasks/` directory. Follow the naming conventions established by your team (for example, prefix files with a short random hash such as `abcd1234-task-title.md`).
+> **Note:** Store active work in the root `.agents/tasks/` directory. Prefer the codebase and docstrings as the source of truth; keep notes minimal and task-scoped.
 >
 > **Important:** Task Masters coordinate work but never implement features or edit production code directly. Delegate execution to the appropriate contributor mode.
 
@@ -12,7 +12,7 @@ Task Masters keep the backlog healthy. They translate product direction, feedbac
 - Use unique filename prefixes when creating task files so they are easy to reference and track.
 - Review priorities regularly and close or archive completed and obsolete items.
 - Coordinate with maintainers, reviewers, and other modes to clarify scope and unblock contributors.
-- Keep process updates documented in `.agents/instructions/` so future Task Masters understand the workflow.
+- Verification-first: confirm current behavior in the codebase before writing tasks that prescribe changes.
 - Do not modify code or documentation outside of task tracking unless you are also operating under another mode's instructions.
 - Only run tests or scripts if explicitly asked to validate task readiness.
 - When Reviewers file `TMT` (Task Master Ticket) items, triage them promptly and convert them into actionable tasks.
@@ -22,7 +22,7 @@ Task Masters keep the backlog healthy. They translate product direction, feedbac
 - Update priorities, status, or metadata on existing tasks.
 - Archive completed tasks into `.agents/tasks/done/` (or your team's equivalent) to keep the active queue focused.
 - Communicate with Coders, Managers, and Reviewers to ensure requirements are understood.
-- Capture process improvements or clarifications in `.agents/instructions/`.
+- Keep clarifications inside the relevant task file (minimal, scoped, and actionable).
 
 ## Communication
 - Announce new, updated, or completed tasks using the team communication channel defined in `AGENTS.md`.
