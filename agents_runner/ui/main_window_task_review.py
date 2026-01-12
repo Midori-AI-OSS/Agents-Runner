@@ -68,10 +68,14 @@ class _MainWindowTaskReviewMixin:
                 environments=self._environments,
             )
             if success:
-                # After repair, check if we can get repo_root from task's host_workdir
-                repo_root = str(task.host_workdir or "").strip()
-                if repo_root:
-                    task.gh_repo_root = repo_root
+                # After repair, re-read gh_repo_root (repair should have populated it)
+                repo_root = str(task.gh_repo_root or "").strip()
+                # If still missing, try fallback to host_workdir
+                if not repo_root:
+                    fallback_path = str(task.host_workdir or "").strip()
+                    if fallback_path:
+                        task.gh_repo_root = fallback_path
+                        repo_root = fallback_path  # Update local variable for consistency
                 self._schedule_save()
         
         if not branch:
@@ -79,7 +83,13 @@ class _MainWindowTaskReviewMixin:
         
         if not repo_root:
             QMessageBox.warning(
-                self, "PR not available", "This task is missing repo/branch metadata."
+                self, "PR not available",
+                "Cannot locate the repository path for this task.\n\n"
+                "This may occur if:\n"
+                "• The repository clone hasn't completed yet\n"
+                "• The clone operation failed\n"
+                "• The task was reloaded before the clone finished\n\n"
+                "Wait for the task to complete, then try again."
             )
             return
 
