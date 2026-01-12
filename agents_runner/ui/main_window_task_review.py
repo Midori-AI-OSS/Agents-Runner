@@ -72,9 +72,10 @@ class _MainWindowTaskReviewMixin:
                 repo_root = str(task.gh_repo_root or "").strip()
                 # If still missing, try fallback to host_workdir
                 if not repo_root:
-                    repo_root = str(task.host_workdir or "").strip()
-                    if repo_root:
-                        task.gh_repo_root = repo_root
+                    fallback_path = str(task.host_workdir or "").strip()
+                    if fallback_path:
+                        task.gh_repo_root = fallback_path
+                        repo_root = fallback_path  # Update local variable for consistency
                 self._schedule_save()
         
         if not branch:

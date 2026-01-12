@@ -107,12 +107,7 @@ def _repair_from_github_context(task: Any, state_path: str) -> tuple[bool, str]:
         
         # Also set gh_repo_root if we can find it
         if not hasattr(task, "gh_repo_root") or not task.gh_repo_root:
-            # Try environment's host_workdir first, then task's host_workdir
-            env_id = getattr(task, "environment_id", "")
-            if env_id:
-                # Note: We don't have access to environments dict here
-                # Fall back to task.host_workdir
-                pass
+            # Try task's host_workdir
             repo_root_candidate = str(getattr(task, "host_workdir", "") or "").strip()
             if repo_root_candidate and os.path.isdir(repo_root_candidate):
                 task.gh_repo_root = repo_root_candidate

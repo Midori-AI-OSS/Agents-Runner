@@ -626,12 +626,12 @@ class _MainWindowTaskEventsMixin:
             if normalize_gh_management_mode(task.gh_management_mode) == GH_MANAGEMENT_GITHUB:
                 if task.environment_id and task_id:
                     threading.Thread(
-                        target=self._cleanup_task_workspace_async,
+                        target=self._cleanup_git_locked_workspace_async,
                         args=(task_id, task.environment_id),
                         daemon=True,
                     ).start()
 
-    def _cleanup_task_workspace_async(self, task_id: str, env_id: str) -> None:
+    def _cleanup_git_locked_workspace_async(self, task_id: str, env_id: str) -> None:
         """Clean up git-locked workspace for a task asynchronously.
         
         This is called in the finally block of _on_task_done() to ensure
