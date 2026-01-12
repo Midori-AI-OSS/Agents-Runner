@@ -754,7 +754,7 @@ class NewTaskPage(QWidget):
         self._base_branch.blockSignals(True)
         try:
             self._base_branch.clear()
-            self._base_branch.addItem("Auto (repo default)", "")
+            self._base_branch.addItem("Auto", "")
             for name in branches or []:
                 b = str(name or "").strip()
                 if not b:
