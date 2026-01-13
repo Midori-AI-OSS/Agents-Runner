@@ -421,16 +421,16 @@ class _MainWindowTasksAgentMixin:
             extra_mounts_for_task.append(f"{host_cache}:{container_cache}:rw")
 
         # GitHub context preparation
-        # For git-locked: Create empty file before clone, populate after clone completes
-        # For folder-locked: Detect git and populate immediately if it's a git repo
+        # For cloned: Create empty file before clone, populate after clone completes
+        # For mounted: Detect git and populate immediately if it's a git repo
         # For non-git: Skip gracefully (never fail the task)
         if env and bool(getattr(env, "gh_context_enabled", False)):
-            # Detect git for folder-locked environments
+            # Detect git for mounted environments
             should_generate = False
             github_context = None
             
-            if gh_mode == GH_MANAGEMENT_LOCAL:
-                # Folder-locked: Try to detect git repo
+            if env.workspace_type == WORKSPACE_MOUNTED:
+                # Mounted: Try to detect git repo
                 folder_path = str(env.workspace_target or env.gh_management_target or "").strip()
                 if folder_path:
                     try:
@@ -445,7 +445,7 @@ class _MainWindowTasksAgentMixin:
                                 task_branch=None,
                                 head_commit=git_info.commit_sha,
                             )
-                            # Populate task.git immediately for folder-locked environments
+                            # Populate task.git immediately for mounted environments
                             task.git = {
                                 "repo_url": git_info.repo_url,
                                 "repo_owner": git_info.repo_owner,
@@ -454,7 +454,7 @@ class _MainWindowTasksAgentMixin:
                                 "target_branch": None,
                                 "head_commit": git_info.commit_sha,
                             }
-                            # Also set gh_repo_root for folder-locked tasks
+                            # Also set gh_repo_root for mounted tasks
                             if folder_path and os.path.isdir(folder_path):
                                 task.gh_repo_root = folder_path
                             self._on_task_log(
@@ -469,8 +469,8 @@ class _MainWindowTasksAgentMixin:
                         self._on_task_log(
                             task_id, format_log("gh", "context", "WARN", f"git detection failed: {exc}; continuing without context")
                         )
-            elif gh_mode == GH_MANAGEMENT_GITHUB:
-                # Git-locked: Will populate after clone
+            elif env.workspace_type == WORKSPACE_CLONED:
+                # Cloned: Will populate after clone
                 should_generate = True
             
             # Create GitHub context file
