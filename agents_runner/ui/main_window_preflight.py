@@ -75,7 +75,7 @@ class _MainWindowPreflightMixin:
         gh_recreate_if_needed = workspace_type == WORKSPACE_CLONED
 
         if workspace_type == WORKSPACE_CLONED and env:
-            gh_repo = str(env.workspace_target or env.gh_management_target or "").strip()
+            gh_repo = str(env.workspace_target or "").strip()
             # Use the first non-empty agent_cli_arg as base branch, or empty
             args_list = [
                 a.strip() for a in (env.agent_cli_args or "").split() if a.strip()

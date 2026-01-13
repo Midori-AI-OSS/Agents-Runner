@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from agents_runner.environments import (
-    Environment, GH_MANAGEMENT_LOCAL, GH_MANAGEMENT_GITHUB, save_environment,
+    Environment, save_environment,
     load_environments, delete_environment,
     WORKSPACE_CLONED, WORKSPACE_MOUNTED,
 )
@@ -387,7 +387,6 @@ read
         env_id = f"env-{uuid4().hex[:8]}"
         name = self._name_input.text().strip()
         if self._source_combo.currentIndex() == 0:
-            gh_mode = GH_MANAGEMENT_LOCAL
             gh_target = self._folder_input.text().strip()
             workspace_type = WORKSPACE_MOUNTED
         else:
@@ -396,7 +395,6 @@ read
         env = Environment(
             env_id=env_id,
             name=name,
-            gh_management_target=gh_target,
             gh_management_locked=True,
             workspace_type=workspace_type,
             workspace_target=gh_target,

@@ -419,7 +419,7 @@ class _MainWindowTasksAgentMixin:
             
             if env.workspace_type == WORKSPACE_MOUNTED:
                 # Mounted: Try to detect git repo
-                folder_path = str(env.workspace_target or env.gh_management_target or "").strip()
+                folder_path = str(env.workspace_target or "").strip()
                 if folder_path:
                     try:
                         git_info = get_git_info(folder_path)
@@ -502,7 +502,7 @@ class _MainWindowTasksAgentMixin:
         gh_context_file = getattr(task, "gh_pr_metadata_path", None)
         gh_repo: str | None = None
         if workspace_type == WORKSPACE_CLONED and env:
-            gh_repo = str(env.workspace_target or env.gh_management_target or "").strip() or None
+            gh_repo = str(env.workspace_target or "").strip() or None
 
         config = DockerRunnerConfig(
             task_id=task_id,

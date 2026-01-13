@@ -229,7 +229,7 @@ class _MainWindowTasksInteractiveMixin:
         # Extract gh_repo from environment if GitHub management is enabled
         gh_repo: str = ""
         if workspace_type == WORKSPACE_CLONED and env:
-            gh_repo = str(env.workspace_target or env.gh_management_target or "").strip()
+            gh_repo = str(env.workspace_target or "").strip()
 
         # Launch interactive terminal - delegated to Docker launcher module
         launch_docker_terminal_task(

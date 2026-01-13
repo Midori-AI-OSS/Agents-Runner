@@ -46,7 +46,7 @@ class _EnvironmentsPageActionsMixin:
                         self._workspace_type_combo.blockSignals(False)
                 workspace_type = desired_workspace_type
             
-            desired_target = str(env.workspace_target or env.gh_management_target or "")
+            desired_target = str(env.workspace_target or "")
             if (self._workspace_target.text() or "") != desired_target:
                 self._workspace_target.blockSignals(True)
                 try:
@@ -120,7 +120,7 @@ class _EnvironmentsPageActionsMixin:
 
         # Get workspace type and target from existing environment
         workspace_type = existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
-        workspace_target = str(existing.workspace_target or existing.gh_management_target or "").strip() if existing else ""
+        workspace_target = str(existing.workspace_target or "").strip() if existing else ""
         gh_locked = True
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
@@ -186,7 +186,6 @@ class _EnvironmentsPageActionsMixin:
             preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
-            gh_management_target=workspace_target,
             gh_management_locked=gh_locked,
             workspace_type=workspace_type,
             workspace_target=workspace_target,
@@ -217,7 +216,7 @@ class _EnvironmentsPageActionsMixin:
 
         # Get workspace type and target from existing environment
         workspace_type = existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
-        workspace_target = str(existing.workspace_target or existing.gh_management_target or "").strip() if existing else ""
+        workspace_target = str(existing.workspace_target or "").strip() if existing else ""
         gh_locked = True
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
@@ -284,7 +283,6 @@ class _EnvironmentsPageActionsMixin:
             preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
-            gh_management_target=workspace_target,
             gh_management_locked=gh_locked,
             workspace_type=workspace_type,
             workspace_target=workspace_target,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 
 from PySide6.QtCore import QUrl
@@ -41,10 +42,14 @@ class _MainWindowTaskReviewMixin:
         repo_root = str(task.gh_repo_root or "").strip()
         branch = str(task.gh_branch or "").strip()
         
-        # For non-GitHub locked envs, we need to set up branch/repo if missing
-        # Try getting from environment's workspace_target or gh_management_target
         if not repo_root and env:
-            repo_root = str(getattr(env, "workspace_target", "") or getattr(env, "gh_management_target", "") or getattr(env, "host_workdir", "") or "").strip()
+            from agents_runner.environments.paths import managed_repo_checkout_path
+
+            repo_root = managed_repo_checkout_path(
+                env.env_id,
+                data_dir=os.path.dirname(self._state_path),
+                task_id=task_id,
+            )
             # Persist the repo_root to the task for future use
             if repo_root:
                 task.gh_repo_root = repo_root

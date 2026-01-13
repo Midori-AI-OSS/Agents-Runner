@@ -25,10 +25,6 @@ ALLOWED_STAINS = (
     "orange",
 )
 
-GH_MANAGEMENT_NONE = "none"
-GH_MANAGEMENT_LOCAL = "local"
-GH_MANAGEMENT_GITHUB = "github"
-
 WORKSPACE_NONE = "none"
 WORKSPACE_MOUNTED = "mounted"
 WORKSPACE_CLONED = "cloned"
@@ -90,7 +86,6 @@ class Environment:
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
-    gh_management_target: str = ""
     gh_management_locked: bool = False
     workspace_type: str = WORKSPACE_NONE
     workspace_target: str = ""
@@ -130,7 +125,7 @@ class Environment:
         # Detect git
         from agents_runner.environments.git_operations import get_git_info
         
-        folder_path = self.workspace_target or self.gh_management_target
+        folder_path = self.workspace_target
         if not folder_path:
             self._cached_is_git_repo = False
             return False

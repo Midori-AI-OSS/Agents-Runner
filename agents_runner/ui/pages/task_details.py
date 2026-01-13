@@ -31,7 +31,6 @@ except Exception:  # pragma: no cover
 from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
 
 from agents_runner.artifacts import get_artifact_info
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import _task_display_status
 from agents_runner.ui.utils import _format_duration

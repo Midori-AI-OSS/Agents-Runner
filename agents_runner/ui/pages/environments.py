@@ -576,7 +576,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         idx = self._workspace_type_combo.findData(workspace_type)
         if idx >= 0:
             self._workspace_type_combo.setCurrentIndex(idx)
-        self._workspace_target.setText(str(env.workspace_target or env.gh_management_target or ""))
+        self._workspace_target.setText(str(env.workspace_target or ""))
         self._gh_use_host_cli.setChecked(bool(getattr(env, "gh_use_host_cli", True)))
         self._sync_workspace_controls(env=env)
         

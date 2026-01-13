@@ -4,9 +4,6 @@ from typing import Any
 
 from .model import ENVIRONMENT_VERSION
 from .model import Environment
-from .model import GH_MANAGEMENT_GITHUB
-from .model import GH_MANAGEMENT_LOCAL
-from .model import GH_MANAGEMENT_NONE
 from .model import normalize_workspace_type
 from .model import PromptConfig
 from .model import AgentSelection
@@ -14,18 +11,6 @@ from .model import AgentInstance
 from .prompt_storage import save_prompt_to_file
 from .prompt_storage import load_prompt_from_file
 from .prompt_storage import delete_prompt_file
-
-
-def normalize_gh_management_mode(value: str) -> str:
-    """Normalize gh_management_mode for backward compatibility during deserialization.
-    
-    This function is only used when reading old environment files.
-    New code should use workspace_type instead.
-    """
-    mode = (value or "").strip().lower()
-    if mode in {GH_MANAGEMENT_LOCAL, GH_MANAGEMENT_GITHUB}:
-        return mode
-    return GH_MANAGEMENT_NONE
 
 
 def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) -> str:
@@ -137,10 +122,6 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     extra_mounts = payload.get("extra_mounts", [])
     extra_mounts = extra_mounts if isinstance(extra_mounts, list) else []
 
-    gh_management_mode = normalize_gh_management_mode(
-        str(payload.get("gh_management_mode") or "")
-    )
-    gh_management_target = str(payload.get("gh_management_target") or "").strip()
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
@@ -341,7 +322,6 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         preflight_script=preflight_script,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
-        gh_management_target=gh_management_target,
         gh_management_locked=gh_management_locked,
         workspace_type=workspace_type,
         workspace_target=workspace_target,
@@ -415,7 +395,6 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "preflight_script": env.preflight_script,
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),
-        "gh_management_target": str(env.gh_management_target or "").strip(),
         "gh_management_locked": bool(env.gh_management_locked),
         "workspace_type": env.workspace_type,
         "workspace_target": str(env.workspace_target or "").strip(),

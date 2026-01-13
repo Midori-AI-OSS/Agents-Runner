@@ -64,7 +64,7 @@ def repair_task_git_metadata(
         return (True, msg)
     
     # Step 4: Try environment repository
-    success, msg = _repair_from_environment(task, environments)
+    success, msg = _repair_from_environment(task, state_path, environments)
     if success:
         logger.info(f"[repair] task {task_id}: {msg}")
         return (True, msg)
@@ -144,7 +144,9 @@ def _repair_from_task_fields(task: Any) -> tuple[bool, str]:
     return (False, "task fields incomplete")
 
 
-def _repair_from_environment(task: Any, environments: dict[str, Any]) -> tuple[bool, str]:
+def _repair_from_environment(
+    task: Any, state_path: str, environments: dict[str, Any]
+) -> tuple[bool, str]:
     """Attempt to repair from environment repository."""
     task_id = getattr(task, "task_id", "unknown")
     env_id = getattr(task, "environment_id", "")
@@ -153,12 +155,24 @@ def _repair_from_environment(task: Any, environments: dict[str, Any]) -> tuple[b
     if not env:
         return (False, "environment not found")
     
-    # Try to get repository path from environment's workspace_target (for mounted) or host_workdir (legacy)
-    repo_path = getattr(env, "workspace_target", None) or getattr(env, "gh_management_target", None)
+    repo_path = ""
+    if task.requires_git_metadata():
+        try:
+            from agents_runner.environments.paths import managed_repo_checkout_path
+
+            repo_path = managed_repo_checkout_path(
+                str(getattr(env, "env_id", "") or env_id),
+                data_dir=os.path.dirname(state_path),
+                task_id=str(task_id),
+            )
+        except Exception:
+            repo_path = ""
     if not repo_path:
-        repo_path = getattr(env, "host_workdir", None)
+        repo_path = str(getattr(env, "workspace_target", "") or "").strip()
     if not repo_path:
-        repo_path = getattr(task, "host_workdir", None)
+        repo_path = str(getattr(env, "host_workdir", "") or "").strip()
+    if not repo_path:
+        repo_path = str(getattr(task, "host_workdir", "") or "").strip()
     
     if not repo_path or not os.path.isdir(repo_path):
         return (False, "environment has no accessible repository")

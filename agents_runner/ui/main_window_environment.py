@@ -46,7 +46,7 @@ class _MainWindowEnvironmentMixin:
             return fallback
         workspace_type = env.workspace_type or WORKSPACE_NONE
         if workspace_type == WORKSPACE_MOUNTED:
-            return os.path.expanduser(str(env.workspace_target or env.gh_management_target or "").strip())
+            return os.path.expanduser(str(env.workspace_target or "").strip())
         if workspace_type == WORKSPACE_CLONED:
             workdir = managed_repo_checkout_path(
                 env.env_id, data_dir=os.path.dirname(self._state_path)
@@ -66,7 +66,7 @@ class _MainWindowEnvironmentMixin:
 
         workspace_type = env.workspace_type or WORKSPACE_NONE
         if workspace_type == WORKSPACE_MOUNTED:
-            path = os.path.expanduser(str(env.workspace_target or env.gh_management_target or "").strip())
+            path = os.path.expanduser(str(env.workspace_target or "").strip())
             if not path:
                 return "—", False, "Set Workspace to a local folder in Environments."
             if not os.path.isdir(path):
@@ -79,7 +79,7 @@ class _MainWindowEnvironmentMixin:
                 data_dir=os.path.dirname(self._state_path),
                 task_id=task_id,
             )
-            target = str(env.workspace_target or env.gh_management_target or "").strip()
+            target = str(env.workspace_target or "").strip()
             if not target:
                 return path, False, "Set Workspace to a GitHub repo in Environments."
             return path, True, ""
@@ -112,7 +112,7 @@ class _MainWindowEnvironmentMixin:
         self._new_task.set_repo_branches([])
 
         if workspace_type == WORKSPACE_CLONED and env:
-            target = str(env.workspace_target or env.gh_management_target or "").strip()
+            target = str(env.workspace_target or "").strip()
             if not target:
                 return
             self._repo_branches_request_id += 1
@@ -325,7 +325,6 @@ class _MainWindowEnvironmentMixin:
                 max_agents_running=max_agents_running,
                 preflight_enabled=False,
                 preflight_script="",
-                gh_management_target=os.path.expanduser(active_workdir),
                 gh_management_locked=True,
                 workspace_type=WORKSPACE_MOUNTED,
                 workspace_target=os.path.expanduser(active_workdir),
@@ -344,7 +343,6 @@ class _MainWindowEnvironmentMixin:
                 max_agents_running=-1,
                 preflight_enabled=False,
                 preflight_script="",
-                gh_management_target="",
                 gh_management_locked=True,
                 workspace_type=WORKSPACE_NONE,
                 workspace_target="",
@@ -357,7 +355,6 @@ class _MainWindowEnvironmentMixin:
                 continue
             legacy_workdir = os.path.expanduser(str(env.host_workdir or "").strip())
             if legacy_workdir:
-                env.gh_management_target = legacy_workdir
                 env.gh_management_locked = True
                 env.workspace_type = WORKSPACE_MOUNTED
                 env.workspace_target = legacy_workdir

@@ -1,9 +1,6 @@
 from agents_runner.environments.model import ALLOWED_STAINS
 from agents_runner.environments.model import ENVIRONMENT_FILENAME_PREFIX
 from agents_runner.environments.model import ENVIRONMENT_VERSION
-from agents_runner.environments.model import GH_MANAGEMENT_GITHUB
-from agents_runner.environments.model import GH_MANAGEMENT_LOCAL
-from agents_runner.environments.model import GH_MANAGEMENT_NONE
 from agents_runner.environments.model import SYSTEM_ENV_ID
 from agents_runner.environments.model import SYSTEM_ENV_NAME
 from agents_runner.environments.model import WORKSPACE_CLONED
@@ -27,9 +24,6 @@ __all__ = [
     "ALLOWED_STAINS",
     "ENVIRONMENT_FILENAME_PREFIX",
     "ENVIRONMENT_VERSION",
-    "GH_MANAGEMENT_GITHUB",
-    "GH_MANAGEMENT_LOCAL",
-    "GH_MANAGEMENT_NONE",
     "WORKSPACE_CLONED",
     "WORKSPACE_MOUNTED",
     "WORKSPACE_NONE",

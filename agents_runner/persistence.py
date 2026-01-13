@@ -305,9 +305,7 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "container_id": task.container_id,
         "started_at": _dt_to_str(task.started_at),
         "finished_at": _dt_to_str(task.finished_at),
-        "gh_management_mode": getattr(task, "gh_management_mode", ""),
         "gh_use_host_cli": bool(getattr(task, "gh_use_host_cli", True)),
-        "gh_management_locked": bool(getattr(task, "gh_management_locked", False)),
         "workspace_type": getattr(task, "workspace_type", "none"),
         "gh_repo_root": getattr(task, "gh_repo_root", ""),
         "gh_base_branch": getattr(task, "gh_base_branch", ""),
@@ -347,12 +345,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
             workspace_type = "mounted"
         else:
             workspace_type = "none"
-    
-    # Fallback: if task has gh_management_locked=True but no mode, default to "none"
-    # (do NOT assume git based on locked boolean alone)
-    if not workspace_type and data.get("gh_management_locked"):
-        workspace_type = "none"
-    
+
     workspace_type = workspace_type or "none"
     
     task = task_cls(
@@ -369,11 +362,9 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         container_id=data.get("container_id"),
         started_at=_dt_from_str(data.get("started_at")),
         finished_at=_dt_from_str(data.get("finished_at")),
-        gh_management_mode=str(data.get("gh_management_mode") or ""),
         gh_use_host_cli=bool(
             data.get("gh_use_host_cli") if "gh_use_host_cli" in data else True
         ),
-        gh_management_locked=bool(data.get("gh_management_locked") or False),
         workspace_type=workspace_type,
         gh_repo_root=str(data.get("gh_repo_root") or ""),
         gh_base_branch=str(data.get("gh_base_branch") or ""),
