@@ -297,6 +297,36 @@ class _MainWindowTasksInteractiveMixin:
                     break
                 except Exception:
                     time.sleep(0.2)
+            
+            # Encrypt finish file as artifact before deleting
+            try:
+                from agents_runner.artifacts import encrypt_artifact
+                
+                task_dict = {"id": task_id, "task_id": task_id}
+                env_name = getattr(self, "_current_env_name", "unknown")
+                
+                artifact_uuid = encrypt_artifact(
+                    task_dict=task_dict,
+                    env_name=env_name,
+                    source_path=finish_path,
+                    original_filename=os.path.basename(finish_path),
+                )
+                
+                if artifact_uuid:
+                    print(f"[finish] Encrypted finish file as artifact: {artifact_uuid}")
+                else:
+                    print("[finish] Failed to encrypt finish file, but continuing")
+            except Exception as exc:
+                print(f"[finish] Error encrypting finish file: {exc}")
+            
+            # Delete plaintext finish file
+            try:
+                if os.path.exists(finish_path):
+                    os.unlink(finish_path)
+                    print(f"[finish] Deleted plaintext finish file: {finish_path}")
+            except Exception as exc:
+                print(f"[finish] Warning: failed to delete finish file: {exc}")
+            
             self.interactive_finished.emit(task_id, int(exit_code))
 
         threading.Thread(target=_worker, daemon=True).start()
