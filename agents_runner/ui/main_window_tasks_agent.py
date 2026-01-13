@@ -14,6 +14,7 @@ from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
