@@ -128,7 +128,7 @@ class Environment:
             False for non-folder-locked environments.
         """
         # Only applies to folder-locked
-        if self.gh_management_mode != GH_MANAGEMENT_LOCAL:
+        if self.workspace_type != WORKSPACE_MOUNTED:
             return False
         
         # Return cached result if available
