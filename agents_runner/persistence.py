@@ -308,6 +308,7 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "gh_management_mode": getattr(task, "gh_management_mode", ""),
         "gh_use_host_cli": bool(getattr(task, "gh_use_host_cli", True)),
         "gh_management_locked": bool(getattr(task, "gh_management_locked", False)),
+        "workspace_type": getattr(task, "workspace_type", "none"),
         "gh_repo_root": getattr(task, "gh_repo_root", ""),
         "gh_base_branch": getattr(task, "gh_base_branch", ""),
         "gh_branch": getattr(task, "gh_branch", ""),
@@ -334,6 +335,26 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
     git_payload = data.get("git")
     if not isinstance(git_payload, dict) or not git_payload:
         git_payload = None
+    
+    # Migration: workspace_type from gh_management_mode
+    # Prefer new key, fallback to old key
+    workspace_type = data.get("workspace_type")
+    if not workspace_type and "gh_management_mode" in data:
+        old_mode = data["gh_management_mode"]
+        if old_mode == "github":
+            workspace_type = "cloned"
+        elif old_mode == "local":
+            workspace_type = "mounted"
+        else:
+            workspace_type = "none"
+    
+    # Fallback: if task has gh_management_locked=True but no mode, default to "none"
+    # (do NOT assume git based on locked boolean alone)
+    if not workspace_type and data.get("gh_management_locked"):
+        workspace_type = "none"
+    
+    workspace_type = workspace_type or "none"
+    
     task = task_cls(
         task_id=str(data.get("task_id") or ""),
         prompt=sanitize_prompt(str(data.get("prompt") or "")),
@@ -353,6 +374,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
             data.get("gh_use_host_cli") if "gh_use_host_cli" in data else True
         ),
         gh_management_locked=bool(data.get("gh_management_locked") or False),
+        workspace_type=workspace_type,
         gh_repo_root=str(data.get("gh_repo_root") or ""),
         gh_base_branch=str(data.get("gh_base_branch") or ""),
         gh_branch=str(data.get("gh_branch") or ""),
