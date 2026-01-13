@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_display import format_agent_markdown_link
 from agents_runner.agent_display import get_agent_display_name
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.gh_management import commit_push_and_pr
 from agents_runner.gh_management import GhManagementError
@@ -43,7 +43,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         task.status = "done" if (task.exit_code or 0) == 0 else "failed"
         task.git = derive_task_git_metadata(task)
 
-        # Validate git metadata for git-locked tasks
+        # Validate git metadata for cloned repo tasks
         if task.requires_git_metadata():
             from agents_runner.ui.task_git_metadata import validate_git_metadata
             is_valid, error_msg = validate_git_metadata(task.git)
@@ -64,7 +64,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         self._on_task_log(task_id, format_log("host", "interactive", "INFO", f"exited with {task.exit_code}"))
 
         if (
-            task.gh_management_mode == GH_MANAGEMENT_GITHUB
+            task.workspace_type == WORKSPACE_CLONED
             and task.gh_repo_root
             and task.gh_branch
             and not task.gh_pr_url
@@ -190,9 +190,9 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             if not body:
                 body = default_body
             
-            # Add override note for non-GitHub management modes
+            # Add override note for non-cloned-repo modes
             if is_override:
-                body += "\n\n---\n**Note:** This is an override PR created manually for a git-locked environment."
+                body += "\n\n---\n**Note:** This is an override PR created manually for a cloned repo environment."
 
             self.host_log.emit(
                 task_id, format_log("gh", "pr", "INFO", f"[4/6] Creating PR from {branch} -> {base_branch or 'auto'}")

@@ -557,12 +557,12 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         is_github_env = workspace_type == WORKSPACE_CLONED
         is_local_env = workspace_type == WORKSPACE_MOUNTED
         
-        # Check if folder-locked environment is a git repo
+        # Check if mounted folder environment is a git repo
         is_git_repo = False
         if is_local_env:
-            is_git_repo = env.detect_git_if_folder_locked()
+            is_git_repo = env.detect_git_if_mounted_folder()
         
-        # Enable GitHub context for git-locked or folder-locked git repos
+        # Enable GitHub context for cloned repos or mounted folder git repos
         context_available = is_github_env or (is_local_env and is_git_repo)
         
         self._gh_context_enabled.setChecked(

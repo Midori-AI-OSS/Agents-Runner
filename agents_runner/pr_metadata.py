@@ -116,7 +116,7 @@ def update_github_context_after_clone(
 ) -> None:
     """Update existing v2 metadata file with GitHub context after clone.
     
-    Used for git-locked environments where the file is created before clone
+    Used for cloned repo environments where the file is created before clone
     but needs to be populated with repo context after clone completes.
     
     Args:

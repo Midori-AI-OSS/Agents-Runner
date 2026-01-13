@@ -351,7 +351,6 @@ class _MainWindowTasksAgentMixin:
             agent_cli_args=" ".join(agent_cli_args),
             headless_desktop_enabled=headless_desktop_enabled,
             workspace_type=workspace_type,
-            gh_management_locked=bool(getattr(env, "gh_management_locked", False)) if env else False,
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -485,7 +484,7 @@ class _MainWindowTasksAgentMixin:
                     runner_prompt = (
                         f"{runner_prompt}{github_context_prompt_instructions(container_path)}"
                     )
-                    # Clarify two-phase process for git-locked environments
+                    # Clarify two-phase process for cloned repo environments
                     if workspace_type == WORKSPACE_CLONED:
                         self._on_task_log(
                             task_id, format_log("gh", "context", "INFO", f"GitHub context file created and mounted -> {container_path}")

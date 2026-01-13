@@ -1,7 +1,7 @@
 """Task git metadata repair functionality.
 
 This module provides automatic repair of missing or incomplete git metadata
-for git-locked tasks. It attempts multiple strategies to reconstruct metadata
+for cloned repo tasks. It attempts multiple strategies to reconstruct metadata
 from available sources.
 """
 

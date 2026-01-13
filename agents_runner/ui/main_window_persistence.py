@@ -181,7 +181,7 @@ class _MainWindowPersistenceMixin:
             loaded.append(task)
         loaded.sort(key=lambda t: t.created_at_s)
         
-        # Repair missing git metadata for git-locked tasks
+        # Repair missing git metadata for cloned repo tasks
         repair_count = 0
         for task in loaded:
             if task.requires_git_metadata() and not task.git:

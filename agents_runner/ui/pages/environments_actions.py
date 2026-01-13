@@ -134,8 +134,8 @@ class _EnvironmentsPageActionsMixin:
         if existing and workspace_type == WORKSPACE_CLONED:
             gh_context_enabled = bool(self._gh_context_enabled.isChecked())
         elif existing and workspace_type == WORKSPACE_MOUNTED:
-            # For folder-locked, respect checkbox if git was detected
-            is_git_repo = existing.detect_git_if_folder_locked()
+            # For mounted folders, respect checkbox if git was detected
+            is_git_repo = existing.detect_git_if_mounted_folder()
             if is_git_repo:
                 gh_context_enabled = bool(self._gh_context_enabled.isChecked())
             else:
@@ -231,8 +231,8 @@ class _EnvironmentsPageActionsMixin:
         if existing and workspace_type == WORKSPACE_CLONED:
             gh_context_enabled = bool(self._gh_context_enabled.isChecked())
         elif existing and workspace_type == WORKSPACE_MOUNTED:
-            # For folder-locked, respect checkbox if git was detected
-            is_git_repo = existing.detect_git_if_folder_locked()
+            # For mounted folders, respect checkbox if git was detected
+            is_git_repo = existing.detect_git_if_mounted_folder()
             if is_git_repo:
                 gh_context_enabled = bool(self._gh_context_enabled.isChecked())
             else:

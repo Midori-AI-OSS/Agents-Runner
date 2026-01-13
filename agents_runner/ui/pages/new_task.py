@@ -260,7 +260,7 @@ class NewTaskPage(QWidget):
         self._tint_overlay.raise_()
 
     def _confirm_auto_base_branch(self, env_id: str, base_branch: str) -> bool:
-        """Show confirmation dialog for auto base branch in git-locked environments.
+        """Show confirmation dialog for auto base branch in cloned repo environments.
         
         Args:
             env_id: The environment ID to check
@@ -345,7 +345,7 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
         
-        # Confirm auto base branch for git-locked environments
+        # Confirm auto base branch for cloned repo environments
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
         
@@ -396,7 +396,7 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
 
-        # Confirm auto base branch for git-locked environments
+        # Confirm auto base branch for cloned repo environments
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
 
@@ -452,7 +452,7 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
         
-        # Confirm auto base branch for git-locked environments
+        # Confirm auto base branch for cloned repo environments
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
         

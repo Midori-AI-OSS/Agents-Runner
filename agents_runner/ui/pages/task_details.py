@@ -428,7 +428,7 @@ class TaskDetailsPage(QWidget):
         self._btn_kill.setEnabled(has_container and not is_terminal)
 
     def set_environments(self, environments: dict[str, object]) -> None:
-        """Set the environments dict for looking up git-locked status."""
+        """Set the environments dict for looking up cloned repo status."""
         self._environments = environments
 
     def show_task(self, task: Task) -> None:

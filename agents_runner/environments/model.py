@@ -109,17 +109,17 @@ class Environment:
         value = (self.color or "").strip().lower()
         return value if value in ALLOWED_STAINS else "slate"
     
-    def detect_git_if_folder_locked(self) -> bool:
-        """Detect if folder-locked environment is a git repository.
+    def detect_git_if_mounted_folder(self) -> bool:
+        """Detect if mounted folder environment is a git repository.
         
         This method caches the result to avoid repeated git operations.
-        Only applicable for folder-locked (local) environments.
+        Only applicable for mounted folder (local) environments.
         
         Returns:
             True if folder is a git repo, False otherwise.
-            False for non-folder-locked environments.
+            False for non-mounted-folder environments.
         """
-        # Only applies to folder-locked
+        # Only applies to mounted folders
         if self.workspace_type != WORKSPACE_MOUNTED:
             return False
         

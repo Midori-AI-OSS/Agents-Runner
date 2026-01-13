@@ -12,8 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_NONE
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.log_format import format_log
 from agents_runner.log_format import format_log_display
@@ -132,8 +131,8 @@ class _MainWindowTaskEventsMixin:
             self._details.update_task(task)
             self._schedule_save()
 
-            # Task.gh_management_mode already contains normalized values
-            if task.gh_management_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+            # Clean up task workspace (if using cloned GitHub repo)
+            if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
                 threading.Thread(
                     target=self._cleanup_task_workspace_async,
                     args=(task_id, task.environment_id),
@@ -246,9 +245,8 @@ class _MainWindowTaskEventsMixin:
                 daemon=True,
             ).start()
 
-        # Clean up task workspace (if using GitHub management)
-        # Task.gh_management_mode already contains normalized values
-        if task.gh_management_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+        # Clean up task workspace (if using cloned GitHub repo)
+        if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
             threading.Thread(
                 target=self._cleanup_task_workspace_async,
                 args=(task_id, task.environment_id),
@@ -548,7 +546,7 @@ class _MainWindowTaskEventsMixin:
 
             task.git = derive_task_git_metadata(task)
 
-            # Validate git metadata for git-locked tasks
+            # Validate git metadata for cloned repo tasks
             if task.requires_git_metadata():
                 from agents_runner.ui.task_git_metadata import validate_git_metadata
                 is_valid, error_msg = validate_git_metadata(task.git)
@@ -585,8 +583,8 @@ class _MainWindowTaskEventsMixin:
 
             if user_stop is not None:
                 skip_reason = f"user stopped task ({user_stop})"
-            elif task.gh_management_mode != GH_MANAGEMENT_GITHUB:
-                skip_reason = f"not a GitHub-managed environment (mode={task.gh_management_mode})"
+            elif task.workspace_type != WORKSPACE_CLONED:
+                skip_reason = f"not a cloned workspace (type={task.workspace_type})"
             elif not task.gh_repo_root:
                 skip_reason = "missing repository root information"
             elif not task.gh_branch:
@@ -627,18 +625,18 @@ class _MainWindowTaskEventsMixin:
             # it owns cleanup after finishing (success or failure).
             if (
                 not pr_worker_started
-                and task.gh_management_mode == GH_MANAGEMENT_GITHUB
+                and task.workspace_type == WORKSPACE_CLONED
                 and task.environment_id
                 and task_id
             ):
                 threading.Thread(
-                    target=self._cleanup_git_locked_workspace_async,
+                    target=self._cleanup_cloned_repo_workspace_async,
                     args=(task_id, task.environment_id),
                     daemon=True,
                 ).start()
 
-    def _cleanup_git_locked_workspace_async(self, task_id: str, env_id: str) -> None:
-        """Clean up git-locked workspace for a task asynchronously.
+    def _cleanup_cloned_repo_workspace_async(self, task_id: str, env_id: str) -> None:
+        """Clean up cloned repo workspace for a task asynchronously.
         
         This is used when PR creation is skipped (otherwise the PR worker
         performs cleanup after finishing).
