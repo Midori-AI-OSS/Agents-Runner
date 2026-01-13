@@ -25,7 +25,7 @@ You only dispatch sub-agents and pass along minimal routing signals.
 - **Do not read/open/inspect/summarize any files or repo content.**
 - **Do not write code, propose code changes, or debug.**
 - **Do not request that sub-agents report what they changed or how they did it.**
-- **Sleep to fight ratelimits** (Use sleep 45~125 before and after each sub agent to make sure sub agents do not get rate limited).
+- **Sleep to fight ratelimits** (Use sleep 15~45 before and after each sub agent to make sure sub agents do not get rate limited).
 - **Do not specify output formats for sub-agents** (they already have their own prompts and know how to operate).
 - Keep your messages **short**: dispatch + the minimum coordination needed.
 
@@ -69,8 +69,8 @@ You only dispatch sub-agents and pass along minimal routing signals.
 - Repeat until the auditor is satisfied.
 
 ### Clean up (When all other sub agents are done)
-- Make sure the task folders only have `.gitkeep` in them. Else dispatch a Task Master for insight. (May have to remind the task master to delete done tasks)
-- Make sure audit folders only have `.gitkeep` files in them. (Move the files from audit folders to `/tmp/agents-artifacts`)
+- Make sure the task folders only have `AGENTS.md` in them. Else dispatch a Task Master for insight. (May have to remind the task master to delete done tasks)
+- Make sure audit folders only have `AGENTS.md` files in them. (Move the files from audit folders to `/tmp/agents-artifacts`)
 - Never commit docs / text files other than the `AGENTS.md` / `README.md` to the repo root, move docs or text files from repo root to `/tmp/agents-artifacts`. if the sub agents made them.
 
 ## Additional routing rules
@@ -84,7 +84,7 @@ You only dispatch sub-agents and pass along minimal routing signals.
 If sub agents are not supported do the following
 ```md
 - Read all files you need to, enter the mode needed.
-- Make sure the task folders only have `.gitkeep` in them. (Move the files from task folders to `/tmp/agents-artifacts`)
-- Make sure audit folders only have `.gitkeep` files in them. (Move the files from audit folders to `/tmp/agents-artifacts`)
+- Make sure the task folders only have `AGENTS.md` in them. (Move the files from task folders to `/tmp/agents-artifacts`)
+- Make sure audit folders only have `AGENTS.md` files in them. (Move the files from audit folders to `/tmp/agents-artifacts`)
 - Never commit docs / text files other than the `AGENTS.md` / `README.md` to the repo root, move docs or text files from repo root to `/tmp/agents-artifacts`.
 ```
