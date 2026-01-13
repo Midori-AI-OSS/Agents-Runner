@@ -46,7 +46,7 @@ class NewTaskPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
-        self._gh_locked_envs: set[str] = set()
+        self._cloned_envs: set[str] = set()
         self._env_management_modes: dict[str, str] = {}  # Track environment management modes
         self._env_template_injection: dict[str, bool] = {}
         self._host_codex_dir = os.path.expanduser("~/.codex")
@@ -267,11 +267,11 @@ class NewTaskPage(QWidget):
         Returns:
             True if user confirmed or confirmation not needed, False if cancelled
         """
-        # Only show confirmation for git-locked environments with auto base branch
-        is_git_locked = env_id in self._gh_locked_envs
+        # Only show confirmation for cloned environments with auto base branch
+        is_cloned = env_id in self._cloned_envs
         is_auto_branch = not base_branch or base_branch.lower() == "auto"
         
-        if not (is_git_locked and is_auto_branch):
+        if not (is_cloned and is_auto_branch):
             return True
         
         # Show confirmation dialog
@@ -418,7 +418,7 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         self._run_interactive.set_menu(
             self._run_interactive_menu
-            if (env_id and env_id in self._gh_locked_envs)
+            if (env_id and env_id in self._cloned_envs)
             else None
         )
 
@@ -514,8 +514,8 @@ class NewTaskPage(QWidget):
         self._env_stains = {str(k): str(v) for k, v in (stains or {}).items()}
         self._apply_environment_tints()
 
-    def set_gh_locked_envs(self, env_ids: set[str]) -> None:
-        self._gh_locked_envs = {str(e) for e in (env_ids or set()) if str(e).strip()}
+    def set_cloned_envs(self, env_ids: set[str]) -> None:
+        self._cloned_envs = {str(e) for e in (env_ids or set()) if str(e).strip()}
         self._sync_interactive_options()
 
     def set_environment_management_modes(self, modes: dict[str, str]) -> None:
@@ -542,11 +542,11 @@ class NewTaskPage(QWidget):
         """Update workspace line visibility based on environment type."""
         env_id = str(self._environment.currentData() or "")
         mode = self._env_management_modes.get(env_id, "").lower()
-        is_git_locked = env_id in self._gh_locked_envs
+        is_cloned = env_id in self._cloned_envs
         is_folder_locked = mode == "local"
         
-        # Git locked environments: hide workspace line completely
-        if is_git_locked:
+        # Cloned environments: hide workspace line completely
+        if is_cloned:
             self._workspace_label.setVisible(False)
             self._workspace.setVisible(False)
             self._workspace_hint.setVisible(False)

@@ -8,6 +8,7 @@ from agents_runner.environments import Environment
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import SYSTEM_ENV_ID
 from agents_runner.environments import SYSTEM_ENV_NAME
 from agents_runner.environments import load_environments
@@ -178,14 +179,11 @@ class _MainWindowEnvironmentMixin:
         self._new_task.set_environment_stains(stains)
         self._new_task.set_environment_management_modes(management_modes)
         self._new_task.set_environment_template_injection_status(template_statuses)
-        self._new_task.set_gh_locked_envs(
+        self._new_task.set_cloned_envs(
             {
                 e.env_id
                 for e in envs
-                if normalize_gh_management_mode(
-                    str(getattr(e, "gh_management_mode", GH_MANAGEMENT_NONE) or "")
-                )
-                == GH_MANAGEMENT_GITHUB
+                if e.workspace_type == WORKSPACE_CLONED
             }
         )
         self._dashboard.set_environment_filter_options(
