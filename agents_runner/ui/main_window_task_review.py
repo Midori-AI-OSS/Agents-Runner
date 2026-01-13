@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.log_format import format_log
 
 
@@ -19,15 +20,12 @@ class _MainWindowTaskReviewMixin:
             return
 
         env = self._environments.get(task.environment_id)
-        is_git_locked = bool(getattr(task, "gh_management_locked", False))
-        if not is_git_locked and env:
-            is_git_locked = bool(getattr(env, "gh_management_locked", False))
         
-        if not is_git_locked:
+        if not task.requires_git_metadata():
             QMessageBox.information(
                 self,
                 "PR not available",
-                "PR creation is only available for git-locked environments.",
+                "PR creation is only available for cloned environments.",
             )
             return
 

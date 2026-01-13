@@ -36,12 +36,11 @@ def repair_task_git_metadata(
     task_id = getattr(task, "task_id", "unknown")
     
     # Step 1: Check if repair is needed
-    is_git_locked = bool(getattr(task, "gh_management_locked", False))
     has_metadata = task.git is not None and isinstance(task.git, dict) and task.git
     
-    if not is_git_locked:
-        logger.debug(f"[repair] task {task_id}: not git-locked, no repair needed")
-        return (True, "not git-locked")
+    if not task.requires_git_metadata():
+        logger.debug(f"[repair] task {task_id}: not cloned environment, no repair needed")
+        return (True, "not cloned environment")
     
     if has_metadata:
         # Check if existing metadata is complete
