@@ -13,6 +13,9 @@ from agents_runner.environments import Environment
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
+from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import delete_environment
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import parse_env_vars_text
@@ -129,6 +132,14 @@ class _EnvironmentsPageActionsMixin:
             if existing
             else False
         )
+        
+        # Determine workspace_type based on gh_mode
+        if gh_mode == GH_MANAGEMENT_GITHUB:
+            workspace_type = WORKSPACE_CLONED
+        elif gh_mode == GH_MANAGEMENT_LOCAL:
+            workspace_type = WORKSPACE_MOUNTED
+        else:
+            workspace_type = WORKSPACE_NONE
 
         if existing and gh_mode == GH_MANAGEMENT_GITHUB:
             gh_context_enabled = bool(self._gh_context_enabled.isChecked())
@@ -188,6 +199,7 @@ class _EnvironmentsPageActionsMixin:
             gh_management_mode=gh_mode,
             gh_management_target=gh_target,
             gh_management_locked=gh_locked,
+            workspace_type=workspace_type,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=gh_context_enabled,
             prompts=prompts,
@@ -226,6 +238,14 @@ class _EnvironmentsPageActionsMixin:
             if existing
             else False
         )
+        
+        # Determine workspace_type based on gh_mode
+        if gh_mode == GH_MANAGEMENT_GITHUB:
+            workspace_type = WORKSPACE_CLONED
+        elif gh_mode == GH_MANAGEMENT_LOCAL:
+            workspace_type = WORKSPACE_MOUNTED
+        else:
+            workspace_type = WORKSPACE_NONE
 
         if existing and gh_mode == GH_MANAGEMENT_GITHUB:
             gh_context_enabled = bool(self._gh_context_enabled.isChecked())
@@ -286,6 +306,7 @@ class _EnvironmentsPageActionsMixin:
             gh_management_mode=gh_mode,
             gh_management_target=gh_target,
             gh_management_locked=gh_locked,
+            workspace_type=workspace_type,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=gh_context_enabled,
             prompts=prompts,

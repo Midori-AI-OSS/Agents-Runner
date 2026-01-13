@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 from agents_runner.environments import (
     Environment, GH_MANAGEMENT_LOCAL, GH_MANAGEMENT_GITHUB, save_environment,
     load_environments, delete_environment,
+    WORKSPACE_CLONED, WORKSPACE_MOUNTED,
 )
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
 from agents_runner.widgets import GlassCard
@@ -388,15 +389,18 @@ read
         if self._source_combo.currentIndex() == 0:
             gh_mode = GH_MANAGEMENT_LOCAL
             gh_target = self._folder_input.text().strip()
+            workspace_type = WORKSPACE_MOUNTED
         else:
             gh_mode = GH_MANAGEMENT_GITHUB
             gh_target = self._expand_repo_url(self._clone_input.text().strip())
+            workspace_type = WORKSPACE_CLONED
         env = Environment(
             env_id=env_id,
             name=name,
             gh_management_mode=gh_mode,
             gh_management_target=gh_target,
             gh_management_locked=True,
+            workspace_type=workspace_type,
             headless_desktop_enabled=self._headless_check.isChecked(),
             container_caching_enabled=self._caching_check.isChecked(),
             gh_context_enabled=self._gh_context_check.isChecked(),
