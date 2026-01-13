@@ -29,12 +29,27 @@ GH_MANAGEMENT_NONE = "none"
 GH_MANAGEMENT_LOCAL = "local"
 GH_MANAGEMENT_GITHUB = "github"
 
+WORKSPACE_NONE = "none"
+WORKSPACE_MOUNTED = "mounted"
+WORKSPACE_CLONED = "cloned"
+
 
 def normalize_gh_management_mode(value: str) -> str:
     mode = (value or "").strip().lower()
     if mode in {GH_MANAGEMENT_LOCAL, GH_MANAGEMENT_GITHUB}:
         return mode
     return GH_MANAGEMENT_NONE
+
+
+def normalize_workspace_type(value: str) -> str:
+    """Normalize workspace type to canonical values."""
+    if not value or value == "none":
+        return WORKSPACE_NONE
+    if value in ("github", "git", "repo", "cloned"):
+        return WORKSPACE_CLONED
+    if value in ("local", "folder", "mounted"):
+        return WORKSPACE_MOUNTED
+    return WORKSPACE_NONE
 
 
 @dataclass
@@ -85,6 +100,7 @@ class Environment:
     gh_management_mode: str = GH_MANAGEMENT_NONE
     gh_management_target: str = ""
     gh_management_locked: bool = False
+    workspace_type: str = WORKSPACE_NONE
     gh_last_base_branch: str = ""
     gh_use_host_cli: bool = True
     gh_context_enabled: bool = False  # Renamed from gh_pr_metadata_enabled
