@@ -52,7 +52,7 @@ class _MainWindowEnvironmentMixin:
             str(env.gh_management_mode or GH_MANAGEMENT_NONE)
         )
         if gh_mode == GH_MANAGEMENT_LOCAL:
-            return os.path.expanduser(str(env.gh_management_target or "").strip())
+            return os.path.expanduser(str(env.workspace_target or env.gh_management_target or "").strip())
         if gh_mode == GH_MANAGEMENT_GITHUB:
             workdir = managed_repo_checkout_path(
                 env.env_id, data_dir=os.path.dirname(self._state_path)
@@ -74,7 +74,7 @@ class _MainWindowEnvironmentMixin:
             str(env.gh_management_mode or GH_MANAGEMENT_NONE)
         )
         if gh_mode == GH_MANAGEMENT_LOCAL:
-            path = os.path.expanduser(str(env.gh_management_target or "").strip())
+            path = os.path.expanduser(str(env.workspace_target or env.gh_management_target or "").strip())
             if not path:
                 return "—", False, "Set Workspace to a local folder in Environments."
             if not os.path.isdir(path):
@@ -87,7 +87,7 @@ class _MainWindowEnvironmentMixin:
                 data_dir=os.path.dirname(self._state_path),
                 task_id=task_id,
             )
-            target = str(env.gh_management_target or "").strip()
+            target = str(env.workspace_target or env.gh_management_target or "").strip()
             if not target:
                 return path, False, "Set Workspace to a GitHub repo in Environments."
             return path, True, ""
@@ -122,7 +122,7 @@ class _MainWindowEnvironmentMixin:
         self._new_task.set_repo_branches([])
 
         if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            target = str(env.gh_management_target or "").strip()
+            target = str(env.workspace_target or env.gh_management_target or "").strip()
             if not target:
                 return
             self._repo_branches_request_id += 1
@@ -350,6 +350,7 @@ class _MainWindowEnvironmentMixin:
                 gh_management_target=os.path.expanduser(active_workdir),
                 gh_management_locked=True,
                 workspace_type=WORKSPACE_MOUNTED,
+                workspace_target=os.path.expanduser(active_workdir),
                 gh_use_host_cli=bool(is_gh_available()),
             )
             save_environment(env)
@@ -369,6 +370,7 @@ class _MainWindowEnvironmentMixin:
                 gh_management_target="",
                 gh_management_locked=True,
                 workspace_type=WORKSPACE_NONE,
+                workspace_target="",
                 gh_use_host_cli=False,
             )
 
@@ -384,6 +386,7 @@ class _MainWindowEnvironmentMixin:
                 env.gh_management_target = legacy_workdir
                 env.gh_management_locked = True
                 env.workspace_type = WORKSPACE_MOUNTED
+                env.workspace_target = legacy_workdir
 
         self._environments = dict(envs)
         active_id = self._active_environment_id()

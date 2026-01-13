@@ -401,6 +401,7 @@ read
             gh_management_target=gh_target,
             gh_management_locked=True,
             workspace_type=workspace_type,
+            workspace_target=gh_target,
             headless_desktop_enabled=self._headless_check.isChecked(),
             container_caching_enabled=self._caching_check.isChecked(),
             gh_context_enabled=self._gh_context_check.isChecked(),

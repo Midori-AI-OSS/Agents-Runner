@@ -48,7 +48,7 @@ class _EnvironmentsPageActionsMixin:
                     finally:
                         self._gh_management_mode.blockSignals(False)
                 mode = desired_mode
-            desired_target = str(env.gh_management_target or "")
+            desired_target = str(env.workspace_target or env.gh_management_target or "")
             if (self._gh_management_target.text() or "") != desired_target:
                 self._gh_management_target.blockSignals(True)
                 try:
@@ -122,7 +122,7 @@ class _EnvironmentsPageActionsMixin:
         gh_mode = normalize_gh_management_mode(
             existing.gh_management_mode if existing else GH_MANAGEMENT_NONE
         )
-        gh_target = str(existing.gh_management_target or "").strip() if existing else ""
+        gh_target = str(existing.workspace_target or existing.gh_management_target or "").strip() if existing else ""
         gh_locked = True
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
@@ -200,6 +200,7 @@ class _EnvironmentsPageActionsMixin:
             gh_management_target=gh_target,
             gh_management_locked=gh_locked,
             workspace_type=workspace_type,
+            workspace_target=gh_target,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=gh_context_enabled,
             prompts=prompts,
@@ -228,7 +229,7 @@ class _EnvironmentsPageActionsMixin:
         gh_mode = normalize_gh_management_mode(
             existing.gh_management_mode if existing else GH_MANAGEMENT_NONE
         )
-        gh_target = str(existing.gh_management_target or "").strip() if existing else ""
+        gh_target = str(existing.workspace_target or existing.gh_management_target or "").strip() if existing else ""
         gh_locked = True
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
@@ -307,6 +308,7 @@ class _EnvironmentsPageActionsMixin:
             gh_management_target=gh_target,
             gh_management_locked=gh_locked,
             workspace_type=workspace_type,
+            workspace_target=gh_target,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=gh_context_enabled,
             prompts=prompts,

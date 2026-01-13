@@ -587,7 +587,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         )
         if idx >= 0:
             self._gh_management_mode.setCurrentIndex(idx)
-        self._gh_management_target.setText(str(env.gh_management_target or ""))
+        self._gh_management_target.setText(str(env.workspace_target or env.gh_management_target or ""))
         self._gh_use_host_cli.setChecked(bool(getattr(env, "gh_use_host_cli", True)))
         self._sync_gh_management_controls(env=env)
         

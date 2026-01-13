@@ -152,6 +152,12 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     else:
         workspace_type = workspace_type or "none"
     
+    # Migration: workspace_target from gh_management_target
+    # Prefer new key, fallback to old key for backward compatibility
+    workspace_target = str(
+        payload.get("workspace_target") or payload.get("gh_management_target") or ""
+    ).strip()
+    
     # Normalize using the new function
     workspace_type = normalize_workspace_type(workspace_type)
 
@@ -325,6 +331,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         gh_management_target=gh_management_target,
         gh_management_locked=gh_management_locked,
         workspace_type=workspace_type,
+        workspace_target=workspace_target,
         gh_last_base_branch=gh_last_base_branch,
         gh_use_host_cli=gh_use_host_cli,
         gh_context_enabled=gh_context_enabled,  # Use migrated field name
@@ -399,6 +406,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gh_management_target": str(env.gh_management_target or "").strip(),
         "gh_management_locked": bool(env.gh_management_locked),
         "workspace_type": env.workspace_type,
+        "workspace_target": str(env.workspace_target or "").strip(),
         "gh_last_base_branch": str(
             getattr(env, "gh_last_base_branch", "") or ""
         ).strip(),

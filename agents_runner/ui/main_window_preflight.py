@@ -77,7 +77,7 @@ class _MainWindowPreflightMixin:
         gh_locked = bool(getattr(env, "gh_management_locked", False)) if env else False
 
         if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            gh_repo = str(env.gh_management_target or "").strip()
+            gh_repo = str(env.workspace_target or env.gh_management_target or "").strip()
             # Use the first non-empty agent_cli_arg as base branch, or empty
             args_list = [
                 a.strip() for a in (env.agent_cli_args or "").split() if a.strip()

@@ -101,6 +101,7 @@ class Environment:
     gh_management_target: str = ""
     gh_management_locked: bool = False
     workspace_type: str = WORKSPACE_NONE
+    workspace_target: str = ""
     gh_last_base_branch: str = ""
     gh_use_host_cli: bool = True
     gh_context_enabled: bool = False  # Renamed from gh_pr_metadata_enabled
@@ -137,7 +138,7 @@ class Environment:
         # Detect git
         from agents_runner.environments.git_operations import get_git_info
         
-        folder_path = self.gh_management_target
+        folder_path = self.workspace_target or self.gh_management_target
         if not folder_path:
             self._cached_is_git_repo = False
             return False
