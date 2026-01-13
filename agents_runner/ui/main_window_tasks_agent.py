@@ -13,9 +13,6 @@ from PySide6.QtCore import QThread
 
 from PySide6.QtWidgets import QMessageBox
 
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_LOCAL
-from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
@@ -62,9 +59,8 @@ class _MainWindowTasksAgentMixin:
             status = (task.status or "").lower()
             save_task_payload(self._state_path, serialize_task(task), archived=True)
 
-            # Clean up task workspace (if using GitHub management)
-            gh_mode = normalize_gh_management_mode(task.gh_management_mode)
-            if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+            # Clean up task workspace (if using cloned GitHub repo)
+            if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
                 # Keep failed task repos for debugging (unless status is "done")
                 keep_on_error = status in {"failed", "error"}
                 if not keep_on_error:
@@ -350,21 +346,18 @@ class _MainWindowTasksAgentMixin:
             environment_id=env_id,
             created_at_s=time.time(),
             status="queued",
-            gh_management_mode=gh_mode,
             agent_cli=agent_cli,
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
             headless_desktop_enabled=headless_desktop_enabled,
+            workspace_type=workspace_type,
+            gh_management_locked=bool(getattr(env, "gh_management_locked", False)) if env else False,
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
         spinner = _stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
-
-        if env:
-            task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
-            task.workspace_type = env.workspace_type
 
         use_host_gh = bool(getattr(env, "gh_use_host_cli", True)) if env else True
         use_host_gh = bool(use_host_gh and is_gh_available())
@@ -377,7 +370,6 @@ class _MainWindowTasksAgentMixin:
             env
             and env.workspace_type == WORKSPACE_CLONED
             and desired_base
-            and gh_mode == GH_MANAGEMENT_GITHUB
         ):
             env.gh_last_base_branch = desired_base
             save_environment(env)
@@ -388,8 +380,8 @@ class _MainWindowTasksAgentMixin:
         if bool(self._settings_data.get("append_pixelarch_context") or False):
             runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
 
-        # Inject git context when GitHub management is enabled
-        if gh_mode == GH_MANAGEMENT_GITHUB:
+        # Inject git context when cloned workspace is used
+        if workspace_type == WORKSPACE_CLONED:
             runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_GIT_CONTEXT_SUFFIX}"
 
         enabled_env_prompts: list[str] = []
@@ -494,7 +486,7 @@ class _MainWindowTasksAgentMixin:
                         f"{runner_prompt}{github_context_prompt_instructions(container_path)}"
                     )
                     # Clarify two-phase process for git-locked environments
-                    if gh_mode == GH_MANAGEMENT_GITHUB:
+                    if workspace_type == WORKSPACE_CLONED:
                         self._on_task_log(
                             task_id, format_log("gh", "context", "INFO", f"GitHub context file created and mounted -> {container_path}")
                         )
@@ -510,7 +502,7 @@ class _MainWindowTasksAgentMixin:
         # Get the context file path if it was created (regardless of mode)
         gh_context_file = getattr(task, "gh_pr_metadata_path", None)
         gh_repo: str | None = None
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
+        if workspace_type == WORKSPACE_CLONED and env:
             gh_repo = str(env.workspace_target or env.gh_management_target or "").strip() or None
 
         config = DockerRunnerConfig(
