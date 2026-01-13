@@ -64,6 +64,7 @@ class NewTaskPage(QWidget):
         layout.setSpacing(14)
 
         self._environment = QComboBox()
+        self._environment.setFixedWidth(240)
         self._environment.currentIndexChanged.connect(self._on_environment_changed)
 
         header = GlassCard()
