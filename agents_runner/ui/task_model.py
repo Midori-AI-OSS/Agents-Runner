@@ -6,6 +6,9 @@ from dataclasses import field
 from datetime import datetime
 
 from agents_runner.environments import GH_MANAGEMENT_NONE
+from agents_runner.environments import WORKSPACE_NONE
+from agents_runner.environments import WORKSPACE_MOUNTED
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.utils import _format_duration
 
 
@@ -33,6 +36,7 @@ class Task:
     gh_pr_url: str = ""
     gh_pr_metadata_path: str = ""
     gh_management_locked: bool = False
+    workspace_type: str = WORKSPACE_NONE
     git: dict[str, object] | None = None
     agent_cli: str = ""
     agent_instance_id: str = ""
