@@ -106,6 +106,7 @@ class _MainWindowPreflightMixin:
 
         if env:
             task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
+            task.workspace_type = env.workspace_type
 
         config = DockerRunnerConfig(
             task_id=task_id,

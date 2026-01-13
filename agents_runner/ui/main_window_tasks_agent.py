@@ -366,6 +366,7 @@ class _MainWindowTasksAgentMixin:
 
         if env:
             task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
+            task.workspace_type = env.workspace_type
 
         use_host_gh = bool(getattr(env, "gh_use_host_cli", True)) if env else True
         use_host_gh = bool(use_host_gh and is_gh_available())

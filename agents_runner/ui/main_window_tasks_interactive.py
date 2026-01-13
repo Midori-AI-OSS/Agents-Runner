@@ -229,6 +229,7 @@ class _MainWindowTasksInteractiveMixin:
 
         if env:
             task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
+            task.workspace_type = env.workspace_type
 
         task.gh_use_host_cli = bool(task.gh_use_host_cli and is_gh_available())
 
