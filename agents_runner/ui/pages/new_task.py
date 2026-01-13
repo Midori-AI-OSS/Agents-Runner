@@ -701,15 +701,23 @@ class NewTaskPage(QWidget):
         worker = SttWorker(mode=self._stt_mode, audio_path=str(audio_path))
         thread = QThread(self)
         worker.moveToThread(thread)
+        
+        # Connect signals first, before starting
         thread.started.connect(worker.run)
         worker.done.connect(self._on_stt_done)
         worker.error.connect(self._on_stt_error)
+        
+        # Ensure thread.quit() is called on both done and error
         worker.done.connect(thread.quit)
         worker.error.connect(thread.quit)
+        
+        # Clean up worker after signals fire
         worker.done.connect(worker.deleteLater)
         worker.error.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
+        
+        # Clean up thread when finished, ensure _on_stt_finished is called
         thread.finished.connect(self._on_stt_finished)
+        thread.finished.connect(thread.deleteLater)
 
         self._stt_thread = thread
         print("[STT] Starting thread...")
