@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
@@ -374,10 +375,10 @@ class _MainWindowTasksAgentMixin:
 
         desired_base = str(base_branch or "").strip()
 
-        # Save the selected branch for locked environments
+        # Save the selected branch for cloned environments
         if (
             env
-            and env.gh_management_locked
+            and env.workspace_type == WORKSPACE_CLONED
             and desired_base
             and gh_mode == GH_MANAGEMENT_GITHUB
         ):

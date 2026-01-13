@@ -9,6 +9,8 @@ from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
+from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import SYSTEM_ENV_ID
 from agents_runner.environments import SYSTEM_ENV_NAME
 from agents_runner.environments import load_environments
@@ -158,9 +160,9 @@ class _MainWindowEnvironmentMixin:
         cleaned = [b for b in cleaned if b]
         self._new_task.set_repo_controls_visible(True)
 
-        # Restore last selected branch for locked environments
+        # Restore last selected branch for cloned environments
         selected_branch = None
-        if env and env.gh_management_locked:
+        if env and env.workspace_type == WORKSPACE_CLONED:
             last_branch = str(getattr(env, "gh_last_base_branch", "") or "").strip()
             if last_branch and last_branch in cleaned:
                 selected_branch = last_branch
@@ -347,6 +349,7 @@ class _MainWindowEnvironmentMixin:
                 gh_management_mode=GH_MANAGEMENT_LOCAL,
                 gh_management_target=os.path.expanduser(active_workdir),
                 gh_management_locked=True,
+                workspace_type=WORKSPACE_MOUNTED,
                 gh_use_host_cli=bool(is_gh_available()),
             )
             save_environment(env)
@@ -365,6 +368,7 @@ class _MainWindowEnvironmentMixin:
                 gh_management_mode=GH_MANAGEMENT_NONE,
                 gh_management_target="",
                 gh_management_locked=True,
+                workspace_type=WORKSPACE_NONE,
                 gh_use_host_cli=False,
             )
 
@@ -379,6 +383,7 @@ class _MainWindowEnvironmentMixin:
                 env.gh_management_mode = GH_MANAGEMENT_LOCAL
                 env.gh_management_target = legacy_workdir
                 env.gh_management_locked = True
+                env.workspace_type = WORKSPACE_MOUNTED
 
         self._environments = dict(envs)
         active_id = self._active_environment_id()
