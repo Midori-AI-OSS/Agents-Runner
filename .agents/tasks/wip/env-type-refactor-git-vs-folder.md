@@ -155,6 +155,15 @@ Environment creation/edit flows:
 - `agents_runner/ui/main_window_environment.py` (default env generation)
 - `agents_runner/ui/dialogs/new_environment_wizard.py` (exists on unstable branch)
 
+## Subagent Audit Notes (2026-01-13)
+
+Key regressions/pitfalls observed in current branch:
+
+- Folder/mounted envs get misclassified because `task.gh_management_locked` is set from `env.gh_management_locked` (which is effectively always `True`).
+- Repo root lookup is wrong in some flows: code uses `env.host_workdir` even though it’s usually blank; the real source is the target field (`workspace_target` / old `gh_management_target`).
+- `Task.requires_git_metadata()` currently keys entirely off `gh_management_locked`; this must become `workspace_type == "cloned"` so metadata validation/repair doesn’t run for mounted envs.
+- Do not bump state version in a way that triggers state wipe/reset-on-mismatch; migration should be field-level and non-destructive.
+
 ## Implementation Strategy (recommended, low-risk)
 
 1) Introduce new `workspace_type` alongside existing `gh_management_mode` (temporary overlap).
