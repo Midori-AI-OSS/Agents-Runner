@@ -66,12 +66,13 @@ class _MainWindowPreflightMixin:
         task_id = uuid4().hex[:10]
         image = PIXELARCH_EMERALD_IMAGE
 
-        # Determine git management settings
+        # Determine git management settings based on workspace_type
         workspace_type = env.workspace_type if env else WORKSPACE_NONE
         gh_repo: str = ""
         gh_base_branch: str | None = None
         gh_prefer_gh_cli = bool(getattr(env, "gh_use_host_cli", True)) if env else True
-        gh_locked = bool(getattr(env, "gh_management_locked", False)) if env else False
+        # Cloned workspaces can be recreated; mounted/none cannot
+        gh_recreate_if_needed = workspace_type == WORKSPACE_CLONED
 
         if workspace_type == WORKSPACE_CLONED and env:
             gh_repo = str(env.workspace_target or env.gh_management_target or "").strip()
@@ -102,7 +103,6 @@ class _MainWindowPreflightMixin:
         self._schedule_save()
 
         if env:
-            task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
             task.workspace_type = env.workspace_type
 
         config = DockerRunnerConfig(
@@ -120,7 +120,7 @@ class _MainWindowPreflightMixin:
             agent_cli_args=[],
             gh_repo=gh_repo or None,
             gh_prefer_gh_cli=gh_prefer_gh_cli,
-            gh_recreate_if_needed=not gh_locked,
+            gh_recreate_if_needed=gh_recreate_if_needed,
             gh_base_branch=gh_base_branch,
         )
         bridge = TaskRunnerBridge(task_id=task_id, config=config, mode="preflight")
