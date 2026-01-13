@@ -66,17 +66,24 @@ class FfmpegPulseRecorder:
         )
 
     def stop(self, recording: MicRecording, *, timeout_s: float = 2.0) -> Path:
+        print(f"[FfmpegPulseRecorder] Stopping, process poll={recording.process.poll()}")
         if recording.process.poll() is None:
             try:
+                print("[FfmpegPulseRecorder] Sending SIGINT...")
                 recording.process.send_signal(signal.SIGINT)
-            except Exception:
+            except Exception as exc:
+                print(f"[FfmpegPulseRecorder] SIGINT failed: {exc}, terminating...")
                 recording.process.terminate()
 
         try:
+            print(f"[FfmpegPulseRecorder] Waiting for process (timeout={timeout_s}s)...")
             recording.process.wait(timeout=timeout_s)
+            print(f"[FfmpegPulseRecorder] Process exited with code {recording.process.returncode}")
         except subprocess.TimeoutExpired:
+            print("[FfmpegPulseRecorder] Wait timeout, killing process...")
             recording.process.kill()
             recording.process.wait(timeout=timeout_s)
+            print(f"[FfmpegPulseRecorder] Process killed, exit code {recording.process.returncode}")
 
         if (
             recording.process.returncode not in (0, 255)
@@ -88,16 +95,22 @@ class FfmpegPulseRecorder:
                 stderr = ""
             stderr = (stderr or "").strip()
             if stderr:
+                print(f"[FfmpegPulseRecorder] Error from ffmpeg: {stderr}")
                 raise MicRecorderError(stderr)
 
         if not recording.output_path.is_file():
+            print(f"[FfmpegPulseRecorder] Output file not found: {recording.output_path}")
             raise MicRecorderError("Recording did not produce an output file.")
 
         try:
-            if recording.output_path.stat().st_size < 512:
+            file_size = recording.output_path.stat().st_size
+            print(f"[FfmpegPulseRecorder] Output file size: {file_size} bytes")
+            if file_size < 512:
                 raise MicRecorderError("Recording file is empty.")
         except OSError as exc:
+            print(f"[FfmpegPulseRecorder] Failed to stat output file: {exc}")
             raise MicRecorderError("Could not stat recording output file.") from exc
 
+        print(f"[FfmpegPulseRecorder] Stop successful: {recording.output_path}")
         return recording.output_path
 
