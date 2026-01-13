@@ -92,14 +92,18 @@ class _MainWindowTasksInteractiveMixin:
 
         if env and os.path.isdir(host_workdir):
             try:
+                from agents_runner.midoriai_template import MidoriAITemplateDetection
                 from agents_runner.midoriai_template import scan_midoriai_agents_template
 
-                detection = scan_midoriai_agents_template(host_workdir)
-                env.midoriai_template_likelihood = detection.midoriai_template_likelihood
-                env.midoriai_template_detected = detection.midoriai_template_detected
-                env.midoriai_template_detected_path = detection.midoriai_template_detected_path
-                save_environment(env)
-                self._environments[env.env_id] = env
+                # Only update template detection if not already set
+                # For cloned workspaces, we scan once and persist the result
+                if env.midoriai_template_likelihood == 0.0:
+                    detection = scan_midoriai_agents_template(host_workdir)
+                    env.midoriai_template_likelihood = detection.midoriai_template_likelihood
+                    env.midoriai_template_detected = detection.midoriai_template_detected
+                    env.midoriai_template_detected_path = detection.midoriai_template_detected_path
+                    save_environment(env)
+                    self._environments[env.env_id] = env
             except Exception:
                 pass
 
