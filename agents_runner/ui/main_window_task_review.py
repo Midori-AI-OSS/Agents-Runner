@@ -44,9 +44,9 @@ class _MainWindowTaskReviewMixin:
         branch = str(task.gh_branch or "").strip()
         
         # For non-GitHub locked envs, we need to set up branch/repo if missing
-        # Try getting from environment's host_workdir
+        # Try getting from environment's workspace_target or gh_management_target
         if not repo_root and env:
-            repo_root = str(getattr(env, "host_workdir", "") or "").strip()
+            repo_root = str(getattr(env, "workspace_target", "") or getattr(env, "gh_management_target", "") or getattr(env, "host_workdir", "") or "").strip()
             # Persist the repo_root to the task for future use
             if repo_root:
                 task.gh_repo_root = repo_root

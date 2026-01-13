@@ -153,8 +153,10 @@ def _repair_from_environment(task: Any, environments: dict[str, Any]) -> tuple[b
     if not env:
         return (False, "environment not found")
     
-    # Try to get repository path from environment's host_workdir or task's host_workdir
-    repo_path = getattr(env, "host_workdir", None)
+    # Try to get repository path from environment's workspace_target (for mounted) or host_workdir (legacy)
+    repo_path = getattr(env, "workspace_target", None) or getattr(env, "gh_management_target", None)
+    if not repo_path:
+        repo_path = getattr(env, "host_workdir", None)
     if not repo_path:
         repo_path = getattr(task, "host_workdir", None)
     
