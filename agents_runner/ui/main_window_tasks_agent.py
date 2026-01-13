@@ -17,7 +17,6 @@ from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import WORKSPACE_CLONED
-from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
@@ -235,12 +234,10 @@ class _MainWindowTasksAgentMixin:
                     # Don't modify environment, just use fallback for this task
 
 
-        gh_mode = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
+        workspace_type = (
+            env.workspace_type
             if env
-            else GH_MANAGEMENT_NONE
+            else "none"
         )
         effective_workdir, ready, message = self._new_task_workspace(
             env, task_id=task_id
@@ -248,7 +245,7 @@ class _MainWindowTasksAgentMixin:
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
             return
-        if gh_mode == GH_MANAGEMENT_GITHUB:
+        if workspace_type == WORKSPACE_CLONED:
             try:
                 os.makedirs(effective_workdir, exist_ok=True)
             except Exception as exc:

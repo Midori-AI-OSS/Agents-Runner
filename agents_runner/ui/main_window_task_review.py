@@ -7,7 +7,6 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.log_format import format_log
 
@@ -29,8 +28,8 @@ class _MainWindowTaskReviewMixin:
             )
             return
 
-        gh_mode = normalize_gh_management_mode(task.gh_management_mode)
-        is_github_mode = gh_mode == GH_MANAGEMENT_GITHUB
+        # Task.gh_management_mode already contains normalized values
+        is_github_mode = task.gh_management_mode == GH_MANAGEMENT_GITHUB
 
         # Handle existing PR URL
         pr_url = str(task.gh_pr_url or "").strip()

@@ -11,7 +11,6 @@ from agents_runner.environments.model import WORKSPACE_MOUNTED
 from agents_runner.environments.model import WORKSPACE_NONE
 from agents_runner.environments.model import Environment
 from agents_runner.environments.model import PromptConfig
-from agents_runner.environments.model import normalize_gh_management_mode
 from agents_runner.environments.model import normalize_workspace_type
 from agents_runner.environments.parse import parse_env_vars_text
 from agents_runner.environments.parse import parse_mounts_text
@@ -42,7 +41,6 @@ __all__ = [
     "load_environments",
     "managed_repo_checkout_path",
     "managed_repos_dir",
-    "normalize_gh_management_mode",
     "normalize_workspace_type",
     "parse_env_vars_text",
     "parse_mounts_text",

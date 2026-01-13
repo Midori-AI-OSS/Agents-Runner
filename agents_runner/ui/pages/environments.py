@@ -27,7 +27,9 @@ from agents_runner.environments import Environment
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_LOCAL
 from agents_runner.environments import GH_MANAGEMENT_NONE
-from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
+from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.gh_management import is_gh_available
 from agents_runner.widgets import GlassCard
 from agents_runner.ui.constants import (
@@ -554,18 +556,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._container_caching_enabled.setChecked(
             bool(getattr(env, "container_caching_enabled", False))
         )
-        is_github_env = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
-            == GH_MANAGEMENT_GITHUB
-        )
-        is_local_env = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
-            == GH_MANAGEMENT_LOCAL
-        )
+        workspace_type = env.workspace_type or WORKSPACE_NONE
+        is_github_env = workspace_type == WORKSPACE_CLONED
+        is_local_env = workspace_type == WORKSPACE_MOUNTED
         
         # Check if folder-locked environment is a git repo
         is_git_repo = False
@@ -582,9 +575,14 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._gh_context_label.setVisible(context_available)
         self._gh_context_row.setVisible(context_available)
 
-        idx = self._gh_management_mode.findData(
-            normalize_gh_management_mode(env.gh_management_mode)
-        )
+        # Map workspace_type back to gh_management_mode for UI dropdown
+        gh_mode_for_ui = GH_MANAGEMENT_NONE
+        if workspace_type == WORKSPACE_MOUNTED:
+            gh_mode_for_ui = GH_MANAGEMENT_LOCAL
+        elif workspace_type == WORKSPACE_CLONED:
+            gh_mode_for_ui = GH_MANAGEMENT_GITHUB
+        
+        idx = self._gh_management_mode.findData(gh_mode_for_ui)
         if idx >= 0:
             self._gh_management_mode.setCurrentIndex(idx)
         self._gh_management_target.setText(str(env.workspace_target or env.gh_management_target or ""))

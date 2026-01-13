@@ -13,7 +13,6 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_display import format_agent_markdown_link
 from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.gh_management import commit_push_and_pr
 from agents_runner.gh_management import GhManagementError
@@ -65,8 +64,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         self._on_task_log(task_id, format_log("host", "interactive", "INFO", f"exited with {task.exit_code}"))
 
         if (
-            normalize_gh_management_mode(task.gh_management_mode)
-            == GH_MANAGEMENT_GITHUB
+            task.gh_management_mode == GH_MANAGEMENT_GITHUB
             and task.gh_repo_root
             and task.gh_branch
             and not task.gh_pr_url

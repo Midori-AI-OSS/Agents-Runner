@@ -14,7 +14,6 @@ from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_NONE
-from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.log_format import format_log
 from agents_runner.log_format import format_log_display
@@ -133,8 +132,8 @@ class _MainWindowTaskEventsMixin:
             self._details.update_task(task)
             self._schedule_save()
 
-            gh_mode = normalize_gh_management_mode(task.gh_management_mode)
-            if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+            # Task.gh_management_mode already contains normalized values
+            if task.gh_management_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
                 threading.Thread(
                     target=self._cleanup_task_workspace_async,
                     args=(task_id, task.environment_id),
@@ -248,8 +247,8 @@ class _MainWindowTaskEventsMixin:
             ).start()
 
         # Clean up task workspace (if using GitHub management)
-        gh_mode = normalize_gh_management_mode(task.gh_management_mode)
-        if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+        # Task.gh_management_mode already contains normalized values
+        if task.gh_management_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
             threading.Thread(
                 target=self._cleanup_task_workspace_async,
                 args=(task_id, task.environment_id),
@@ -586,7 +585,7 @@ class _MainWindowTaskEventsMixin:
 
             if user_stop is not None:
                 skip_reason = f"user stopped task ({user_stop})"
-            elif normalize_gh_management_mode(task.gh_management_mode) != GH_MANAGEMENT_GITHUB:
+            elif task.gh_management_mode != GH_MANAGEMENT_GITHUB:
                 skip_reason = f"not a GitHub-managed environment (mode={task.gh_management_mode})"
             elif not task.gh_repo_root:
                 skip_reason = "missing repository root information"
@@ -628,7 +627,7 @@ class _MainWindowTaskEventsMixin:
             # it owns cleanup after finishing (success or failure).
             if (
                 not pr_worker_started
-                and normalize_gh_management_mode(task.gh_management_mode) == GH_MANAGEMENT_GITHUB
+                and task.gh_management_mode == GH_MANAGEMENT_GITHUB
                 and task.environment_id
                 and task_id
             ):

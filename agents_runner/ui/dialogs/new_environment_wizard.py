@@ -391,13 +391,11 @@ read
             gh_target = self._folder_input.text().strip()
             workspace_type = WORKSPACE_MOUNTED
         else:
-            gh_mode = GH_MANAGEMENT_GITHUB
             gh_target = self._expand_repo_url(self._clone_input.text().strip())
             workspace_type = WORKSPACE_CLONED
         env = Environment(
             env_id=env_id,
             name=name,
-            gh_management_mode=gh_mode,
             gh_management_target=gh_target,
             gh_management_locked=True,
             workspace_type=workspace_type,

@@ -17,7 +17,6 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import delete_environment
-from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import parse_env_vars_text
 from agents_runner.environments import parse_mounts_text
 from agents_runner.environments import save_environment
@@ -33,12 +32,18 @@ class _EnvironmentsPageActionsMixin:
             env = self._environments.get(str(self._current_env_id or ""))
 
         gh_available = bool(is_gh_available())
-        mode = normalize_gh_management_mode(
-            str(self._gh_management_mode.currentData() or GH_MANAGEMENT_NONE)
-        )
+        mode = str(self._gh_management_mode.currentData() or GH_MANAGEMENT_NONE)
         locked = env is not None
         if locked and env is not None:
-            desired_mode = normalize_gh_management_mode(env.gh_management_mode)
+            # Map workspace_type to gh_management_mode for UI
+            workspace_type = env.workspace_type or WORKSPACE_NONE
+            if workspace_type == WORKSPACE_MOUNTED:
+                desired_mode = GH_MANAGEMENT_LOCAL
+            elif workspace_type == WORKSPACE_CLONED:
+                desired_mode = GH_MANAGEMENT_GITHUB
+            else:
+                desired_mode = GH_MANAGEMENT_NONE
+            
             if desired_mode != mode:
                 idx = self._gh_management_mode.findData(desired_mode)
                 if idx >= 0:
@@ -119,9 +124,18 @@ class _EnvironmentsPageActionsMixin:
         except ValueError:
             max_agents_running = -1
 
-        gh_mode = normalize_gh_management_mode(
-            existing.gh_management_mode if existing else GH_MANAGEMENT_NONE
-        )
+        # Map workspace_type to gh_management constants for compatibility
+        if existing:
+            workspace_type = existing.workspace_type or WORKSPACE_NONE
+            if workspace_type == WORKSPACE_MOUNTED:
+                gh_mode = GH_MANAGEMENT_LOCAL
+            elif workspace_type == WORKSPACE_CLONED:
+                gh_mode = GH_MANAGEMENT_GITHUB
+            else:
+                gh_mode = GH_MANAGEMENT_NONE
+        else:
+            gh_mode = GH_MANAGEMENT_NONE
+        
         gh_target = str(existing.workspace_target or existing.gh_management_target or "").strip() if existing else ""
         gh_locked = True
         gh_use_host_cli = (
@@ -196,7 +210,6 @@ class _EnvironmentsPageActionsMixin:
             preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
-            gh_management_mode=gh_mode,
             gh_management_target=gh_target,
             gh_management_locked=gh_locked,
             workspace_type=workspace_type,
@@ -226,9 +239,19 @@ class _EnvironmentsPageActionsMixin:
         except ValueError:
             max_agents_running = -1
 
-        gh_mode = normalize_gh_management_mode(
-            existing.gh_management_mode if existing else GH_MANAGEMENT_NONE
-        )
+        # Map workspace_type to gh_management constants for compatibility
+        if existing:
+            workspace_type = existing.workspace_type or WORKSPACE_NONE
+            if workspace_type == WORKSPACE_MOUNTED:
+                gh_mode = GH_MANAGEMENT_LOCAL
+            elif workspace_type == WORKSPACE_CLONED:
+                gh_mode = GH_MANAGEMENT_GITHUB
+            else:
+                gh_mode = GH_MANAGEMENT_NONE
+        else:
+            gh_mode = GH_MANAGEMENT_NONE
+            workspace_type = WORKSPACE_NONE
+        
         gh_target = str(existing.workspace_target or existing.gh_management_target or "").strip() if existing else ""
         gh_locked = True
         gh_use_host_cli = (
@@ -239,14 +262,6 @@ class _EnvironmentsPageActionsMixin:
             if existing
             else False
         )
-        
-        # Determine workspace_type based on gh_mode
-        if gh_mode == GH_MANAGEMENT_GITHUB:
-            workspace_type = WORKSPACE_CLONED
-        elif gh_mode == GH_MANAGEMENT_LOCAL:
-            workspace_type = WORKSPACE_MOUNTED
-        else:
-            workspace_type = WORKSPACE_NONE
 
         if existing and gh_mode == GH_MANAGEMENT_GITHUB:
             gh_context_enabled = bool(self._gh_context_enabled.isChecked())
@@ -304,7 +319,6 @@ class _EnvironmentsPageActionsMixin:
             preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
-            gh_management_mode=gh_mode,
             gh_management_target=gh_target,
             gh_management_locked=gh_locked,
             workspace_type=workspace_type,

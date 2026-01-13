@@ -34,13 +34,6 @@ WORKSPACE_MOUNTED = "mounted"
 WORKSPACE_CLONED = "cloned"
 
 
-def normalize_gh_management_mode(value: str) -> str:
-    mode = (value or "").strip().lower()
-    if mode in {GH_MANAGEMENT_LOCAL, GH_MANAGEMENT_GITHUB}:
-        return mode
-    return GH_MANAGEMENT_NONE
-
-
 def normalize_workspace_type(value: str) -> str:
     """Normalize workspace type to canonical values."""
     if not value or value == "none":
@@ -97,7 +90,6 @@ class Environment:
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
-    gh_management_mode: str = GH_MANAGEMENT_NONE
     gh_management_target: str = ""
     gh_management_locked: bool = False
     workspace_type: str = WORKSPACE_NONE

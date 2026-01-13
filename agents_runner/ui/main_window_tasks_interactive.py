@@ -22,7 +22,6 @@ from agents_runner.environments import Environment
 from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import WORKSPACE_CLONED
-from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.prompt_sanitizer import sanitize_prompt
@@ -79,19 +78,17 @@ class _MainWindowTasksInteractiveMixin:
         task_id = uuid4().hex[:10]
         task_token = f"interactive-{task_id}"
 
-        gh_mode = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
+        workspace_type = (
+            env.workspace_type
             if env
-            else GH_MANAGEMENT_NONE
+            else "none"
         )
         host_workdir, ready, message = self._new_task_workspace(env, task_id=task_id)
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
             return
 
-        if gh_mode != GH_MANAGEMENT_GITHUB and not os.path.isdir(host_workdir):
+        if workspace_type != WORKSPACE_CLONED and not os.path.isdir(host_workdir):
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return
 
