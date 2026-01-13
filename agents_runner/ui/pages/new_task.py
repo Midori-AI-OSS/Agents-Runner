@@ -188,14 +188,14 @@ class NewTaskPage(QWidget):
         interactive_grid.addWidget(self._terminal, 0, 1)
         interactive_grid.addWidget(refresh_terminals, 0, 2)
         
-        # Workspace display for folder locked environments (shown on terminal line)
+        # Workspace display for mounted folder environments (shown on terminal line)
         self._terminal_workspace_label = QLabel("Workspace")
         self._terminal_workspace = QLabel("—")
         self._terminal_workspace.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._terminal_workspace.setStyleSheet("color: rgba(237, 239, 245, 200);")
         interactive_grid.addWidget(self._terminal_workspace_label, 0, 3)
         interactive_grid.addWidget(self._terminal_workspace, 0, 4)
-        # Initially hidden, shown for folder locked environments
+        # Initially hidden, shown for mounted folder environments
         self._terminal_workspace_label.setVisible(False)
         self._terminal_workspace.setVisible(False)
 

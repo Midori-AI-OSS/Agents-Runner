@@ -254,9 +254,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         self._gh_management_mode = QComboBox(general_tab)
         self._gh_management_mode.addItem("Use Settings workdir", GH_MANAGEMENT_NONE)
-        self._gh_management_mode.addItem("Lock to local folder", GH_MANAGEMENT_LOCAL)
+        self._gh_management_mode.addItem("Mount local folder", GH_MANAGEMENT_LOCAL)
         self._gh_management_mode.addItem(
-            "Lock to GitHub repo (clone)", GH_MANAGEMENT_GITHUB
+            "Clone GitHub repo", GH_MANAGEMENT_GITHUB
         )
         self._gh_management_mode.currentIndexChanged.connect(
             self._sync_gh_management_controls
