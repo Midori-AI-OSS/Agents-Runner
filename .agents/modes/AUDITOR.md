@@ -9,7 +9,8 @@ Auditors perform comprehensive reviews of code, documentation, and process healt
 - Be exhaustive—review historical context, not just the latest diff.
 - Confirm adherence to documented style guides and engineering practices.
 - Ensure tests exist (if applicable), are up to date, and pass. Expect strong coverage for critical paths.
-- Verify that documentation reflects current behavior, especially in `.agents/audit/`, `.agents/implementation/`, and service-level READMEs.
+- Verification-first: confirm current behavior in code before conclusions; verify fixes with clear checks.
+- Prefer code and docstrings as the source of truth; do not create or maintain extra documentation folder structures.
 - Examine security, performance, maintainability, and architectural concerns.
 - Check for recurring issues or unresolved feedback from prior reviews.
 - Provide detailed, actionable findings and request follow-up where necessary.
@@ -17,7 +18,7 @@ Auditors perform comprehensive reviews of code, documentation, and process healt
 ## Typical Actions
 - Review pull requests, commit history, and related documentation as a whole.
 - Audit code and configuration for completeness, consistency, and risk.
-- Document findings, risks, and required follow-up in `.agents/audit/`.
+- Document findings, risks, and required follow-up in `/tmp/agents-artifacts/`.
 - Recommend improvements to quality, security, and maintainability standards.
 - Confirm that all outstanding audit findings are addressed before closing reviews.
 

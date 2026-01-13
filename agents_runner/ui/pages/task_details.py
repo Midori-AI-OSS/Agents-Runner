@@ -31,8 +31,6 @@ except Exception:  # pragma: no cover
 from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
 
 from agents_runner.artifacts import get_artifact_info
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import _task_display_status
 from agents_runner.ui.utils import _format_duration
@@ -389,16 +387,9 @@ class TaskDetailsPage(QWidget):
             self.pr_requested.emit(task_id)
 
     def _sync_review_menu(self, task: Task) -> None:
-        gh_mode = normalize_gh_management_mode(str(task.gh_management_mode or ""))
+        # Task.requires_git_metadata() already checks workspace_type
+        can_pr = task.requires_git_metadata()
         
-        # Check if this is a git-locked environment (use task's stored flag)
-        is_git_locked = bool(getattr(task, "gh_management_locked", False))
-        
-        # Show for GitHub mode (existing) OR for any git-locked environment
-        can_pr = bool(
-            (gh_mode == GH_MANAGEMENT_GITHUB and task.gh_repo_root and task.gh_branch)
-            or is_git_locked
-        )
         pr_url = str(task.gh_pr_url or "").strip()
         self._review_pr.setVisible(can_pr)
         self._review_pr.setEnabled(can_pr and not task.is_active())
@@ -436,7 +427,7 @@ class TaskDetailsPage(QWidget):
         self._btn_kill.setEnabled(has_container and not is_terminal)
 
     def set_environments(self, environments: dict[str, object]) -> None:
-        """Set the environments dict for looking up git-locked status."""
+        """Set the environments dict for looking up cloned repo status."""
         self._environments = environments
 
     def show_task(self, task: Task) -> None:

@@ -1,6 +1,6 @@
 # GitHub Version Control Context
 
-This prompt instructs the agent on proper Git workflow and commit practices when GitHub management mode is enabled.
+This prompt instructs the agent on proper Git workflow and commit practices when working in a cloned repo environment.
 
 **When used:** GitHub management is enabled for the environment  
 **Template variables:** None

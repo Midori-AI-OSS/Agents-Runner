@@ -13,10 +13,8 @@ from PySide6.QtCore import QThread
 
 from PySide6.QtWidgets import QMessageBox
 
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_LOCAL
-from agents_runner.environments import GH_MANAGEMENT_NONE
-from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
@@ -62,9 +60,8 @@ class _MainWindowTasksAgentMixin:
             status = (task.status or "").lower()
             save_task_payload(self._state_path, serialize_task(task), archived=True)
 
-            # Clean up task workspace (if using GitHub management)
-            gh_mode = normalize_gh_management_mode(task.gh_management_mode)
-            if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+            # Clean up task workspace (if using cloned GitHub repo)
+            if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
                 # Keep failed task repos for debugging (unless status is "done")
                 keep_on_error = status in {"failed", "error"}
                 if not keep_on_error:
@@ -234,12 +231,10 @@ class _MainWindowTasksAgentMixin:
                     # Don't modify environment, just use fallback for this task
 
 
-        gh_mode = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
+        workspace_type = (
+            env.workspace_type
             if env
-            else GH_MANAGEMENT_NONE
+            else "none"
         )
         effective_workdir, ready, message = self._new_task_workspace(
             env, task_id=task_id
@@ -247,7 +242,7 @@ class _MainWindowTasksAgentMixin:
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
             return
-        if gh_mode == GH_MANAGEMENT_GITHUB:
+        if workspace_type == WORKSPACE_CLONED:
             try:
                 os.makedirs(effective_workdir, exist_ok=True)
             except Exception as exc:
@@ -352,11 +347,11 @@ class _MainWindowTasksAgentMixin:
             environment_id=env_id,
             created_at_s=time.time(),
             status="queued",
-            gh_management_mode=gh_mode,
             agent_cli=agent_cli,
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
             headless_desktop_enabled=headless_desktop_enabled,
+            workspace_type=workspace_type,
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -364,21 +359,17 @@ class _MainWindowTasksAgentMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
-        if env:
-            task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
-
         use_host_gh = bool(getattr(env, "gh_use_host_cli", True)) if env else True
         use_host_gh = bool(use_host_gh and is_gh_available())
         task.gh_use_host_cli = use_host_gh
 
         desired_base = str(base_branch or "").strip()
 
-        # Save the selected branch for locked environments
+        # Save the selected branch for cloned environments
         if (
             env
-            and env.gh_management_locked
+            and env.workspace_type == WORKSPACE_CLONED
             and desired_base
-            and gh_mode == GH_MANAGEMENT_GITHUB
         ):
             env.gh_last_base_branch = desired_base
             save_environment(env)
@@ -389,8 +380,8 @@ class _MainWindowTasksAgentMixin:
         if bool(self._settings_data.get("append_pixelarch_context") or False):
             runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
 
-        # Inject git context when GitHub management is enabled
-        if gh_mode == GH_MANAGEMENT_GITHUB:
+        # Inject git context when cloned workspace is used
+        if workspace_type == WORKSPACE_CLONED:
             runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_GIT_CONTEXT_SUFFIX}"
 
         enabled_env_prompts: list[str] = []
@@ -419,17 +410,17 @@ class _MainWindowTasksAgentMixin:
             extra_mounts_for_task.append(f"{host_cache}:{container_cache}:rw")
 
         # GitHub context preparation
-        # For git-locked: Create empty file before clone, populate after clone completes
-        # For folder-locked: Detect git and populate immediately if it's a git repo
+        # For cloned: Create empty file before clone, populate after clone completes
+        # For mounted: Detect git and populate immediately if it's a git repo
         # For non-git: Skip gracefully (never fail the task)
         if env and bool(getattr(env, "gh_context_enabled", False)):
-            # Detect git for folder-locked environments
+            # Detect git for mounted environments
             should_generate = False
             github_context = None
             
-            if gh_mode == GH_MANAGEMENT_LOCAL:
-                # Folder-locked: Try to detect git repo
-                folder_path = str(env.gh_management_target or "").strip()
+            if env.workspace_type == WORKSPACE_MOUNTED:
+                # Mounted: Try to detect git repo
+                folder_path = str(env.workspace_target or "").strip()
                 if folder_path:
                     try:
                         git_info = get_git_info(folder_path)
@@ -443,6 +434,18 @@ class _MainWindowTasksAgentMixin:
                                 task_branch=None,
                                 head_commit=git_info.commit_sha,
                             )
+                            # Populate task.git immediately for mounted environments
+                            task.git = {
+                                "repo_url": git_info.repo_url,
+                                "repo_owner": git_info.repo_owner,
+                                "repo_name": git_info.repo_name,
+                                "base_branch": git_info.branch,
+                                "target_branch": None,
+                                "head_commit": git_info.commit_sha,
+                            }
+                            # Also set gh_repo_root for mounted tasks
+                            if folder_path and os.path.isdir(folder_path):
+                                task.gh_repo_root = folder_path
                             self._on_task_log(
                                 task_id, format_log("gh", "context", "INFO", f"detected git repo: {git_info.repo_url}")
                             )
@@ -455,8 +458,8 @@ class _MainWindowTasksAgentMixin:
                         self._on_task_log(
                             task_id, format_log("gh", "context", "WARN", f"git detection failed: {exc}; continuing without context")
                         )
-            elif gh_mode == GH_MANAGEMENT_GITHUB:
-                # Git-locked: Will populate after clone
+            elif env.workspace_type == WORKSPACE_CLONED:
+                # Cloned: Will populate after clone
                 should_generate = True
             
             # Create GitHub context file
@@ -482,8 +485,8 @@ class _MainWindowTasksAgentMixin:
                     runner_prompt = (
                         f"{runner_prompt}{github_context_prompt_instructions(container_path)}"
                     )
-                    # Clarify two-phase process for git-locked environments
-                    if gh_mode == GH_MANAGEMENT_GITHUB:
+                    # Clarify two-phase process for cloned repo environments
+                    if workspace_type == WORKSPACE_CLONED:
                         self._on_task_log(
                             task_id, format_log("gh", "context", "INFO", f"GitHub context file created and mounted -> {container_path}")
                         )
@@ -499,8 +502,8 @@ class _MainWindowTasksAgentMixin:
         # Get the context file path if it was created (regardless of mode)
         gh_context_file = getattr(task, "gh_pr_metadata_path", None)
         gh_repo: str | None = None
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            gh_repo = str(env.gh_management_target or "").strip() or None
+        if workspace_type == WORKSPACE_CLONED and env:
+            gh_repo = str(env.workspace_target or "").strip() or None
 
         config = DockerRunnerConfig(
             task_id=task_id,

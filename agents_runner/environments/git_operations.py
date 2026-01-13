@@ -1,6 +1,6 @@
 """Git repository detection and context extraction for environments.
 
-This module provides git detection and context extraction for folder-locked
+This module provides git detection and context extraction for mounted folder
 environments. All operations have 8-second timeouts and never raise exceptions
 that would block task execution.
 """

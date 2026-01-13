@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from agents_runner.prompts import load_prompt
 
 
-PR_METADATA_VERSION = 1
 GITHUB_CONTEXT_VERSION = 2
 
 
@@ -43,23 +42,10 @@ class GitHubMetadataV2:
     body: str = ""
 
 
-def pr_metadata_container_path(task_id: str) -> str:
-    """Legacy v1 container path (kept for backward compatibility)."""
-    task_token = _safe_task_token(task_id)
-    return f"/tmp/codex-pr-metadata-{task_token}.json"
-
-
 def github_context_container_path(task_id: str) -> str:
     """V2 container path with new naming."""
     task_token = _safe_task_token(task_id)
     return f"/tmp/github-context-{task_token}.json"
-
-
-def pr_metadata_host_path(data_dir: str, task_id: str) -> str:
-    """Legacy v1 host path (kept for backward compatibility)."""
-    task_token = _safe_task_token(task_id)
-    root = os.path.abspath(os.path.expanduser(str(data_dir or "").strip() or "."))
-    return os.path.join(root, "pr-metadata", f"pr-metadata-{task_token}.json")
 
 
 def github_context_host_path(data_dir: str, task_id: str) -> str:
@@ -67,27 +53,6 @@ def github_context_host_path(data_dir: str, task_id: str) -> str:
     task_token = _safe_task_token(task_id)
     root = os.path.abspath(os.path.expanduser(str(data_dir or "").strip() or "."))
     return os.path.join(root, "github-context", f"github-context-{task_token}.json")
-
-
-def ensure_pr_metadata_file(path: str, *, task_id: str) -> None:
-    """Create v1 metadata file (legacy, kept for backward compatibility)."""
-    path = os.path.abspath(os.path.expanduser(str(path or "").strip()))
-    if not path:
-        raise ValueError("missing PR metadata path")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    payload = {
-        "version": PR_METADATA_VERSION,
-        "task_id": str(task_id or ""),
-        "title": "",
-        "body": "",
-    }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
-        f.write("\n")
-    try:
-        os.chmod(path, 0o600)
-    except OSError:
-        pass
 
 
 def ensure_github_context_file(
@@ -151,7 +116,7 @@ def update_github_context_after_clone(
 ) -> None:
     """Update existing v2 metadata file with GitHub context after clone.
     
-    Used for git-locked environments where the file is created before clone
+    Used for cloned repo environments where the file is created before clone
     but needs to be populated with repo context after clone completes.
     
     Args:
@@ -267,17 +232,6 @@ def normalize_pr_title(title: str, *, fallback: str) -> str:
     if len(candidate) > 72:
         candidate = candidate[:69].rstrip() + "..."
     return candidate
-
-
-def pr_metadata_prompt_instructions(container_path: str) -> str:
-    """Generate v1 prompt instructions (legacy)."""
-    container_path = str(container_path or "").strip()
-    if not container_path:
-        container_path = "/tmp/codex-pr-metadata.json"
-    return load_prompt(
-        "pr_metadata",
-        PR_METADATA_FILE=container_path,
-    )
 
 
 def github_context_prompt_instructions(container_path: str) -> str:

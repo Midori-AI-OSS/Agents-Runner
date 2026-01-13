@@ -12,9 +12,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_NONE
-from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.log_format import format_log
 from agents_runner.log_format import format_log_display
@@ -133,8 +131,8 @@ class _MainWindowTaskEventsMixin:
             self._details.update_task(task)
             self._schedule_save()
 
-            gh_mode = normalize_gh_management_mode(task.gh_management_mode)
-            if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+            # Clean up task workspace (if using cloned GitHub repo)
+            if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
                 threading.Thread(
                     target=self._cleanup_task_workspace_async,
                     args=(task_id, task.environment_id),
@@ -247,9 +245,8 @@ class _MainWindowTaskEventsMixin:
                 daemon=True,
             ).start()
 
-        # Clean up task workspace (if using GitHub management)
-        gh_mode = normalize_gh_management_mode(task.gh_management_mode)
-        if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+        # Clean up task workspace (if using cloned GitHub repo)
+        if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
             threading.Thread(
                 target=self._cleanup_task_workspace_async,
                 args=(task_id, task.environment_id),
@@ -516,97 +513,159 @@ class _MainWindowTaskEventsMixin:
         task = self._tasks.get(task_id)
         if task is None:
             return
+        pr_worker_started = False
 
-        self._on_task_log(task_id, format_log("host", "finalize", "INFO", "finalization started"))
+        try:
+            self._on_task_log(task_id, format_log("host", "finalize", "INFO", "finalization started"))
 
-        if task.started_at is None:
-            started_s = self._run_started_s.get(task_id)
-            if started_s is not None:
-                task.started_at = datetime.fromtimestamp(started_s, tz=timezone.utc)
-        if task.finished_at is None:
-            task.finished_at = datetime.now(tz=timezone.utc)
+            if task.started_at is None:
+                started_s = self._run_started_s.get(task_id)
+                if started_s is not None:
+                    task.started_at = datetime.fromtimestamp(started_s, tz=timezone.utc)
+            if task.finished_at is None:
+                task.finished_at = datetime.now(tz=timezone.utc)
 
-        user_stop = None
-        status_lower = (task.status or "").lower()
-        if status_lower in {"cancelled", "killed"}:
-            user_stop = "kill" if status_lower == "killed" else "cancel"
-        elif metadata:
-            candidate = str(metadata.get("user_stop") or "").strip().lower()
-            if candidate in {"cancel", "kill"}:
-                user_stop = candidate
-                task.status = "killed" if candidate == "kill" else "cancelled"
+            user_stop = None
+            status_lower = (task.status or "").lower()
+            if status_lower in {"cancelled", "killed"}:
+                user_stop = "kill" if status_lower == "killed" else "cancel"
+            elif metadata:
+                candidate = str(metadata.get("user_stop") or "").strip().lower()
+                if candidate in {"cancel", "kill"}:
+                    user_stop = candidate
+                    task.status = "killed" if candidate == "kill" else "cancelled"
 
-        task.exit_code = int(exit_code)
-        if user_stop is not None:
-            task.error = None
-        elif error:
-            task.status = "failed"
-            task.error = str(error)
-        else:
-            task.status = "done" if int(exit_code) == 0 else "failed"
+            task.exit_code = int(exit_code)
+            if user_stop is not None:
+                task.error = None
+            elif error:
+                task.status = "failed"
+                task.error = str(error)
+            else:
+                task.status = "done" if int(exit_code) == 0 else "failed"
 
-        task.git = derive_task_git_metadata(task)
+            task.git = derive_task_git_metadata(task)
 
-        env = self._environments.get(task.environment_id)
-        stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
-        self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-        self._details.update_task(task)
-        self._schedule_save()
-        if user_stop is None:
-            QApplication.beep()
+            # Validate git metadata for cloned repo tasks
+            if task.requires_git_metadata():
+                from agents_runner.ui.task_git_metadata import validate_git_metadata
+                is_valid, error_msg = validate_git_metadata(task.git)
+                if not is_valid:
+                    self._on_task_log(
+                        task_id,
+                        format_log("host", "metadata", "WARN", 
+                                   f"git metadata validation failed: {error_msg}")
+                    )
+                    # Note: We don't fail the task itself, as the code execution may have succeeded
+                    # The metadata issue will be flagged but won't affect task completion status
 
-        self._on_task_log(
-            task_id,
-            format_log("host", "finalize", "INFO", f"task marked complete: status={task.status} exit_code={task.exit_code}"),
-        )
-        if user_stop is None:
-            self._start_artifact_finalization(task)
+            env = self._environments.get(task.environment_id)
+            stain = env.color if env else None
+            spinner = _stain_color(env.color) if env else None
+            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+            self._details.update_task(task)
+            self._schedule_save()
+            if user_stop is None:
+                QApplication.beep()
 
-        self._try_start_queued_tasks()
+            self._on_task_log(
+                task_id,
+                format_log("host", "finalize", "INFO", f"task marked complete: status={task.status} exit_code={task.exit_code}"),
+            )
+            if user_stop is None:
+                self._start_artifact_finalization(task)
 
-        # Determine if PR should be created and log skip reason if not
-        should_create_pr = False
-        skip_reason = None
+            self._try_start_queued_tasks()
 
-        if user_stop is not None:
-            skip_reason = f"user stopped task ({user_stop})"
-        elif normalize_gh_management_mode(task.gh_management_mode) != GH_MANAGEMENT_GITHUB:
-            skip_reason = f"not a GitHub-managed environment (mode={task.gh_management_mode})"
-        elif not task.gh_repo_root:
-            skip_reason = "missing repository root information"
-        elif not task.gh_branch:
-            skip_reason = "missing branch information"
-        elif task.gh_pr_url:
-            skip_reason = "PR already created"
-        else:
-            should_create_pr = True
+            # Determine if PR should be created and log skip reason if not
+            should_create_pr = False
+            skip_reason = None
 
-        if should_create_pr:
-            repo_root = str(task.gh_repo_root or "").strip()
-            branch = str(task.gh_branch or "").strip()
-            base_branch = str(task.gh_base_branch or "").strip()
-            prompt_text = str(task.prompt or "")
-            task_token = str(task.task_id or task_id)
-            pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
-            threading.Thread(
-                target=self._finalize_gh_management_worker,
-                args=(
+            if user_stop is not None:
+                skip_reason = f"user stopped task ({user_stop})"
+            elif task.workspace_type != WORKSPACE_CLONED:
+                skip_reason = f"not a cloned workspace (type={task.workspace_type})"
+            elif not task.gh_repo_root:
+                skip_reason = "missing repository root information"
+            elif not task.gh_branch:
+                skip_reason = "missing branch information"
+            elif task.gh_pr_url:
+                skip_reason = "PR already created"
+            else:
+                should_create_pr = True
+
+            if should_create_pr:
+                repo_root = str(task.gh_repo_root or "").strip()
+                branch = str(task.gh_branch or "").strip()
+                base_branch = str(task.gh_base_branch or "").strip()
+                prompt_text = str(task.prompt or "")
+                task_token = str(task.task_id or task_id)
+                pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
+                pr_worker_started = True
+                threading.Thread(
+                    target=self._finalize_gh_management_worker,
+                    args=(
+                        task_id,
+                        repo_root,
+                        branch,
+                        base_branch,
+                        prompt_text,
+                        task_token,
+                        bool(task.gh_use_host_cli),
+                        pr_metadata_path,
+                        str(task.agent_cli or "").strip(),
+                        str(task.agent_cli_args or "").strip(),
+                    ),
+                    daemon=True,
+                ).start()
+            else:
+                self._on_task_log(task_id, format_log("gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"))
+        finally:
+            # Cleanup must not race PR creation/validation: when a PR worker is started,
+            # it owns cleanup after finishing (success or failure).
+            if (
+                not pr_worker_started
+                and task.workspace_type == WORKSPACE_CLONED
+                and task.environment_id
+                and task_id
+            ):
+                threading.Thread(
+                    target=self._cleanup_cloned_repo_workspace_async,
+                    args=(task_id, task.environment_id),
+                    daemon=True,
+                ).start()
+
+    def _cleanup_cloned_repo_workspace_async(self, task_id: str, env_id: str) -> None:
+        """Clean up cloned repo workspace for a task asynchronously.
+        
+        This is used when PR creation is skipped (otherwise the PR worker
+        performs cleanup after finishing).
+        """
+        import os
+        try:
+            state_path = getattr(self, "_state_path", "")
+            if not state_path:
+                self._on_task_log(
                     task_id,
-                    repo_root,
-                    branch,
-                    base_branch,
-                    prompt_text,
-                    task_token,
-                    bool(task.gh_use_host_cli),
-                    pr_metadata_path,
-                    str(task.agent_cli or "").strip(),
-                    str(task.agent_cli_args or "").strip(),
-                ),
-                daemon=True,
-            ).start()
-        else:
-            self._on_task_log(task_id, format_log("gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"))
+                    format_log("gh", "cleanup", "WARN", "cleanup skipped: state path not available")
+                )
+                return
+            
+            self._on_task_log(task_id, format_log("gh", "cleanup", "INFO", "cleaning up task workspace"))
+            data_dir = os.path.dirname(state_path)
+            cleanup_success = cleanup_task_workspace(
+                env_id=env_id,
+                task_id=task_id,
+                data_dir=data_dir,
+                on_log=lambda msg: self._on_task_log(task_id, msg),
+            )
+            if cleanup_success:
+                self._on_task_log(task_id, format_log("gh", "cleanup", "INFO", "task workspace cleaned"))
+        except Exception as cleanup_exc:
+            self._on_task_log(
+                task_id,
+                format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}")
+            )
 
     def _start_artifact_finalization(self, task: Task) -> None:
         if getattr(task, "_artifact_finalization_started", False):

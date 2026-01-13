@@ -4,7 +4,7 @@ from typing import Any
 
 from .model import ENVIRONMENT_VERSION
 from .model import Environment
-from .model import normalize_gh_management_mode
+from .model import normalize_workspace_type
 from .model import PromptConfig
 from .model import AgentSelection
 from .model import AgentInstance
@@ -122,10 +122,6 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     extra_mounts = payload.get("extra_mounts", [])
     extra_mounts = extra_mounts if isinstance(extra_mounts, list) else []
 
-    gh_management_mode = normalize_gh_management_mode(
-        str(payload.get("gh_management_mode") or "")
-    )
-    gh_management_target = str(payload.get("gh_management_target") or "").strip()
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
@@ -136,6 +132,29 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         payload.get("gh_context_enabled", 
                     payload.get("gh_pr_metadata_enabled", False))
     )
+
+    # Migration: workspace_type from gh_management_mode
+    # Prefer new key, fallback to old key
+    workspace_type = payload.get("workspace_type")
+    if not workspace_type and "gh_management_mode" in payload:
+        old_mode = payload["gh_management_mode"]
+        if old_mode == "github":
+            workspace_type = "cloned"
+        elif old_mode == "local":
+            workspace_type = "mounted"
+        else:
+            workspace_type = "none"
+    else:
+        workspace_type = workspace_type or "none"
+    
+    # Migration: workspace_target from gh_management_target
+    # Prefer new key, fallback to old key for backward compatibility
+    workspace_target = str(
+        payload.get("workspace_target") or payload.get("gh_management_target") or ""
+    ).strip()
+    
+    # Normalize using the new function
+    workspace_type = normalize_workspace_type(workspace_type)
 
     try:
         midoriai_template_likelihood = float(
@@ -303,9 +322,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         preflight_script=preflight_script,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
-        gh_management_mode=gh_management_mode,
-        gh_management_target=gh_management_target,
         gh_management_locked=gh_management_locked,
+        workspace_type=workspace_type,
+        workspace_target=workspace_target,
         gh_last_base_branch=gh_last_base_branch,
         gh_use_host_cli=gh_use_host_cli,
         gh_context_enabled=gh_context_enabled,  # Use migrated field name
@@ -376,9 +395,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "preflight_script": env.preflight_script,
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),
-        "gh_management_mode": normalize_gh_management_mode(env.gh_management_mode),
-        "gh_management_target": str(env.gh_management_target or "").strip(),
         "gh_management_locked": bool(env.gh_management_locked),
+        "workspace_type": env.workspace_type,
+        "workspace_target": str(env.workspace_target or "").strip(),
         "gh_last_base_branch": str(
             getattr(env, "gh_last_base_branch", "") or ""
         ).strip(),

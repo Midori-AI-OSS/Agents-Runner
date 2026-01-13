@@ -13,6 +13,7 @@ from .git_ops import (
     git_list_branches,
     git_repo_root,
 )
+from .pr_retry import with_retry
 from .process import _expand_dir, _require_ok, _run
 
 _TASK_BRANCH_PREFIXES: tuple[str, ...] = ("midoriaiagents/",)
@@ -130,9 +131,15 @@ def prepare_branch_for_task(
 ) -> tuple[str, str]:
     repo_root = _expand_dir(repo_root)
 
-    _require_ok(
-        _run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0),
-        args=["git", "fetch"],
+    # Fetch with retry for transient network issues
+    def _fetch_with_retry() -> None:
+        proc = _run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0)
+        _require_ok(proc, args=["git", "fetch"])
+    
+    with_retry(
+        _fetch_with_retry,
+        operation_name="git fetch",
+        retry_on=(OSError, TimeoutError, GhManagementError),
     )
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
@@ -322,10 +329,18 @@ def commit_push_and_pr(
     if not has_worktree_changes and (ahead_count is not None and ahead_count <= 0):
         return None
 
-    push_proc = _run(
-        ["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0
+    # Push with retry for transient network issues
+    def _push_with_retry() -> None:
+        proc = _run(
+            ["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0
+        )
+        _require_ok(proc, args=["git", "push"])
+    
+    with_retry(
+        _push_with_retry,
+        operation_name="git push",
+        retry_on=(OSError, TimeoutError, GhManagementError),
     )
-    _require_ok(push_proc, args=["git", "push"])
 
     if not use_gh or not is_gh_available():
         return ""
@@ -334,35 +349,51 @@ def commit_push_and_pr(
     if auth_proc.returncode != 0:
         raise GhManagementError("`gh` is not authenticated; run `gh auth login`")
 
-    pr_proc = _run(
-        [
-            "gh",
-            "pr",
-            "create",
-            "--head",
-            branch,
-            "--base",
-            base_branch,
-            "--title",
-            title,
-            "--body",
-            body,
-        ],
-        cwd=repo_root,
-        timeout_s=180.0,
+    # Create PR with retry for transient network issues
+    pr_url: str | None = None
+    
+    def _create_pr_with_retry() -> None:
+        nonlocal pr_url
+        proc = _run(
+            [
+                "gh",
+                "pr",
+                "create",
+                "--head",
+                branch,
+                "--base",
+                base_branch,
+                "--title",
+                title,
+                "--body",
+                body,
+            ],
+            cwd=repo_root,
+            timeout_s=180.0,
+        )
+        if proc.returncode != 0:
+            out = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+            for line in out.splitlines():
+                line = line.strip()
+                if line.startswith("http"):
+                    pr_url = line
+                    return
+            _require_ok(proc, args=["gh", "pr", "create"])
+        else:
+            out = (proc.stdout or "").strip()
+            if out.startswith("http"):
+                pr_url = out.splitlines()[0].strip()
+            else:
+                for line in out.splitlines():
+                    line = line.strip()
+                    if line.startswith("http"):
+                        pr_url = line
+                        break
+    
+    with_retry(
+        _create_pr_with_retry,
+        operation_name="gh pr create",
+        retry_on=(OSError, TimeoutError, GhManagementError),
     )
-    if pr_proc.returncode != 0:
-        out = ((pr_proc.stdout or "") + "\n" + (pr_proc.stderr or "")).strip()
-        for line in out.splitlines():
-            line = line.strip()
-            if line.startswith("http"):
-                return line
-        _require_ok(pr_proc, args=["gh", "pr", "create"])
-    out = (pr_proc.stdout or "").strip()
-    if out.startswith("http"):
-        return out.splitlines()[0].strip()
-    for line in out.splitlines():
-        line = line.strip()
-        if line.startswith("http"):
-            return line
-    return None
+    
+    return pr_url

@@ -14,9 +14,8 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.environments import Environment
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_NONE
-from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.gh_management import is_gh_available
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
@@ -67,17 +66,16 @@ class _MainWindowPreflightMixin:
         task_id = uuid4().hex[:10]
         image = PIXELARCH_EMERALD_IMAGE
 
-        # Determine git management settings
-        gh_mode = normalize_gh_management_mode(
-            env.gh_management_mode if env else GH_MANAGEMENT_NONE
-        )
+        # Determine git management settings based on workspace_type
+        workspace_type = env.workspace_type if env else WORKSPACE_NONE
         gh_repo: str = ""
         gh_base_branch: str | None = None
         gh_prefer_gh_cli = bool(getattr(env, "gh_use_host_cli", True)) if env else True
-        gh_locked = bool(getattr(env, "gh_management_locked", False)) if env else False
+        # Cloned workspaces can be recreated; mounted/none cannot
+        gh_recreate_if_needed = workspace_type == WORKSPACE_CLONED
 
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            gh_repo = str(env.gh_management_target or "").strip()
+        if workspace_type == WORKSPACE_CLONED and env:
+            gh_repo = str(env.workspace_target or "").strip()
             # Use the first non-empty agent_cli_arg as base branch, or empty
             args_list = [
                 a.strip() for a in (env.agent_cli_args or "").split() if a.strip()
@@ -105,7 +103,7 @@ class _MainWindowPreflightMixin:
         self._schedule_save()
 
         if env:
-            task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
+            task.workspace_type = env.workspace_type
 
         config = DockerRunnerConfig(
             task_id=task_id,
@@ -122,7 +120,7 @@ class _MainWindowPreflightMixin:
             agent_cli_args=[],
             gh_repo=gh_repo or None,
             gh_prefer_gh_cli=gh_prefer_gh_cli,
-            gh_recreate_if_needed=not gh_locked,
+            gh_recreate_if_needed=gh_recreate_if_needed,
             gh_base_branch=gh_base_branch,
         )
         bridge = TaskRunnerBridge(task_id=task_id, config=config, mode="preflight")

@@ -180,6 +180,31 @@ class _MainWindowPersistenceMixin:
                 task.status = "unknown"
             loaded.append(task)
         loaded.sort(key=lambda t: t.created_at_s)
+        
+        # Repair missing git metadata for cloned repo tasks
+        repair_count = 0
+        for task in loaded:
+            if task.requires_git_metadata() and not task.git:
+                from agents_runner.ui.task_repair import repair_task_git_metadata
+                success, msg = repair_task_git_metadata(
+                    task,
+                    state_path=self._state_path,
+                    environments=self._environments,
+                )
+                if success:
+                    repair_count += 1
+                    # Save repaired task immediately
+                    save_task_payload(
+                        self._state_path,
+                        serialize_task(task),
+                        archived=self._should_archive_task(task),
+                    )
+        
+        if repair_count > 0:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Repaired git metadata for {repair_count} tasks")
+        
         for task in loaded:
             self._tasks[task.task_id] = task
             env = self._environments.get(task.environment_id)

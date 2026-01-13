@@ -25,16 +25,20 @@ ALLOWED_STAINS = (
     "orange",
 )
 
-GH_MANAGEMENT_NONE = "none"
-GH_MANAGEMENT_LOCAL = "local"
-GH_MANAGEMENT_GITHUB = "github"
+WORKSPACE_NONE = "none"
+WORKSPACE_MOUNTED = "mounted"
+WORKSPACE_CLONED = "cloned"
 
 
-def normalize_gh_management_mode(value: str) -> str:
-    mode = (value or "").strip().lower()
-    if mode in {GH_MANAGEMENT_LOCAL, GH_MANAGEMENT_GITHUB}:
-        return mode
-    return GH_MANAGEMENT_NONE
+def normalize_workspace_type(value: str) -> str:
+    """Normalize workspace type to canonical values."""
+    if not value or value == "none":
+        return WORKSPACE_NONE
+    if value in ("github", "git", "repo", "cloned"):
+        return WORKSPACE_CLONED
+    if value in ("local", "folder", "mounted"):
+        return WORKSPACE_MOUNTED
+    return WORKSPACE_NONE
 
 
 @dataclass
@@ -82,9 +86,9 @@ class Environment:
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
-    gh_management_mode: str = GH_MANAGEMENT_NONE
-    gh_management_target: str = ""
     gh_management_locked: bool = False
+    workspace_type: str = WORKSPACE_NONE
+    workspace_target: str = ""
     gh_last_base_branch: str = ""
     gh_use_host_cli: bool = True
     gh_context_enabled: bool = False  # Renamed from gh_pr_metadata_enabled
@@ -100,18 +104,18 @@ class Environment:
         value = (self.color or "").strip().lower()
         return value if value in ALLOWED_STAINS else "slate"
     
-    def detect_git_if_folder_locked(self) -> bool:
-        """Detect if folder-locked environment is a git repository.
+    def detect_git_if_mounted_folder(self) -> bool:
+        """Detect if mounted folder environment is a git repository.
         
         This method caches the result to avoid repeated git operations.
-        Only applicable for folder-locked (local) environments.
+        Only applicable for mounted folder (local) environments.
         
         Returns:
             True if folder is a git repo, False otherwise.
-            False for non-folder-locked environments.
+            False for non-mounted-folder environments.
         """
-        # Only applies to folder-locked
-        if self.gh_management_mode != GH_MANAGEMENT_LOCAL:
+        # Only applies to mounted folders
+        if self.workspace_type != WORKSPACE_MOUNTED:
             return False
         
         # Return cached result if available
@@ -121,7 +125,7 @@ class Environment:
         # Detect git
         from agents_runner.environments.git_operations import get_git_info
         
-        folder_path = self.gh_management_target
+        folder_path = self.workspace_target
         if not folder_path:
             self._cached_is_git_repo = False
             return False

@@ -21,6 +21,9 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 from PySide6.QtWidgets import QStyle
 
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
+from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
@@ -46,8 +49,7 @@ class NewTaskPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
-        self._gh_locked_envs: set[str] = set()
-        self._env_management_modes: dict[str, str] = {}  # Track environment management modes
+        self._env_workspace_types: dict[str, str] = {}  # Track workspace types for environments
         self._env_template_injection: dict[str, bool] = {}
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
@@ -62,6 +64,7 @@ class NewTaskPage(QWidget):
         layout.setSpacing(14)
 
         self._environment = QComboBox()
+        self._environment.setFixedWidth(240)
         self._environment.currentIndexChanged.connect(self._on_environment_changed)
 
         header = GlassCard()
@@ -72,6 +75,7 @@ class NewTaskPage(QWidget):
         # Base branch dropdown (will be added to title bar later)
         self._base_branch_label = QLabel("Base branch")
         self._base_branch = QComboBox()
+        self._base_branch.setFixedWidth(240)
         self._base_branch.setToolTip(
             "Base branch for the per-task branch (only shown for repo environments)."
         )
@@ -188,14 +192,14 @@ class NewTaskPage(QWidget):
         interactive_grid.addWidget(self._terminal, 0, 1)
         interactive_grid.addWidget(refresh_terminals, 0, 2)
         
-        # Workspace display for folder locked environments (shown on terminal line)
+        # Workspace display for mounted folder environments (shown on terminal line)
         self._terminal_workspace_label = QLabel("Workspace")
         self._terminal_workspace = QLabel("—")
         self._terminal_workspace.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._terminal_workspace.setStyleSheet("color: rgba(237, 239, 245, 200);")
         interactive_grid.addWidget(self._terminal_workspace_label, 0, 3)
         interactive_grid.addWidget(self._terminal_workspace, 0, 4)
-        # Initially hidden, shown for folder locked environments
+        # Initially hidden, shown for mounted folder environments
         self._terminal_workspace_label.setVisible(False)
         self._terminal_workspace.setVisible(False)
 
@@ -258,7 +262,7 @@ class NewTaskPage(QWidget):
         self._tint_overlay.raise_()
 
     def _confirm_auto_base_branch(self, env_id: str, base_branch: str) -> bool:
-        """Show confirmation dialog for auto base branch in git-locked environments.
+        """Show confirmation dialog for auto base branch in cloned repo environments.
         
         Args:
             env_id: The environment ID to check
@@ -267,11 +271,11 @@ class NewTaskPage(QWidget):
         Returns:
             True if user confirmed or confirmation not needed, False if cancelled
         """
-        # Only show confirmation for git-locked environments with auto base branch
-        is_git_locked = env_id in self._gh_locked_envs
+        # Only show confirmation for cloned environments with auto base branch
+        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
         is_auto_branch = not base_branch or base_branch.lower() == "auto"
         
-        if not (is_git_locked and is_auto_branch):
+        if not (workspace_type == WORKSPACE_CLONED and is_auto_branch):
             return True
         
         # Show confirmation dialog
@@ -343,7 +347,7 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
         
-        # Confirm auto base branch for git-locked environments
+        # Confirm auto base branch for cloned repo environments
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
         
@@ -394,7 +398,7 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
 
-        # Confirm auto base branch for git-locked environments
+        # Confirm auto base branch for cloned repo environments
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
 
@@ -416,9 +420,10 @@ class NewTaskPage(QWidget):
 
     def _sync_interactive_options(self) -> None:
         env_id = str(self._environment.currentData() or "")
+        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
         self._run_interactive.set_menu(
             self._run_interactive_menu
-            if (env_id and env_id in self._gh_locked_envs)
+            if (env_id and workspace_type == WORKSPACE_CLONED)
             else None
         )
 
@@ -449,7 +454,7 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
         
-        # Confirm auto base branch for git-locked environments
+        # Confirm auto base branch for cloned repo environments
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
         
@@ -514,18 +519,16 @@ class NewTaskPage(QWidget):
         self._env_stains = {str(k): str(v) for k, v in (stains or {}).items()}
         self._apply_environment_tints()
 
-    def set_gh_locked_envs(self, env_ids: set[str]) -> None:
-        self._gh_locked_envs = {str(e) for e in (env_ids or set()) if str(e).strip()}
-        self._sync_interactive_options()
-
-    def set_environment_management_modes(self, modes: dict[str, str]) -> None:
-        """Set the management modes for environments (e.g., 'github', 'local', 'none').
+    def set_environment_workspace_types(self, workspace_types: dict[str, str]) -> None:
+        """Set the workspace types for environments.
         
         Args:
-            modes: Dictionary mapping environment IDs to their management mode
+            workspace_types: Dictionary mapping environment IDs to their workspace type
+                           (WORKSPACE_CLONED, WORKSPACE_MOUNTED, or WORKSPACE_NONE)
         """
-        self._env_management_modes = {str(k): str(v) for k, v in (modes or {}).items()}
+        self._env_workspace_types = {str(k): str(v) for k, v in (workspace_types or {}).items()}
         self._update_workspace_visibility()
+        self._sync_interactive_options()
 
     def set_environment_template_injection_status(self, statuses: dict[str, bool]) -> None:
         self._env_template_injection = {
@@ -539,21 +542,19 @@ class NewTaskPage(QWidget):
         self._template_prompt_indicator.setVisible(should_show)
 
     def _update_workspace_visibility(self) -> None:
-        """Update workspace line visibility based on environment type."""
+        """Update workspace line visibility based on workspace type."""
         env_id = str(self._environment.currentData() or "")
-        mode = self._env_management_modes.get(env_id, "").lower()
-        is_git_locked = env_id in self._gh_locked_envs
-        is_folder_locked = mode == "local"
+        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
         
-        # Git locked environments: hide workspace line completely
-        if is_git_locked:
+        # Cloned environments: hide workspace line completely
+        if workspace_type == WORKSPACE_CLONED:
             self._workspace_label.setVisible(False)
             self._workspace.setVisible(False)
             self._workspace_hint.setVisible(False)
             self._terminal_workspace_label.setVisible(False)
             self._terminal_workspace.setVisible(False)
-        # Folder locked environments: move workspace to terminal line
-        elif is_folder_locked:
+        # Mounted environments: move workspace to terminal line
+        elif workspace_type == WORKSPACE_MOUNTED:
             self._workspace_label.setVisible(False)
             self._workspace.setVisible(False)
             self._workspace_hint.setVisible(False)
@@ -754,7 +755,7 @@ class NewTaskPage(QWidget):
         self._base_branch.blockSignals(True)
         try:
             self._base_branch.clear()
-            self._base_branch.addItem("Auto (repo default)", "")
+            self._base_branch.addItem("Auto", "")
             for name in branches or []:
                 b = str(name or "").strip()
                 if not b:

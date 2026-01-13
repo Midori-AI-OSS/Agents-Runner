@@ -24,10 +24,9 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import ALLOWED_STAINS
 from agents_runner.environments import Environment
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_LOCAL
-from agents_runner.environments import GH_MANAGEMENT_NONE
-from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
+from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.gh_management import is_gh_available
 from agents_runner.widgets import GlassCard
 from agents_runner.ui.constants import (
@@ -252,22 +251,22 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         grid.addWidget(self._gh_context_label, 4, 0)
         grid.addWidget(self._gh_context_row, 4, 1, 1, 2)
 
-        self._gh_management_mode = QComboBox(general_tab)
-        self._gh_management_mode.addItem("Use Settings workdir", GH_MANAGEMENT_NONE)
-        self._gh_management_mode.addItem("Lock to local folder", GH_MANAGEMENT_LOCAL)
-        self._gh_management_mode.addItem(
-            "Lock to GitHub repo (clone)", GH_MANAGEMENT_GITHUB
+        self._workspace_type_combo = QComboBox(general_tab)
+        self._workspace_type_combo.addItem("Use Settings workdir", WORKSPACE_NONE)
+        self._workspace_type_combo.addItem("Mount local folder", WORKSPACE_MOUNTED)
+        self._workspace_type_combo.addItem(
+            "Clone GitHub repo", WORKSPACE_CLONED
         )
-        self._gh_management_mode.currentIndexChanged.connect(
-            self._sync_gh_management_controls
+        self._workspace_type_combo.currentIndexChanged.connect(
+            self._sync_workspace_controls
         )
 
-        self._gh_management_target = QLineEdit(general_tab)
-        self._gh_management_target.setPlaceholderText(
+        self._workspace_target = QLineEdit(general_tab)
+        self._workspace_target.setPlaceholderText(
             "owner/repo, https://github.com/owner/repo, or /path/to/folder"
         )
-        self._gh_management_target.textChanged.connect(
-            self._sync_gh_management_controls
+        self._workspace_target.textChanged.connect(
+            self._sync_workspace_controls
         )
 
         self._gh_management_browse = QPushButton("Browse…", general_tab)
@@ -283,8 +282,8 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         )
         self._gh_use_host_cli.setVisible(False)
 
-        self._gh_management_mode.setVisible(False)
-        self._gh_management_target.setVisible(False)
+        self._workspace_type_combo.setVisible(False)
+        self._workspace_target.setVisible(False)
         self._gh_management_browse.setVisible(False)
 
         general_layout.addLayout(grid)
@@ -517,8 +516,8 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._gh_context_enabled.setEnabled(False)
             self._gh_context_label.setVisible(False)
             self._gh_context_row.setVisible(False)
-            self._gh_management_mode.setCurrentIndex(0)
-            self._gh_management_target.setText("")
+            self._workspace_type_combo.setCurrentIndex(0)
+            self._workspace_target.setText("")
             self._gh_use_host_cli.setChecked(bool(is_gh_available()))
             self._preflight_enabled.setChecked(False)
             self._preflight_script.setPlainText("")
@@ -531,7 +530,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._mounts.setPlainText("")
             self._prompts_tab.set_prompts([], False)
             self._agents_tab.set_agent_selection(None)
-            self._sync_gh_management_controls()
+            self._sync_workspace_controls()
             return
 
         self._name.setText(env.name)
@@ -554,25 +553,16 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._container_caching_enabled.setChecked(
             bool(getattr(env, "container_caching_enabled", False))
         )
-        is_github_env = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
-            == GH_MANAGEMENT_GITHUB
-        )
-        is_local_env = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
-            == GH_MANAGEMENT_LOCAL
-        )
+        workspace_type = env.workspace_type or WORKSPACE_NONE
+        is_github_env = workspace_type == WORKSPACE_CLONED
+        is_local_env = workspace_type == WORKSPACE_MOUNTED
         
-        # Check if folder-locked environment is a git repo
+        # Check if mounted folder environment is a git repo
         is_git_repo = False
         if is_local_env:
-            is_git_repo = env.detect_git_if_folder_locked()
+            is_git_repo = env.detect_git_if_mounted_folder()
         
-        # Enable GitHub context for git-locked or folder-locked git repos
+        # Enable GitHub context for cloned repos or mounted folder git repos
         context_available = is_github_env or (is_local_env and is_git_repo)
         
         self._gh_context_enabled.setChecked(
@@ -582,14 +572,13 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._gh_context_label.setVisible(context_available)
         self._gh_context_row.setVisible(context_available)
 
-        idx = self._gh_management_mode.findData(
-            normalize_gh_management_mode(env.gh_management_mode)
-        )
+        # Set workspace type dropdown
+        idx = self._workspace_type_combo.findData(workspace_type)
         if idx >= 0:
-            self._gh_management_mode.setCurrentIndex(idx)
-        self._gh_management_target.setText(str(env.gh_management_target or ""))
+            self._workspace_type_combo.setCurrentIndex(idx)
+        self._workspace_target.setText(str(env.workspace_target or ""))
         self._gh_use_host_cli.setChecked(bool(getattr(env, "gh_use_host_cli", True)))
-        self._sync_gh_management_controls(env=env)
+        self._sync_workspace_controls(env=env)
         
         # Load preflight scripts based on container caching state
         container_caching = bool(getattr(env, "container_caching_enabled", False))
@@ -663,7 +652,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         path = QFileDialog.getExistingDirectory(
             self,
             "Select locked Workdir folder",
-            self._gh_management_target.text() or os.getcwd(),
+            self._workspace_target.text() or os.getcwd(),
         )
         if path:
-            self._gh_management_target.setText(path)
+            self._workspace_target.setText(path)

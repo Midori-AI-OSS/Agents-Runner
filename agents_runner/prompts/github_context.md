@@ -6,7 +6,7 @@ This file contains repository information to help you understand the context of 
 - Repository URL, owner, and name
 - Current branch and commit SHA
 - Base branch (if applicable)
-- Task branch (if working in a git-locked environment)
+- Task branch (if working in a cloned repo environment)
 
 You can read this file to understand the GitHub context. The file is in JSON format with the following structure:
 

@@ -19,9 +19,7 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.environments import Environment
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_NONE
-from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.prompt_sanitizer import sanitize_prompt
@@ -78,19 +76,17 @@ class _MainWindowTasksInteractiveMixin:
         task_id = uuid4().hex[:10]
         task_token = f"interactive-{task_id}"
 
-        gh_mode = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
+        workspace_type = (
+            env.workspace_type
             if env
-            else GH_MANAGEMENT_NONE
+            else "none"
         )
         host_workdir, ready, message = self._new_task_workspace(env, task_id=task_id)
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
             return
 
-        if gh_mode != GH_MANAGEMENT_GITHUB and not os.path.isdir(host_workdir):
+        if workspace_type != WORKSPACE_CLONED and not os.path.isdir(host_workdir):
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return
 
@@ -109,12 +105,11 @@ class _MainWindowTasksInteractiveMixin:
 
         desired_base = str(base_branch or "").strip()
 
-        # Save the selected branch for locked environments
+        # Save the selected branch for cloned environments
         if (
             env
-            and env.gh_management_locked
+            and env.workspace_type == WORKSPACE_CLONED
             and desired_base
-            and gh_mode == GH_MANAGEMENT_GITHUB
         ):
             env.gh_last_base_branch = desired_base
             save_environment(env)
@@ -213,7 +208,6 @@ class _MainWindowTasksInteractiveMixin:
             created_at_s=time.time(),
             status="starting",
             container_id=container_name,
-            gh_management_mode=gh_mode,
             gh_use_host_cli=(
                 bool(getattr(env, "gh_use_host_cli", True)) if env else True
             ),
@@ -228,14 +222,14 @@ class _MainWindowTasksInteractiveMixin:
         self._schedule_save()
 
         if env:
-            task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
+            task.workspace_type = env.workspace_type
 
         task.gh_use_host_cli = bool(task.gh_use_host_cli and is_gh_available())
 
         # Extract gh_repo from environment if GitHub management is enabled
         gh_repo: str = ""
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            gh_repo = str(env.gh_management_target or "").strip()
+        if workspace_type == WORKSPACE_CLONED and env:
+            gh_repo = str(env.workspace_target or "").strip()
 
         # Launch interactive terminal - delegated to Docker launcher module
         launch_docker_terminal_task(
