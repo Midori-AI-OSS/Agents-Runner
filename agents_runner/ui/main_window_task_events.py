@@ -280,32 +280,24 @@ class _MainWindowTaskEventsMixin:
             on_log=None,  # Silent cleanup (no UI updates)
         )
 
-    def _on_bridge_state(self, state: dict) -> None:
-        bridge = self.sender()
-        if isinstance(bridge, TaskRunnerBridge):
-            self._on_task_state(bridge.task_id, state)
+    def _on_bridge_state(self, task_id: str, state: dict) -> None:
+        self._on_task_state(task_id, state)
 
-    def _on_bridge_log(self, line: str) -> None:
-        bridge = self.sender()
-        if isinstance(bridge, TaskRunnerBridge):
-            self._on_task_log(bridge.task_id, line)
+    def _on_bridge_log(self, task_id: str, line: str) -> None:
+        self._on_task_log(task_id, line)
 
     def _on_bridge_retry_attempt(
-        self, attempt_number: int, agent: str, delay: float
+        self, task_id: str, attempt_number: int, agent: str, delay: float
     ) -> None:
         """Handle retry attempt signal from supervisor."""
-        bridge = self.sender()
-        if not isinstance(bridge, TaskRunnerBridge):
-            return
-
-        task = self._tasks.get(bridge.task_id)
+        task = self._tasks.get(task_id)
         if task is None:
             return
         if (task.status or "").lower() in {"cancelled", "killed"}:
             return
 
         self._on_task_log(
-            bridge.task_id,
+            task_id,
             format_log("supervisor", "retry", "INFO", f"starting attempt {attempt_number} with {agent} (fallback)"),
         )
         task.status = f"retrying (attempt {attempt_number})"
@@ -314,20 +306,16 @@ class _MainWindowTaskEventsMixin:
         spinner = _stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
-    def _on_bridge_agent_switched(self, from_agent: str, to_agent: str) -> None:
+    def _on_bridge_agent_switched(self, task_id: str, from_agent: str, to_agent: str) -> None:
         """Handle agent switch signal from supervisor."""
-        bridge = self.sender()
-        if not isinstance(bridge, TaskRunnerBridge):
-            return
-
-        task = self._tasks.get(bridge.task_id)
+        task = self._tasks.get(task_id)
         if task is None:
             return
         if (task.status or "").lower() in {"cancelled", "killed"}:
             return
 
         self._on_task_log(
-            bridge.task_id,
+            task_id,
             format_log("supervisor", "fallback", "INFO", f"switching from {from_agent} to {to_agent} (fallback)"),
         )
         task.agent_cli = to_agent
@@ -337,43 +325,51 @@ class _MainWindowTaskEventsMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
     def _on_bridge_done(
-        self, exit_code: int, error: object, artifacts: list, metadata: dict | None = None
+        self, task_id: str, exit_code: int, error: object, artifacts: list, metadata: dict | None = None
     ) -> None:
-        bridge = self.sender()
+        bridge = self._bridges.get(task_id)
+        task = self._tasks.get(task_id)
+        if task is None:
+            return
+
+        # Capture GitHub repo info from the worker if available
         if isinstance(bridge, TaskRunnerBridge):
-            # Capture GitHub repo info from the worker if available
-            task = self._tasks.get(bridge.task_id)
-            if task is not None:
+            try:
                 if bridge.gh_repo_root:
                     task.gh_repo_root = bridge.gh_repo_root
                 if bridge.gh_base_branch and not task.gh_base_branch:
                     task.gh_base_branch = bridge.gh_base_branch
                 if bridge.gh_branch:
                     task.gh_branch = bridge.gh_branch
-                # Store collected artifacts
-                if artifacts:
-                    task.artifacts = list(artifacts)
-                
-                # Capture metadata from supervisor
-                if metadata:
-                    agent_used = metadata.get("agent_used")
-                    agent_id = metadata.get("agent_id")
-                    retry_count = metadata.get("retry_count", 0)
-                    attempt_history = metadata.get("attempt_history")
-                     
-                    if agent_used:
-                        task.agent_cli = agent_used
-                    if agent_id:
-                        task.agent_instance_id = agent_id
-                    if isinstance(attempt_history, list):
-                        task.attempt_history = attempt_history
-                     
-                    if retry_count > 0:
-                        self._on_task_log(
-                            bridge.task_id,
-                            format_log("supervisor", "retry", "INFO", f"completed after {retry_count} retries"),
-                        )
-            self._on_task_done(bridge.task_id, exit_code, error, metadata=metadata)
+            except Exception:
+                # Best-effort: bridge may already be deleted on its thread.
+                pass
+
+        # Store collected artifacts
+        if artifacts:
+            task.artifacts = list(artifacts)
+
+        # Capture metadata from supervisor
+        if metadata:
+            agent_used = metadata.get("agent_used")
+            agent_id = metadata.get("agent_id")
+            retry_count = metadata.get("retry_count", 0)
+            attempt_history = metadata.get("attempt_history")
+
+            if agent_used:
+                task.agent_cli = agent_used
+            if agent_id:
+                task.agent_instance_id = agent_id
+            if isinstance(attempt_history, list):
+                task.attempt_history = attempt_history
+
+            if retry_count > 0:
+                self._on_task_log(
+                    task_id,
+                    format_log("supervisor", "retry", "INFO", f"completed after {retry_count} retries"),
+                )
+
+        self._on_task_done(task_id, exit_code, error, metadata=metadata)
 
     def _on_host_log(self, task_id: str, line: str) -> None:
         self._on_task_log(task_id, line)

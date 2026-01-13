@@ -13,11 +13,11 @@ from agents_runner.execution.supervisor import TaskSupervisor
 
 
 class TaskRunnerBridge(QObject):
-    state = Signal(dict)
-    log = Signal(str)
-    done = Signal(int, object, list, dict)  # Added dict for metadata
-    retry_attempt = Signal(int, str, float)  # attempt_number, agent, delay_seconds (always 0 for fallback)
-    agent_switched = Signal(str, str)  # from_agent, to_agent
+    state = Signal(str, dict)  # task_id, state
+    log = Signal(str, str)  # task_id, log line
+    done = Signal(str, int, object, list, dict)  # task_id, exit_code, error, artifacts, metadata
+    retry_attempt = Signal(str, int, str, float)  # task_id, attempt_number, agent, delay_seconds
+    agent_switched = Signal(str, str, str)  # task_id, from_agent, to_agent
 
     def __init__(
         self,
@@ -36,9 +36,9 @@ class TaskRunnerBridge(QObject):
         if mode == "preflight":
             self._worker = DockerPreflightWorker(
                 config=config,
-                on_state=self.state.emit,
-                on_log=self.log.emit,
-                on_done=lambda code, err: self.done.emit(code, err, [], {}),
+                on_state=lambda state: self.state.emit(self.task_id, state),
+                on_log=lambda line: self.log.emit(self.task_id, line),
+                on_done=lambda code, err: self.done.emit(self.task_id, code, err, [], {}),
             )
         elif use_supervisor and mode != "preflight":
             # Use supervisor for agent runs
@@ -51,11 +51,17 @@ class TaskRunnerBridge(QObject):
                 prompt=prompt,
                 agent_selection=agent_selection,
                 supervisor_config=supervisor_config,
-                on_state=self.state.emit,
-                on_log=self.log.emit,
-                on_retry=self.retry_attempt.emit,
-                on_agent_switch=self.agent_switched.emit,
-                on_done=self.done.emit,
+                on_state=lambda state: self.state.emit(self.task_id, state),
+                on_log=lambda line: self.log.emit(self.task_id, line),
+                on_retry=lambda attempt, agent, delay: self.retry_attempt.emit(
+                    self.task_id, attempt, agent, delay
+                ),
+                on_agent_switch=lambda from_agent, to_agent: self.agent_switched.emit(
+                    self.task_id, from_agent, to_agent
+                ),
+                on_done=lambda code, err, artifacts, metadata: self.done.emit(
+                    self.task_id, code, err, artifacts, metadata
+                ),
                 watch_states=watch_states or {},
             )
         else:
@@ -63,10 +69,10 @@ class TaskRunnerBridge(QObject):
             self._worker = DockerAgentWorker(
                 config=config,
                 prompt=prompt,
-                on_state=self.state.emit,
-                on_log=self.log.emit,
+                on_state=lambda state: self.state.emit(self.task_id, state),
+                on_log=lambda line: self.log.emit(self.task_id, line),
                 on_done=lambda code, err, artifacts: self.done.emit(
-                    code, err, artifacts, {}
+                    self.task_id, code, err, artifacts, {}
                 ),
             )
 
@@ -118,4 +124,4 @@ class TaskRunnerBridge(QObject):
             # This guarantees finalization (including cleanup) always runs
             import traceback
             error_msg = f"Worker exception: {exc}\n{traceback.format_exc()}"
-            self.done.emit(1, error_msg, [], {})
+            self.done.emit(self.task_id, 1, error_msg, [], {})
