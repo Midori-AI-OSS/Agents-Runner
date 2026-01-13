@@ -64,6 +64,7 @@ class NewTaskPage(QWidget):
         layout.setSpacing(14)
 
         self._environment = QComboBox()
+        self._environment.setFixedWidth(240)
         self._environment.currentIndexChanged.connect(self._on_environment_changed)
 
         header = GlassCard()
@@ -74,6 +75,7 @@ class NewTaskPage(QWidget):
         # Base branch dropdown (will be added to title bar later)
         self._base_branch_label = QLabel("Base branch")
         self._base_branch = QComboBox()
+        self._base_branch.setFixedWidth(240)
         self._base_branch.setToolTip(
             "Base branch for the per-task branch (only shown for repo environments)."
         )
