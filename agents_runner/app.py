@@ -2,7 +2,69 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
+
+
+def _cleanup_stale_temp_files() -> None:
+    """Clean up stale temporary files from previous runs.
+    
+    Removes files older than 24 hours from ~/.midoriai/agents-runner/:
+    - interactive-finish-*.txt
+    - stt-*.wav (audio recordings)
+    - Other stale temporary files
+    
+    This handles edge cases where cleanup didn't run due to crashes or early exits.
+    """
+    try:
+        base_dir = Path.home() / ".midoriai" / "agents-runner"
+        if not base_dir.exists():
+            return
+        
+        # Current time for age check (24 hours = 86400 seconds)
+        current_time = time.time()
+        max_age_seconds = 24 * 60 * 60
+        
+        # Patterns to clean up
+        patterns = [
+            "interactive-finish-*.txt",
+            "stt-*.wav",
+        ]
+        
+        removed_count = 0
+        for pattern in patterns:
+            for file_path in base_dir.glob(pattern):
+                if not file_path.is_file():
+                    continue
+                try:
+                    # Check file age
+                    file_age = current_time - file_path.stat().st_mtime
+                    if file_age > max_age_seconds:
+                        file_path.unlink()
+                        removed_count += 1
+                except Exception:
+                    # Ignore errors for individual files
+                    pass
+        
+        # Also clean tmp subdirectory
+        tmp_dir = base_dir / "tmp"
+        if tmp_dir.exists():
+            for file_path in tmp_dir.glob("stt-*.wav"):
+                if not file_path.is_file():
+                    continue
+                try:
+                    file_age = current_time - file_path.stat().st_mtime
+                    if file_age > max_age_seconds:
+                        file_path.unlink()
+                        removed_count += 1
+                except Exception:
+                    pass
+        
+        if removed_count > 0:
+            print(f"[cleanup] Removed {removed_count} stale temporary file(s)")
+    except Exception as exc:
+        # Don't fail app startup if cleanup fails
+        print(f"[cleanup] Warning: failed to clean stale temp files: {exc}")
 
 
 def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
@@ -71,6 +133,9 @@ def run_app(argv: list[str]) -> None:
     from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
     from agents_runner.ui.icons import _app_icon
     from agents_runner.ui.main_window import MainWindow
+
+    # Clean up stale temporary files from previous runs
+    _cleanup_stale_temp_files()
 
     app = QApplication(argv)
     app.setApplicationDisplayName(APP_TITLE)
