@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 
 from agents_runner.agent_cli import normalize_agent
-from agents_runner.environments import serialize_environment
 from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_active_task_payloads
@@ -65,8 +64,7 @@ class _MainWindowPersistenceMixin:
     def _save_state(self) -> None:
         from agents_runner.persistence import save_watch_state
 
-        environments = [serialize_environment(env) for env in self._environment_list()]
-        payload = {"settings": dict(self._settings_data), "environments": environments}
+        payload = {"settings": dict(self._settings_data)}
 
         # Save watch states
         save_watch_state(payload, self._watch_states)

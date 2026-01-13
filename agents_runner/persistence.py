@@ -9,7 +9,7 @@ from typing import Any
 from agents_runner.prompt_sanitizer import sanitize_prompt
 
 
-STATE_VERSION = 3
+STATE_VERSION = 4
 TASKS_DIR_NAME = "tasks"
 TASKS_DONE_DIR_NAME = "done"
 
@@ -18,9 +18,11 @@ def default_state_path() -> str:
     override = str(os.environ.get("AGENTS_RUNNER_STATE_PATH") or "").strip()
     if override:
         override = os.path.expanduser(override)
-        if os.path.isdir(override):
-            return os.path.join(override, "state.json")
-        return override
+        # Treat overrides as a directory unless the path clearly points to a JSON file.
+        # This is intentionally permissive so callers can pass a non-existent directory path.
+        if override.lower().endswith(".json"):
+            return override
+        return os.path.join(override, "state.json")
     base = os.path.expanduser("~/.midoriai/agents-runner")
     return os.path.join(base, "state.json")
 
@@ -63,12 +65,7 @@ def load_state(path: str) -> dict[str, Any]:
             "environments": [],
         }
     version = payload.get("version")
-    if isinstance(version, int) and version != STATE_VERSION:
-        backup_path = f"{path}.bak-{time.time_ns()}"
-        try:
-            os.replace(path, backup_path)
-        except OSError:
-            pass
+    if version != STATE_VERSION:
         return {
             "version": STATE_VERSION,
             "tasks": [],

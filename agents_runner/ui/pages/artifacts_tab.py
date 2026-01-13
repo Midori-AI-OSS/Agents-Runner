@@ -181,6 +181,10 @@ class ArtifactsTab(QWidget):
         self._empty_state.show()
         self._preview_area.hide()
 
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        QTimer.singleShot(0, self._refresh_file_list)
+
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         if watched is self._thumbnail and event.type() == QEvent.Type.Resize:
             if self._preview_loader:
@@ -213,6 +217,12 @@ class ArtifactsTab(QWidget):
         elif task.status not in ["running", "queued"] and self._mode == "staging":
             # Task completed - switch to encrypted mode
             self._switch_to_encrypted_mode()
+        elif self._mode == "encrypted":
+            # Artifacts are finalized asynchronously after task completion; refresh when
+            # the task model gains archived artifact UUIDs.
+            expected = len(task.artifacts or [])
+            if expected > 0 and len(self._artifacts) != expected:
+                QTimer.singleShot(0, self._refresh_file_list)
     
     def _switch_to_staging_mode(self) -> None:
         """Switch to staging (live) mode."""

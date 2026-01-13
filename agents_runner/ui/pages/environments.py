@@ -28,6 +28,7 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.gh_management import is_gh_available
+from agents_runner.persistence import default_state_path
 from agents_runner.widgets import GlassCard
 from agents_runner.ui.constants import (
     MAIN_LAYOUT_MARGINS,
@@ -75,8 +76,12 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         title = QLabel("Environments")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
+        envs_path = os.path.join(
+            os.path.dirname(default_state_path()),
+            "environments.json",
+        )
         title.setToolTip(
-            "Environments are saved locally in:\n~/.midoriai/agents-runner/state.json"
+            f"Environments are saved locally in:\n{envs_path}"
         )
 
         back = QToolButton()
