@@ -516,6 +516,7 @@ class _MainWindowTaskEventsMixin:
         task = self._tasks.get(task_id)
         if task is None:
             return
+        pr_worker_started = False
 
         try:
             self._on_task_log(task_id, format_log("host", "finalize", "INFO", "finalization started"))
@@ -603,6 +604,7 @@ class _MainWindowTaskEventsMixin:
                 prompt_text = str(task.prompt or "")
                 task_token = str(task.task_id or task_id)
                 pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
+                pr_worker_started = True
                 threading.Thread(
                     target=self._finalize_gh_management_worker,
                     args=(
@@ -622,20 +624,25 @@ class _MainWindowTaskEventsMixin:
             else:
                 self._on_task_log(task_id, format_log("gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"))
         finally:
-            # Ensure cleanup always runs for git-locked tasks
-            if normalize_gh_management_mode(task.gh_management_mode) == GH_MANAGEMENT_GITHUB:
-                if task.environment_id and task_id:
-                    threading.Thread(
-                        target=self._cleanup_git_locked_workspace_async,
-                        args=(task_id, task.environment_id),
-                        daemon=True,
-                    ).start()
+            # Cleanup must not race PR creation/validation: when a PR worker is started,
+            # it owns cleanup after finishing (success or failure).
+            if (
+                not pr_worker_started
+                and normalize_gh_management_mode(task.gh_management_mode) == GH_MANAGEMENT_GITHUB
+                and task.environment_id
+                and task_id
+            ):
+                threading.Thread(
+                    target=self._cleanup_git_locked_workspace_async,
+                    args=(task_id, task.environment_id),
+                    daemon=True,
+                ).start()
 
     def _cleanup_git_locked_workspace_async(self, task_id: str, env_id: str) -> None:
         """Clean up git-locked workspace for a task asynchronously.
         
-        This is called in the finally block of _on_task_done() to ensure
-        cleanup happens regardless of PR creation status.
+        This is used when PR creation is skipped (otherwise the PR worker
+        performs cleanup after finishing).
         """
         import os
         try:

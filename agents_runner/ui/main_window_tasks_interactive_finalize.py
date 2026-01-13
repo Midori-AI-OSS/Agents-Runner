@@ -113,47 +113,50 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             return
 
         start_s = time.monotonic()
-        
-        # Step 1: Pre-flight validation
-        self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[1/6] Validating repository..."))
-        
-        from agents_runner.gh.pr_validation import validate_pr_prerequisites
-        from agents_runner.gh.pr_validation import check_existing_pr
-        
-        checks = validate_pr_prerequisites(
-            repo_root=repo_root,
-            branch=branch,
-            use_gh=use_gh,
-        )
-        
-        # Check for failures
-        failed_checks = [(name, msg) for name, passed, msg in checks if not passed]
-        if failed_checks:
-            for name, msg in failed_checks:
-                self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"validation failed: {name}: {msg}"))
-            return
-        
-        # Check for existing PR (informational)
-        existing_pr = check_existing_pr(repo_root, branch)
-        if existing_pr:
-            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", f"[2/6] Pull request already exists: {existing_pr}"))
-            self.host_pr_url.emit(task_id, existing_pr)
-            # Update task PR URL
-            task = self._tasks.get(task_id)
-            if task:
-                task.gh_pr_url = existing_pr
-                self._schedule_save()
-            return
-        
-        self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[2/6] No existing PR found, proceeding..."))
 
-        # Get task info for cleanup - extract environment_id safely
+        # Get task info for cleanup - extract environment_id safely (needed even on early-return paths)
         task = self._tasks.get(task_id)
         env_id = ""
         if task and hasattr(task, "environment_id"):
             env_id = str(task.environment_id or "").strip()
         
         try:
+            # Step 1: Pre-flight validation
+            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[1/6] Validating repository..."))
+
+            from agents_runner.gh.pr_validation import check_existing_pr
+            from agents_runner.gh.pr_validation import validate_pr_prerequisites
+
+            checks = validate_pr_prerequisites(
+                repo_root=repo_root,
+                branch=branch,
+                use_gh=use_gh,
+            )
+
+            # Check for failures
+            failed_checks = [(name, msg) for name, passed, msg in checks if not passed]
+            if failed_checks:
+                for name, msg in failed_checks:
+                    self.host_log.emit(
+                        task_id, format_log("gh", "pr", "ERROR", f"validation failed: {name}: {msg}")
+                    )
+                return
+
+            # Check for existing PR (informational)
+            existing_pr = check_existing_pr(repo_root, branch)
+            if existing_pr:
+                self.host_log.emit(
+                    task_id,
+                    format_log("gh", "pr", "INFO", f"[2/6] Pull request already exists: {existing_pr}"),
+                )
+                self.host_pr_url.emit(task_id, existing_pr)
+                if task:
+                    task.gh_pr_url = existing_pr
+                    self._schedule_save()
+                return
+
+            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[2/6] No existing PR found, proceeding..."))
+
             self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[3/6] Preparing PR metadata..."))
             
             prompt_line = (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
@@ -227,7 +230,6 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             self.host_pr_url.emit(task_id, pr_url)
             
             # Update task PR URL
-            task = self._tasks.get(task_id)
             if task:
                 task.gh_pr_url = pr_url
                 self._schedule_save()
