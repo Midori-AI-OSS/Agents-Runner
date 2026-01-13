@@ -58,6 +58,7 @@ class NewTaskPage(QWidget):
         self._stt_mode = "offline"
         self._mic_recording: MicRecording | None = None
         self._stt_thread: QThread | None = None
+        self._stt_worker: SttWorker | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -679,6 +680,8 @@ class NewTaskPage(QWidget):
             self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
             return
 
+        self._voice_btn.setEnabled(False)
+
         recorder = FfmpegPulseRecorder(output_dir=recording.output_path.parent)
         try:
             print("[STT] Stopping recorder...")
@@ -689,11 +692,11 @@ class NewTaskPage(QWidget):
             QMessageBox.warning(
                 self, "Microphone error", str(exc) or "Could not stop recording."
             )
+            self._voice_btn.setEnabled(True)
             self._voice_btn.setIcon(mic_icon(size=18))
             self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
             return
 
-        self._voice_btn.setEnabled(False)
         self._voice_btn.setIcon(self._voice_btn.style().standardIcon(QStyle.SP_BrowserReload))
         self._voice_btn.setToolTip("Transcribing speech-to-text…")
 
@@ -719,6 +722,7 @@ class NewTaskPage(QWidget):
         thread.finished.connect(self._on_stt_finished)
         thread.finished.connect(thread.deleteLater)
 
+        self._stt_worker = worker
         self._stt_thread = thread
         print("[STT] Starting thread...")
         thread.start()
@@ -762,6 +766,7 @@ class NewTaskPage(QWidget):
     def _on_stt_finished(self) -> None:
         print(f"[STT] Finished signal received, thread={self._stt_thread}")
         self._stt_thread = None
+        self._stt_worker = None
         self._voice_btn.setEnabled(True)
         self._voice_btn.setIcon(mic_icon(size=18))
         self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
