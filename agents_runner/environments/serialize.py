@@ -5,6 +5,7 @@ from typing import Any
 from .model import ENVIRONMENT_VERSION
 from .model import Environment
 from .model import normalize_gh_management_mode
+from .model import normalize_workspace_type
 from .model import PromptConfig
 from .model import AgentSelection
 from .model import AgentInstance
@@ -136,6 +137,23 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         payload.get("gh_context_enabled", 
                     payload.get("gh_pr_metadata_enabled", False))
     )
+
+    # Migration: workspace_type from gh_management_mode
+    # Prefer new key, fallback to old key
+    workspace_type = payload.get("workspace_type")
+    if not workspace_type and "gh_management_mode" in payload:
+        old_mode = payload["gh_management_mode"]
+        if old_mode == "github":
+            workspace_type = "cloned"
+        elif old_mode == "local":
+            workspace_type = "mounted"
+        else:
+            workspace_type = "none"
+    else:
+        workspace_type = workspace_type or "none"
+    
+    # Normalize using the new function
+    workspace_type = normalize_workspace_type(workspace_type)
 
     try:
         midoriai_template_likelihood = float(
@@ -306,6 +324,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         gh_management_mode=gh_management_mode,
         gh_management_target=gh_management_target,
         gh_management_locked=gh_management_locked,
+        workspace_type=workspace_type,
         gh_last_base_branch=gh_last_base_branch,
         gh_use_host_cli=gh_use_host_cli,
         gh_context_enabled=gh_context_enabled,  # Use migrated field name
@@ -379,6 +398,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gh_management_mode": normalize_gh_management_mode(env.gh_management_mode),
         "gh_management_target": str(env.gh_management_target or "").strip(),
         "gh_management_locked": bool(env.gh_management_locked),
+        "workspace_type": env.workspace_type,
         "gh_last_base_branch": str(
             getattr(env, "gh_last_base_branch", "") or ""
         ).strip(),
