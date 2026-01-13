@@ -39,7 +39,9 @@ from agents_runner.docker.env_image_builder import ensure_env_image
 from agents_runner.prompts import load_prompt
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
+from agents_runner.ui.shell_templates import git_identity_clause
 from agents_runner.ui.shell_templates import shell_log_statement
+from agents_runner.midoriai_template import MidoriAITemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
 
 
@@ -215,16 +217,26 @@ class DockerAgentWorker:
 
                     env = load_environments().get(str(self._config.environment_id))
                     if env is not None:
-                        env.midoriai_template_likelihood = (
-                            template_detection.midoriai_template_likelihood
-                        )
-                        env.midoriai_template_detected = (
-                            template_detection.midoriai_template_detected
-                        )
-                        env.midoriai_template_detected_path = (
-                            template_detection.midoriai_template_detected_path
-                        )
-                        save_environment(env)
+                        # Only update template detection if not already set
+                        # For cloned workspaces, we scan once and persist the result
+                        if env.midoriai_template_likelihood == 0.0:
+                            env.midoriai_template_likelihood = (
+                                template_detection.midoriai_template_likelihood
+                            )
+                            env.midoriai_template_detected = (
+                                template_detection.midoriai_template_detected
+                            )
+                            env.midoriai_template_detected_path = (
+                                template_detection.midoriai_template_detected_path
+                            )
+                            save_environment(env)
+                        else:
+                            # Reuse saved template detection values
+                            template_detection = MidoriAITemplateDetection(
+                                midoriai_template_likelihood=env.midoriai_template_likelihood,
+                                midoriai_template_detected=env.midoriai_template_detected,
+                                midoriai_template_detected_path=env.midoriai_template_detected_path,
+                            )
                 except Exception as exc:
                     self._on_log(
                         format_log(
@@ -592,6 +604,7 @@ class DockerAgentWorker:
                 "/bin/bash",
                 "-lc",
                 "set -euo pipefail; "
+                f"{git_identity_clause()}"
                 f"{preflight_clause}"
                 f"{verify_cli_clause(agent_cli)}"
                 f"exec {agent_cmd}",

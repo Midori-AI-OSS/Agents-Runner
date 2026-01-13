@@ -620,7 +620,9 @@ class NewTaskPage(QWidget):
         self._update_workspace_visibility()  # Update visibility after status change
 
     def _on_voice_toggled(self, enabled: bool) -> None:
+        # Check if STT is already running
         if self._stt_thread is not None:
+            print("[STT] Voice toggle rejected: thread still running")
             self._voice_btn.blockSignals(True)
             try:
                 self._voice_btn.setChecked(False)
@@ -629,8 +631,10 @@ class NewTaskPage(QWidget):
             return
 
         if enabled:
+            print("[STT] Starting voice recording")
             self._start_voice_recording()
             return
+        print("[STT] Stopping voice recording")
         self._stop_voice_recording_and_transcribe()
 
     def _start_voice_recording(self) -> None:
@@ -677,8 +681,11 @@ class NewTaskPage(QWidget):
 
         recorder = FfmpegPulseRecorder(output_dir=recording.output_path.parent)
         try:
+            print("[STT] Stopping recorder...")
             audio_path = recorder.stop(recording)
+            print(f"[STT] Recorder stopped, audio at {audio_path}")
         except MicRecorderError as exc:
+            print(f"[STT] Recorder error: {exc}")
             QMessageBox.warning(
                 self, "Microphone error", str(exc) or "Could not stop recording."
             )
@@ -690,23 +697,35 @@ class NewTaskPage(QWidget):
         self._voice_btn.setIcon(self._voice_btn.style().standardIcon(QStyle.SP_BrowserReload))
         self._voice_btn.setToolTip("Transcribing speech-to-text…")
 
+        print("[STT] Creating worker and thread...")
         worker = SttWorker(mode=self._stt_mode, audio_path=str(audio_path))
         thread = QThread(self)
         worker.moveToThread(thread)
+        
+        # Connect signals first, before starting
         thread.started.connect(worker.run)
         worker.done.connect(self._on_stt_done)
         worker.error.connect(self._on_stt_error)
+        
+        # Ensure thread.quit() is called on both done and error
         worker.done.connect(thread.quit)
         worker.error.connect(thread.quit)
+        
+        # Clean up worker after signals fire
         worker.done.connect(worker.deleteLater)
         worker.error.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
+        
+        # Clean up thread when finished, ensure _on_stt_finished is called
         thread.finished.connect(self._on_stt_finished)
+        thread.finished.connect(thread.deleteLater)
 
         self._stt_thread = thread
+        print("[STT] Starting thread...")
         thread.start()
+        print(f"[STT] Thread started, isRunning={thread.isRunning()}")
 
     def _on_stt_done(self, text: str, audio_path: str) -> None:
+        print(f"[STT] Done signal received, text length={len(text)}")
         audio_path_p = Path(str(audio_path or ""))
         text = str(text or "").strip()
         if text:
@@ -725,23 +744,28 @@ class NewTaskPage(QWidget):
 
         try:
             audio_path_p.unlink(missing_ok=True)
-        except Exception:
-            pass
+            print(f"[STT] Audio file deleted: {audio_path}")
+        except Exception as exc:
+            print(f"[STT] Failed to delete audio: {exc}")
 
     def _on_stt_error(self, message: str, audio_path: str) -> None:
+        print(f"[STT] Error signal received: {message}")
         audio_path_p = Path(str(audio_path or ""))
         msg = str(message or "").strip() or "Speech-to-text failed."
         QMessageBox.warning(self, "Speech-to-text error", msg)
         try:
             audio_path_p.unlink(missing_ok=True)
-        except Exception:
-            pass
+            print(f"[STT] Audio file deleted after error: {audio_path}")
+        except Exception as exc:
+            print(f"[STT] Failed to delete audio after error: {exc}")
 
     def _on_stt_finished(self) -> None:
+        print(f"[STT] Finished signal received, thread={self._stt_thread}")
         self._stt_thread = None
         self._voice_btn.setEnabled(True)
         self._voice_btn.setIcon(mic_icon(size=18))
         self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
+        print("[STT] Thread cleanup complete, ready for next recording")
 
     def set_repo_controls_visible(self, visible: bool) -> None:
         visible = bool(visible)

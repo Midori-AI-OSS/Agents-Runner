@@ -32,6 +32,19 @@ def shell_log_statement(scope: str, subscope: str, level: str, message: str) -> 
     return f'echo "[{scope}/{subscope}][{level}] {quoted_message}"'
 
 
+def git_identity_clause() -> str:
+    """
+    Generate shell clause to force git identity for Midori AI agents.
+    
+    Returns:
+        Shell command string to configure git user.name and user.email
+    """
+    return (
+        'git config --global user.name "Midori AI Agent"; '
+        'git config --global user.email "contact-us@midori-ai.xyz"; '
+    )
+
+
 def build_git_clone_command(
     *,
     gh_repo: str,

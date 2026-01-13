@@ -92,14 +92,18 @@ class _MainWindowTasksInteractiveMixin:
 
         if env and os.path.isdir(host_workdir):
             try:
+                from agents_runner.midoriai_template import MidoriAITemplateDetection
                 from agents_runner.midoriai_template import scan_midoriai_agents_template
 
-                detection = scan_midoriai_agents_template(host_workdir)
-                env.midoriai_template_likelihood = detection.midoriai_template_likelihood
-                env.midoriai_template_detected = detection.midoriai_template_detected
-                env.midoriai_template_detected_path = detection.midoriai_template_detected_path
-                save_environment(env)
-                self._environments[env.env_id] = env
+                # Only update template detection if not already set
+                # For cloned workspaces, we scan once and persist the result
+                if env.midoriai_template_likelihood == 0.0:
+                    detection = scan_midoriai_agents_template(host_workdir)
+                    env.midoriai_template_likelihood = detection.midoriai_template_likelihood
+                    env.midoriai_template_detected = detection.midoriai_template_detected
+                    env.midoriai_template_detected_path = detection.midoriai_template_detected_path
+                    save_environment(env)
+                    self._environments[env.env_id] = env
             except Exception:
                 pass
 
@@ -293,6 +297,36 @@ class _MainWindowTasksInteractiveMixin:
                     break
                 except Exception:
                     time.sleep(0.2)
+            
+            # Encrypt finish file as artifact before deleting
+            try:
+                from agents_runner.artifacts import encrypt_artifact
+                
+                task_dict = {"id": task_id, "task_id": task_id}
+                env_name = getattr(self, "_current_env_name", "unknown")
+                
+                artifact_uuid = encrypt_artifact(
+                    task_dict=task_dict,
+                    env_name=env_name,
+                    source_path=finish_path,
+                    original_filename=os.path.basename(finish_path),
+                )
+                
+                if artifact_uuid:
+                    print(f"[finish] Encrypted finish file as artifact: {artifact_uuid}")
+                else:
+                    print("[finish] Failed to encrypt finish file, but continuing")
+            except Exception as exc:
+                print(f"[finish] Error encrypting finish file: {exc}")
+            
+            # Delete plaintext finish file
+            try:
+                if os.path.exists(finish_path):
+                    os.unlink(finish_path)
+                    print(f"[finish] Deleted plaintext finish file: {finish_path}")
+            except Exception as exc:
+                print(f"[finish] Warning: failed to delete finish file: {exc}")
+            
             self.interactive_finished.emit(task_id, int(exit_code))
 
         threading.Thread(target=_worker, daemon=True).start()

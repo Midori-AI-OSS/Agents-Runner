@@ -24,6 +24,7 @@ from agents_runner.environments import Environment
 from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.ui.shell_templates import build_git_clone_or_update_snippet
+from agents_runner.ui.shell_templates import git_identity_clause
 from agents_runner.ui.shell_templates import shell_log_statement
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _safe_str
@@ -173,7 +174,7 @@ def launch_docker_terminal_task(
             verify_clause = verify_cli_clause(cmd_parts[0])
 
         container_script = (
-            "set -euo pipefail; " f"{preflight_clause}{verify_clause}{target_cmd}"
+            "set -euo pipefail; " f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
         )
 
         # Check if we need to forward GH_TOKEN
