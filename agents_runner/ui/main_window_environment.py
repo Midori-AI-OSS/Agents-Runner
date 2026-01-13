@@ -161,21 +161,14 @@ class _MainWindowEnvironmentMixin:
         active_id = self._active_environment_id()
         envs = self._environment_list()
         stains = {e.env_id: e.color for e in envs}
-        management_modes = {e.env_id: e.workspace_type or "none" for e in envs}
+        workspace_types = {e.env_id: e.workspace_type or WORKSPACE_NONE for e in envs}
         template_statuses = {
             e.env_id: bool(getattr(e, "midoriai_template_detected", False)) for e in envs
         }
 
         self._new_task.set_environment_stains(stains)
-        self._new_task.set_environment_management_modes(management_modes)
+        self._new_task.set_environment_workspace_types(workspace_types)
         self._new_task.set_environment_template_injection_status(template_statuses)
-        self._new_task.set_cloned_envs(
-            {
-                e.env_id
-                for e in envs
-                if e.workspace_type == WORKSPACE_CLONED
-            }
-        )
         self._dashboard.set_environment_filter_options(
             [(e.env_id, e.name or e.env_id) for e in envs]
         )

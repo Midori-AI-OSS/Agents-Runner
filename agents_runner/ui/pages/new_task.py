@@ -21,6 +21,9 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 from PySide6.QtWidgets import QStyle
 
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
+from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
@@ -46,8 +49,7 @@ class NewTaskPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
-        self._cloned_envs: set[str] = set()
-        self._env_management_modes: dict[str, str] = {}  # Track environment management modes
+        self._env_workspace_types: dict[str, str] = {}  # Track workspace types for environments
         self._env_template_injection: dict[str, bool] = {}
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
@@ -268,10 +270,10 @@ class NewTaskPage(QWidget):
             True if user confirmed or confirmation not needed, False if cancelled
         """
         # Only show confirmation for cloned environments with auto base branch
-        is_cloned = env_id in self._cloned_envs
+        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
         is_auto_branch = not base_branch or base_branch.lower() == "auto"
         
-        if not (is_cloned and is_auto_branch):
+        if not (workspace_type == WORKSPACE_CLONED and is_auto_branch):
             return True
         
         # Show confirmation dialog
@@ -416,9 +418,10 @@ class NewTaskPage(QWidget):
 
     def _sync_interactive_options(self) -> None:
         env_id = str(self._environment.currentData() or "")
+        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
         self._run_interactive.set_menu(
             self._run_interactive_menu
-            if (env_id and env_id in self._cloned_envs)
+            if (env_id and workspace_type == WORKSPACE_CLONED)
             else None
         )
 
@@ -514,18 +517,16 @@ class NewTaskPage(QWidget):
         self._env_stains = {str(k): str(v) for k, v in (stains or {}).items()}
         self._apply_environment_tints()
 
-    def set_cloned_envs(self, env_ids: set[str]) -> None:
-        self._cloned_envs = {str(e) for e in (env_ids or set()) if str(e).strip()}
-        self._sync_interactive_options()
-
-    def set_environment_management_modes(self, modes: dict[str, str]) -> None:
-        """Set the management modes for environments (e.g., 'github', 'local', 'none').
+    def set_environment_workspace_types(self, workspace_types: dict[str, str]) -> None:
+        """Set the workspace types for environments.
         
         Args:
-            modes: Dictionary mapping environment IDs to their management mode
+            workspace_types: Dictionary mapping environment IDs to their workspace type
+                           (WORKSPACE_CLONED, WORKSPACE_MOUNTED, or WORKSPACE_NONE)
         """
-        self._env_management_modes = {str(k): str(v) for k, v in (modes or {}).items()}
+        self._env_workspace_types = {str(k): str(v) for k, v in (workspace_types or {}).items()}
         self._update_workspace_visibility()
+        self._sync_interactive_options()
 
     def set_environment_template_injection_status(self, statuses: dict[str, bool]) -> None:
         self._env_template_injection = {
@@ -539,21 +540,19 @@ class NewTaskPage(QWidget):
         self._template_prompt_indicator.setVisible(should_show)
 
     def _update_workspace_visibility(self) -> None:
-        """Update workspace line visibility based on environment type."""
+        """Update workspace line visibility based on workspace type."""
         env_id = str(self._environment.currentData() or "")
-        mode = self._env_management_modes.get(env_id, "").lower()
-        is_cloned = env_id in self._cloned_envs
-        is_folder_locked = mode == "local"
+        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
         
         # Cloned environments: hide workspace line completely
-        if is_cloned:
+        if workspace_type == WORKSPACE_CLONED:
             self._workspace_label.setVisible(False)
             self._workspace.setVisible(False)
             self._workspace_hint.setVisible(False)
             self._terminal_workspace_label.setVisible(False)
             self._terminal_workspace.setVisible(False)
-        # Folder locked environments: move workspace to terminal line
-        elif is_folder_locked:
+        # Mounted environments: move workspace to terminal line
+        elif workspace_type == WORKSPACE_MOUNTED:
             self._workspace_label.setVisible(False)
             self._workspace.setVisible(False)
             self._workspace_hint.setVisible(False)
