@@ -19,8 +19,6 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.environments import Environment
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_NONE
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
@@ -112,7 +110,6 @@ class _MainWindowTasksInteractiveMixin:
             env
             and env.workspace_type == WORKSPACE_CLONED
             and desired_base
-            and gh_mode == GH_MANAGEMENT_GITHUB
         ):
             env.gh_last_base_branch = desired_base
             save_environment(env)
@@ -211,7 +208,6 @@ class _MainWindowTasksInteractiveMixin:
             created_at_s=time.time(),
             status="starting",
             container_id=container_name,
-            gh_management_mode=gh_mode,
             gh_use_host_cli=(
                 bool(getattr(env, "gh_use_host_cli", True)) if env else True
             ),
@@ -226,14 +222,13 @@ class _MainWindowTasksInteractiveMixin:
         self._schedule_save()
 
         if env:
-            task.gh_management_locked = bool(getattr(env, "gh_management_locked", False))
             task.workspace_type = env.workspace_type
 
         task.gh_use_host_cli = bool(task.gh_use_host_cli and is_gh_available())
 
         # Extract gh_repo from environment if GitHub management is enabled
         gh_repo: str = ""
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
+        if workspace_type == WORKSPACE_CLONED and env:
             gh_repo = str(env.workspace_target or env.gh_management_target or "").strip()
 
         # Launch interactive terminal - delegated to Docker launcher module

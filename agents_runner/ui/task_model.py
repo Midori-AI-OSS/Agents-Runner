@@ -28,14 +28,14 @@ class Task:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     logs: list[str] = field(default_factory=list)
-    gh_management_mode: str = GH_MANAGEMENT_NONE
+    gh_management_mode: str = GH_MANAGEMENT_NONE  # Deprecated: kept for deserialization only, use workspace_type
     gh_use_host_cli: bool = True
     gh_repo_root: str = ""
     gh_base_branch: str = ""
     gh_branch: str = ""
     gh_pr_url: str = ""
     gh_pr_metadata_path: str = ""
-    gh_management_locked: bool = False
+    gh_management_locked: bool = False  # Deprecated: kept for deserialization only, use Environment.gh_management_locked
     workspace_type: str = WORKSPACE_NONE
     git: dict[str, object] | None = None
     agent_cli: str = ""

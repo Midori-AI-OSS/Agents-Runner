@@ -6,7 +6,6 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox
 
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.log_format import format_log
 
@@ -28,8 +27,8 @@ class _MainWindowTaskReviewMixin:
             )
             return
 
-        # Task.gh_management_mode already contains normalized values
-        is_github_mode = task.gh_management_mode == GH_MANAGEMENT_GITHUB
+        # Check if task uses cloned workspace (GitHub repo)
+        is_github_mode = task.workspace_type == WORKSPACE_CLONED
 
         # Handle existing PR URL
         pr_url = str(task.gh_pr_url or "").strip()
