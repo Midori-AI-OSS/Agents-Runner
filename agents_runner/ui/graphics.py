@@ -208,6 +208,16 @@ class GlassRoot(QWidget):
         self._codex_jitter_x: float = 0.0
         self._codex_jitter_y: float = 0.0
 
+        # Performance optimization: cache colors and gradient
+        self._cached_top_color: QColor | None = None
+        self._cached_bottom_color: QColor | None = None
+        self._cached_top_phase: float = -1.0
+        self._cached_bottom_phase: float = -1.0
+        self._cached_gradient: QLinearGradient | None = None
+        self._cached_boundary_y: int = -1
+        self._cached_gradient_top_color: QColor | None = None
+        self._cached_gradient_bottom_color: QColor | None = None
+
         if self._animate_orbs:
             timer = QTimer(self)
             timer.setInterval(33)
@@ -394,7 +404,14 @@ class GlassRoot(QWidget):
             Colors chosen for WCAG AA compliance (4.5:1 contrast with light text).
             #2B5A8E provides 7.10:1 contrast, #AA5500 provides 5.24:1 contrast.
         """
-        return self._blend_colors("#2B5A8E", "#AA5500", phase)
+        # Cache: skip recalculation if phase change < 0.01
+        if self._cached_top_color is not None and abs(phase - self._cached_top_phase) < 0.01:
+            return self._cached_top_color
+        
+        color = self._blend_colors("#2B5A8E", "#AA5500", phase)
+        self._cached_top_color = color
+        self._cached_top_phase = phase
+        return color
 
     def _get_bottom_band_color(self, phase: float) -> QColor:
         """
@@ -406,7 +423,14 @@ class GlassRoot(QWidget):
         Returns:
             Blended QColor for bottom band
         """
-        return self._blend_colors("#2A2A2A", "#3A3A3A", phase)
+        # Cache: skip recalculation if phase change < 0.01
+        if self._cached_bottom_color is not None and abs(phase - self._cached_bottom_phase) < 0.01:
+            return self._cached_bottom_color
+        
+        color = self._blend_colors("#2A2A2A", "#3A3A3A", phase)
+        self._cached_bottom_color = color
+        self._cached_bottom_phase = phase
+        return color
 
     def _calc_split_ratio(self) -> float:
         """
@@ -466,12 +490,12 @@ class GlassRoot(QWidget):
             painter: QPainter instance to draw with
             rect: Rectangle defining the paint area
         """
-        # Get current phase values
-        split_ratio = self._calc_split_ratio()
-        top_phase = self._calc_top_phase()
-        bottom_phase = self._calc_bottom_phase()
+        # Use cached phase values (updated by timer)
+        split_ratio = self._codex_split_ratio
+        top_phase = self._codex_color_blend_phase_top
+        bottom_phase = self._codex_color_blend_phase_bottom
 
-        # Calculate colors based on phase
+        # Calculate colors based on phase (with caching)
         top_color = self._get_top_band_color(top_phase)
         bottom_color = self._get_bottom_band_color(bottom_phase)
 
@@ -510,27 +534,47 @@ class GlassRoot(QWidget):
         # Calculate boundary line position
         boundary_y = int(rect.height() * split_ratio)
 
-        # Define gradient region (80px above and below boundary)
+        # Check if we need to rebuild gradient
+        colors_changed = (
+            self._cached_gradient_top_color is None
+            or self._cached_gradient_bottom_color is None
+            or top_color != self._cached_gradient_top_color
+            or bottom_color != self._cached_gradient_bottom_color
+        )
+        boundary_changed = boundary_y != self._cached_boundary_y
+
+        # Rebuild gradient only if colors or boundary changed
+        if self._cached_gradient is None or colors_changed or boundary_changed:
+            # Define gradient region (80px above and below boundary)
+            gradient_extent = 80
+            gradient_start_y = boundary_y - gradient_extent
+            gradient_end_y = boundary_y + gradient_extent
+
+            # Create linear gradient perpendicular to boundary
+            gradient = QLinearGradient(0, gradient_start_y, 0, gradient_end_y)
+
+            # Add 7 color stops for smooth feathering
+            # Positions: 0.0, 0.15, 0.35, 0.5, 0.65, 0.85, 1.0
+            gradient.setColorAt(0.0, top_color)
+            gradient.setColorAt(0.15, self._blend_colors(top_color, bottom_color, 0.1))
+            gradient.setColorAt(0.35, self._blend_colors(top_color, bottom_color, 0.3))
+            gradient.setColorAt(0.5, self._blend_colors(top_color, bottom_color, 0.5))
+            gradient.setColorAt(0.65, self._blend_colors(top_color, bottom_color, 0.7))
+            gradient.setColorAt(0.85, self._blend_colors(top_color, bottom_color, 0.9))
+            gradient.setColorAt(1.0, bottom_color)
+
+            self._cached_gradient = gradient
+            self._cached_boundary_y = boundary_y
+            self._cached_gradient_top_color = QColor(top_color)
+            self._cached_gradient_bottom_color = QColor(bottom_color)
+
+        # Define gradient region for fillRect
         gradient_extent = 80
         gradient_start_y = boundary_y - gradient_extent
-        gradient_end_y = boundary_y + gradient_extent
-
-        # Create linear gradient perpendicular to boundary
-        gradient = QLinearGradient(0, gradient_start_y, 0, gradient_end_y)
-
-        # Add 7 color stops for smooth feathering
-        # Positions: 0.0, 0.15, 0.35, 0.5, 0.65, 0.85, 1.0
-        gradient.setColorAt(0.0, top_color)
-        gradient.setColorAt(0.15, self._blend_colors(top_color, bottom_color, 0.1))
-        gradient.setColorAt(0.35, self._blend_colors(top_color, bottom_color, 0.3))
-        gradient.setColorAt(0.5, self._blend_colors(top_color, bottom_color, 0.5))
-        gradient.setColorAt(0.65, self._blend_colors(top_color, bottom_color, 0.7))
-        gradient.setColorAt(0.85, self._blend_colors(top_color, bottom_color, 0.9))
-        gradient.setColorAt(1.0, bottom_color)
 
         # Apply gradient to the boundary region
         painter.fillRect(
-            0, gradient_start_y, rect.width(), gradient_extent * 2, gradient
+            0, gradient_start_y, rect.width(), gradient_extent * 2, self._cached_gradient
         )
 
     def _paint_orbs(self, painter: QPainter, theme: _AgentTheme) -> None:
