@@ -558,6 +558,10 @@ class GlassRoot(QWidget):
         painter.restore()
 
     def _paint_theme(self, painter: QPainter, theme: _AgentTheme) -> None:
+        if theme.name == "codex":
+            self._paint_codex_background(painter, self.rect())
+            return  # Skip orbs and shards for Codex
+
         painter.fillRect(self.rect(), theme.base)
 
         self._ensure_orbs()
