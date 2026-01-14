@@ -14,6 +14,7 @@ from PySide6.QtCore import (
     QTimer,
 )
 from PySide6.QtGui import QColor
+from PySide6.QtGui import QLinearGradient
 from PySide6.QtGui import QPainter
 from PySide6.QtGui import QPainterPath
 from PySide6.QtGui import QPaintEvent
@@ -447,6 +448,50 @@ class GlassRoot(QWidget):
         # Trigger repaint if using Codex theme
         if self._theme.name == "codex":
             self.update()
+
+    def _paint_band_boundary(
+        self,
+        painter: QPainter,
+        rect: QWidget,
+        split_ratio: float,
+        top_color: QColor,
+        bottom_color: QColor,
+    ) -> None:
+        """
+        Paint a soft, feathered gradient boundary between top and bottom bands.
+
+        Args:
+            painter: QPainter instance to draw with
+            rect: Rectangle defining the paint area
+            split_ratio: Position of boundary (0.0-1.0, where 0.3 = 30% from top)
+            top_color: Color of the top band
+            bottom_color: Color of the bottom band
+        """
+        # Calculate boundary line position
+        boundary_y = int(rect.height() * split_ratio)
+
+        # Define gradient region (80px above and below boundary)
+        gradient_extent = 80
+        gradient_start_y = boundary_y - gradient_extent
+        gradient_end_y = boundary_y + gradient_extent
+
+        # Create linear gradient perpendicular to boundary
+        gradient = QLinearGradient(0, gradient_start_y, 0, gradient_end_y)
+
+        # Add 7 color stops for smooth feathering
+        # Positions: 0.0, 0.15, 0.35, 0.5, 0.65, 0.85, 1.0
+        gradient.setColorAt(0.0, top_color)
+        gradient.setColorAt(0.15, self._blend_colors(top_color, bottom_color, 0.1))
+        gradient.setColorAt(0.35, self._blend_colors(top_color, bottom_color, 0.3))
+        gradient.setColorAt(0.5, self._blend_colors(top_color, bottom_color, 0.5))
+        gradient.setColorAt(0.65, self._blend_colors(top_color, bottom_color, 0.7))
+        gradient.setColorAt(0.85, self._blend_colors(top_color, bottom_color, 0.9))
+        gradient.setColorAt(1.0, bottom_color)
+
+        # Apply gradient to the boundary region
+        painter.fillRect(
+            0, gradient_start_y, rect.width(), gradient_extent * 2, gradient
+        )
 
     def _paint_orbs(self, painter: QPainter, theme: _AgentTheme) -> None:
         if not self._orbs:
