@@ -26,10 +26,10 @@ This project uses the Codex contributor coordination system. Follow these guidel
 ## Config & Data Directories
 
 - `~/.midoriai`: App data folder for this program (and other Midori AI programs)
-- `~/.codex`: Codex agent config folder (read-only)
-- `~/.copilot`: Copilot config folder (read-only)
-- `~/.claude`: Claude agent config folder (read-only)
-- `~/.gemini`: Gemini CLI config folder (read-only)
+- `~/.codex`: Codex agent config folder (read-write)
+- `~/.copilot`: Copilot config folder (read-write)
+- `~/.claude`: Claude agent config folder (read-write)
+- `~/.gemini`: Gemini CLI config folder (read-write)
 
 ---
 
