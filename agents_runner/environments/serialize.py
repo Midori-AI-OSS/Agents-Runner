@@ -4,7 +4,7 @@ from typing import Any
 
 from .model import ENVIRONMENT_VERSION
 from .model import Environment
-from .model import normalize_gh_management_mode
+from .model import normalize_workspace_type
 from .model import PromptConfig
 from .model import AgentSelection
 from .model import AgentInstance
@@ -112,6 +112,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     preflight_enabled = bool(payload.get("preflight_enabled", False))
     preflight_script = str(payload.get("preflight_script") or "")
     headless_desktop_enabled = bool(payload.get("headless_desktop_enabled", False))
+    cache_desktop_build = bool(payload.get("cache_desktop_build", False))
+    container_caching_enabled = bool(payload.get("container_caching_enabled", False))
+    cached_preflight_script = str(payload.get("cached_preflight_script") or "")
 
     env_vars = payload.get("env_vars", {})
     env_vars = env_vars if isinstance(env_vars, dict) else {}
@@ -119,14 +122,55 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     extra_mounts = payload.get("extra_mounts", [])
     extra_mounts = extra_mounts if isinstance(extra_mounts, list) else []
 
-    gh_management_mode = normalize_gh_management_mode(
-        str(payload.get("gh_management_mode") or "")
-    )
-    gh_management_target = str(payload.get("gh_management_target") or "").strip()
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
-    gh_pr_metadata_enabled = bool(payload.get("gh_pr_metadata_enabled", False))
+    
+    # Migration: Rename gh_pr_metadata_enabled to gh_context_enabled
+    # Check both old and new field names for backward compatibility
+    gh_context_enabled = bool(
+        payload.get("gh_context_enabled", 
+                    payload.get("gh_pr_metadata_enabled", False))
+    )
+
+    # Migration: workspace_type from gh_management_mode
+    # Prefer new key, fallback to old key
+    workspace_type = payload.get("workspace_type")
+    if not workspace_type and "gh_management_mode" in payload:
+        old_mode = payload["gh_management_mode"]
+        if old_mode == "github":
+            workspace_type = "cloned"
+        elif old_mode == "local":
+            workspace_type = "mounted"
+        else:
+            workspace_type = "none"
+    else:
+        workspace_type = workspace_type or "none"
+    
+    # Migration: workspace_target from gh_management_target
+    # Prefer new key, fallback to old key for backward compatibility
+    workspace_target = str(
+        payload.get("workspace_target") or payload.get("gh_management_target") or ""
+    ).strip()
+    
+    # Normalize using the new function
+    workspace_type = normalize_workspace_type(workspace_type)
+
+    try:
+        midoriai_template_likelihood = float(
+            payload.get("midoriai_template_likelihood", 0.0)
+        )
+    except (TypeError, ValueError):
+        midoriai_template_likelihood = 0.0
+    midoriai_template_likelihood = max(0.0, min(1.0, midoriai_template_likelihood))
+    midoriai_template_detected = bool(payload.get("midoriai_template_detected", False))
+    midoriai_template_detected_path_raw = payload.get("midoriai_template_detected_path")
+    midoriai_template_detected_path = (
+        str(midoriai_template_detected_path_raw).strip()
+        if isinstance(midoriai_template_detected_path_raw, str)
+        else ""
+    )
+    midoriai_template_detected_path = midoriai_template_detected_path or None
 
     prompts_data = payload.get("prompts", [])
     prompts = []
@@ -271,19 +315,25 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         agent_cli_args=agent_cli_args,
         max_agents_running=max_agents_running,
         headless_desktop_enabled=headless_desktop_enabled,
+        cache_desktop_build=cache_desktop_build,
+        container_caching_enabled=container_caching_enabled,
+        cached_preflight_script=cached_preflight_script,
         preflight_enabled=preflight_enabled,
         preflight_script=preflight_script,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
-        gh_management_mode=gh_management_mode,
-        gh_management_target=gh_management_target,
         gh_management_locked=gh_management_locked,
+        workspace_type=workspace_type,
+        workspace_target=workspace_target,
         gh_last_base_branch=gh_last_base_branch,
         gh_use_host_cli=gh_use_host_cli,
-        gh_pr_metadata_enabled=gh_pr_metadata_enabled,
+        gh_context_enabled=gh_context_enabled,  # Use migrated field name
         prompts=prompts,
         prompts_unlocked=prompts_unlocked,
         agent_selection=agent_selection,
+        midoriai_template_likelihood=midoriai_template_likelihood,
+        midoriai_template_detected=midoriai_template_detected,
+        midoriai_template_detected_path=midoriai_template_detected_path,
     )
 
 
@@ -336,18 +386,35 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "headless_desktop_enabled": bool(
             getattr(env, "headless_desktop_enabled", False)
         ),
+        "cache_desktop_build": bool(getattr(env, "cache_desktop_build", False)),
+        "container_caching_enabled": bool(
+            getattr(env, "container_caching_enabled", False)
+        ),
+        "cached_preflight_script": str(getattr(env, "cached_preflight_script", "") or ""),
         "preflight_enabled": bool(env.preflight_enabled),
         "preflight_script": env.preflight_script,
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),
-        "gh_management_mode": normalize_gh_management_mode(env.gh_management_mode),
-        "gh_management_target": str(env.gh_management_target or "").strip(),
         "gh_management_locked": bool(env.gh_management_locked),
+        "workspace_type": env.workspace_type,
+        "workspace_target": str(env.workspace_target or "").strip(),
         "gh_last_base_branch": str(
             getattr(env, "gh_last_base_branch", "") or ""
         ).strip(),
         "gh_use_host_cli": bool(env.gh_use_host_cli),
-        "gh_pr_metadata_enabled": bool(env.gh_pr_metadata_enabled),
+        "gh_context_enabled": bool(env.gh_context_enabled),  # Save with new name
+        # Also save with old name for backward compatibility with older builds
+        "gh_pr_metadata_enabled": bool(env.gh_context_enabled),
+        "midoriai_template_likelihood": float(
+            max(0.0, min(1.0, float(getattr(env, "midoriai_template_likelihood", 0.0))))
+        ),
+        "midoriai_template_detected": bool(
+            getattr(env, "midoriai_template_detected", False)
+        ),
+        "midoriai_template_detected_path": (
+            str(getattr(env, "midoriai_template_detected_path", "") or "").strip()
+            or None
+        ),
         "prompts": _serialize_prompts(env.prompts or []),
         "prompts_unlocked": bool(env.prompts_unlocked),
         "agent_selection": selection_payload,

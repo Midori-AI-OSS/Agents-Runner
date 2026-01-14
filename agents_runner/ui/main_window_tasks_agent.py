@@ -13,17 +13,19 @@ from PySide6.QtCore import QThread
 
 from PySide6.QtWidgets import QMessageBox
 
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_NONE
-from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
+from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh_management import is_gh_available
 from agents_runner.docker_runner import DockerRunnerConfig
-from agents_runner.pr_metadata import ensure_pr_metadata_file
-from agents_runner.pr_metadata import pr_metadata_container_path
-from agents_runner.pr_metadata import pr_metadata_host_path
-from agents_runner.pr_metadata import pr_metadata_prompt_instructions
+from agents_runner.log_format import format_log
+from agents_runner.pr_metadata import ensure_github_context_file
+from agents_runner.pr_metadata import github_context_container_path
+from agents_runner.pr_metadata import github_context_host_path
+from agents_runner.pr_metadata import github_context_prompt_instructions
+from agents_runner.pr_metadata import GitHubContext
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
@@ -31,6 +33,8 @@ from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import PIXELARCH_AGENT_CONTEXT_SUFFIX
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.constants import PIXELARCH_GIT_CONTEXT_SUFFIX
+from agents_runner.environments.model import AgentInstance
+from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _stain_color
 
@@ -56,9 +60,8 @@ class _MainWindowTasksAgentMixin:
             status = (task.status or "").lower()
             save_task_payload(self._state_path, serialize_task(task), archived=True)
 
-            # Clean up task workspace (if using GitHub management)
-            gh_mode = normalize_gh_management_mode(task.gh_management_mode)
-            if gh_mode == GH_MANAGEMENT_GITHUB and task.environment_id:
+            # Clean up task workspace (if using cloned GitHub repo)
+            if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
                 # Keep failed task repos for debugging (unless status is "done")
                 keep_on_error = status in {"failed", "error"}
                 if not keep_on_error:
@@ -84,7 +87,7 @@ class _MainWindowTasksAgentMixin:
         host_codex: str,
         env_id: str,
         base_branch: str,
-    ) -> None:
+    ) -> str | None:
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -117,12 +120,121 @@ class _MainWindowTasksAgentMixin:
                 env=env, advance_round_robin=True
             )
 
-        gh_mode = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
+        # Check cooldown for selected agent
+        from agents_runner.core.agent.cooldown_manager import CooldownManager
+        from agents_runner.core.agent.keys import cooldown_key
+        from agents_runner.ui.dialogs.cooldown_modal import (
+            CooldownAction,
+            CooldownModal,
+        )
+
+        cooldown_mgr = CooldownManager(self._watch_states)
+        selected_cli_flags = ""
+        if env and env.agent_selection and agent_instance_id:
+            inst = next(
+                (
+                    a
+                    for a in (env.agent_selection.agents or [])
+                    if str(getattr(a, "agent_id", "") or "").strip() == agent_instance_id
+                ),
+                None,
             )
+            selected_cli_flags = str(getattr(inst, "cli_flags", "") or "").strip() if inst else ""
+
+        cooldown_args: list[str] = []
+        if selected_cli_flags:
+            try:
+                cooldown_args = shlex.split(selected_cli_flags)
+            except ValueError:
+                cooldown_args = []
+        elif env and env.agent_cli_args.strip():
+            try:
+                cooldown_args = shlex.split(env.agent_cli_args)
+            except ValueError:
+                cooldown_args = []
+
+        selected_key = cooldown_key(
+            agent_cli=agent_cli,
+            host_config_dir=auto_config_dir,
+            agent_cli_args=cooldown_args,
+        )
+        watch_state = cooldown_mgr.check_cooldown(selected_key)
+
+        # Show cooldown modal if agent is on cooldown
+        if watch_state and watch_state.is_on_cooldown():
+            # Get fallback agent name
+            fallback_name = None
+            fallback_agent = None
+            if (
+                env
+                and env.agent_selection
+                and env.agent_selection.agent_fallbacks
+            ):
+                # Find primary agent
+                primary_agent = None
+                if env.agent_selection.agents:
+                    for agent in env.agent_selection.agents:
+                        if agent.agent_cli == agent_cli:
+                            primary_agent = agent
+                            break
+
+                # Get fallback
+                if primary_agent:
+                    fallback_id = env.agent_selection.agent_fallbacks.get(
+                        primary_agent.agent_id
+                    )
+                    if fallback_id:
+                        fallback_agent = next(
+                            (
+                                a
+                                for a in env.agent_selection.agents
+                                if a.agent_id == fallback_id
+                            ),
+                            None,
+                        )
+                        if fallback_agent:
+                            fallback_name = fallback_agent.agent_cli.capitalize()
+
+            # Show cooldown modal
+            modal = CooldownModal(
+                self,
+                agent_name=agent_cli.capitalize(),
+                watch_state=watch_state,
+                fallback_agent_name=fallback_name,
+            )
+
+            result = modal.exec()
+            action = modal.get_result()
+
+            if action == CooldownAction.CANCEL:
+                return  # Don't start task
+
+            elif action == CooldownAction.BYPASS:
+                # Clear cooldown and continue with original agent
+                cooldown_mgr.clear_cooldown(selected_key)
+                self._schedule_save()  # Persist cooldown clear
+
+            elif action == CooldownAction.USE_FALLBACK:
+                # Override agent for this task only (task-scoped)
+                if fallback_agent:
+                    agent_cli = fallback_agent.agent_cli
+                    auto_config_dir = os.path.expanduser(
+                        str(getattr(fallback_agent, "config_dir", "") or "").strip()
+                    )
+                    if not auto_config_dir:
+                        auto_config_dir = self._resolve_config_dir_for_agent(
+                            agent_cli=agent_cli,
+                            env=env,
+                            settings=self._settings_data,
+                        )
+                    agent_instance_id = fallback_agent.agent_id
+                    # Don't modify environment, just use fallback for this task
+
+
+        workspace_type = (
+            env.workspace_type
             if env
-            else GH_MANAGEMENT_NONE
+            else "none"
         )
         effective_workdir, ready, message = self._new_task_workspace(
             env, task_id=task_id
@@ -130,11 +242,11 @@ class _MainWindowTasksAgentMixin:
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
             return
-        if gh_mode == GH_MANAGEMENT_GITHUB:
+        if workspace_type == WORKSPACE_CLONED:
             try:
                 os.makedirs(effective_workdir, exist_ok=True)
             except Exception as exc:
-                logger.error(f"Failed to create directory {effective_workdir}: {exc}")
+                logger.error(format_log("host", "workspace", "ERROR", f"Failed to create directory {effective_workdir}: {exc}"))
                 QMessageBox.warning(
                     self,
                     "Directory Creation Failed",
@@ -146,12 +258,43 @@ class _MainWindowTasksAgentMixin:
             return
 
         self._settings_data["host_workdir"] = effective_workdir
+
+        resolved_agent_selection: AgentSelection | None = None
+        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            resolved_agents: list[AgentInstance] = []
+            for inst in list(env.agent_selection.agents or []):
+                inst_cli = str(getattr(inst, "agent_cli", "") or "").strip()
+                inst_dir = os.path.expanduser(str(getattr(inst, "config_dir", "") or "").strip())
+                if not inst_dir:
+                    inst_dir = self._resolve_config_dir_for_agent(
+                        agent_cli=inst_cli,
+                        env=env,
+                        settings=self._settings_data,
+                    )
+                resolved_agents.append(
+                    AgentInstance(
+                        agent_id=str(getattr(inst, "agent_id", "") or "").strip() or inst_cli,
+                        agent_cli=inst_cli,
+                        config_dir=inst_dir,
+                        cli_flags=str(getattr(inst, "cli_flags", "") or "").strip(),
+                    )
+                )
+            resolved_agent_selection = AgentSelection(
+                agents=resolved_agents,
+                selection_mode=str(getattr(env.agent_selection, "selection_mode", "") or "round-robin"),
+                agent_fallbacks=dict(getattr(env.agent_selection, "agent_fallbacks", {}) or {}),
+            )
+
         host_codex = os.path.expanduser(str(host_codex or "").strip())
-        if not host_codex:
-            host_codex = auto_config_dir
-        if not self._ensure_agent_config_dir(agent_cli, host_codex):
+        host_config_dir = auto_config_dir
+        if agent_cli == "codex" and host_codex:
+            host_config_dir = host_codex
+        if not host_config_dir:
+            host_config_dir = auto_config_dir
+
+        if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
             return
-        self._settings_data[self._host_config_dir_key(agent_cli)] = host_codex
+        self._settings_data[self._host_config_dir_key(agent_cli)] = host_config_dir
 
         image = PIXELARCH_EMERALD_IMAGE
 
@@ -183,21 +326,32 @@ class _MainWindowTasksAgentMixin:
             bool(getattr(env, "headless_desktop_enabled", False)) if env else False
         )
         headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
+        desktop_cache_enabled = (
+            bool(getattr(env, "cache_desktop_build", False)) if env else False
+        )
+        container_caching_enabled = (
+            bool(getattr(env, "container_caching_enabled", False)) if env else False
+        )
+        cached_preflight_script = (
+            str(getattr(env, "cached_preflight_script", "") or "").strip() if env else ""
+        )
+        # Only enable cache if desktop is enabled
+        desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
 
         task = Task(
             task_id=task_id,
             prompt=prompt,
             image=image,
             host_workdir=effective_workdir,
-            host_codex_dir=host_codex,
+            host_codex_dir=host_config_dir,
             environment_id=env_id,
             created_at_s=time.time(),
             status="queued",
-            gh_management_mode=gh_mode,
             agent_cli=agent_cli,
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
             headless_desktop_enabled=headless_desktop_enabled,
+            workspace_type=workspace_type,
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -211,12 +365,11 @@ class _MainWindowTasksAgentMixin:
 
         desired_base = str(base_branch or "").strip()
 
-        # Save the selected branch for locked environments
+        # Save the selected branch for cloned environments
         if (
             env
-            and env.gh_management_locked
+            and env.workspace_type == WORKSPACE_CLONED
             and desired_base
-            and gh_mode == GH_MANAGEMENT_GITHUB
         ):
             env.gh_last_base_branch = desired_base
             save_environment(env)
@@ -227,8 +380,8 @@ class _MainWindowTasksAgentMixin:
         if bool(self._settings_data.get("append_pixelarch_context") or False):
             runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
 
-        # Inject git context when GitHub management is enabled
-        if gh_mode == GH_MANAGEMENT_GITHUB:
+        # Inject git context when cloned workspace is used
+        if workspace_type == WORKSPACE_CLONED:
             runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_GIT_CONTEXT_SUFFIX}"
 
         enabled_env_prompts: list[str] = []
@@ -245,54 +398,117 @@ class _MainWindowTasksAgentMixin:
             )
             self._on_task_log(
                 task_id,
-                f"[env] appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)",
+                format_log("env", "prompts", "INFO", f"appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)"),
             )
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
+        
+        # Add host cache mount if enabled in settings
+        if self._settings_data.get("mount_host_cache", False):
+            host_cache = os.path.expanduser("~/.cache")
+            container_cache = "/home/midori-ai/.cache"
+            extra_mounts_for_task.append(f"{host_cache}:{container_cache}:rw")
 
-        # PR metadata prep (only if gh mode is enabled)
-        # Note: We prepare the PR metadata file before the task starts, even though
-        # gh_repo_root and gh_branch won't be available until after the git clone
-        # completes in the worker. This is fine because the file is created with just
-        # the task_id, and the actual branch/repo info is captured later when the
-        # worker completes (see _on_bridge_done in main_window_task_events.py).
-        # If the git clone fails, the orphaned metadata file is harmless and will be
-        # cleaned up with other temp files.
-        if (
-            env
-            and gh_mode == GH_MANAGEMENT_GITHUB
-            and bool(getattr(env, "gh_pr_metadata_enabled", False))
-        ):
-            host_path = pr_metadata_host_path(
-                os.path.dirname(self._state_path), task_id
-            )
-            container_path = pr_metadata_container_path(task_id)
-            try:
-                ensure_pr_metadata_file(host_path, task_id=task_id)
-            except Exception as exc:
-                self._on_task_log(
-                    task_id, f"[gh] failed to prepare PR metadata file: {exc}"
+        # GitHub context preparation
+        # For cloned: Create empty file before clone, populate after clone completes
+        # For mounted: Detect git and populate immediately if it's a git repo
+        # For non-git: Skip gracefully (never fail the task)
+        if env and bool(getattr(env, "gh_context_enabled", False)):
+            # Detect git for mounted environments
+            should_generate = False
+            github_context = None
+            
+            if env.workspace_type == WORKSPACE_MOUNTED:
+                # Mounted: Try to detect git repo
+                folder_path = str(env.workspace_target or "").strip()
+                if folder_path:
+                    try:
+                        git_info = get_git_info(folder_path)
+                        if git_info:
+                            should_generate = True
+                            github_context = GitHubContext(
+                                repo_url=git_info.repo_url,
+                                repo_owner=git_info.repo_owner,
+                                repo_name=git_info.repo_name,
+                                base_branch=git_info.branch,
+                                task_branch=None,
+                                head_commit=git_info.commit_sha,
+                            )
+                            # Populate task.git immediately for mounted environments
+                            task.git = {
+                                "repo_url": git_info.repo_url,
+                                "repo_owner": git_info.repo_owner,
+                                "repo_name": git_info.repo_name,
+                                "base_branch": git_info.branch,
+                                "target_branch": None,
+                                "head_commit": git_info.commit_sha,
+                            }
+                            # Also set gh_repo_root for mounted tasks
+                            if folder_path and os.path.isdir(folder_path):
+                                task.gh_repo_root = folder_path
+                            self._on_task_log(
+                                task_id, format_log("gh", "context", "INFO", f"detected git repo: {git_info.repo_url}")
+                            )
+                        else:
+                            self._on_task_log(
+                                task_id, format_log("gh", "context", "INFO", "folder is not a git repository; skipping context")
+                            )
+                    except Exception as exc:
+                        logger.warning(format_log("gh", "context", "WARN", f"git detection failed: {exc}"))
+                        self._on_task_log(
+                            task_id, format_log("gh", "context", "WARN", f"git detection failed: {exc}; continuing without context")
+                        )
+            elif env.workspace_type == WORKSPACE_CLONED:
+                # Cloned: Will populate after clone
+                should_generate = True
+            
+            # Create GitHub context file
+            if should_generate:
+                host_path = github_context_host_path(
+                    os.path.dirname(self._state_path), task_id
                 )
-            else:
-                task.gh_pr_metadata_path = host_path
-                extra_mounts_for_task.append(f"{host_path}:{container_path}:rw")
-                env_vars_for_task.setdefault("CODEX_PR_METADATA_PATH", container_path)
-                runner_prompt = (
-                    f"{runner_prompt}{pr_metadata_prompt_instructions(container_path)}"
-                )
-                self._on_task_log(
-                    task_id, f"[gh] PR metadata enabled; mounted -> {container_path}"
-                )
+                container_path = github_context_container_path(task_id)
+                try:
+                    ensure_github_context_file(
+                        host_path, 
+                        task_id=task_id,
+                        github_context=github_context,
+                    )
+                except Exception as exc:
+                    logger.error(format_log("gh", "context", "ERROR", f"failed to create GitHub context file: {exc}"))
+                    self._on_task_log(
+                        task_id, format_log("gh", "context", "ERROR", f"failed to create GitHub context file: {exc}; continuing without context")
+                    )
+                else:
+                    task.gh_pr_metadata_path = host_path
+                    extra_mounts_for_task.append(f"{host_path}:{container_path}:rw")
+                    runner_prompt = (
+                        f"{runner_prompt}{github_context_prompt_instructions(container_path)}"
+                    )
+                    # Clarify two-phase process for cloned repo environments
+                    if workspace_type == WORKSPACE_CLONED:
+                        self._on_task_log(
+                            task_id, format_log("gh", "context", "INFO", f"GitHub context file created and mounted -> {container_path}")
+                        )
+                        self._on_task_log(
+                            task_id, format_log("gh", "context", "INFO", "Repository metadata will be populated after clone completes")
+                        )
+                    else:
+                        self._on_task_log(
+                            task_id, format_log("gh", "context", "INFO", f"GitHub context enabled; mounted -> {container_path}")
+                        )
 
         # Build config with GitHub repo info if needed
+        # Get the context file path if it was created (regardless of mode)
+        gh_context_file = getattr(task, "gh_pr_metadata_path", None)
         gh_repo: str | None = None
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            gh_repo = str(env.gh_management_target or "").strip() or None
+        if workspace_type == WORKSPACE_CLONED and env:
+            gh_repo = str(env.workspace_target or "").strip() or None
 
         config = DockerRunnerConfig(
             task_id=task_id,
             image=image,
-            host_codex_dir=host_codex,
+            host_codex_dir=host_config_dir,
             host_workdir=effective_workdir,
             agent_cli=agent_cli,
             environment_id=env_id,
@@ -301,6 +517,9 @@ class _MainWindowTasksAgentMixin:
             settings_preflight_script=settings_preflight_script,
             environment_preflight_script=environment_preflight_script,
             headless_desktop_enabled=headless_desktop_enabled,
+            desktop_cache_enabled=desktop_cache_enabled,
+            container_caching_enabled=container_caching_enabled,
+            cached_preflight_script=cached_preflight_script or None,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             agent_cli_args=agent_cli_args,
@@ -308,23 +527,27 @@ class _MainWindowTasksAgentMixin:
             gh_prefer_gh_cli=use_host_gh,
             gh_recreate_if_needed=True,
             gh_base_branch=desired_base or None,
+            gh_context_file_path=gh_context_file,
         )
         task._runner_config = config
         task._runner_prompt = runner_prompt
+        task._agent_selection = resolved_agent_selection or (env.agent_selection if env else None)
 
         if self._can_start_new_agent_for_env(env_id):
             self._actually_start_task(task)
         else:
-            self._on_task_log(task_id, "[queue] Waiting for available slot...")
+            self._on_task_log(task_id, format_log("queue", "slot", "INFO", "Waiting for available slot..."))
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
 
         self._show_dashboard()
         self._new_task.reset_for_new_run()
+        return task_id
 
     def _actually_start_task(self, task: Task) -> None:
         config = getattr(task, "_runner_config", None)
         prompt = getattr(task, "_runner_prompt", None)
+        agent_selection = getattr(task, "_agent_selection", None)
         if config is None or prompt is None:
             return
 
@@ -334,7 +557,13 @@ class _MainWindowTasksAgentMixin:
         spinner = _stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
-        bridge = TaskRunnerBridge(task_id=task.task_id, config=config, prompt=prompt)
+        bridge = TaskRunnerBridge(
+            task_id=task.task_id,
+            config=config,
+            prompt=prompt,
+            agent_selection=agent_selection,
+            watch_states=self._watch_states,
+        )
         thread = QThread(self)
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
@@ -342,6 +571,8 @@ class _MainWindowTasksAgentMixin:
         bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
         bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
         bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
+        bridge.retry_attempt.connect(self._on_bridge_retry_attempt, Qt.QueuedConnection)
+        bridge.agent_switched.connect(self._on_bridge_agent_switched, Qt.QueuedConnection)
 
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)

@@ -19,9 +19,7 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.environments import Environment
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_NONE
-from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.prompt_sanitizer import sanitize_prompt
@@ -63,7 +61,7 @@ class _MainWindowTasksInteractiveMixin:
             QMessageBox.warning(
                 self,
                 "Terminal not available",
-                "The selected terminal could not be found. Click Refresh next to Terminal and pick again.",
+                "The selected terminal could not be found.",
             )
             return
 
@@ -78,30 +76,44 @@ class _MainWindowTasksInteractiveMixin:
         task_id = uuid4().hex[:10]
         task_token = f"interactive-{task_id}"
 
-        gh_mode = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
+        workspace_type = (
+            env.workspace_type
             if env
-            else GH_MANAGEMENT_NONE
+            else "none"
         )
         host_workdir, ready, message = self._new_task_workspace(env, task_id=task_id)
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
             return
 
-        if gh_mode != GH_MANAGEMENT_GITHUB and not os.path.isdir(host_workdir):
+        if workspace_type != WORKSPACE_CLONED and not os.path.isdir(host_workdir):
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return
 
+        if env and os.path.isdir(host_workdir):
+            try:
+                from agents_runner.midoriai_template import MidoriAITemplateDetection
+                from agents_runner.midoriai_template import scan_midoriai_agents_template
+
+                # Only update template detection if not already set
+                # For cloned workspaces, we scan once and persist the result
+                if env.midoriai_template_likelihood == 0.0:
+                    detection = scan_midoriai_agents_template(host_workdir)
+                    env.midoriai_template_likelihood = detection.midoriai_template_likelihood
+                    env.midoriai_template_detected = detection.midoriai_template_detected
+                    env.midoriai_template_detected_path = detection.midoriai_template_detected_path
+                    save_environment(env)
+                    self._environments[env.env_id] = env
+            except Exception:
+                pass
+
         desired_base = str(base_branch or "").strip()
 
-        # Save the selected branch for locked environments
+        # Save the selected branch for cloned environments
         if (
             env
-            and env.gh_management_locked
+            and env.workspace_type == WORKSPACE_CLONED
             and desired_base
-            and gh_mode == GH_MANAGEMENT_GITHUB
         ):
             env.gh_last_base_branch = desired_base
             save_environment(env)
@@ -200,7 +212,6 @@ class _MainWindowTasksInteractiveMixin:
             created_at_s=time.time(),
             status="starting",
             container_id=container_name,
-            gh_management_mode=gh_mode,
             gh_use_host_cli=(
                 bool(getattr(env, "gh_use_host_cli", True)) if env else True
             ),
@@ -214,12 +225,15 @@ class _MainWindowTasksInteractiveMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
+        if env:
+            task.workspace_type = env.workspace_type
+
         task.gh_use_host_cli = bool(task.gh_use_host_cli and is_gh_available())
 
         # Extract gh_repo from environment if GitHub management is enabled
         gh_repo: str = ""
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            gh_repo = str(env.gh_management_target or "").strip()
+        if workspace_type == WORKSPACE_CLONED and env:
+            gh_repo = str(env.workspace_target or "").strip()
 
         # Launch interactive terminal - delegated to Docker launcher module
         launch_docker_terminal_task(
@@ -283,6 +297,36 @@ class _MainWindowTasksInteractiveMixin:
                     break
                 except Exception:
                     time.sleep(0.2)
+            
+            # Encrypt finish file as artifact before deleting
+            try:
+                from agents_runner.artifacts import encrypt_artifact
+                
+                task_dict = {"id": task_id, "task_id": task_id}
+                env_name = getattr(self, "_current_env_name", "unknown")
+                
+                artifact_uuid = encrypt_artifact(
+                    task_dict=task_dict,
+                    env_name=env_name,
+                    source_path=finish_path,
+                    original_filename=os.path.basename(finish_path),
+                )
+                
+                if artifact_uuid:
+                    print(f"[finish] Encrypted finish file as artifact: {artifact_uuid}")
+                else:
+                    print("[finish] Failed to encrypt finish file, but continuing")
+            except Exception as exc:
+                print(f"[finish] Error encrypting finish file: {exc}")
+            
+            # Delete plaintext finish file
+            try:
+                if os.path.exists(finish_path):
+                    os.unlink(finish_path)
+                    print(f"[finish] Deleted plaintext finish file: {finish_path}")
+            except Exception as exc:
+                print(f"[finish] Warning: failed to delete finish file: {exc}")
+            
             self.interactive_finished.emit(task_id, int(exit_code))
 
         threading.Thread(target=_worker, daemon=True).start()

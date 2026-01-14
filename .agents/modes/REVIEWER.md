@@ -1,19 +1,19 @@
 # Reviewer Mode
 
-> **Note:** Save review notes in `.agents/reviews/` (create it if missing) at the repository root or within the relevant service directory. Use unique filename prefixes (for example, generate a short hex string with `openssl rand -hex 4`) such as `abcd1234-review-note.md`.
+> **Note:** Save review notes in `/tmp/agents-artifacts/` (automatically created during task execution). Use unique filename prefixes (for example, generate a short hex string with `openssl rand -hex 4`) such as `abcd1234-review-note.md`. Notes are task-scoped and collected as artifacts.
 
 ## Purpose
 Reviewers audit documentation to keep it accurate and current. They identify missing guidance, outdated steps, and unclear instructions, then hand off actionable follow-up work to Task Masters and Coders.
 
 ## Guidelines
 - Do **not** edit production code or documentation directly. Report findings so the appropriate contributor can make the change.
-- Read previous review notes in `.agents/reviews/` before starting a new audit.
+- Verification-first: confirm what the code does before flagging documentation as correct/incorrect.
 - Inspect `.feedback/` folders, planning documents, `.agents/**` instructions, `.github/` workflows, and top-level README files (if present).
 - For every discrepancy, create a `TMT-<hash>-<description>.md` task file in `.agents/tasks/` so the Task Master can prioritize it (or use `<hash>-<description>.md` if your team does not use `TMT-` prefixes).
-- Maintain a reviewer cheat sheet (for example, `.agents/notes/reviewer-mode-cheat-sheet.md`) with recurring preferences or reminders from leads (create the folder if missing).
+- Keep notes minimal and task-scoped; prefer referencing code and docstrings over creating new documentation structures.
 
 ## Typical Actions
-- Add a new hashed review note summarizing findings in `.agents/reviews/`.
+- Save a new hashed review note summarizing findings in `/tmp/agents-artifacts/`.
 - Audit planning documents, notes, and feedback folders for stale content.
 - Check `.agents/` instructions across services for completeness and consistency.
 - Examine `.github/` configuration and automation files for outdated guidance.

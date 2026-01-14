@@ -1,5 +1,6 @@
 import os
 import shlex
+import subprocess
 
 from pathlib import Path
 
@@ -7,6 +8,12 @@ from pathlib import Path
 SUPPORTED_AGENTS = ("codex", "claude", "copilot", "gemini")
 CONTAINER_HOME = "/home/midori-ai"
 CONTAINER_WORKDIR = "/home/midori-ai/workspace"
+
+DEFAULT_HOST_CONFIG_DIRS: dict[str, str] = {
+    "claude": "~/.claude",
+    "copilot": "~/.copilot",
+    "gemini": "~/.gemini",
+}
 
 
 def normalize_agent(value: str | None) -> str:
@@ -23,6 +30,18 @@ def container_config_dir(agent: str) -> str:
     if agent == "gemini":
         return f"{CONTAINER_HOME}/.gemini"
     return f"{CONTAINER_HOME}/.codex"
+
+
+def default_host_config_dir(agent: str, *, codex_default: str | None = None) -> str:
+    agent = normalize_agent(agent)
+    if agent == "codex":
+        fallback = (
+            str(codex_default or "").strip()
+            or os.environ.get("CODEX_HOST_CODEX_DIR", "").strip()
+            or "~/.codex"
+        )
+        return os.path.expanduser(fallback)
+    return os.path.expanduser(DEFAULT_HOST_CONFIG_DIRS.get(agent, "~/.codex"))
 
 
 def additional_config_mounts(agent: str, host_config_dir: str) -> list[str]:
@@ -103,6 +122,8 @@ def build_noninteractive_cmd(
             "yolo",
             "--include-directories",
             container_workdir,
+            "--include-directories",
+            "/tmp",
             *extra_args,
         ]
         if prompt:
@@ -124,4 +145,18 @@ def build_noninteractive_cmd(
 
 
 def _is_git_repo_root(path: str) -> bool:
-    return os.path.exists(os.path.join(path, ".git"))
+    path = os.path.abspath(os.path.expanduser(str(path or "").strip() or "."))
+    if not os.path.isdir(path):
+        return False
+    try:
+        proc = subprocess.run(
+            ["git", "-C", path, "rev-parse", "--is-inside-work-tree"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+            stdin=subprocess.DEVNULL,
+        )
+    except Exception:
+        return False
+    return proc.returncode == 0 and (proc.stdout or "").strip().lower() == "true"

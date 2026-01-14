@@ -4,7 +4,10 @@ import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QSize
 from PySide6.QtCore import Signal
+from PySide6.QtCore import QThread
+from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
@@ -12,20 +15,29 @@ from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QMessageBox
-from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QStyle
 
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
+from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
+from agents_runner.ui.icons import mic_icon
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
 from agents_runner.widgets import GlassCard
+from agents_runner.widgets import SpellTextEdit
 from agents_runner.widgets import StainedGlassButton
+from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
+from agents_runner.stt.mic_recorder import MicRecorderError
+from agents_runner.stt.mic_recorder import MicRecording
+from agents_runner.stt.qt_worker import SttWorker
 
 
 class NewTaskPage(QWidget):
@@ -37,16 +49,23 @@ class NewTaskPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
-        self._gh_locked_envs: set[str] = set()
+        self._env_workspace_types: dict[str, str] = {}  # Track workspace types for environments
+        self._env_template_injection: dict[str, bool] = {}
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
+        self._spellcheck_enabled = True  # Default to enabled
+        self._stt_mode = "offline"
+        self._mic_recording: MicRecording | None = None
+        self._stt_thread: QThread | None = None
+        self._stt_worker: SttWorker | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
 
         self._environment = QComboBox()
+        self._environment.setFixedWidth(240)
         self._environment.currentIndexChanged.connect(self._on_environment_changed)
 
         header = GlassCard()
@@ -54,24 +73,31 @@ class NewTaskPage(QWidget):
         header_layout.setContentsMargins(18, 16, 18, 16)
         header_layout.setSpacing(6)
 
+        # Base branch dropdown (will be added to title bar later)
+        self._base_branch_label = QLabel("Base branch")
+        self._base_branch = QComboBox()
+        self._base_branch.setFixedWidth(240)
+        self._base_branch.setToolTip(
+            "Base branch for the per-task branch (only shown for repo environments)."
+        )
+        self.set_repo_branches([])
+        self._base_branch.setVisible(False)  # Initially hidden
+        
+        # Separator label for title bar
+        self._title_separator = QLabel("::")
+        self._title_separator.setStyleSheet("color: rgba(237, 239, 245, 160);")
+        self._title_separator.setVisible(False)  # Initially hidden
+        
         top_row = QHBoxLayout()
         top_row.setSpacing(10)
         title = QLabel("New task")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
 
-        env_label = QLabel("Environment")
-        env_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
-
-        back = QToolButton()
-        back.setText("Back")
-        back.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        back.clicked.connect(self.back_requested.emit)
-
         top_row.addWidget(title)
-        top_row.addWidget(env_label)
-        top_row.addWidget(self._environment)
         top_row.addStretch(1)
-        top_row.addWidget(back, 0, Qt.AlignRight)
+        top_row.addWidget(self._environment)
+        top_row.addWidget(self._title_separator)
+        top_row.addWidget(self._base_branch)
 
         header_layout.addLayout(top_row)
         layout.addWidget(header)
@@ -83,10 +109,61 @@ class NewTaskPage(QWidget):
 
         prompt_title = QLabel("Prompt")
         prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
-        self._prompt = QPlainTextEdit()
+        
+        # Separator between Prompt and agent chain
+        self._prompt_separator = QLabel("::")
+        self._prompt_separator.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
+        
+        # Agent chain display - inline with prompt label
+        self._agent_chain = QLabel("—")
+        self._agent_chain.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._agent_chain.setStyleSheet("color: rgba(237, 239, 245, 200);")
+        self._agent_chain.setToolTip(
+            "Agents will be used in this order for new tasks in this environment."
+        )
+        
+        # Prompt title row with agent chain
+        prompt_title_row = QHBoxLayout()
+        prompt_title_row.setSpacing(0)
+        prompt_title_row.addWidget(prompt_title)
+        prompt_title_row.addWidget(self._prompt_separator)
+        prompt_title_row.addWidget(self._agent_chain)
+        prompt_title_row.addStretch(1)
+        
+        self._prompt = SpellTextEdit(spellcheck_enabled=self._spellcheck_enabled)
         self._prompt.setPlaceholderText("Describe what you want the agent to do…")
         self._prompt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._prompt.setTabChangesFocus(True)
+
+        self._template_prompt_indicator = QLabel("(i)")
+        self._template_prompt_indicator.setVisible(False)
+        self._template_prompt_indicator.setToolTip(
+            "Midori AI Agents Template detected, adding prompt to enforce usage."
+        )
+        self._template_prompt_indicator.setStyleSheet(
+            "color: rgba(237, 239, 245, 160); margin: 8px;"
+        )
+        
+        self._voice_btn = QToolButton()
+        self._voice_btn.setIcon(mic_icon(size=18))
+        self._voice_btn.setIconSize(QSize(18, 18))
+        self._voice_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._voice_btn.setCheckable(True)
+        self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
+        self._voice_btn.setStyleSheet("margin: 8px;")
+        self._voice_btn.toggled.connect(self._on_voice_toggled)
+
+        prompt_container = QWidget()
+        prompt_container_layout = QGridLayout(prompt_container)
+        prompt_container_layout.setContentsMargins(0, 0, 0, 0)
+        prompt_container_layout.setSpacing(0)
+        prompt_container_layout.addWidget(self._prompt, 0, 0)
+        prompt_container_layout.addWidget(
+            self._template_prompt_indicator, 0, 0, Qt.AlignRight | Qt.AlignTop
+        )
+        prompt_container_layout.addWidget(
+            self._voice_btn, 0, 0, Qt.AlignRight | Qt.AlignBottom
+        )
 
         interactive_hint = QLabel(
             "Interactive: opens a terminal and runs the container with TTY/stdin for agent TUIs."
@@ -105,16 +182,27 @@ class NewTaskPage(QWidget):
         self._command.setPlaceholderText(
             "Args for the Agent CLI (e.g. --sandbox danger-full-access or --add-dir …), or a full container command (e.g. bash)"
         )
+        # Hidden from UI but functionality preserved
+        self._command.setVisible(False)
 
         interactive_grid = QGridLayout()
         interactive_grid.setHorizontalSpacing(10)
         interactive_grid.setVerticalSpacing(10)
-        interactive_grid.setColumnStretch(4, 1)
+        interactive_grid.setColumnStretch(1, 1)
         interactive_grid.addWidget(QLabel("Terminal"), 0, 0)
         interactive_grid.addWidget(self._terminal, 0, 1)
         interactive_grid.addWidget(refresh_terminals, 0, 2)
-        interactive_grid.addWidget(QLabel("Container command args"), 0, 3)
-        interactive_grid.addWidget(self._command, 0, 4)
+        
+        # Workspace display for mounted folder environments (shown on terminal line)
+        self._terminal_workspace_label = QLabel("Workspace")
+        self._terminal_workspace = QLabel("—")
+        self._terminal_workspace.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._terminal_workspace.setStyleSheet("color: rgba(237, 239, 245, 200);")
+        interactive_grid.addWidget(self._terminal_workspace_label, 0, 3)
+        interactive_grid.addWidget(self._terminal_workspace, 0, 4)
+        # Initially hidden, shown for mounted folder environments
+        self._terminal_workspace_label.setVisible(False)
+        self._terminal_workspace.setVisible(False)
 
         cfg_grid = QGridLayout()
         cfg_grid.setHorizontalSpacing(10)
@@ -125,19 +213,10 @@ class NewTaskPage(QWidget):
         self._workspace_hint.setStyleSheet("color: rgba(237, 239, 245, 160);")
         self._workspace_hint.setWordWrap(True)
 
-        cfg_grid.addWidget(QLabel("Workspace"), 0, 0)
+        self._workspace_label = QLabel("Workspace")
+        cfg_grid.addWidget(self._workspace_label, 0, 0)
         cfg_grid.addWidget(self._workspace, 0, 1, 1, 2)
         cfg_grid.addWidget(self._workspace_hint, 1, 1, 1, 2)
-
-        self._base_branch_label = QLabel("Base branch")
-        self._base_branch = QComboBox()
-        self._base_branch.setToolTip(
-            "Base branch for the per-task branch (only shown for repo environments)."
-        )
-        self.set_repo_branches([])
-        cfg_grid.addWidget(self._base_branch_label, 2, 0)
-        cfg_grid.addWidget(self._base_branch, 2, 1, 1, 2)
-        self.set_repo_controls_visible(False)
 
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
@@ -166,8 +245,8 @@ class NewTaskPage(QWidget):
         buttons.addWidget(self._run_interactive)
         buttons.addWidget(self._run_agent)
 
-        card_layout.addWidget(prompt_title)
-        card_layout.addWidget(self._prompt, 1)
+        card_layout.addLayout(prompt_title_row)
+        card_layout.addWidget(prompt_container, 1)
         card_layout.addWidget(interactive_hint)
         card_layout.addLayout(interactive_grid)
         card_layout.addLayout(cfg_grid)
@@ -182,6 +261,38 @@ class NewTaskPage(QWidget):
         super().resizeEvent(event)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
+
+    def _confirm_auto_base_branch(self, env_id: str, base_branch: str) -> bool:
+        """Show confirmation dialog for auto base branch in cloned repo environments.
+        
+        Args:
+            env_id: The environment ID to check
+            base_branch: The selected base branch (empty string or "auto" for auto mode)
+            
+        Returns:
+            True if user confirmed or confirmation not needed, False if cancelled
+        """
+        # Only show confirmation for cloned environments with auto base branch
+        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
+        is_auto_branch = not base_branch or base_branch.lower() == "auto"
+        
+        if not (workspace_type == WORKSPACE_CLONED and is_auto_branch):
+            return True
+        
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Confirm Auto Base Branch",
+            "You have selected 'Auto' as the base branch.\n\n"
+            "Auto uses the repository's default branch as the base "
+            "(commonly 'main' or 'master').\n\n"
+            "If you need a specific base branch, select it from the dropdown.\n\n"
+            "Do you want to proceed?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No  # Default to No for safety
+        )
+        
+        return reply == QMessageBox.Yes
 
     def _update_run_buttons(self) -> None:
         has_terminal = bool(str(self._terminal.currentData() or "").strip())
@@ -236,6 +347,11 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
+        
+        # Confirm auto base branch for cloned repo environments
+        if not self._confirm_auto_base_branch(env_id, base_branch):
+            return
+        
         self.requested_run.emit(prompt, host_codex, env_id, base_branch)
 
     def _on_get_agent_help(self) -> None:
@@ -283,6 +399,10 @@ class NewTaskPage(QWidget):
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
 
+        # Confirm auto base branch for cloned repo environments
+        if not self._confirm_auto_base_branch(env_id, base_branch):
+            return
+
         command = (self._command.text() or "").strip()
 
         prompt = load_prompt(
@@ -301,9 +421,10 @@ class NewTaskPage(QWidget):
 
     def _sync_interactive_options(self) -> None:
         env_id = str(self._environment.currentData() or "")
+        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
         self._run_interactive.set_menu(
             self._run_interactive_menu
-            if (env_id and env_id in self._gh_locked_envs)
+            if (env_id and workspace_type == WORKSPACE_CLONED)
             else None
         )
 
@@ -333,6 +454,11 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
+        
+        # Confirm auto base branch for cloned repo environments
+        if not self._confirm_auto_base_branch(env_id, base_branch):
+            return
+        
         self.requested_launch.emit(
             prompt,
             command,
@@ -366,6 +492,8 @@ class NewTaskPage(QWidget):
     def _on_environment_changed(self, index: int) -> None:
         self._apply_environment_tints()
         self._sync_interactive_options()
+        self._update_workspace_visibility()
+        self._sync_template_prompt_indicator()
         self.environment_changed.emit(str(self._environment.currentData() or ""))
 
     def _apply_environment_tints(self) -> None:
@@ -373,6 +501,7 @@ class NewTaskPage(QWidget):
         stain = (self._env_stains.get(env_id) or "").strip().lower() if env_id else ""
         if not stain:
             self._environment.setStyleSheet("")
+            self._base_branch.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
             self._get_agent_help.set_tint_color(None)
             self._run_interactive.set_tint_color(None)
@@ -380,6 +509,7 @@ class NewTaskPage(QWidget):
             return
 
         _apply_environment_combo_tint(self._environment, stain)
+        _apply_environment_combo_tint(self._base_branch, stain)
         tint = _stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
         self._get_agent_help.set_tint_color(tint)
@@ -390,9 +520,54 @@ class NewTaskPage(QWidget):
         self._env_stains = {str(k): str(v) for k, v in (stains or {}).items()}
         self._apply_environment_tints()
 
-    def set_gh_locked_envs(self, env_ids: set[str]) -> None:
-        self._gh_locked_envs = {str(e) for e in (env_ids or set()) if str(e).strip()}
+    def set_environment_workspace_types(self, workspace_types: dict[str, str]) -> None:
+        """Set the workspace types for environments.
+        
+        Args:
+            workspace_types: Dictionary mapping environment IDs to their workspace type
+                           (WORKSPACE_CLONED, WORKSPACE_MOUNTED, or WORKSPACE_NONE)
+        """
+        self._env_workspace_types = {str(k): str(v) for k, v in (workspace_types or {}).items()}
+        self._update_workspace_visibility()
         self._sync_interactive_options()
+
+    def set_environment_template_injection_status(self, statuses: dict[str, bool]) -> None:
+        self._env_template_injection = {
+            str(k): bool(v) for k, v in (statuses or {}).items()
+        }
+        self._sync_template_prompt_indicator()
+
+    def _sync_template_prompt_indicator(self) -> None:
+        env_id = str(self._environment.currentData() or "")
+        should_show = bool(self._env_template_injection.get(env_id, False))
+        self._template_prompt_indicator.setVisible(should_show)
+
+    def _update_workspace_visibility(self) -> None:
+        """Update workspace line visibility based on workspace type."""
+        env_id = str(self._environment.currentData() or "")
+        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
+        
+        # Cloned environments: hide workspace line completely
+        if workspace_type == WORKSPACE_CLONED:
+            self._workspace_label.setVisible(False)
+            self._workspace.setVisible(False)
+            self._workspace_hint.setVisible(False)
+            self._terminal_workspace_label.setVisible(False)
+            self._terminal_workspace.setVisible(False)
+        # Mounted environments: move workspace to terminal line
+        elif workspace_type == WORKSPACE_MOUNTED:
+            self._workspace_label.setVisible(False)
+            self._workspace.setVisible(False)
+            self._workspace_hint.setVisible(False)
+            self._terminal_workspace_label.setVisible(True)
+            self._terminal_workspace.setVisible(True)
+        # Other environments: show in normal position
+        else:
+            self._workspace_label.setVisible(True)
+            self._workspace.setVisible(True)
+            # workspace_hint visibility is controlled by set_workspace_status
+            self._terminal_workspace_label.setVisible(False)
+            self._terminal_workspace.setVisible(False)
 
     def set_environments(self, envs: list[tuple[str, str]], active_id: str) -> None:
         current = str(self._environment.currentData() or "")
@@ -420,8 +595,17 @@ class NewTaskPage(QWidget):
         if host_codex:
             self._host_codex_dir = host_codex
 
+    def set_spellcheck_enabled(self, enabled: bool) -> None:
+        """Enable or disable spellcheck in the prompt editor."""
+        self._spellcheck_enabled = enabled
+        self._prompt.set_spellcheck_enabled(enabled)
+
+    def set_stt_mode(self, mode: str) -> None:
+        self._stt_mode = "offline"
+
     def set_workspace_status(self, *, path: str, ready: bool, message: str) -> None:
         self._workspace.setText(str(path or "—"))
+        self._terminal_workspace.setText(str(path or "—"))  # Also update terminal line
         self._workspace_ready = bool(ready)
         self._workspace_error = str(message or "")
 
@@ -434,10 +618,163 @@ class NewTaskPage(QWidget):
         self._workspace_hint.setVisible(bool(hint))
 
         self._update_run_buttons()
+        self._update_workspace_visibility()  # Update visibility after status change
+
+    def _on_voice_toggled(self, enabled: bool) -> None:
+        # Check if STT is already running
+        if self._stt_thread is not None:
+            print("[STT] Voice toggle rejected: thread still running")
+            self._voice_btn.blockSignals(True)
+            try:
+                self._voice_btn.setChecked(False)
+            finally:
+                self._voice_btn.blockSignals(False)
+            return
+
+        if enabled:
+            print("[STT] Starting voice recording")
+            self._start_voice_recording()
+            return
+        print("[STT] Stopping voice recording")
+        self._stop_voice_recording_and_transcribe()
+
+    def _start_voice_recording(self) -> None:
+        if not FfmpegPulseRecorder.is_available():
+            QMessageBox.warning(
+                self,
+                "Voice input unavailable",
+                "Could not find `ffmpeg` in PATH (needed to record audio).",
+            )
+            self._voice_btn.setIcon(mic_icon(size=18))
+            self._voice_btn.blockSignals(True)
+            try:
+                self._voice_btn.setChecked(False)
+            finally:
+                self._voice_btn.blockSignals(False)
+            return
+
+        try:
+            recorder = FfmpegPulseRecorder()
+            self._mic_recording = recorder.start()
+        except MicRecorderError as exc:
+            QMessageBox.warning(
+                self, "Microphone error", str(exc) or "Could not start recording."
+            )
+            self._voice_btn.setIcon(mic_icon(size=18))
+            self._voice_btn.blockSignals(True)
+            try:
+                self._voice_btn.setChecked(False)
+            finally:
+                self._voice_btn.blockSignals(False)
+            return
+        self._voice_btn.setIcon(
+            self._voice_btn.style().standardIcon(QStyle.SP_MediaStop)
+        )
+        self._voice_btn.setToolTip("Stop recording and transcribe into the prompt editor.")
+
+    def _stop_voice_recording_and_transcribe(self) -> None:
+        recording = self._mic_recording
+        self._mic_recording = None
+        if recording is None:
+            self._voice_btn.setIcon(mic_icon(size=18))
+            self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
+            return
+
+        self._voice_btn.setEnabled(False)
+
+        recorder = FfmpegPulseRecorder(output_dir=recording.output_path.parent)
+        try:
+            print("[STT] Stopping recorder...")
+            audio_path = recorder.stop(recording)
+            print(f"[STT] Recorder stopped, audio at {audio_path}")
+        except MicRecorderError as exc:
+            print(f"[STT] Recorder error: {exc}")
+            QMessageBox.warning(
+                self, "Microphone error", str(exc) or "Could not stop recording."
+            )
+            self._voice_btn.setEnabled(True)
+            self._voice_btn.setIcon(mic_icon(size=18))
+            self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
+            return
+
+        self._voice_btn.setIcon(self._voice_btn.style().standardIcon(QStyle.SP_BrowserReload))
+        self._voice_btn.setToolTip("Transcribing speech-to-text…")
+
+        print("[STT] Creating worker and thread...")
+        worker = SttWorker(mode=self._stt_mode, audio_path=str(audio_path))
+        thread = QThread(self)
+        worker.moveToThread(thread)
+        
+        # Connect signals first, before starting
+        thread.started.connect(worker.run)
+        worker.done.connect(self._on_stt_done)
+        worker.error.connect(self._on_stt_error)
+        
+        # Ensure thread.quit() is called on both done and error
+        worker.done.connect(thread.quit)
+        worker.error.connect(thread.quit)
+        
+        # Clean up worker after signals fire
+        worker.done.connect(worker.deleteLater)
+        worker.error.connect(worker.deleteLater)
+        
+        # Clean up thread when finished, ensure _on_stt_finished is called
+        thread.finished.connect(self._on_stt_finished)
+        thread.finished.connect(thread.deleteLater)
+
+        self._stt_worker = worker
+        self._stt_thread = thread
+        print("[STT] Starting thread...")
+        thread.start()
+        print(f"[STT] Thread started, isRunning={thread.isRunning()}")
+
+    def _on_stt_done(self, text: str, audio_path: str) -> None:
+        print(f"[STT] Done signal received, text length={len(text)}")
+        audio_path_p = Path(str(audio_path or ""))
+        text = str(text or "").strip()
+        if text:
+            cursor = self._prompt.textCursor()
+            cursor.movePosition(QTextCursor.MoveOperation.End)
+            if self._prompt.toPlainText().strip():
+                cursor.insertText("\n")
+            cursor.insertText(text)
+            self._prompt.setTextCursor(cursor)
+        else:
+            QMessageBox.information(
+                self,
+                "No speech detected",
+                "Speech-to-text did not return any text.",
+            )
+
+        try:
+            audio_path_p.unlink(missing_ok=True)
+            print(f"[STT] Audio file deleted: {audio_path}")
+        except Exception as exc:
+            print(f"[STT] Failed to delete audio: {exc}")
+
+    def _on_stt_error(self, message: str, audio_path: str) -> None:
+        print(f"[STT] Error signal received: {message}")
+        audio_path_p = Path(str(audio_path or ""))
+        msg = str(message or "").strip() or "Speech-to-text failed."
+        QMessageBox.warning(self, "Speech-to-text error", msg)
+        try:
+            audio_path_p.unlink(missing_ok=True)
+            print(f"[STT] Audio file deleted after error: {audio_path}")
+        except Exception as exc:
+            print(f"[STT] Failed to delete audio after error: {exc}")
+
+    def _on_stt_finished(self) -> None:
+        print(f"[STT] Finished signal received, thread={self._stt_thread}")
+        self._stt_thread = None
+        self._stt_worker = None
+        self._voice_btn.setEnabled(True)
+        self._voice_btn.setIcon(mic_icon(size=18))
+        self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
+        print("[STT] Thread cleanup complete, ready for next recording")
 
     def set_repo_controls_visible(self, visible: bool) -> None:
         visible = bool(visible)
-        self._base_branch_label.setVisible(visible)
+        self._title_separator.setVisible(visible)
         self._base_branch.setVisible(visible)
 
     def set_repo_branches(
@@ -447,7 +784,7 @@ class NewTaskPage(QWidget):
         self._base_branch.blockSignals(True)
         try:
             self._base_branch.clear()
-            self._base_branch.addItem("Auto (default)", "")
+            self._base_branch.addItem("Auto", "")
             for name in branches or []:
                 b = str(name or "").strip()
                 if not b:
@@ -488,6 +825,40 @@ class NewTaskPage(QWidget):
 
         self._run_interactive.setToolTip(tooltip)
         self._run_agent.setToolTip(tooltip)
+
+    def set_agent_chain(self, agents: list[str]) -> None:
+        """Set the agent chain display for the selected environment.
+
+        Args:
+            agents: List of agent names in priority order
+        """
+        # Hide chain display when empty or single agent
+        if not agents or len(agents) <= 1:
+            self._agent_chain.setVisible(False)
+            self._prompt_separator.setVisible(False)
+            return
+        
+        # Show chain display for multiple agents
+        self._agent_chain.setVisible(True)
+        self._prompt_separator.setVisible(True)
+
+        # If more than 3 items, show first 2 + "..."
+        if len(agents) > 3:
+            display_agents = agents[:2]
+            chain_text = " → ".join(a.title() for a in display_agents) + " → ..."
+        else:
+            chain_text = " → ".join(a.title() for a in agents)
+        
+        self._agent_chain.setText(chain_text)
+
+        # Full tooltip always shows all agents
+        tooltip = "Agents will be used in this order:\n"
+        for i, agent in enumerate(agents, 1):
+            if i == 1:
+                tooltip += f"{i}. {agent.title()} (Primary)\n"
+            else:
+                tooltip += f"{i}. {agent.title()} (Fallback {i-1})\n"
+        self._agent_chain.setToolTip(tooltip.strip())
 
     def reset_for_new_run(self) -> None:
         self._prompt.setPlainText("")

@@ -5,13 +5,12 @@ import threading
 
 
 from agents_runner.environments import Environment
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_LOCAL
-from agents_runner.environments import GH_MANAGEMENT_NONE
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
+from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import SYSTEM_ENV_ID
 from agents_runner.environments import SYSTEM_ENV_NAME
 from agents_runner.environments import load_environments
-from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import managed_repo_checkout_path
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import git_list_remote_heads
@@ -45,12 +44,10 @@ class _MainWindowEnvironmentMixin:
         fallback = os.path.expanduser(str(fallback or "").strip()) or os.getcwd()
         if env is None:
             return fallback
-        gh_mode = normalize_gh_management_mode(
-            str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-        )
-        if gh_mode == GH_MANAGEMENT_LOCAL:
-            return os.path.expanduser(str(env.gh_management_target or "").strip())
-        if gh_mode == GH_MANAGEMENT_GITHUB:
+        workspace_type = env.workspace_type or WORKSPACE_NONE
+        if workspace_type == WORKSPACE_MOUNTED:
+            return os.path.expanduser(str(env.workspace_target or "").strip())
+        if workspace_type == WORKSPACE_CLONED:
             workdir = managed_repo_checkout_path(
                 env.env_id, data_dir=os.path.dirname(self._state_path)
             )
@@ -67,24 +64,22 @@ class _MainWindowEnvironmentMixin:
         if env is None:
             return "—", False, "Pick an environment first."
 
-        gh_mode = normalize_gh_management_mode(
-            str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-        )
-        if gh_mode == GH_MANAGEMENT_LOCAL:
-            path = os.path.expanduser(str(env.gh_management_target or "").strip())
+        workspace_type = env.workspace_type or WORKSPACE_NONE
+        if workspace_type == WORKSPACE_MOUNTED:
+            path = os.path.expanduser(str(env.workspace_target or "").strip())
             if not path:
                 return "—", False, "Set Workspace to a local folder in Environments."
             if not os.path.isdir(path):
                 return path, False, f"Local folder does not exist: {path}"
             return path, True, ""
 
-        if gh_mode == GH_MANAGEMENT_GITHUB:
+        if workspace_type == WORKSPACE_CLONED:
             path = managed_repo_checkout_path(
                 env.env_id,
                 data_dir=os.path.dirname(self._state_path),
                 task_id=task_id,
             )
-            target = str(env.gh_management_target or "").strip()
+            target = str(env.workspace_target or "").strip()
             if not target:
                 return path, False, "Set Workspace to a GitHub repo in Environments."
             return path, True, ""
@@ -102,15 +97,13 @@ class _MainWindowEnvironmentMixin:
             self._new_task.set_repo_branches([])
             return
 
-        gh_mode = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
+        workspace_type = (
+            env.workspace_type or WORKSPACE_NONE
             if env
-            else GH_MANAGEMENT_NONE
+            else WORKSPACE_NONE
         )
-        has_repo = bool(gh_mode == GH_MANAGEMENT_GITHUB)
-        if gh_mode == GH_MANAGEMENT_NONE or not has_repo:
+        has_repo = bool(workspace_type == WORKSPACE_CLONED)
+        if workspace_type == WORKSPACE_NONE or not has_repo:
             self._new_task.set_repo_controls_visible(False)
             self._new_task.set_repo_branches([])
             return
@@ -118,8 +111,8 @@ class _MainWindowEnvironmentMixin:
         self._new_task.set_repo_controls_visible(True)
         self._new_task.set_repo_branches([])
 
-        if gh_mode == GH_MANAGEMENT_GITHUB and env:
-            target = str(env.gh_management_target or "").strip()
+        if workspace_type == WORKSPACE_CLONED and env:
+            target = str(env.workspace_target or "").strip()
             if not target:
                 return
             self._repo_branches_request_id += 1
@@ -142,14 +135,12 @@ class _MainWindowEnvironmentMixin:
         if request_id != int(getattr(self, "_repo_branches_request_id", 0)):
             return
         env = self._environments.get(self._active_environment_id())
-        gh_mode = (
-            normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
+        workspace_type = (
+            env.workspace_type or WORKSPACE_NONE
             if env
-            else GH_MANAGEMENT_NONE
+            else WORKSPACE_NONE
         )
-        if gh_mode != GH_MANAGEMENT_GITHUB:
+        if workspace_type != WORKSPACE_CLONED:
             return
         if not isinstance(branches, list):
             return
@@ -157,9 +148,9 @@ class _MainWindowEnvironmentMixin:
         cleaned = [b for b in cleaned if b]
         self._new_task.set_repo_controls_visible(True)
 
-        # Restore last selected branch for locked environments
+        # Restore last selected branch for cloned environments
         selected_branch = None
-        if env and env.gh_management_locked:
+        if env and env.workspace_type == WORKSPACE_CLONED:
             last_branch = str(getattr(env, "gh_last_base_branch", "") or "").strip()
             if last_branch and last_branch in cleaned:
                 selected_branch = last_branch
@@ -170,11 +161,14 @@ class _MainWindowEnvironmentMixin:
         active_id = self._active_environment_id()
         envs = self._environment_list()
         stains = {e.env_id: e.color for e in envs}
+        workspace_types = {e.env_id: e.workspace_type or WORKSPACE_NONE for e in envs}
+        template_statuses = {
+            e.env_id: bool(getattr(e, "midoriai_template_detected", False)) for e in envs
+        }
 
         self._new_task.set_environment_stains(stains)
-        self._new_task.set_gh_locked_envs(
-            {e.env_id for e in envs if bool(getattr(e, "gh_management_locked", False))}
-        )
+        self._new_task.set_environment_workspace_types(workspace_types)
+        self._new_task.set_environment_template_injection_status(template_statuses)
         self._dashboard.set_environment_filter_options(
             [(e.env_id, e.name or e.env_id) for e in envs]
         )
@@ -199,9 +193,28 @@ class _MainWindowEnvironmentMixin:
                 pass
         current_agent, next_agent = self._get_next_agent_info(env=env)
         workdir, ready, message = self._new_task_workspace(env)
+
+        workspace_type = (
+            env.workspace_type or WORKSPACE_NONE
+            if env
+            else WORKSPACE_NONE
+        )
+        if env and ready and workspace_type == WORKSPACE_MOUNTED and os.path.isdir(workdir):
+            try:
+                from agents_runner.environments.midoriai_template import (
+                    apply_midoriai_template_detection,
+                )
+
+                apply_midoriai_template_detection(env, workspace_root=workdir)
+                save_environment(env)
+                self._environments[env.env_id] = env
+            except Exception:
+                pass
+
         self._new_task.set_defaults(host_codex=host_codex)
         self._new_task.set_workspace_status(path=workdir, ready=ready, message=message)
         self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)
+        self._update_new_task_agent_chain(env)
         self._sync_new_task_repo_controls(env)
         interactive_key = self._interactive_command_key(agent_cli)
         interactive_command = str(
@@ -214,6 +227,71 @@ class _MainWindowEnvironmentMixin:
             command=interactive_command,
         )
         self._populate_environment_pickers()
+
+    def _update_new_task_agent_chain(self, env: Environment | None) -> None:
+        """Update the agent chain display in the new task page.
+
+        Args:
+            env: Current environment, or None for default
+        """
+        from agents_runner.agent_cli import normalize_agent
+
+        # Get agent chain from environment or settings
+        if env and env.agent_selection and env.agent_selection.agents:
+            # Environment has custom agent configuration
+            selection = env.agent_selection
+            mode = str(selection.selection_mode or "round-robin")
+
+            if mode == "fallback":
+                # Build fallback chain
+                agent_ids = {a.agent_id for a in selection.agents}
+                fallback_targets = set(selection.agent_fallbacks.values())
+                primary_agents = agent_ids - fallback_targets
+
+                # Build chain from first primary agent
+                chains: list[list[str]] = []
+                for primary in primary_agents:
+                    chain = [primary]
+                    current = primary
+                    visited = {primary}
+                    while current in selection.agent_fallbacks:
+                        next_id = selection.agent_fallbacks[current]
+                        if next_id in visited:
+                            break  # Circular reference
+                        chain.append(next_id)
+                        visited.add(next_id)
+                        current = next_id
+                    chains.append(chain)
+
+                # Convert agent IDs to CLI names
+                id_to_cli = {a.agent_id: a.agent_cli for a in selection.agents}
+                if chains:
+                    agent_names = [
+                        normalize_agent(id_to_cli.get(agent_id, agent_id))
+                        for agent_id in chains[0]
+                    ]
+                else:
+                    agent_names = []
+            else:
+                # Round-robin or least-used: show all agents in priority order
+                agent_names = [
+                    normalize_agent(a.agent_cli) for a in selection.agents
+                ]
+            
+            # If environment config produced no agents, fall back to default
+            if not agent_names:
+                default_agent = normalize_agent(
+                    str(self._settings_data.get("agent_cli") or "codex")
+                )
+                agent_names = [default_agent]
+        else:
+            # No environment or no agents configured: use global default
+            default_agent = normalize_agent(
+                str(self._settings_data.get("agent_cli") or "codex")
+            )
+            agent_names = [default_agent]
+
+        self._new_task.set_agent_chain(agent_names)
 
     def _on_new_task_env_changed(self, env_id: str) -> None:
         if self._syncing_environment:
@@ -247,9 +325,9 @@ class _MainWindowEnvironmentMixin:
                 max_agents_running=max_agents_running,
                 preflight_enabled=False,
                 preflight_script="",
-                gh_management_mode=GH_MANAGEMENT_LOCAL,
-                gh_management_target=os.path.expanduser(active_workdir),
                 gh_management_locked=True,
+                workspace_type=WORKSPACE_MOUNTED,
+                workspace_target=os.path.expanduser(active_workdir),
                 gh_use_host_cli=bool(is_gh_available()),
             )
             save_environment(env)
@@ -265,23 +343,21 @@ class _MainWindowEnvironmentMixin:
                 max_agents_running=-1,
                 preflight_enabled=False,
                 preflight_script="",
-                gh_management_mode=GH_MANAGEMENT_NONE,
-                gh_management_target="",
                 gh_management_locked=True,
+                workspace_type=WORKSPACE_NONE,
+                workspace_target="",
                 gh_use_host_cli=False,
             )
 
         for env in envs.values():
-            gh_mode = normalize_gh_management_mode(
-                str(env.gh_management_mode or GH_MANAGEMENT_NONE)
-            )
-            if gh_mode != GH_MANAGEMENT_NONE:
+            workspace_type = env.workspace_type or WORKSPACE_NONE
+            if workspace_type != WORKSPACE_NONE:
                 continue
             legacy_workdir = os.path.expanduser(str(env.host_workdir or "").strip())
             if legacy_workdir:
-                env.gh_management_mode = GH_MANAGEMENT_LOCAL
-                env.gh_management_target = legacy_workdir
                 env.gh_management_locked = True
+                env.workspace_type = WORKSPACE_MOUNTED
+                env.workspace_target = legacy_workdir
 
         self._environments = dict(envs)
         active_id = self._active_environment_id()

@@ -10,47 +10,50 @@ from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import ALLOWED_STAINS
 from agents_runner.environments import Environment
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import GH_MANAGEMENT_LOCAL
-from agents_runner.environments import GH_MANAGEMENT_NONE
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import WORKSPACE_MOUNTED
+from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import delete_environment
-from agents_runner.environments import normalize_gh_management_mode
 from agents_runner.environments import parse_env_vars_text
 from agents_runner.environments import parse_mounts_text
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
+from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
 
 
 class _EnvironmentsPageActionsMixin:
-    def _sync_gh_management_controls(
+    def _sync_workspace_controls(
         self, *_: object, env: Environment | None = None
     ) -> None:
         if env is None:
             env = self._environments.get(str(self._current_env_id or ""))
 
         gh_available = bool(is_gh_available())
-        mode = normalize_gh_management_mode(
-            str(self._gh_management_mode.currentData() or GH_MANAGEMENT_NONE)
-        )
+        workspace_type = str(self._workspace_type_combo.currentData() or WORKSPACE_NONE)
         locked = env is not None
+        
         if locked and env is not None:
-            desired_mode = normalize_gh_management_mode(env.gh_management_mode)
-            if desired_mode != mode:
-                idx = self._gh_management_mode.findData(desired_mode)
+            # Sync UI to match environment's workspace_type
+            desired_workspace_type = env.workspace_type or WORKSPACE_NONE
+            
+            if desired_workspace_type != workspace_type:
+                idx = self._workspace_type_combo.findData(desired_workspace_type)
                 if idx >= 0:
-                    self._gh_management_mode.blockSignals(True)
+                    self._workspace_type_combo.blockSignals(True)
                     try:
-                        self._gh_management_mode.setCurrentIndex(idx)
+                        self._workspace_type_combo.setCurrentIndex(idx)
                     finally:
-                        self._gh_management_mode.blockSignals(False)
-                mode = desired_mode
-            desired_target = str(env.gh_management_target or "")
-            if (self._gh_management_target.text() or "") != desired_target:
-                self._gh_management_target.blockSignals(True)
+                        self._workspace_type_combo.blockSignals(False)
+                workspace_type = desired_workspace_type
+            
+            desired_target = str(env.workspace_target or "")
+            if (self._workspace_target.text() or "") != desired_target:
+                self._workspace_target.blockSignals(True)
                 try:
-                    self._gh_management_target.setText(desired_target)
+                    self._workspace_target.setText(desired_target)
                 finally:
-                    self._gh_management_target.blockSignals(False)
+                    self._workspace_target.blockSignals(False)
+            
             desired_gh = bool(getattr(env, "gh_use_host_cli", True))
             if bool(self._gh_use_host_cli.isChecked()) != desired_gh:
                 self._gh_use_host_cli.blockSignals(True)
@@ -59,107 +62,23 @@ class _EnvironmentsPageActionsMixin:
                 finally:
                     self._gh_use_host_cli.blockSignals(False)
 
-        self._gh_management_mode.setEnabled(not locked)
-        self._gh_management_target.setEnabled(not locked)
+        self._workspace_type_combo.setEnabled(not locked)
+        self._workspace_target.setEnabled(not locked)
         self._gh_use_host_cli.setVisible(False)
         self._gh_use_host_cli.setEnabled(not locked and gh_available)
         if not gh_available:
             self._gh_use_host_cli.setChecked(False)
 
-        wants_browse = mode == GH_MANAGEMENT_LOCAL
+        wants_browse = workspace_type == WORKSPACE_MOUNTED
         self._gh_management_browse.setVisible(False)
         self._gh_management_browse.setEnabled(wants_browse and not locked)
 
     def _on_new(self) -> None:
-        name, ok = QInputDialog.getText(self, "New environment", "Name")
-        if not ok:
-            return
-        name = (name or "").strip() or "New environment"
-
-        base = None
-        env_id = f"env-{uuid4().hex[:8]}"
-        color = "emerald"
-        if base and base.color in ALLOWED_STAINS:
-            idx = ALLOWED_STAINS.index(base.color)
-            color = ALLOWED_STAINS[(idx + 1) % len(ALLOWED_STAINS)]
-
-        workspace_labels = ["Lock to local folder", "Lock to GitHub repo (clone)"]
-        selected_label, ok = QInputDialog.getItem(
-            self,
-            "Workspace",
-            "Workspace type",
-            workspace_labels,
-            0,
-            False,
+        wizard = NewEnvironmentWizard(self)
+        wizard.environment_created.connect(
+            lambda env: self.updated.emit(env.env_id)
         )
-        if not ok:
-            return
-
-        gh_management_mode = GH_MANAGEMENT_LOCAL
-        gh_management_target = ""
-        gh_pr_metadata_enabled = False
-        if selected_label == "Lock to GitHub repo (clone)":
-            repo, ok = QInputDialog.getText(
-                self, "GitHub repo", "Repo (owner/repo or URL)"
-            )
-            if not ok:
-                return
-            repo = (repo or "").strip()
-            if not repo:
-                QMessageBox.warning(
-                    self,
-                    "Missing repo",
-                    "Enter a GitHub repo like owner/repo (or a URL).",
-                )
-                return
-            gh_management_mode = GH_MANAGEMENT_GITHUB
-            gh_management_target = repo
-            gh_pr_metadata_enabled = (
-                QMessageBox.question(
-                    self,
-                    "PR metadata",
-                    "Allow the agent to set the PR title/body via a mounted JSON file?\n\n"
-                    "This is only used for non-interactive runs.",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.No,
-                )
-                == QMessageBox.Yes
-            )
-        else:
-            folder = QFileDialog.getExistingDirectory(
-                self, "Select workspace folder", os.getcwd()
-            )
-            if not folder:
-                return
-            gh_management_target = folder
-
-        gh_use_host_cli = True
-        if not is_gh_available():
-            gh_use_host_cli = False
-        env = Environment(
-            env_id=env_id,
-            name=name,
-            color=color,
-            host_workdir="",
-            host_codex_dir="",
-            agent_cli_args="",
-            max_agents_running=-1,
-            headless_desktop_enabled=False,
-            preflight_enabled=False,
-            preflight_script="",
-            env_vars={},
-            extra_mounts=[],
-            gh_management_mode=gh_management_mode,
-            gh_management_target=gh_management_target,
-            gh_management_locked=True,
-            gh_use_host_cli=gh_use_host_cli,
-            gh_pr_metadata_enabled=bool(gh_pr_metadata_enabled),
-            prompts=[],
-            prompts_unlocked=False,
-            agent_selection=None,
-        )
-        save_environment(env)
-        self.updated.emit(env_id)
+        wizard.exec()
 
     def _on_delete(self) -> None:
         env_id = self._current_env_id
@@ -199,24 +118,30 @@ class _EnvironmentsPageActionsMixin:
         except ValueError:
             max_agents_running = -1
 
-        gh_mode = normalize_gh_management_mode(
-            existing.gh_management_mode if existing else GH_MANAGEMENT_NONE
-        )
-        gh_target = str(existing.gh_management_target or "").strip() if existing else ""
+        # Get workspace type and target from existing environment
+        workspace_type = existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
+        workspace_target = str(existing.workspace_target or "").strip() if existing else ""
         gh_locked = True
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
         )
-        gh_pr_metadata_enabled = (
-            bool(getattr(existing, "gh_pr_metadata_enabled", False))
+        gh_context_enabled = (
+            bool(getattr(existing, "gh_context_enabled", False))
             if existing
             else False
         )
 
-        if existing and gh_mode == GH_MANAGEMENT_GITHUB:
-            gh_pr_metadata_enabled = bool(self._gh_pr_metadata_enabled.isChecked())
-        elif gh_mode != GH_MANAGEMENT_GITHUB:
-            gh_pr_metadata_enabled = False
+        if existing and workspace_type == WORKSPACE_CLONED:
+            gh_context_enabled = bool(self._gh_context_enabled.isChecked())
+        elif existing and workspace_type == WORKSPACE_MOUNTED:
+            # For mounted folders, respect checkbox if git was detected
+            is_git_repo = existing.detect_git_if_mounted_folder()
+            if is_git_repo:
+                gh_context_enabled = bool(self._gh_context_enabled.isChecked())
+            else:
+                gh_context_enabled = False
+        else:
+            gh_context_enabled = False
 
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
@@ -229,6 +154,24 @@ class _EnvironmentsPageActionsMixin:
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
 
+        # Read preflight scripts based on container caching state
+        container_caching_enabled = bool(self._container_caching_enabled.isChecked())
+        
+        if container_caching_enabled:
+            # Dual-editor mode: read from both editors
+            cached_preflight_script = (
+                str(self._cached_preflight_script.toPlainText() or "")
+                if self._cached_preflight_enabled.isChecked()
+                else ""
+            )
+            preflight_enabled = bool(self._run_preflight_enabled.isChecked())
+            preflight_script = str(self._run_preflight_script.toPlainText() or "")
+        else:
+            # Single-editor mode: read from single editor only
+            cached_preflight_script = ""
+            preflight_enabled = bool(self._preflight_enabled.isChecked())
+            preflight_script = str(self._preflight_script.toPlainText() or "")
+
         env = Environment(
             env_id=env_id,
             name=name,
@@ -236,15 +179,18 @@ class _EnvironmentsPageActionsMixin:
             host_workdir="",
             max_agents_running=max_agents_running,
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
-            preflight_enabled=bool(self._preflight_enabled.isChecked()),
-            preflight_script=str(self._preflight_script.toPlainText() or ""),
+            cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
+            container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
+            cached_preflight_script=cached_preflight_script,
+            preflight_enabled=preflight_enabled,
+            preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
-            gh_management_mode=gh_mode,
-            gh_management_target=gh_target,
             gh_management_locked=gh_locked,
+            workspace_type=workspace_type,
+            workspace_target=workspace_target,
             gh_use_host_cli=gh_use_host_cli,
-            gh_pr_metadata_enabled=gh_pr_metadata_enabled,
+            gh_context_enabled=gh_context_enabled,
             prompts=prompts,
             prompts_unlocked=prompts_unlocked,
             agent_selection=agent_selection,
@@ -268,24 +214,30 @@ class _EnvironmentsPageActionsMixin:
         except ValueError:
             max_agents_running = -1
 
-        gh_mode = normalize_gh_management_mode(
-            existing.gh_management_mode if existing else GH_MANAGEMENT_NONE
-        )
-        gh_target = str(existing.gh_management_target or "").strip() if existing else ""
+        # Get workspace type and target from existing environment
+        workspace_type = existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
+        workspace_target = str(existing.workspace_target or "").strip() if existing else ""
         gh_locked = True
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
         )
-        gh_pr_metadata_enabled = (
-            bool(getattr(existing, "gh_pr_metadata_enabled", False))
+        gh_context_enabled = (
+            bool(getattr(existing, "gh_context_enabled", False))
             if existing
             else False
         )
 
-        if existing and gh_mode == GH_MANAGEMENT_GITHUB:
-            gh_pr_metadata_enabled = bool(self._gh_pr_metadata_enabled.isChecked())
-        elif gh_mode != GH_MANAGEMENT_GITHUB:
-            gh_pr_metadata_enabled = False
+        if existing and workspace_type == WORKSPACE_CLONED:
+            gh_context_enabled = bool(self._gh_context_enabled.isChecked())
+        elif existing and workspace_type == WORKSPACE_MOUNTED:
+            # For mounted folders, respect checkbox if git was detected
+            is_git_repo = existing.detect_git_if_mounted_folder()
+            if is_git_repo:
+                gh_context_enabled = bool(self._gh_context_enabled.isChecked())
+            else:
+                gh_context_enabled = False
+        else:
+            gh_context_enabled = False
 
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
@@ -299,6 +251,24 @@ class _EnvironmentsPageActionsMixin:
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
 
+        # Read preflight scripts based on container caching state
+        container_caching_enabled = bool(self._container_caching_enabled.isChecked())
+        
+        if container_caching_enabled:
+            # Dual-editor mode: read from both editors
+            cached_preflight_script = (
+                str(self._cached_preflight_script.toPlainText() or "")
+                if self._cached_preflight_enabled.isChecked()
+                else ""
+            )
+            preflight_enabled = bool(self._run_preflight_enabled.isChecked())
+            preflight_script = str(self._run_preflight_script.toPlainText() or "")
+        else:
+            # Single-editor mode: read from single editor only
+            cached_preflight_script = ""
+            preflight_enabled = bool(self._preflight_enabled.isChecked())
+            preflight_script = str(self._preflight_script.toPlainText() or "")
+
         return Environment(
             env_id=env_id,
             name=name,
@@ -306,15 +276,18 @@ class _EnvironmentsPageActionsMixin:
             host_workdir="",
             max_agents_running=max_agents_running,
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
-            preflight_enabled=bool(self._preflight_enabled.isChecked()),
-            preflight_script=str(self._preflight_script.toPlainText() or ""),
+            cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
+            container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
+            cached_preflight_script=cached_preflight_script,
+            preflight_enabled=preflight_enabled,
+            preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
-            gh_management_mode=gh_mode,
-            gh_management_target=gh_target,
             gh_management_locked=gh_locked,
+            workspace_type=workspace_type,
+            workspace_target=workspace_target,
             gh_use_host_cli=gh_use_host_cli,
-            gh_pr_metadata_enabled=gh_pr_metadata_enabled,
+            gh_context_enabled=gh_context_enabled,
             prompts=prompts,
             prompts_unlocked=prompts_unlocked,
             agent_selection=agent_selection,

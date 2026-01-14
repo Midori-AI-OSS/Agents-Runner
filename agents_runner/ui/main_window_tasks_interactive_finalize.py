@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 
 from datetime import datetime
 from datetime import timezone
@@ -11,13 +12,14 @@ from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_display import format_agent_markdown_link
 from agents_runner.agent_display import get_agent_display_name
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.gh_management import commit_push_and_pr
 from agents_runner.gh_management import GhManagementError
+from agents_runner.log_format import format_log
 from agents_runner.pr_metadata import load_pr_metadata
 from agents_runner.pr_metadata import normalize_pr_title
+from agents_runner.ui.task_git_metadata import derive_task_git_metadata
 from agents_runner.ui.utils import _stain_color
 
 
@@ -39,6 +41,18 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             task.exit_code = 1
         task.finished_at = datetime.now(tz=timezone.utc)
         task.status = "done" if (task.exit_code or 0) == 0 else "failed"
+        task.git = derive_task_git_metadata(task)
+
+        # Validate git metadata for cloned repo tasks
+        if task.requires_git_metadata():
+            from agents_runner.ui.task_git_metadata import validate_git_metadata
+            is_valid, error_msg = validate_git_metadata(task.git)
+            if not is_valid:
+                self._on_task_log(
+                    task_id,
+                    format_log("host", "metadata", "WARN", 
+                               f"git metadata validation failed: {error_msg}")
+                )
 
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
@@ -47,11 +61,10 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         self._details.update_task(task)
         self._schedule_save()
         QApplication.beep()
-        self._on_task_log(task_id, f"[interactive] exited with {task.exit_code}")
+        self._on_task_log(task_id, format_log("host", "interactive", "INFO", f"exited with {task.exit_code}"))
 
         if (
-            normalize_gh_management_mode(task.gh_management_mode)
-            == GH_MANAGEMENT_GITHUB
+            task.workspace_type == WORKSPACE_CLONED
             and task.gh_repo_root
             and task.gh_branch
             and not task.gh_pr_url
@@ -92,17 +105,58 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         pr_metadata_path: str | None = None,
         agent_cli: str = "",
         agent_cli_args: str = "",
+        is_override: bool = False,
     ) -> None:
         if not repo_root or not branch:
             return
 
-        # Get task info for cleanup - extract environment_id safely
+        start_s = time.monotonic()
+
+        # Get task info for cleanup - extract environment_id safely (needed even on early-return paths)
         task = self._tasks.get(task_id)
         env_id = ""
         if task and hasattr(task, "environment_id"):
             env_id = str(task.environment_id or "").strip()
         
         try:
+            # Step 1: Pre-flight validation
+            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[1/6] Validating repository..."))
+
+            from agents_runner.gh.pr_validation import check_existing_pr
+            from agents_runner.gh.pr_validation import validate_pr_prerequisites
+
+            checks = validate_pr_prerequisites(
+                repo_root=repo_root,
+                branch=branch,
+                use_gh=use_gh,
+            )
+
+            # Check for failures
+            failed_checks = [(name, msg) for name, passed, msg in checks if not passed]
+            if failed_checks:
+                for name, msg in failed_checks:
+                    self.host_log.emit(
+                        task_id, format_log("gh", "pr", "ERROR", f"validation failed: {name}: {msg}")
+                    )
+                return
+
+            # Check for existing PR (informational)
+            existing_pr = check_existing_pr(repo_root, branch)
+            if existing_pr:
+                self.host_log.emit(
+                    task_id,
+                    format_log("gh", "pr", "INFO", f"[2/6] Pull request already exists: {existing_pr}"),
+                )
+                self.host_pr_url.emit(task_id, existing_pr)
+                if task:
+                    task.gh_pr_url = existing_pr
+                    self._schedule_save()
+                return
+
+            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[2/6] No existing PR found, proceeding..."))
+
+            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[3/6] Preparing PR metadata..."))
+            
             prompt_line = (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
             default_title = f"Agent Runner: {prompt_line or task_id}"
             default_title = normalize_pr_title(default_title, fallback=default_title)
@@ -125,7 +179,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             )
             if metadata is not None and (metadata.title or metadata.body):
                 self.host_log.emit(
-                    task_id, f"[gh] using PR metadata from {pr_metadata_path}"
+                    task_id, format_log("gh", "pr", "INFO", f"using PR metadata from {pr_metadata_path}")
                 )
             title = (
                 normalize_pr_title(str(metadata.title or ""), fallback=default_title)
@@ -135,9 +189,13 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             body = str(metadata.body or "").strip() if metadata is not None else ""
             if not body:
                 body = default_body
+            
+            # Add override note for non-cloned-repo modes
+            if is_override:
+                body += "\n\n---\n**Note:** This is an override PR created manually for a cloned repo environment."
 
             self.host_log.emit(
-                task_id, f"[gh] preparing PR from {branch} -> {base_branch or 'auto'}"
+                task_id, format_log("gh", "pr", "INFO", f"[4/6] Creating PR from {branch} -> {base_branch or 'auto'}")
             )
             try:
                 pr_url = commit_push_and_pr(
@@ -151,23 +209,28 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                     agent_cli_args=agent_cli_args,
                 )
             except GhManagementError as exc:
-                self.host_log.emit(task_id, f"[gh] failed: {exc}")
+                self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}"))
                 return
             except Exception as exc:
-                self.host_log.emit(task_id, f"[gh] failed: {exc}")
+                self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}"))
                 return
 
             if pr_url is None:
-                self.host_log.emit(task_id, "[gh] no changes to commit; skipping PR")
+                self.host_log.emit(task_id, format_log("gh", "pr", "INFO", "[5/6] No changes to commit; skipping PR"))
                 return
             if pr_url == "":
                 self.host_log.emit(
                     task_id,
-                    "[gh] pushed branch; PR creation skipped (gh disabled or missing)",
+                    format_log("gh", "pr", "INFO", "[5/6] Branch pushed; PR creation skipped (gh disabled or missing)"),
                 )
                 return
+            self.host_log.emit(task_id, format_log("gh", "pr", "INFO", f"[6/6] PR created successfully: {pr_url}"))
             self.host_pr_url.emit(task_id, pr_url)
-            self.host_log.emit(task_id, f"[gh] PR: {pr_url}")
+            
+            # Update task PR URL
+            if task:
+                task.gh_pr_url = pr_url
+                self._schedule_save()
         finally:
             # Clean up task-specific repo after PR creation (or failure)
             # This ensures each task gets a fresh clone and prevents git conflicts
@@ -177,10 +240,10 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                     state_path = getattr(self, "_state_path", "")
                     if not state_path:
                         self.host_log.emit(
-                            task_id, "[gh] cleanup skipped: state path not available"
+                            task_id, format_log("gh", "cleanup", "WARN", "cleanup skipped: state path not available")
                         )
                     else:
-                        self.host_log.emit(task_id, "[gh] cleaning up task workspace")
+                        self.host_log.emit(task_id, format_log("gh", "cleanup", "INFO", "cleaning up task workspace"))
                         data_dir = os.path.dirname(state_path)
                         cleanup_success = cleanup_task_workspace(
                             env_id=env_id,
@@ -189,8 +252,12 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                             on_log=lambda msg: self.host_log.emit(task_id, msg),
                         )
                         if cleanup_success:
-                            self.host_log.emit(task_id, "[gh] task workspace cleaned")
+                            self.host_log.emit(task_id, format_log("gh", "cleanup", "INFO", "task workspace cleaned"))
                 except Exception as cleanup_exc:
                     self.host_log.emit(
-                        task_id, f"[gh] cleanup failed: {cleanup_exc}"
+                        task_id, format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}")
                     )
+            elapsed_s = time.monotonic() - start_s
+            self.host_log.emit(
+                task_id, format_log("host", "finalize", "INFO", f"PR preparation finished in {elapsed_s:.1f}s")
+            )

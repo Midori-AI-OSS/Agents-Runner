@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 
 from agents_runner.agent_cli import normalize_agent
-from agents_runner.environments import serialize_environment
 from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_active_task_payloads
@@ -41,7 +40,7 @@ class _MainWindowPersistenceMixin:
             return False
 
         incoming = str(state.get("Status") or "").strip().lower()
-        if incoming:
+        if incoming and (task.status or "").lower() not in {"cancelled", "killed"}:
             task.status = incoming
 
         started_at = _parse_docker_time(state.get("StartedAt"))
@@ -63,8 +62,13 @@ class _MainWindowPersistenceMixin:
         self._save_timer.start()
 
     def _save_state(self) -> None:
-        environments = [serialize_environment(env) for env in self._environment_list()]
-        payload = {"settings": dict(self._settings_data), "environments": environments}
+        from agents_runner.persistence import save_watch_state
+
+        payload = {"settings": dict(self._settings_data)}
+
+        # Save watch states
+        save_watch_state(payload, self._watch_states)
+
         save_state(self._state_path, payload)
         for task in sorted(self._tasks.values(), key=lambda t: t.created_at_s):
             save_task_payload(
@@ -74,13 +78,20 @@ class _MainWindowPersistenceMixin:
             )
 
     def _load_state(self) -> None:
+        from agents_runner.persistence import load_watch_state
+
         try:
             payload = load_state(self._state_path)
         except Exception:
             return
+
+        # Load watch states
+        self._watch_states.update(load_watch_state(payload))
+
         settings = payload.get("settings")
         if isinstance(settings, dict):
             self._settings_data.update(settings)
+        self._settings_data.pop("stt_mode", None)
         self._settings_data["use"] = normalize_agent(
             str(self._settings_data.get("use") or "codex")
         )
@@ -111,6 +122,7 @@ class _MainWindowPersistenceMixin:
             "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace",
         )
         self._settings_data.setdefault("headless_desktop_enabled", False)
+        self._settings_data.setdefault("spellcheck_enabled", True)
         host_codex_dir = os.path.normpath(
             os.path.expanduser(
                 str(self._settings_data.get("host_codex_dir") or "").strip()
@@ -166,6 +178,31 @@ class _MainWindowPersistenceMixin:
                 task.status = "unknown"
             loaded.append(task)
         loaded.sort(key=lambda t: t.created_at_s)
+        
+        # Repair missing git metadata for cloned repo tasks
+        repair_count = 0
+        for task in loaded:
+            if task.requires_git_metadata() and not task.git:
+                from agents_runner.ui.task_repair import repair_task_git_metadata
+                success, msg = repair_task_git_metadata(
+                    task,
+                    state_path=self._state_path,
+                    environments=self._environments,
+                )
+                if success:
+                    repair_count += 1
+                    # Save repaired task immediately
+                    save_task_payload(
+                        self._state_path,
+                        serialize_task(task),
+                        archived=self._should_archive_task(task),
+                    )
+        
+        if repair_count > 0:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Repaired git metadata for {repair_count} tasks")
+        
         for task in loaded:
             self._tasks[task.task_id] = task
             env = self._environments.get(task.environment_id)

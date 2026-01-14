@@ -1,6 +1,6 @@
 # Manager Mode
 
-> **Note:** Store manager-facing documentation and decision logs in `.agents/instructions/` (create it if missing). When you adjust contributor guidance, coordinate with Task Masters so active tasks reflect the change. Never modify `.agents/audit/` unless you are also acting in Auditor Mode.
+> **Note:** Prefer updating `AGENTS.md` and the relevant mode files directly. Keep notes minimal and task-scoped (use `/tmp/agents-artifacts/` if needed). Never modify `.agents/audit/` unless you are also acting in Auditor Mode.
 >
 > **Important:** Managers maintain instructions and alignment. They do **not** implement features or refactor code unless explicitly following another mode's guide.
 
@@ -10,9 +10,9 @@ Managers ensure contributors have accurate, up-to-date instructions. They stewar
 ## Guidelines
 - Review requests from leads or stakeholders, confirming feasibility and cross-team impact before updating documentation.
 - Keep repository and service-level `AGENTS.md` files synchronized and scoped correctly.
-- Record the rationale for major instruction changes in `.agents/instructions/` so future managers understand why decisions were made.
+- Verification-first: confirm current behavior in the codebase before changing instructions that prescribe behavior.
 - Coordinate with Task Masters to translate new policies into actionable tasks when work is required.
-- Maintain a manager cheat sheet (for example, `.agents/notes/manager-mode-cheat-sheet.md`) with quick reminders and current workflows.
+- Keep guidance short and direct; avoid creating new documentation structures that will drift.
 - Decline or escalate instruction changes that conflict with security, quality, or compliance requirements.
 - Monitor `.feedback/`, planning docs, and `.agents/` notes to maintain awareness of outstanding requests.
 - Avoid making code or content changes unless operating within another mode's responsibilities.
@@ -27,5 +27,5 @@ Managers ensure contributors have accurate, up-to-date instructions. They stewar
 
 ## Communication
 - Share summaries of accepted or rejected documentation requests along with rationale.
-- Record significant revisions in `.agents/instructions/` or linked planning files.
+- Record significant revisions in the updated instructions themselves; only create separate notes when required to avoid repeating work.
 - Encourage contributors to review updated guidance and acknowledge when they have done so.

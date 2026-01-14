@@ -62,6 +62,7 @@ class MainWindow(
 ):
     host_log = Signal(str, str)
     host_pr_url = Signal(str, str)
+    host_artifacts = Signal(str, object)
     interactive_finished = Signal(str, int)
     repo_branches_ready = Signal(int, object)
 
@@ -110,8 +111,14 @@ class MainWindow(
         self._save_timer.setInterval(450)
         self._save_timer.timeout.connect(self._save_state)
 
+        # Agent watch states for cooldown tracking
+        from agents_runner.core.agent.watch_state import AgentWatchState
+
+        self._watch_states: dict[str, AgentWatchState] = {}
+
         self.host_log.connect(self._on_host_log, Qt.QueuedConnection)
         self.host_pr_url.connect(self._on_host_pr_url, Qt.QueuedConnection)
+        self.host_artifacts.connect(self._on_host_artifacts, Qt.QueuedConnection)
         self.interactive_finished.connect(
             self._on_interactive_finished, Qt.QueuedConnection
         )
@@ -170,17 +177,19 @@ class MainWindow(
 
         outer.addWidget(top)
 
-        self._dashboard = DashboardPage()
+        self._dashboard = DashboardPage(
+            load_past_batch_callback=self._load_past_tasks_batch
+        )
         self._dashboard.task_selected.connect(self._open_task_details)
         self._dashboard.clean_old_requested.connect(self._clean_old_tasks)
         self._dashboard.task_discard_requested.connect(self._discard_task_from_ui)
-        self._dashboard.past_load_more_requested.connect(self._load_more_past_tasks)
         self._new_task = NewTaskPage()
         self._new_task.requested_run.connect(self._start_task_from_ui)
         self._new_task.requested_launch.connect(self._start_interactive_task_from_ui)
         self._new_task.environment_changed.connect(self._on_new_task_env_changed)
         self._new_task.back_requested.connect(self._show_dashboard)
         self._details = TaskDetailsPage()
+        self._details.set_environments(self._environments)
         self._details.back_requested.connect(self._show_dashboard)
         self._details.pr_requested.connect(self._on_task_pr_requested)
         self._details.container_action_requested.connect(self._on_task_container_action)

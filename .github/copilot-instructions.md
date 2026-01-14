@@ -19,7 +19,7 @@ applyTo: '**'
 5.  **Change Documentation Protocol:** Upon completing a modification or task, generate a concise commit message in a markdown code block describing what changed.
 6.  **Planning Review Protocol:** At the start, mid, and end of any task, review `.agents/tasks/` for planning items and `.agents/implementation/` for technical notes. Update these files only when necessary to keep plans current.
 7.  **Temp Files + Cleanup Protocol:** You do not need to provide cleanup instructions for files created outside the repo (the environment auto-cleans up). Do not create screenshots or temporary artifacts inside the repo unless requested; write them to `/tmp/agents-artifacts/` instead. Screenshots must go to `/tmp/agents-artifacts/` unless the user explicitly requests otherwise. Do not add temp outputs to git.
-8.  **Compliance Reporting Protocol:** End every response with a short **Compliance** section that lists directives **1–8** and states how you complied with each (use `N/A` + a brief reason when a directive does not apply to that exchange).
+8.  **Compliance Reporting Protocol:** Only include a short **Compliance** section (covering directives **1–8**) when preparing a PR description/review comment or when the user explicitly asks for compliance reporting; do not append it to routine chat responses.
 
 ---
 

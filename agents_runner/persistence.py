@@ -9,7 +9,7 @@ from typing import Any
 from agents_runner.prompt_sanitizer import sanitize_prompt
 
 
-STATE_VERSION = 3
+STATE_VERSION = 4
 TASKS_DIR_NAME = "tasks"
 TASKS_DONE_DIR_NAME = "done"
 
@@ -18,9 +18,11 @@ def default_state_path() -> str:
     override = str(os.environ.get("AGENTS_RUNNER_STATE_PATH") or "").strip()
     if override:
         override = os.path.expanduser(override)
-        if os.path.isdir(override):
-            return os.path.join(override, "state.json")
-        return override
+        # Treat overrides as a directory unless the path clearly points to a JSON file.
+        # This is intentionally permissive so callers can pass a non-existent directory path.
+        if override.lower().endswith(".json"):
+            return override
+        return os.path.join(override, "state.json")
     base = os.path.expanduser("~/.midoriai/agents-runner")
     return os.path.join(base, "state.json")
 
@@ -63,12 +65,7 @@ def load_state(path: str) -> dict[str, Any]:
             "environments": [],
         }
     version = payload.get("version")
-    if isinstance(version, int) and version != STATE_VERSION:
-        backup_path = f"{path}.bak-{time.time_ns()}"
-        try:
-            os.replace(path, backup_path)
-        except OSError:
-            pass
+    if version != STATE_VERSION:
         return {
             "version": STATE_VERSION,
             "tasks": [],
@@ -287,6 +284,10 @@ def serialize_task(task: Any) -> dict[str, Any]:
         except Exception:
             runner_config_payload = None
     runner_prompt = getattr(task, "_runner_prompt", None)
+    git_payload: dict[str, Any] | None = None
+    raw_git = getattr(task, "git", None)
+    if isinstance(raw_git, dict) and raw_git:
+        git_payload = dict(raw_git)
     return {
         "task_id": task.task_id,
         "prompt": task.prompt,
@@ -301,13 +302,14 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "container_id": task.container_id,
         "started_at": _dt_to_str(task.started_at),
         "finished_at": _dt_to_str(task.finished_at),
-        "gh_management_mode": getattr(task, "gh_management_mode", ""),
         "gh_use_host_cli": bool(getattr(task, "gh_use_host_cli", True)),
+        "workspace_type": getattr(task, "workspace_type", "none"),
         "gh_repo_root": getattr(task, "gh_repo_root", ""),
         "gh_base_branch": getattr(task, "gh_base_branch", ""),
         "gh_branch": getattr(task, "gh_branch", ""),
         "gh_pr_url": getattr(task, "gh_pr_url", ""),
         "gh_pr_metadata_path": getattr(task, "gh_pr_metadata_path", ""),
+        "git": git_payload,
         "agent_cli": getattr(task, "agent_cli", ""),
         "agent_instance_id": getattr(task, "agent_instance_id", ""),
         "agent_cli_args": getattr(task, "agent_cli_args", ""),
@@ -317,6 +319,7 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "novnc_url": getattr(task, "novnc_url", ""),
         "desktop_display": getattr(task, "desktop_display", ""),
         "artifacts": list(getattr(task, "artifacts", [])),
+        "attempt_history": list(getattr(task, "attempt_history", [])),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
         "logs": list(task.logs[-2000:]),
@@ -324,6 +327,24 @@ def serialize_task(task: Any) -> dict[str, Any]:
 
 
 def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
+    git_payload = data.get("git")
+    if not isinstance(git_payload, dict) or not git_payload:
+        git_payload = None
+    
+    # Migration: workspace_type from gh_management_mode
+    # Prefer new key, fallback to old key
+    workspace_type = data.get("workspace_type")
+    if not workspace_type and "gh_management_mode" in data:
+        old_mode = data["gh_management_mode"]
+        if old_mode == "github":
+            workspace_type = "cloned"
+        elif old_mode == "local":
+            workspace_type = "mounted"
+        else:
+            workspace_type = "none"
+
+    workspace_type = workspace_type or "none"
+    
     task = task_cls(
         task_id=str(data.get("task_id") or ""),
         prompt=sanitize_prompt(str(data.get("prompt") or "")),
@@ -338,15 +359,16 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         container_id=data.get("container_id"),
         started_at=_dt_from_str(data.get("started_at")),
         finished_at=_dt_from_str(data.get("finished_at")),
-        gh_management_mode=str(data.get("gh_management_mode") or ""),
         gh_use_host_cli=bool(
             data.get("gh_use_host_cli") if "gh_use_host_cli" in data else True
         ),
+        workspace_type=workspace_type,
         gh_repo_root=str(data.get("gh_repo_root") or ""),
         gh_base_branch=str(data.get("gh_base_branch") or ""),
         gh_branch=str(data.get("gh_branch") or ""),
         gh_pr_url=str(data.get("gh_pr_url") or ""),
         gh_pr_metadata_path=str(data.get("gh_pr_metadata_path") or ""),
+        git=git_payload,
         agent_cli=str(data.get("agent_cli") or ""),
         agent_instance_id=str(data.get("agent_instance_id") or ""),
         agent_cli_args=str(data.get("agent_cli_args") or ""),
@@ -355,6 +377,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         vnc_password="",
         desktop_display=str(data.get("desktop_display") or ""),
         artifacts=list(data.get("artifacts") or []),
+        attempt_history=list(data.get("attempt_history") or []),
         logs=list(data.get("logs") or []),
     )
     runner_prompt = data.get("runner_prompt")
@@ -403,6 +426,16 @@ def _deserialize_runner_config(
         if isinstance(raw_args, list):
             agent_cli_args = [str(item) for item in raw_args if str(item).strip()]
 
+        artifact_collection_timeout_s = 30.0
+        raw_timeout = payload.get("artifact_collection_timeout_s")
+        if raw_timeout is not None:
+            try:
+                artifact_collection_timeout_s = float(raw_timeout)
+            except Exception:
+                artifact_collection_timeout_s = 30.0
+        if artifact_collection_timeout_s <= 0.0:
+            artifact_collection_timeout_s = 30.0
+
         return DockerRunnerConfig(
             task_id=str(payload.get("task_id") or task_id),
             image=str(payload.get("image") or ""),
@@ -443,6 +476,120 @@ def _deserialize_runner_config(
             env_vars=env_vars,
             extra_mounts=extra_mounts,
             agent_cli_args=agent_cli_args,
+            artifact_collection_timeout_s=artifact_collection_timeout_s,
         )
     except Exception:
         return None
+
+
+def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
+    """Load agent watch state from persistence.
+
+    Args:
+        state: State dictionary loaded from JSON
+
+    Returns:
+        Dict mapping provider_name -> AgentWatchState data
+    """
+    from agents_runner.core.agent.watch_state import (
+        AgentStatus,
+        AgentWatchState,
+        SupportLevel,
+        UsageWindow,
+    )
+
+    watch_data = state.get("agent_watch", {})
+    if not isinstance(watch_data, dict):
+        return {}
+
+    result = {}
+    for provider_name, data in watch_data.items():
+        if not isinstance(data, dict):
+            continue
+
+        # Deserialize cooldown timestamps
+        last_rate_limited_at = None
+        if data.get("last_rate_limited_at"):
+            last_rate_limited_at = _dt_from_str(data["last_rate_limited_at"])
+
+        cooldown_until = None
+        if data.get("cooldown_until"):
+            cooldown_until = _dt_from_str(data["cooldown_until"])
+
+        last_checked_at = None
+        if data.get("last_checked_at"):
+            last_checked_at = _dt_from_str(data["last_checked_at"])
+
+        # Deserialize windows
+        windows = []
+        for w_data in data.get("windows", []):
+            if not isinstance(w_data, dict):
+                continue
+            reset_at = None
+            if w_data.get("reset_at"):
+                reset_at = _dt_from_str(w_data["reset_at"])
+            windows.append(
+                UsageWindow(
+                    name=w_data.get("name", ""),
+                    used=w_data.get("used", 0),
+                    limit=w_data.get("limit", 0),
+                    remaining=w_data.get("remaining", 0),
+                    remaining_percent=w_data.get("remaining_percent", 0.0),
+                    reset_at=reset_at,
+                )
+            )
+
+        result[provider_name] = AgentWatchState(
+            provider_name=provider_name,
+            support_level=SupportLevel(
+                data.get("support_level", "unknown")
+            ),
+            status=AgentStatus(data.get("status", "ready")),
+            windows=windows,
+            last_rate_limited_at=last_rate_limited_at,
+            cooldown_until=cooldown_until,
+            cooldown_reason=data.get("cooldown_reason", ""),
+            last_checked_at=last_checked_at,
+            last_error=data.get("last_error", ""),
+            raw_data=data.get("raw_data", {}),
+        )
+
+    return result
+
+
+def save_watch_state(
+    state: dict[str, Any], watch_states: dict[str, Any]
+) -> None:
+    """Save agent watch state to persistence.
+
+    Args:
+        state: State dictionary to update
+        watch_states: Dict mapping provider_name -> AgentWatchState
+    """
+    watch_data = {}
+
+    for provider_name, ws in watch_states.items():
+        watch_data[provider_name] = {
+            "provider_name": ws.provider_name,
+            "support_level": ws.support_level.value,
+            "status": ws.status.value,
+            "windows": [
+                {
+                    "name": w.name,
+                    "used": w.used,
+                    "limit": w.limit,
+                    "remaining": w.remaining,
+                    "remaining_percent": w.remaining_percent,
+                    "reset_at": _dt_to_str(w.reset_at),
+                }
+                for w in ws.windows
+            ],
+            "last_rate_limited_at": _dt_to_str(ws.last_rate_limited_at),
+            "cooldown_until": _dt_to_str(ws.cooldown_until),
+            "cooldown_reason": ws.cooldown_reason,
+            "last_checked_at": _dt_to_str(ws.last_checked_at),
+            "last_error": ws.last_error,
+            "raw_data": ws.raw_data,
+        }
+
+    state["agent_watch"] = watch_data

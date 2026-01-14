@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Source common log functions
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/log_common.sh"
+
+log_info desktop setup "Installing desktop environment packages"
+
+log_info desktop setup "Synchronizing package database..."
+if ! yay -Syu --noconfirm; then
+  log_error desktop setup "Failed to sync package database" >&2
+  exit 1
+fi
+
+log_info desktop setup "Installing official repository packages (one-by-one with retries)..."
+OFFICIAL_PKGS=(
+  tigervnc
+  fluxbox
+  xterm
+  imagemagick
+  xorg-xwininfo
+  xcb-util-cursor
+  websockify
+  wmctrl
+  xdotool
+  xorg-xprop
+  xorg-xauth
+  ttf-dejavu
+  xorg-fonts-misc
+  novnc
+)
+
+install_pkg_with_retry() {
+  local pkg="$1"
+  local max_attempts=3
+  local attempt=1
+  until yay -S --noconfirm --needed "${pkg}" >/dev/null 2>&1; do
+    if [ "${attempt}" -ge "${max_attempts}" ]; then
+      log_error desktop setup "Failed to install ${pkg} after ${max_attempts} attempts" >&2
+      return 1
+    fi
+    log_info desktop setup "Retrying install of ${pkg} (attempt $((attempt+1))/${max_attempts})..."
+    attempt=$((attempt+1))
+    sleep 2
+  done
+  return 0
+}
+
+for pkg in "${OFFICIAL_PKGS[@]}"; do
+  if ! install_pkg_with_retry "${pkg}"; then
+    log_error desktop setup "Failed to install required official package: ${pkg}" >&2
+    log_error desktop setup "Cannot continue without desktop environment" >&2
+    exit 1
+  fi
+done
+
+log_info desktop setup "Validating installed components..."
+REQUIRED_BINS=(Xvnc fluxbox xterm websockify)
+MISSING_BINS=()
+
+for bin in "${REQUIRED_BINS[@]}"; do
+  if ! command -v "${bin}" >/dev/null 2>&1; then
+    MISSING_BINS+=("${bin}")
+  fi
+done
+
+if [ ${#MISSING_BINS[@]} -gt 0 ]; then
+  log_error desktop setup "Required binaries not found: ${MISSING_BINS[*]}" >&2
+  log_error desktop setup "Package installation may have failed silently" >&2
+  exit 1
+fi
+
+log_info desktop setup "All packages installed and validated successfully"

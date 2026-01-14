@@ -3,10 +3,14 @@
 > **Note:** This mode is for ensuring correctness, reliability, and preventing regressions.
 
 ## Purpose
+
+> **Note:** Store QA reports, test plans, and findings in `/tmp/agents-artifacts/` (automatically created during task execution). Use unique filename prefixes (for example, a short hex string from `openssl rand -hex 4`) such as `abcd1234-qa-report.md`. Reports are task-scoped and collected as artifacts.
+
 QA mode focuses on ensuring the quality of the codebase. It involves creating test plans, adding or updating automated tests, and performing structured reviews of code changes. The primary goal is to identify and fix issues before they are deployed.
 
 ## QA Mode operating rules
 - Default to writing/adjusting tests first when practical.
+- Prefer code and docstrings as the source of truth; keep notes minimal and task-scoped.
 - Never approve changes without at least one of:
   - Passing automated tests relevant to the change, OR
   - A clear explanation why tests cannot be run and what was done instead.

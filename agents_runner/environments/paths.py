@@ -6,7 +6,7 @@ from .model import ENVIRONMENT_FILENAME_PREFIX
 
 
 def default_data_dir() -> str:
-    return os.path.dirname(default_state_path())
+    return os.path.dirname(default_state_path()) or os.getcwd()
 
 
 def _safe_env_id(env_id: str) -> str:

@@ -30,8 +30,7 @@ except Exception:  # pragma: no cover
 
 from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
 
-from agents_runner.environments import GH_MANAGEMENT_GITHUB
-from agents_runner.environments import normalize_gh_management_mode
+from agents_runner.artifacts import get_artifact_info
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import _task_display_status
 from agents_runner.ui.utils import _format_duration
@@ -40,6 +39,10 @@ from agents_runner.ui.utils import _status_color
 from agents_runner.widgets import GlassCard
 from agents_runner.widgets import LogHighlighter
 from agents_runner.widgets import StatusGlyph
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _diamond_icon(size: int = 16, color: QColor | None = None) -> QIcon:
@@ -76,6 +79,9 @@ class TaskDetailsPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._current_task_id: str | None = None
+        self._desktop_tab_visible: bool = False
+        self._artifacts_tab_visible: bool = False
+        self._environments: dict[str, object] | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -179,7 +185,7 @@ class TaskDetailsPage(QWidget):
         self._btn_freeze.setAutoRaise(True)
         self._btn_freeze.setIcon(self.style().standardIcon(QStyle.SP_MediaPause))
         self._btn_freeze.setIconSize(QSize(16, 16))
-        self._btn_freeze.setToolTip("Freeze (pause container)")
+        self._btn_freeze.setToolTip("Freeze: Pause the container")
         self._btn_freeze.clicked.connect(lambda: self._emit_container_action("freeze"))
 
         self._btn_unfreeze = QToolButton()
@@ -187,7 +193,7 @@ class TaskDetailsPage(QWidget):
         self._btn_unfreeze.setAutoRaise(True)
         self._btn_unfreeze.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
         self._btn_unfreeze.setIconSize(QSize(16, 16))
-        self._btn_unfreeze.setToolTip("Unfreeze (unpause container)")
+        self._btn_unfreeze.setToolTip("Unfreeze: Resume the container")
         self._btn_unfreeze.clicked.connect(
             lambda: self._emit_container_action("unfreeze")
         )
@@ -205,7 +211,7 @@ class TaskDetailsPage(QWidget):
         self._btn_kill.setAutoRaise(True)
         self._btn_kill.setIcon(_diamond_icon(16))
         self._btn_kill.setIconSize(QSize(16, 16))
-        self._btn_kill.setToolTip("Kill container (force stop)")
+        self._btn_kill.setToolTip("Kill: Force stop the container immediately")
         self._btn_kill.clicked.connect(lambda: self._emit_container_action("kill"))
 
         title_row = QHBoxLayout()
@@ -276,13 +282,17 @@ class TaskDetailsPage(QWidget):
         self._desktop_layout = desktop_layout
         self._desktop_web: QWebEngineView | None = None
 
-        desktop_label = QLabel(
-            "Select the Desktop tab to load the noVNC session."
-            if QWebEngineView is not None
-            else "QtWebEngine not available; open the noVNC URL externally."
-        )
-        desktop_label.setWordWrap(True)
-        self._desktop_view: QWidget = desktop_label
+        # Create QWebEngineView immediately if available (not lazily)
+        if QWebEngineView is not None:
+            self._desktop_web = QWebEngineView()
+            self._desktop_view: QWidget = self._desktop_web
+        else:
+            # Fallback label if QtWebEngine is not available
+            desktop_label = QLabel(
+                "QtWebEngine not available; open the noVNC URL externally."
+            )
+            desktop_label.setWordWrap(True)
+            self._desktop_view: QWidget = desktop_label
 
         desktop_cfg = QGridLayout()
         desktop_cfg.setHorizontalSpacing(10)
@@ -299,11 +309,16 @@ class TaskDetailsPage(QWidget):
         artifacts_tab = ArtifactsTab()
         self._artifacts_tab = artifacts_tab
 
+        # Store tab widgets for dynamic show/hide
+        self._task_tab_widget = task_tab
+        self._desktop_tab_widget = desktop_tab
+        self._artifacts_tab_widget = artifacts_tab
+
+        # Add only the Task tab initially (always visible)
         self._task_tab_index = self._tabs.addTab(task_tab, "Task")
-        self._desktop_tab_index = self._tabs.addTab(desktop_tab, "Desktop")
-        self._artifacts_tab_index = self._tabs.addTab(artifacts_tab, "Artifacts")
-        self._tabs.setTabEnabled(self._desktop_tab_index, False)
-        self._tabs.setTabEnabled(self._artifacts_tab_index, False)
+        # Desktop and Artifacts tabs will be added dynamically when needed
+        self._desktop_tab_index = -1
+        self._artifacts_tab_index = -1
         layout.addWidget(self._tabs, 1)
 
         self._ticker = QTimer(self)
@@ -323,12 +338,48 @@ class TaskDetailsPage(QWidget):
             QTimer.singleShot(0, self._scroll_logs_to_bottom)
             return
 
-        if index == getattr(self, "_desktop_tab_index", -1):
+        if index == getattr(self, "_desktop_tab_index", -1) and index >= 0:
             QTimer.singleShot(0, self._maybe_load_desktop)
             return
 
-        if index == getattr(self, "_artifacts_tab_index", -1):
+        if index == getattr(self, "_artifacts_tab_index", -1) and index >= 0:
             QTimer.singleShot(0, self._load_artifacts)
+
+    def _show_desktop_tab(self) -> None:
+        """Show the Desktop tab if not already visible."""
+        if self._desktop_tab_visible:
+            return
+        self._desktop_tab_index = self._tabs.addTab(self._desktop_tab_widget, "Desktop")
+        self._desktop_tab_visible = True
+
+    def _hide_desktop_tab(self) -> None:
+        """Hide the Desktop tab if currently visible."""
+        if not self._desktop_tab_visible:
+            return
+        # If Desktop tab is currently active, switch to Task tab
+        if self._tabs.currentIndex() == self._desktop_tab_index:
+            self._tabs.setCurrentIndex(self._task_tab_index)
+        self._tabs.removeTab(self._desktop_tab_index)
+        self._desktop_tab_index = -1
+        self._desktop_tab_visible = False
+
+    def _show_artifacts_tab(self) -> None:
+        """Show the Artifacts tab if not already visible."""
+        if self._artifacts_tab_visible:
+            return
+        self._artifacts_tab_index = self._tabs.addTab(self._artifacts_tab_widget, "Artifacts")
+        self._artifacts_tab_visible = True
+
+    def _hide_artifacts_tab(self) -> None:
+        """Hide the Artifacts tab if currently visible."""
+        if not self._artifacts_tab_visible:
+            return
+        # If Artifacts tab is currently active, switch to Task tab
+        if self._tabs.currentIndex() == self._artifacts_tab_index:
+            self._tabs.setCurrentIndex(self._task_tab_index)
+        self._tabs.removeTab(self._artifacts_tab_index)
+        self._artifacts_tab_index = -1
+        self._artifacts_tab_visible = False
 
     def _on_pr_triggered(self) -> None:
         task_id = str(self._current_task_id or "").strip()
@@ -336,14 +387,14 @@ class TaskDetailsPage(QWidget):
             self.pr_requested.emit(task_id)
 
     def _sync_review_menu(self, task: Task) -> None:
-        gh_mode = normalize_gh_management_mode(str(task.gh_management_mode or ""))
-        can_pr = bool(
-            gh_mode == GH_MANAGEMENT_GITHUB and task.gh_repo_root and task.gh_branch
-        )
+        # Task.requires_git_metadata() already checks workspace_type
+        can_pr = task.requires_git_metadata()
+        
         pr_url = str(task.gh_pr_url or "").strip()
         self._review_pr.setVisible(can_pr)
         self._review_pr.setEnabled(can_pr and not task.is_active())
         self._review_pr.setText("Open PR" if pr_url.startswith("http") else "Create PR")
+
         self._review.setVisible(can_pr)
         self._review.setEnabled(can_pr and not task.is_active())
 
@@ -361,15 +412,23 @@ class TaskDetailsPage(QWidget):
     def _emit_container_action(self, action: str) -> None:
         task_id = str(self._current_task_id or "").strip()
         if task_id:
+            if str(action or "").strip().lower() in {"stop", "kill"}:
+                self._btn_stop.setEnabled(False)
+                self._btn_kill.setEnabled(False)
             self.container_action_requested.emit(task_id, str(action or "").strip())
 
     def _sync_container_actions(self, task: Task) -> None:
         has_container = bool(str(task.container_id or "").strip())
         is_paused = (task.status or "").lower() == "paused"
-        self._btn_freeze.setEnabled(has_container and not is_paused)
-        self._btn_unfreeze.setEnabled(has_container and is_paused)
-        self._btn_stop.setEnabled(has_container)
-        self._btn_kill.setEnabled(has_container)
+        is_terminal = (task.status or "").lower() in {"cancelled", "killed"}
+        self._btn_freeze.setEnabled(has_container and not is_paused and not is_terminal)
+        self._btn_unfreeze.setEnabled(has_container and is_paused and not is_terminal)
+        self._btn_stop.setEnabled(has_container and not is_terminal)
+        self._btn_kill.setEnabled(has_container and not is_terminal)
+
+    def set_environments(self, environments: dict[str, object]) -> None:
+        """Set the environments dict for looking up cloned repo status."""
+        self._environments = environments
 
     def show_task(self, task: Task) -> None:
         self._current_task_id = task.task_id
@@ -404,51 +463,50 @@ class TaskDetailsPage(QWidget):
         self._last_task = task
         self._container.setText(task.container_id or "—")
         self._sync_desktop(task)
+        self._sync_artifacts(task)
         self._sync_container_actions(task)
         self._exit.setText("—" if task.exit_code is None else str(task.exit_code))
         self._apply_status(task)
         self._tick_uptime()
         self._sync_review_menu(task)
-
-    def _ensure_desktop_webview(self) -> QWebEngineView | None:
-        if QWebEngineView is None:
-            return None
-        if self._desktop_web is None:
-            self._desktop_web = QWebEngineView()
-            try:
-                self._desktop_layout.replaceWidget(
-                    self._desktop_view, self._desktop_web
-                )
-                self._desktop_view.setParent(None)
-            except Exception:
-                pass
-            self._desktop_view = self._desktop_web
-        return self._desktop_web
+        
+        # Notify artifacts tab of status changes
+        if self._artifacts_tab_visible:
+            self._artifacts_tab.on_task_status_changed(task)
 
     def _maybe_load_desktop(self) -> None:
-        if not self._last_task or self._tabs.currentIndex() != self._desktop_tab_index:
+        if not self._last_task or not self._desktop_tab_visible:
+            return
+        if self._tabs.currentIndex() != self._desktop_tab_index:
             return
         url = str(self._last_task.novnc_url or "").strip()
         if not url or url == self._desktop_loaded_url:
             return
-        web = self._ensure_desktop_webview()
-        if web is None:
+        # Use the pre-created webview directly (no lazy initialization)
+        if self._desktop_web is None:
             return
         self._desktop_loaded_url = url
         try:
-            web.setUrl(QUrl(url))
+            self._desktop_web.setUrl(QUrl(url))
         except Exception:
             pass
 
     def _sync_desktop(self, task: Task) -> None:
-        should_enable = bool(task.is_active() and task.headless_desktop_enabled)
+        # Get the URL first to check if desktop is ready
+        url = str(task.novnc_url or "").strip()
+        
+        # Show tab ONLY when desktop is ready (URL is available)
+        should_show = bool(
+            task.is_active() and 
+            task.headless_desktop_enabled and
+            url  # Desktop is ready (not empty)
+        )
+        
         if not hasattr(self, "_tabs"):
             return
 
-        self._tabs.setTabEnabled(self._desktop_tab_index, should_enable)
-        if not should_enable:
-            if self._tabs.currentIndex() == self._desktop_tab_index:
-                self._tabs.setCurrentIndex(self._task_tab_index)
+        if not should_show:
+            self._hide_desktop_tab()
             self._desktop_loaded_url = ""
             self._desktop_url.setText("—")
             self._desktop_display.setText("—")
@@ -459,15 +517,51 @@ class TaskDetailsPage(QWidget):
                     pass
             return
 
-        url = str(task.novnc_url or "").strip()
-        self._desktop_url.setText(url or "(starting…)")
+        self._show_desktop_tab()
+        self._desktop_url.setText(url)
         self._desktop_display.setText(str(task.desktop_display or ":1"))
-        if self._tabs.currentIndex() == self._desktop_tab_index:
+        if self._desktop_tab_visible and self._tabs.currentIndex() == self._desktop_tab_index:
             self._maybe_load_desktop()
 
     def _sync_artifacts(self, task: Task) -> None:
-        has_artifacts = bool(task.artifacts)
-        self._tabs.setTabEnabled(self._artifacts_tab_index, has_artifacts)
+        """
+        Update Artifacts tab visibility based on artifact status.
+        
+        Shows tab ONLY when artifacts actually exist:
+        - file_count > 0 (has files in staging directory), OR
+        - task.artifacts is not empty (has encrypted artifacts from completed task)
+        
+        Does NOT show for:
+        - Empty staging directory
+        - Active task with no artifacts yet
+        - When artifact_info.exists is True but file_count is 0
+        """
+        # Get single source of truth
+        artifact_info = get_artifact_info(task.task_id)
+        
+        # Check encrypted artifacts (for completed tasks)
+        has_encrypted = bool(task.artifacts)
+        
+        # Show tab ONLY when artifacts actually exist
+        should_show = (
+            artifact_info.file_count > 0 or
+            has_encrypted
+        )
+        
+        # Debug logging (REQUIRED)
+        logger.info(
+            f"Artifacts tab: task={task.task_id} dir={artifact_info.host_artifacts_dir} "
+            f"exists={artifact_info.exists} count={artifact_info.file_count} shown={should_show}"
+        )
+        
+        if should_show:
+            was_visible = self._artifacts_tab_visible
+            self._show_artifacts_tab()
+            # Load artifacts when tab first appears
+            if not was_visible:
+                QTimer.singleShot(0, self._load_artifacts)
+        else:
+            self._hide_artifacts_tab()
 
     def _load_artifacts(self) -> None:
         if self._last_task:

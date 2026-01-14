@@ -28,7 +28,13 @@ from agents_runner.docker.process import _inspect_state
 from agents_runner.docker.process import _pull_image
 from agents_runner.docker.process import _run_docker
 from agents_runner.docker.utils import _resolve_workspace_mount
+from agents_runner.log_format import format_log
+from agents_runner.log_format import wrap_container_log
+from agents_runner.ui.shell_templates import git_identity_clause
+from agents_runner.ui.shell_templates import shell_log_statement
 from agents_runner.docker.utils import _write_preflight_script
+from agents_runner.midoriai_template import MidoriAITemplateDetection
+from agents_runner.midoriai_template import scan_midoriai_agents_template
 
 
 class DockerPreflightWorker:
@@ -61,6 +67,14 @@ class DockerPreflightWorker:
                 except Exception:
                     pass
 
+    def request_kill(self) -> None:
+        self._stop.set()
+        if self._container_id:
+            try:
+                _run_docker(["kill", self._container_id], timeout_s=10.0)
+            except Exception:
+                pass
+
     def run(self) -> None:
         preflight_tmp_paths: list[str] = []
         docker_env: dict[str, str] | None = None
@@ -78,9 +92,9 @@ class DockerPreflightWorker:
                         on_log=self._on_log,
                     )
                     if result.get("branch"):
-                        self._on_log(f"[gh] ready on branch {result['branch']}")
+                        self._on_log(format_log("gh", "repo", "INFO", f"ready on branch {result['branch']}"))
                 except (GhManagementError, Exception) as exc:
-                    self._on_log(f"[gh] ERROR: {exc}")
+                    self._on_log(format_log("gh", "repo", "ERROR", str(exc)))
                     self._on_done(1, str(exc))
                     return
 
@@ -88,11 +102,16 @@ class DockerPreflightWorker:
             forced_platform = docker_platform_for_pixelarch()
             platform_args = docker_platform_args_for_pixelarch()
             if forced_platform:
-                self._on_log(f"[host] forcing Docker platform: {forced_platform}")
+                self._on_log(format_log("host", "none", "INFO", f"forcing Docker platform: {forced_platform}"))
                 rosetta = has_rosetta()
                 if rosetta is False:
                     self._on_log(
-                        f"[host] Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}"
+                        format_log(
+                            "host",
+                            "none",
+                            "WARN",
+                            f"Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}",
+                        )
                     )
             agent_cli = normalize_agent(self._config.agent_cli)
             config_container_dir = container_config_dir(agent_cli)
@@ -104,10 +123,62 @@ class DockerPreflightWorker:
             )
             if host_mount != self._config.host_workdir:
                 self._on_log(
-                    f"[host] mounting workspace root: {host_mount} (selected {self._config.host_workdir})"
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"mounting workspace root: {host_mount} (selected {self._config.host_workdir})",
+                    )
                 )
             if container_cwd != self._config.container_workdir:
-                self._on_log(f"[host] container workdir: {container_cwd}")
+                self._on_log(format_log("host", "none", "INFO", f"container workdir: {container_cwd}"))
+
+            template_detection = scan_midoriai_agents_template(host_mount)
+            if self._config.environment_id:
+                try:
+                    from agents_runner.environments import load_environments
+                    from agents_runner.environments import save_environment
+
+                    env = load_environments().get(str(self._config.environment_id))
+                    if env is not None:
+                        # Only update template detection if not already set
+                        # For cloned workspaces, we scan once and persist the result
+                        if env.midoriai_template_likelihood == 0.0:
+                            env.midoriai_template_likelihood = (
+                                template_detection.midoriai_template_likelihood
+                            )
+                            env.midoriai_template_detected = (
+                                template_detection.midoriai_template_detected
+                            )
+                            env.midoriai_template_detected_path = (
+                                template_detection.midoriai_template_detected_path
+                            )
+                            save_environment(env)
+                        else:
+                            # Reuse saved template detection values
+                            template_detection = MidoriAITemplateDetection(
+                                midoriai_template_likelihood=env.midoriai_template_likelihood,
+                                midoriai_template_detected=env.midoriai_template_detected,
+                                midoriai_template_detected_path=env.midoriai_template_detected_path,
+                            )
+                except Exception as exc:
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "template",
+                            "WARN",
+                            f"failed to persist template detection: {exc}",
+                        )
+                    )
+            if template_detection.midoriai_template_detected:
+                self._on_log(
+                    format_log(
+                        "env",
+                        "template",
+                        "INFO",
+                        "Midori AI Agents Template detected (preflight)",
+                    )
+                )
             container_name = f"codex-preflight-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
             settings_container_path = (
@@ -141,27 +212,32 @@ class DockerPreflightWorker:
 
             if self._config.pull_before_run:
                 self._on_state({"Status": "pulling"})
-                self._on_log(f"[host] docker pull {self._config.image}")
+                self._on_log(format_log("host", "none", "INFO", f"docker pull {self._config.image}"))
                 _pull_image(self._config.image, platform_args=platform_args)
-                self._on_log("[host] pull complete")
+                self._on_log(format_log("host", "none", "INFO", "pull complete"))
             elif forced_platform and not _has_platform_image(
                 self._config.image, forced_platform
             ):
                 self._on_state({"Status": "pulling"})
-                self._on_log(f"[host] image missing; docker pull {self._config.image}")
+                self._on_log(format_log("host", "none", "INFO", f"image missing; docker pull {self._config.image}"))
                 _pull_image(self._config.image, platform_args=platform_args)
-                self._on_log("[host] pull complete")
+                self._on_log(format_log("host", "none", "INFO", "pull complete"))
             elif not forced_platform and not _has_image(self._config.image):
                 self._on_state({"Status": "pulling"})
-                self._on_log(f"[host] image missing; docker pull {self._config.image}")
+                self._on_log(format_log("host", "none", "INFO", f"image missing; docker pull {self._config.image}"))
                 _pull_image(self._config.image, platform_args=platform_args)
-                self._on_log("[host] pull complete")
+                self._on_log(format_log("host", "none", "INFO", "pull complete"))
 
             preflight_clause = ""
             preflight_mounts: list[str] = []
             if settings_preflight_tmp_path is not None:
                 self._on_log(
-                    f"[host] settings preflight enabled; mounting -> {settings_container_path} (ro)"
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"settings preflight enabled; mounting -> {settings_container_path} (ro)",
+                    )
                 )
                 preflight_mounts.extend(
                     [
@@ -171,14 +247,19 @@ class DockerPreflightWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                    'echo "[preflight] settings: running"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "settings: running")}; '
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    'echo "[preflight] settings: done"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "settings: done")}; '
                 )
 
             if environment_preflight_tmp_path is not None:
                 self._on_log(
-                    f"[host] environment preflight enabled; mounting -> {environment_container_path} (ro)"
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"environment preflight enabled; mounting -> {environment_container_path} (ro)",
+                    )
                 )
                 preflight_mounts.extend(
                     [
@@ -188,9 +269,9 @@ class DockerPreflightWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                    'echo "[preflight] environment: running"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "environment: running")}; '
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    'echo "[preflight] environment: done"; '
+                    f'{shell_log_statement("env", "setup", "INFO", "environment: done")}; '
                 )
 
             env_args: list[str] = []
@@ -244,8 +325,9 @@ class DockerPreflightWorker:
                 "/bin/bash",
                 "-lc",
                 "set -euo pipefail; "
+                f"{git_identity_clause()}"
                 f"{preflight_clause}"
-                'echo "[preflight] complete"; ',
+                f'{shell_log_statement("docker", "preflight", "INFO", "complete")}; ',
             ]
             self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
             try:
@@ -290,7 +372,8 @@ class DockerPreflightWorker:
                         except Exception:
                             chunk = ""
                         if chunk:
-                            self._on_log(chunk.rstrip("\n"))
+                            stream = "stdout" if key.fileobj == logs_proc.stdout else "stderr"
+                            self._on_log(wrap_container_log(self._container_id, stream, chunk.rstrip("\n")))
             finally:
                 if logs_proc.poll() is None:
                     logs_proc.terminate()

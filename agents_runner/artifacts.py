@@ -9,10 +9,14 @@ import hashlib
 import json
 import logging
 import mimetypes
+import multiprocessing
+import queue
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from typing import cast
 from uuid import uuid4
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -29,6 +33,17 @@ class ArtifactMeta:
     mime_type: str
     encrypted_at: str
     size_bytes: int
+
+
+@dataclass
+class StagingArtifactMeta:
+    """Metadata for a staging (unencrypted) artifact."""
+    
+    filename: str
+    path: Path
+    size_bytes: int
+    modified_at: datetime
+    mime_type: str
 
 
 def get_artifact_key(task_dict: dict[str, Any], env_name: str) -> bytes:
@@ -281,10 +296,7 @@ def collect_artifacts_from_container(
         return []
     
     # Get staging directory (this was mounted to the container)
-    artifacts_staging = (
-        Path.home() / ".midoriai" / "agents-runner" / "artifacts" 
-        / task_id / "staging"
-    )
+    artifacts_staging = get_staging_dir(task_id)
     
     if not artifacts_staging.exists():
         logger.debug(f"No staging directory found: {artifacts_staging}")
@@ -313,16 +325,233 @@ def collect_artifacts_from_container(
             except Exception as e:
                 logger.error(f"Failed to collect artifact {file_path.name}: {e}")
                 continue
-        
-        # Clean up staging directory if empty
-        try:
-            if not any(artifacts_staging.iterdir()):
-                artifacts_staging.rmdir()
-                logger.debug(f"Removed empty staging directory: {artifacts_staging}")
-        except Exception as e:
-            logger.debug(f"Could not remove staging directory: {e}")
             
     except Exception as e:
         logger.error(f"Failed to collect artifacts from staging: {e}")
     
+    finally:
+        # ALWAYS clean up staging directory, even if encryption failed
+        try:
+            if artifacts_staging.exists():
+                # Remove any remaining files
+                for file_path in artifacts_staging.iterdir():
+                    try:
+                        if file_path.is_file():
+                            file_path.unlink()
+                    except Exception as file_error:
+                        logger.warning(f"Failed to remove {file_path}: {file_error}")
+                
+                # Remove staging directory
+                artifacts_staging.rmdir()
+                logger.debug(f"Cleaned up staging directory: {artifacts_staging}")
+        except Exception as cleanup_error:
+            logger.error(f"Staging cleanup failed: {cleanup_error}")
+    
     return artifact_uuids
+
+
+def _collect_artifacts_child(
+    result_q: multiprocessing.Queue,  # type: ignore[type-arg]
+    container_id: str,
+    task_dict: dict[str, Any],
+    env_name: str,
+) -> None:
+    try:
+        artifact_uuids = collect_artifacts_from_container(container_id, task_dict, env_name)
+        result_q.put(("ok", artifact_uuids))
+    except Exception as exc:
+        result_q.put(("err", f"{type(exc).__name__}: {exc}"))
+
+
+def collect_artifacts_from_container_with_timeout(
+    container_id: str,
+    task_dict: dict[str, Any],
+    env_name: str,
+    *,
+    timeout_s: float,
+) -> list[str]:
+    """
+    Best-effort artifact collection with a hard timeout.
+
+    Runs artifact collection in a child process so it can be terminated if it
+    stalls (e.g., filesystem/IO hangs). On timeout, raises TimeoutError.
+    """
+    timeout_s = float(timeout_s)
+    if timeout_s <= 0.0:
+        raise ValueError("timeout_s must be > 0")
+
+    ctx = multiprocessing.get_context("spawn")
+    result_q = ctx.Queue()
+    proc = ctx.Process(
+        target=_collect_artifacts_child,
+        args=(result_q, container_id, task_dict, env_name),
+        daemon=True,
+    )
+
+    start = time.monotonic()
+    proc.start()
+    proc.join(timeout=timeout_s)
+
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(timeout=2.0)
+        if proc.is_alive():
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            proc.join(timeout=2.0)
+        raise TimeoutError(
+            f"artifact collection timed out after {timeout_s:.0f}s (elapsed {time.monotonic() - start:.1f}s)"
+        )
+
+    try:
+        kind, payload = cast(tuple[str, object], result_q.get(timeout=1.0))
+    except queue.Empty:
+        exit_code = proc.exitcode
+        raise RuntimeError(
+            f"artifact collection process exited without result (exit_code={exit_code})"
+        )
+    finally:
+        try:
+            result_q.close()
+            result_q.cancel_join_thread()
+        except Exception:
+            pass
+
+    if kind == "ok":
+        return cast(list[str], payload)
+    raise RuntimeError(str(payload))
+
+
+def get_staging_dir(task_id: str) -> Path:
+    """
+    Get path to staging directory for a task.
+    
+    Args:
+        task_id: Task identifier
+    
+    Returns:
+        Path to staging directory
+    """
+    artifacts_dir = _get_artifacts_dir(task_id)
+    return artifacts_dir / "staging"
+
+
+def list_staging_artifacts(task_id: str) -> list[StagingArtifactMeta]:
+    """
+    List artifacts in staging directory (for running tasks).
+    
+    Args:
+        task_id: Task identifier
+    
+    Returns:
+        List of staging artifact metadata
+    """
+    staging_dir = get_staging_dir(task_id)
+    
+    if not staging_dir.exists():
+        return []
+    
+    artifacts: list[StagingArtifactMeta] = []
+    
+    try:
+        for file_path in staging_dir.iterdir():
+            if not file_path.is_file():
+                continue
+            
+            stat = file_path.stat()
+            mime_type, _ = mimetypes.guess_type(file_path.name)
+            if mime_type is None:
+                mime_type = "application/octet-stream"
+            
+            artifact = StagingArtifactMeta(
+                filename=file_path.name,
+                path=file_path,
+                size_bytes=stat.st_size,
+                modified_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc),
+                mime_type=mime_type,
+            )
+            artifacts.append(artifact)
+        
+        # Sort by modification time (newest first)
+        artifacts.sort(key=lambda a: a.modified_at, reverse=True)
+        
+    except Exception as e:
+        logger.error(f"Failed to list staging artifacts for task {task_id}: {e}")
+    
+    return artifacts
+
+
+def get_staging_artifact_path(task_id: str, filename: str) -> Path | None:
+    """
+    Get path to a staging artifact (for direct access).
+    
+    Args:
+        task_id: Task identifier
+        filename: Artifact filename
+    
+    Returns:
+        Path to staging file, or None if not found
+    """
+    staging_dir = get_staging_dir(task_id)
+    file_path = staging_dir / filename
+    
+    if file_path.exists() and file_path.is_file():
+        # Security: Verify file is within staging directory (prevent path traversal)
+        try:
+            if file_path.resolve().parent != staging_dir.resolve():
+                logger.error(f"Path traversal attempt: {filename}")
+                return None
+        except Exception as e:
+            logger.error(f"Failed to resolve path {filename}: {e}")
+            return None
+        return file_path
+    
+    return None
+
+
+@dataclass
+class ArtifactInfo:
+    """Single source of truth for artifact locations and status."""
+    
+    host_artifacts_dir: Path
+    container_artifacts_dir: str
+    file_count: int
+    exists: bool
+
+
+def get_artifact_info(task_id: str) -> ArtifactInfo:
+    """
+    Get single source of truth for artifact status.
+    
+    Returns information about artifact storage for a task, prioritizing
+    the host staging directory as the truth during execution and encrypted
+    storage after finalization.
+    
+    Args:
+        task_id: Task identifier
+    
+    Returns:
+        ArtifactInfo with paths, counts, and existence status
+    """
+    # Host staging directory is the truth during execution
+    staging_dir = get_staging_dir(task_id)
+    
+    # Count files in staging directory
+    file_count = 0
+    exists = staging_dir.exists()
+    
+    if exists:
+        try:
+            file_count = sum(1 for f in staging_dir.iterdir() if f.is_file())
+        except Exception as e:
+            logger.debug(f"Failed to count files in {staging_dir}: {e}")
+            file_count = 0
+    
+    return ArtifactInfo(
+        host_artifacts_dir=staging_dir,
+        container_artifacts_dir="/tmp/agents-artifacts/",
+        file_count=file_count,
+        exists=exists,
+    )

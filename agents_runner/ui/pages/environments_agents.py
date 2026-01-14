@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QHeaderView
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QTableWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -28,6 +29,7 @@ from agents_runner.ui.constants import (
     TABLE_ROW_HEIGHT,
     AGENT_COMBO_WIDTH,
 )
+from agents_runner.ui.dialogs.test_chain_dialog import TestChainDialog
 
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -61,22 +63,6 @@ class AgentsTabWidget(QWidget):
         header_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
         layout.addWidget(header_label)
 
-        add_row = QHBoxLayout()
-        add_row.setSpacing(BUTTON_ROW_SPACING)
-        add_row.addWidget(QLabel("Add agent"))
-        self._add_agent_cli = QComboBox()
-        for agent in SUPPORTED_AGENTS:
-            self._add_agent_cli.addItem(agent.title(), agent)
-        add_row.addWidget(self._add_agent_cli)
-
-        add_btn = QToolButton()
-        add_btn.setText("Add")
-        add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        add_btn.clicked.connect(self._on_add_agent)
-        add_row.addWidget(add_btn)
-        add_row.addStretch(1)
-        layout.addLayout(add_row)
-
         self._agent_table = QTableWidget()
         self._agent_table.setColumnCount(7)
         self._agent_table.setHorizontalHeaderLabels(
@@ -109,15 +95,36 @@ class AgentsTabWidget(QWidget):
         self._agent_table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
         self._agent_table.setSelectionMode(QTableWidget.NoSelection)
         self._agent_table.setFocusPolicy(Qt.NoFocus)
-        layout.addWidget(self._agent_table)
+        self._agent_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(self._agent_table, 1)
 
-        self._selection_mode_label = QLabel(
-            "Selection mode (when multiple entries exist):"
-        )
-        layout.addWidget(self._selection_mode_label)
+        # Controls row under table with :: separators
+        controls_container = QWidget(self)
+        controls_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        controls_row = QHBoxLayout(controls_container)
+        controls_row.setContentsMargins(0, 0, 0, 0)
+        controls_row.setSpacing(BUTTON_ROW_SPACING)
 
-        mode_row = QHBoxLayout()
-        mode_row.setSpacing(BUTTON_ROW_SPACING)
+        # Add agent controls
+        controls_row.addWidget(QLabel("Add agent"))
+        self._add_agent_cli = QComboBox()
+        for agent in SUPPORTED_AGENTS:
+            self._add_agent_cli.addItem(agent.title(), agent)
+        controls_row.addWidget(self._add_agent_cli)
+
+        add_btn = QToolButton()
+        add_btn.setText("Add")
+        add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        add_btn.clicked.connect(self._on_add_agent)
+        controls_row.addWidget(add_btn)
+
+        # Separator
+        sep1 = QLabel("::")
+        sep1.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
+        controls_row.addWidget(sep1)
+
+        # Selection mode controls
+        controls_row.addWidget(QLabel("Selection mode"))
         self._selection_mode = QComboBox()
         self._selection_mode.addItem("Round-robin", "round-robin")
         self._selection_mode.addItem("Least used (active tasks)", "least-used")
@@ -126,11 +133,23 @@ class AgentsTabWidget(QWidget):
         self._selection_mode.currentIndexChanged.connect(
             self._on_selection_mode_changed
         )
-        mode_row.addWidget(self._selection_mode)
-        mode_row.addStretch(1)
-        layout.addLayout(mode_row)
+        controls_row.addWidget(self._selection_mode)
 
-        layout.addStretch(1)
+        # Separator
+        sep2 = QLabel("::")
+        sep2.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
+        controls_row.addWidget(sep2)
+
+        # Test Chain button
+        test_chain_btn = QToolButton()
+        test_chain_btn.setText("Test Chain")
+        test_chain_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        test_chain_btn.clicked.connect(self._on_test_chain)
+        controls_row.addWidget(test_chain_btn)
+
+        controls_row.addStretch(1)
+        layout.addWidget(controls_container, 0)
+
         self._refresh_fallback_visibility()
         self._render_table()
 
@@ -208,6 +227,22 @@ class AgentsTabWidget(QWidget):
         self._refresh_priority_visibility()
         self._refresh_fallback_visibility()
 
+    def _on_test_chain(self) -> None:
+        """Handle test chain button click."""
+        # Build agent list
+        agent_names = [a.agent_cli for a in self._rows]
+        if not agent_names:
+            QMessageBox.information(
+                self,
+                "No agents configured",
+                "Add at least one agent to test the chain.",
+            )
+            return
+        
+        # Show test dialog
+        dialog = TestChainDialog(agent_names, cooldown_manager=None, parent=self)
+        dialog.exec()
+
     def _priority_widget(self, row_index: int) -> QWidget:
         w = QWidget()
         layout = QHBoxLayout(w)
@@ -253,33 +288,10 @@ class AgentsTabWidget(QWidget):
         self.agents_changed.emit()
 
     def _agent_cli_widget(self, row_index: int, inst: AgentInstance) -> QWidget:
-        combo = QComboBox()
-        for agent in SUPPORTED_AGENTS:
-            combo.addItem(agent.title(), agent)
-        current = normalize_agent(inst.agent_cli)
-        idx = combo.findData(current)
-        if idx >= 0:
-            combo.setCurrentIndex(idx)
-        combo.currentIndexChanged.connect(
-            lambda _i: self._set_row_agent_cli(
-                row_index, str(combo.currentData() or "")
-            )
-        )
-        return combo
-
-    def _set_row_agent_cli(self, row_index: int, agent_cli: str) -> None:
-        if row_index < 0 or row_index >= len(self._rows):
-            return
-        agent_cli = normalize_agent(agent_cli)
-        inst = self._rows[row_index]
-        self._rows[row_index] = AgentInstance(
-            agent_id=inst.agent_id,
-            agent_cli=agent_cli,
-            config_dir=inst.config_dir,
-            cli_flags=inst.cli_flags,
-        )
-        self._update_fallback_options()
-        self.agents_changed.emit()
+        label = QLabel(normalize_agent(inst.agent_cli).title())
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("color: rgba(237, 239, 245, 200);")
+        return label
 
     def _agent_id_widget(self, row_index: int, inst: AgentInstance) -> QWidget:
         line = QLineEdit()

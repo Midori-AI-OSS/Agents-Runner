@@ -26,7 +26,7 @@ Do **not** automatically create tests during feature development—that remains 
 - Maintain and refactor existing tests for clarity and reliability
 - Debug and fix failing tests
 - Set up or improve test infrastructure (fixtures, mocks, helpers)
-- Document testing patterns and conventions in `.agents/implementation/testing.md`
+- Prefer tests (and docstrings) as the documentation; only write short notes when explicitly requested or required to avoid repeating work
 - Review test coverage and identify gaps
 - Optimize test execution performance
 - Integrate tests with CI/CD pipelines when requested

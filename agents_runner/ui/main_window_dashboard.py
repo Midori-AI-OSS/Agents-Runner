@@ -30,14 +30,28 @@ class _MainWindowDashboardMixin:
             spinner = _stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
-    def _load_more_past_tasks(self, offset: int) -> None:
+    def _load_past_tasks_batch(self, offset: int, limit: int) -> int:
+        """Load a batch of past tasks.
+        
+        Args:
+            offset: Starting offset for loading.
+            limit: Maximum number of tasks to load.
+            
+        Returns:
+            Number of tasks successfully loaded.
+        """
         try:
             offset = max(0, int(offset))
         except Exception:
             offset = 0
+        
+        try:
+            limit = max(1, int(limit))
+        except Exception:
+            limit = PAST_TASK_PAGE_SIZE
 
         payloads = load_done_task_payloads(
-            self._state_path, offset=offset, limit=PAST_TASK_PAGE_SIZE
+            self._state_path, offset=offset, limit=limit
         )
         loaded = 0
         for item in payloads:
@@ -57,12 +71,4 @@ class _MainWindowDashboardMixin:
             self._dashboard.upsert_past_task(task, stain=stain)
             loaded += 1
 
-        if loaded == 0 and offset == 0:
-            self._dashboard.set_past_load_more_enabled(False, "No past tasks")
-            return
-
-        if loaded < PAST_TASK_PAGE_SIZE:
-            self._dashboard.set_past_load_more_enabled(False, "No more tasks")
-            return
-
-        self._dashboard.set_past_load_more_enabled(True)
+        return loaded

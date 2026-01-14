@@ -16,6 +16,9 @@ class DockerRunnerConfig:
     settings_preflight_script: str | None = None
     environment_preflight_script: str | None = None
     headless_desktop_enabled: bool = False
+    desktop_cache_enabled: bool = False
+    container_caching_enabled: bool = False
+    cached_preflight_script: str | None = None
     environment_id: str = ""
     # Use a task-specific filename by default to avoid collisions when multiple
     # runs share a container or temp directory.
@@ -33,3 +36,6 @@ class DockerRunnerConfig:
     gh_prefer_gh_cli: bool = True
     gh_recreate_if_needed: bool = True
     gh_base_branch: str | None = None
+    gh_context_file_path: str | None = None  # Host path to GitHub context file
+    # Hard timeout for post-run artifact collection/finalization (best-effort).
+    artifact_collection_timeout_s: float = 30.0
