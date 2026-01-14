@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import random
 import re
 import shutil
 from uuid import uuid4
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from agents_runner.environments import (
+    ALLOWED_STAINS,
     Environment, save_environment,
     load_environments, delete_environment,
     WORKSPACE_CLONED, WORKSPACE_MOUNTED,
@@ -32,6 +34,7 @@ class NewEnvironmentWizard(QDialog):
         self._test_folder = ""
         self._advanced_modified = False
         self._clone_check_count = 0
+        self._suggested_color: str = self._pick_new_environment_color()
         self.setWindowTitle("New Environment Wizard")
         self.setMinimumWidth(600)
         self.setMinimumHeight(500)
@@ -160,6 +163,25 @@ class NewEnvironmentWizard(QDialog):
         desc = QLabel("Configure advanced environment settings:")
         desc.setStyleSheet("margin-bottom: 15px;")
         card_layout.addWidget(desc)
+
+        color_row = QHBoxLayout()
+        color_label = QLabel("Color:")
+        color_label.setToolTip("Used for identifying environments in the UI")
+        color_row.addWidget(color_label)
+        self._color_combo = QComboBox()
+        self._color_combo.setToolTip("Used for identifying environments in the UI")
+        for stain in ALLOWED_STAINS:
+            self._color_combo.addItem(stain.title(), stain)
+        idx = self._color_combo.findData(self._suggested_color)
+        if idx >= 0:
+            self._color_combo.blockSignals(True)
+            try:
+                self._color_combo.setCurrentIndex(idx)
+            finally:
+                self._color_combo.blockSignals(False)
+        self._color_combo.currentIndexChanged.connect(self._on_advanced_changed)
+        color_row.addWidget(self._color_combo, 1)
+        card_layout.addLayout(color_row)
 
         self._headless_check = QCheckBox("Enable headless desktop")
         self._headless_check.stateChanged.connect(self._on_advanced_changed)
@@ -392,9 +414,11 @@ read
         else:
             gh_target = self._expand_repo_url(self._clone_input.text().strip())
             workspace_type = WORKSPACE_CLONED
+        color = str(getattr(self, "_color_combo", None).currentData() or self._suggested_color)
         env = Environment(
             env_id=env_id,
             name=name,
+            color=color,
             gh_management_locked=True,
             workspace_type=workspace_type,
             workspace_target=gh_target,
@@ -403,3 +427,11 @@ read
             gh_context_enabled=self._gh_context_check.isChecked(),
         )
         return env
+
+    def _pick_new_environment_color(self) -> str:
+        envs = load_environments()
+        used = {env.normalized_color() for env in envs.values()}
+        unused = [stain for stain in ALLOWED_STAINS if stain not in used]
+        if unused and random.random() < 0.9:
+            return random.choice(unused)
+        return random.choice(ALLOWED_STAINS)

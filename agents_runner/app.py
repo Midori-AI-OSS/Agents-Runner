@@ -6,6 +6,36 @@ import time
 from pathlib import Path
 
 
+_FAULT_LOG_HANDLE = None
+
+
+def _maybe_enable_faulthandler() -> None:
+    """Enable faulthandler logging when requested via env var.
+
+    This helps diagnose hard crashes (e.g., segfaults) where Python exceptions are not raised.
+    Set `AGENTS_RUNNER_FAULTHANDLER=1` to write tracebacks to:
+    `~/.midoriai/agents-runner/faulthandler.log`
+    """
+    enabled = str(os.environ.get("AGENTS_RUNNER_FAULTHANDLER", "")).strip().lower()
+    if enabled not in {"1", "true", "yes", "on"}:
+        return
+
+    try:
+        import faulthandler
+
+        log_dir = Path.home() / ".midoriai" / "agents-runner"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / "faulthandler.log"
+        handle = open(log_path, "a", encoding="utf-8")
+        faulthandler.enable(file=handle, all_threads=True)
+
+        global _FAULT_LOG_HANDLE
+        _FAULT_LOG_HANDLE = handle
+    except Exception:
+        # Best-effort: never block startup on diagnostics.
+        pass
+
+
 def _cleanup_stale_temp_files() -> None:
     """Clean up stale temporary files from previous runs.
     
@@ -121,6 +151,7 @@ def _initialize_qtwebengine() -> None:
 
 
 def run_app(argv: list[str]) -> None:
+    _maybe_enable_faulthandler()
     _configure_qtwebengine_runtime()
 
     from PySide6.QtWidgets import QApplication
