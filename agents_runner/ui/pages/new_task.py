@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QSize
@@ -60,6 +61,7 @@ class NewTaskPage(QWidget):
         self._mic_recording: MicRecording | None = None
         self._stt_thread: QThread | None = None
         self._stt_worker: SttWorker | None = None
+        self._current_interactive_slot: Callable | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -230,12 +232,13 @@ class NewTaskPage(QWidget):
         self._run_interactive = StainedGlassButton("Run Interactive")
         self._run_interactive.set_glass_enabled(False)
         self._run_interactive.clicked.connect(self._on_launch)
+        self._current_interactive_slot = self._on_launch
 
         self._run_interactive_menu = QMenu(self)
-        self._run_interactive_desktop = self._run_interactive_menu.addAction(
-            "With desktop"
+        self._run_interactive_no_desktop = self._run_interactive_menu.addAction(
+            "Without desktop"
         )
-        self._run_interactive_desktop.triggered.connect(self._on_launch_with_desktop)
+        self._run_interactive_no_desktop.triggered.connect(self._on_launch_without_desktop)
         self._run_interactive.set_menu(None)
 
         self._run_agent = StainedGlassButton("Run Agent")
@@ -420,14 +423,30 @@ class NewTaskPage(QWidget):
             helpme_script,
         )
 
+    def _reconnect_interactive_button(self, new_slot) -> None:
+        """Safely reconnect the interactive button click handler."""
+        if hasattr(self, '_current_interactive_slot') and self._current_interactive_slot:
+            try:
+                self._run_interactive.clicked.disconnect(self._current_interactive_slot)
+            except (RuntimeError, TypeError):
+                pass  # Already disconnected
+        self._run_interactive.clicked.connect(new_slot)
+        self._current_interactive_slot = new_slot
+
     def _sync_interactive_options(self) -> None:
         env_id = str(self._environment.currentData() or "")
         desktop_enabled = self._env_desktop_enabled.get(env_id, False)
-        self._run_interactive.set_menu(
-            self._run_interactive_menu
-            if (env_id and desktop_enabled)
-            else None
-        )
+        
+        if env_id and desktop_enabled:
+            # Desktop enabled: show dropdown with "Without desktop" option
+            self._run_interactive.set_menu(self._run_interactive_menu)
+            # Wire primary button to launch WITH desktop
+            self._reconnect_interactive_button(self._on_launch_with_desktop)
+        else:
+            # Desktop not enabled: no dropdown
+            self._run_interactive.set_menu(None)
+            # Wire primary button to launch without desktop
+            self._reconnect_interactive_button(self._on_launch)
 
     def _emit_interactive_launch(self, *, extra_preflight_script: str = "") -> None:
         prompt = sanitize_prompt((self._prompt.toPlainText() or "").strip())
@@ -471,6 +490,9 @@ class NewTaskPage(QWidget):
         )
 
     def _on_launch(self) -> None:
+        self._emit_interactive_launch(extra_preflight_script="")
+
+    def _on_launch_without_desktop(self) -> None:
         self._emit_interactive_launch(extra_preflight_script="")
 
     def _on_launch_with_desktop(self) -> None:
