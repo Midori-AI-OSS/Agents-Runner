@@ -351,10 +351,50 @@ class GlassRoot(QWidget):
 
         self.update()
 
+    def _calc_split_ratio(self) -> float:
+        """
+        Calculate split ratio oscillating between 0.3 and 0.6 with 45-second period.
+        Uses sine wave for smooth oscillation with subtle jitter.
+        """
+        t = time.time()
+        # Base oscillation: center at 0.45, amplitude of 0.15
+        base = 0.45 + 0.15 * math.sin(t / 45.0 * 2.0 * math.pi)
+        # Add subtle jitter (< 2% of range, which is 0.3 range → max 0.006)
+        jitter = math.sin(t * 0.1) * 0.005
+        return base + jitter
+
+    def _calc_top_phase(self) -> float:
+        """
+        Calculate color blend phase for top band (0.0 to 1.0) with 35-second period.
+        Uses cosine wave mapped to [0, 1] range with subtle jitter.
+        """
+        t = time.time()
+        # Map cosine [-1, 1] to [0, 1]
+        base = (1.0 + math.cos(t / 35.0 * 2.0 * math.pi)) * 0.5
+        # Add subtle jitter (< 2% of range → max 0.02)
+        jitter = math.sin(t * 0.13) * 0.01
+        return max(0.0, min(1.0, base + jitter))
+
+    def _calc_bottom_phase(self) -> float:
+        """
+        Calculate color blend phase for bottom band (0.0 to 1.0) with 40-second period.
+        Uses sine wave mapped to [0, 1] range with subtle jitter.
+        """
+        t = time.time()
+        # Map sine [-1, 1] to [0, 1]
+        base = (1.0 + math.sin(t / 40.0 * 2.0 * math.pi)) * 0.5
+        # Add subtle jitter (< 2% of range → max 0.02)
+        jitter = math.cos(t * 0.11) * 0.008
+        return max(0.0, min(1.0, base + jitter))
+
     def _update_background_animation(self) -> None:
         """Update Codex background animation phase parameters."""
-        # Placeholder for animation logic - will be implemented in subsequent tasks
-        pass
+        self._codex_split_ratio = self._calc_split_ratio()
+        self._codex_color_blend_phase_top = self._calc_top_phase()
+        self._codex_color_blend_phase_bottom = self._calc_bottom_phase()
+        # Trigger repaint if using Codex theme
+        if self._theme.name == "codex":
+            self.update()
 
     def _paint_orbs(self, painter: QPainter, theme: _AgentTheme) -> None:
         if not self._orbs:
