@@ -538,6 +538,17 @@ class NewTaskPage(QWidget):
         }
         self._sync_template_prompt_indicator()
 
+    def set_environment_desktop_enabled(self, desktop_enabled: dict[str, bool]) -> None:
+        """Set desktop enablement status for environments.
+        
+        Args:
+            desktop_enabled: Dictionary mapping environment IDs to desktop enablement status
+        """
+        self._env_desktop_enabled = {
+            str(k): bool(v) for k, v in (desktop_enabled or {}).items()
+        }
+        self._sync_interactive_options()
+
     def _sync_template_prompt_indicator(self) -> None:
         env_id = str(self._environment.currentData() or "")
         should_show = bool(self._env_template_injection.get(env_id, False))

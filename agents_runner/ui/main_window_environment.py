@@ -165,10 +165,18 @@ class _MainWindowEnvironmentMixin:
         template_statuses = {
             e.env_id: bool(getattr(e, "midoriai_template_detected", False)) for e in envs
         }
+        desktop_enabled = {
+            e.env_id: (
+                e.headless_desktop_enabled
+                or self._settings_data.get("headless_desktop_enabled", False)
+            )
+            for e in envs
+        }
 
         self._new_task.set_environment_stains(stains)
         self._new_task.set_environment_workspace_types(workspace_types)
         self._new_task.set_environment_template_injection_status(template_statuses)
+        self._new_task.set_environment_desktop_enabled(desktop_enabled)
         self._dashboard.set_environment_filter_options(
             [(e.env_id, e.name or e.env_id) for e in envs]
         )
