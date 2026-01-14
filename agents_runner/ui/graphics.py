@@ -188,6 +188,8 @@ class _BackgroundOrb:
 
 
 class GlassRoot(QWidget):
+    _CODEX_BOUNDARY_ANGLE_DEG: float = 15.0
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._animate_orbs = False
@@ -233,6 +235,8 @@ class GlassRoot(QWidget):
 
     @staticmethod
     def _darken_overlay_alpha(theme: _AgentTheme) -> int:
+        if theme.name == "codex":
+            return 28
         lightness = float(theme.base.lightnessF())
         # Keep the background readable without crushing the palette into near-black.
         # Slightly stronger darkening on light themes, lighter on dark themes.
@@ -392,33 +396,29 @@ class GlassRoot(QWidget):
 
     def _get_top_band_color(self, phase: float) -> QColor:
         """
-        Get top band color by blending dark blue and dark orange based on phase.
+        Get top band color by blending blue and green based on phase.
 
         Args:
-            phase: Blend phase from 0.0 (Dark Blue #2B5A8E) to 1.0 (Dark Orange #AA5500)
+            phase: Blend phase from 0.0 (Blue #60A5FA) to 1.0 (Green #34D399)
 
         Returns:
             Blended QColor for top band
-        
-        Note:
-            Colors chosen for WCAG AA compliance (4.5:1 contrast with light text).
-            #2B5A8E provides 7.10:1 contrast, #AA5500 provides 5.24:1 contrast.
         """
         # Cache: skip recalculation if phase change < 0.01
         if self._cached_top_color is not None and abs(phase - self._cached_top_phase) < 0.01:
             return self._cached_top_color
         
-        color = self._blend_colors("#2B5A8E", "#AA5500", phase)
+        color = self._blend_colors("#60A5FA", "#34D399", phase)
         self._cached_top_color = color
         self._cached_top_phase = phase
         return color
 
     def _get_bottom_band_color(self, phase: float) -> QColor:
         """
-        Get bottom band color by blending between two dark grays based on phase.
+        Get bottom band color by blending between violet and orange based on phase.
 
         Args:
-            phase: Blend phase from 0.0 (#2A2A2A darker) to 1.0 (#3A3A3A lighter)
+            phase: Blend phase from 0.0 (#A78BFA) to 1.0 (#FDBA74)
 
         Returns:
             Blended QColor for bottom band
@@ -427,45 +427,45 @@ class GlassRoot(QWidget):
         if self._cached_bottom_color is not None and abs(phase - self._cached_bottom_phase) < 0.01:
             return self._cached_bottom_color
         
-        color = self._blend_colors("#2A2A2A", "#3A3A3A", phase)
+        color = self._blend_colors("#A78BFA", "#FDBA74", phase)
         self._cached_bottom_color = color
         self._cached_bottom_phase = phase
         return color
 
     def _calc_split_ratio(self) -> float:
         """
-        Calculate split ratio oscillating between 0.3 and 0.6 with 45-second period.
+        Calculate split ratio oscillating between 0.3 and 0.6 with 180-second period.
         Uses sine wave for smooth oscillation with subtle jitter.
         """
         t = time.time()
         # Base oscillation: center at 0.45, amplitude of 0.15
-        base = 0.45 + 0.15 * math.sin(t / 45.0 * 2.0 * math.pi)
+        base = 0.45 + 0.15 * math.sin(t / 180.0 * 2.0 * math.pi)
         # Add subtle jitter (< 2% of range, which is 0.3 range → max 0.006)
-        jitter = math.sin(t * 0.1) * 0.005
+        jitter = math.sin(t * 0.025) * 0.005
         return base + jitter
 
     def _calc_top_phase(self) -> float:
         """
-        Calculate color blend phase for top band (0.0 to 1.0) with 35-second period.
+        Calculate color blend phase for top band (0.0 to 1.0) with 140-second period.
         Uses cosine wave mapped to [0, 1] range with subtle jitter.
         """
         t = time.time()
         # Map cosine [-1, 1] to [0, 1]
-        base = (1.0 + math.cos(t / 35.0 * 2.0 * math.pi)) * 0.5
+        base = (1.0 + math.cos(t / 140.0 * 2.0 * math.pi)) * 0.5
         # Add subtle jitter (< 2% of range → max 0.02)
-        jitter = math.sin(t * 0.13) * 0.01
+        jitter = math.sin(t * 0.0325) * 0.01
         return max(0.0, min(1.0, base + jitter))
 
     def _calc_bottom_phase(self) -> float:
         """
-        Calculate color blend phase for bottom band (0.0 to 1.0) with 40-second period.
+        Calculate color blend phase for bottom band (0.0 to 1.0) with 160-second period.
         Uses sine wave mapped to [0, 1] range with subtle jitter.
         """
         t = time.time()
         # Map sine [-1, 1] to [0, 1]
-        base = (1.0 + math.sin(t / 40.0 * 2.0 * math.pi)) * 0.5
+        base = (1.0 + math.sin(t / 160.0 * 2.0 * math.pi)) * 0.5
         # Add subtle jitter (< 2% of range → max 0.02)
-        jitter = math.cos(t * 0.11) * 0.008
+        jitter = math.cos(t * 0.0275) * 0.008
         return max(0.0, min(1.0, base + jitter))
 
     def _update_background_animation(self) -> None:
@@ -482,9 +482,10 @@ class GlassRoot(QWidget):
         Paint the two-band background composition for Codex theme.
 
         Renders animated background with:
-        - Top band: LightBlue to DarkOrange gradient
-        - Bottom band: Dark gray gradient
-        - Soft feathered boundary between bands
+        - Top band: DarkBlue to DarkGreen gradient
+        - Bottom band: Dark accent gradient
+        - Soft feathered diagonal boundary between bands
+        - Large soft color blobs overlay
 
         Args:
             painter: QPainter instance to draw with
@@ -499,19 +500,165 @@ class GlassRoot(QWidget):
         top_color = self._get_top_band_color(top_phase)
         bottom_color = self._get_bottom_band_color(bottom_phase)
 
-        # Calculate boundary position
-        boundary_y = int(rect.height() * split_ratio)
+        w = int(rect.width())
+        h = int(rect.height())
+        if w <= 0 or h <= 0:
+            return
 
-        # Paint top band
-        painter.fillRect(0, 0, rect.width(), boundary_y, top_color)
+        theta = math.radians(float(self._CODEX_BOUNDARY_ANGLE_DEG))
+        m = math.tan(theta)
+        n_len = math.hypot(m, 1.0)
+        n_x = -m / n_len
+        n_y = 1.0 / n_len
 
-        # Paint bottom band
-        painter.fillRect(
-            0, boundary_y, rect.width(), rect.height() - boundary_y, bottom_color
+        mid_x = float(w) * 0.5
+        mid_y = float(h) * float(split_ratio)
+
+        extent = float(max(w, h)) * 1.15
+        start = QPointF(mid_x - n_x * extent, mid_y - n_y * extent)
+        end = QPointF(mid_x + n_x * extent, mid_y + n_y * extent)
+
+        base_grad = QLinearGradient(start, end)
+        base_grad.setColorAt(0.0, top_color.lighter(125))
+        base_grad.setColorAt(0.42, self._blend_colors(top_color, bottom_color, 0.35))
+        base_grad.setColorAt(0.62, self._blend_colors(top_color, bottom_color, 0.65))
+        base_grad.setColorAt(1.0, bottom_color.lighter(120))
+        painter.fillRect(0, 0, w, h, base_grad)
+
+        # Overlay large, soft blobs for a more organic background.
+        self._paint_codex_blobs(painter, rect)
+
+    def _paint_band_boundary_diagonal(
+        self,
+        painter: QPainter,
+        rect: QWidget,
+        *,
+        y_left: float,
+        y_right: float,
+        top_color: QColor,
+        bottom_color: QColor,
+    ) -> None:
+        w = int(rect.width())
+        h = int(rect.height())
+        if w <= 0 or h <= 0:
+            return
+
+        gradient_extent = 420
+
+        theta = math.radians(float(self._CODEX_BOUNDARY_ANGLE_DEG))
+        m = math.tan(theta)
+        n_len = math.hypot(m, 1.0)
+        n_x = -m / n_len
+        n_y = 1.0 / n_len
+
+        mid_x = float(w) * 0.5
+        mid_y = (float(y_left) + float(y_right)) * 0.5
+        start = QPointF(mid_x - n_x * gradient_extent, mid_y - n_y * gradient_extent)
+        end = QPointF(mid_x + n_x * gradient_extent, mid_y + n_y * gradient_extent)
+        gradient = QLinearGradient(start, end)
+
+        gradient.setColorAt(0.0, top_color)
+        gradient.setColorAt(0.15, self._blend_colors(top_color, bottom_color, 0.1))
+        gradient.setColorAt(0.35, self._blend_colors(top_color, bottom_color, 0.3))
+        gradient.setColorAt(0.5, self._blend_colors(top_color, bottom_color, 0.5))
+        gradient.setColorAt(0.65, self._blend_colors(top_color, bottom_color, 0.7))
+        gradient.setColorAt(0.85, self._blend_colors(top_color, bottom_color, 0.9))
+        gradient.setColorAt(1.0, bottom_color)
+
+        x0 = 0.0
+        x1 = float(w)
+
+        p0a = QPointF(x0 - n_x * gradient_extent, float(y_left) - n_y * gradient_extent)
+        p1a = QPointF(x1 - n_x * gradient_extent, float(y_right) - n_y * gradient_extent)
+        p1b = QPointF(x1 + n_x * gradient_extent, float(y_right) + n_y * gradient_extent)
+        p0b = QPointF(x0 + n_x * gradient_extent, float(y_left) + n_y * gradient_extent)
+
+        strip = QPainterPath()
+        strip.moveTo(p0a)
+        strip.lineTo(p1a)
+        strip.lineTo(p1b)
+        strip.lineTo(p0b)
+        strip.closeSubpath()
+
+        painter.save()
+        painter.setClipPath(strip)
+        painter.fillRect(0, 0, w, h, gradient)
+        painter.restore()
+
+    def _paint_codex_blobs(self, painter: QPainter, rect: QWidget) -> None:
+        w = int(rect.width())
+        h = int(rect.height())
+        if w <= 0 or h <= 0:
+            return
+
+        # Keep motion subtle; tie to 4× slower global pacing.
+        t = time.time() / 4.0
+        size = float(min(w, h))
+
+        blobs: tuple[tuple[float, float, float, float, QColor], ...] = (
+            (
+                0.18 + 0.03 * math.sin(t * 0.30),
+                0.30 + 0.03 * math.cos(t * 0.24),
+                0.75,
+                0.55,
+                QColor(147, 197, 253, 220),  # blue
+            ),
+            (
+                0.58 + 0.03 * math.cos(t * 0.22 + 1.2),
+                0.25 + 0.03 * math.sin(t * 0.18 + 0.7),
+                0.85,
+                0.60,
+                QColor(196, 181, 253, 210),  # violet
+            ),
+            (
+                0.78 + 0.02 * math.sin(t * 0.20 + 2.1),
+                0.65 + 0.03 * math.cos(t * 0.16 + 1.8),
+                0.95,
+                0.65,
+                QColor(253, 186, 116, 190),  # amber/orange
+            ),
+            (
+                0.40 + 0.03 * math.sin(t * 0.17 + 3.0),
+                0.78 + 0.03 * math.cos(t * 0.21 + 2.2),
+                0.90,
+                0.60,
+                QColor(251, 113, 133, 175),  # pink
+            ),
+            (
+                0.10 + 0.02 * math.cos(t * 0.19 + 4.0),
+                0.78 + 0.02 * math.sin(t * 0.15 + 2.6),
+                0.70,
+                0.55,
+                QColor(110, 231, 183, 170),  # emerald
+            ),
         )
 
-        # Apply soft boundary blend over the bands
-        self._paint_band_boundary(painter, rect, split_ratio, top_color, bottom_color)
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(Qt.NoPen)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Screen)
+
+        for nx, ny, rx_s, ry_s, c in blobs:
+            center = QPointF(float(w) * float(nx), float(h) * float(ny))
+            rx = max(1.0, size * float(rx_s))
+            ry = max(1.0, size * float(ry_s))
+
+            painter.save()
+            painter.translate(center)
+            painter.scale(float(rx), float(ry))
+
+            grad = QRadialGradient(QPointF(0.0, 0.0), 1.0)
+            grad.setColorAt(0.0, c)
+            grad.setColorAt(
+                0.45, QColor(c.red(), c.green(), c.blue(), int(c.alpha() * 0.28))
+            )
+            grad.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
+
+            painter.setBrush(grad)
+            painter.drawEllipse(QPointF(0.0, 0.0), 1.0, 1.0)
+            painter.restore()
+
+        painter.restore()
 
     def _paint_band_boundary(
         self,

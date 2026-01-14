@@ -6,6 +6,9 @@ from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QHideEvent
+from PySide6.QtGui import QLinearGradient
+from PySide6.QtGui import QPaintEvent
+from PySide6.QtGui import QPainter
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QFrame
@@ -29,6 +32,49 @@ from agents_runner.ui.pages.dashboard_row import TaskRow
 from agents_runner.ui.task_model import Task
 
 
+class _DashboardScrim(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("DashboardScrim")
+        self._alpha = 92
+        self._feather_px = 38
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        w = int(self.width())
+        h = int(self.height())
+        if w <= 0 or h <= 0:
+            return
+
+        feather = int(min(self._feather_px, h // 2))
+        alpha = int(min(max(self._alpha, 0), 255))
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, False)
+
+        if feather <= 0 or alpha <= 0:
+            return
+
+        # Center band (full width), leaving feather at top/bottom only.
+        painter.fillRect(
+            0,
+            feather,
+            w,
+            h - feather * 2,
+            QColor(0, 0, 0, alpha),
+        )
+
+        # Feather top/bottom edges.
+        top = QLinearGradient(0, 0, 0, feather)
+        top.setColorAt(0.0, QColor(0, 0, 0, 0))
+        top.setColorAt(1.0, QColor(0, 0, 0, alpha))
+        painter.fillRect(0, 0, w, feather, top)
+
+        bottom = QLinearGradient(0, h - feather, 0, h)
+        bottom.setColorAt(0.0, QColor(0, 0, 0, alpha))
+        bottom.setColorAt(1.0, QColor(0, 0, 0, 0))
+        painter.fillRect(0, h - feather, w, feather, bottom)
+
+
 class DashboardPage(QWidget):
     task_selected = Signal(str)
     clean_old_requested = Signal()
@@ -49,14 +95,14 @@ class DashboardPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
 
-        table = QWidget()
+        table = _DashboardScrim()
         table_layout = QVBoxLayout(table)
         table_layout.setContentsMargins(0, 12, 0, 12)
         table_layout.setSpacing(0)
 
         filters = QWidget()
         filters_layout = QHBoxLayout(filters)
-        filters_layout.setContentsMargins(0, 0, 0, 0)
+        filters_layout.setContentsMargins(12, 0, 12, 0)
         filters_layout.setSpacing(10)
 
         self._filter_text = QLineEdit()
@@ -100,7 +146,7 @@ class DashboardPage(QWidget):
 
         columns = QWidget()
         columns_layout = QHBoxLayout(columns)
-        columns_layout.setContentsMargins(0, 0, 0, 0)
+        columns_layout.setContentsMargins(12, 0, 12, 0)
         columns_layout.setSpacing(12)
         c1 = QLabel("Task")
         c1.setStyleSheet("color: rgba(237, 239, 245, 150); font-weight: 650;")
@@ -118,6 +164,7 @@ class DashboardPage(QWidget):
         self._tabs = QTabBar()
         self._tabs.setObjectName("DashboardTabs")
         self._tabs.setDocumentMode(True)
+        self._tabs.setExpanding(True)
         self._tabs.addTab("Active Tasks")
         self._tabs.addTab("Past Tasks")
         self._tabs.currentChanged.connect(self._on_tab_changed)
@@ -151,7 +198,7 @@ class DashboardPage(QWidget):
         self._list_active = QWidget()
         self._list_active.setObjectName("TaskList")
         self._list_layout_active = QVBoxLayout(self._list_active)
-        self._list_layout_active.setContentsMargins(8, 8, 8, 8)
+        self._list_layout_active.setContentsMargins(12, 8, 12, 8)
         self._list_layout_active.setSpacing(6)
         self._list_layout_active.addStretch(1)
         self._scroll_active.setWidget(self._list_active)
@@ -171,7 +218,7 @@ class DashboardPage(QWidget):
         self._list_past = QWidget()
         self._list_past.setObjectName("TaskList")
         self._list_layout_past = QVBoxLayout(self._list_past)
-        self._list_layout_past.setContentsMargins(8, 8, 8, 8)
+        self._list_layout_past.setContentsMargins(12, 8, 12, 8)
         self._list_layout_past.setSpacing(6)
         self._list_layout_past.addStretch(1)
         self._scroll_past.setWidget(self._list_past)
