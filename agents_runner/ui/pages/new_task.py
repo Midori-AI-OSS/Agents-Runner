@@ -51,6 +51,7 @@ class NewTaskPage(QWidget):
         self._env_stains: dict[str, str] = {}
         self._env_workspace_types: dict[str, str] = {}  # Track workspace types for environments
         self._env_template_injection: dict[str, bool] = {}
+        self._env_desktop_enabled: dict[str, bool] = {}
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
@@ -421,10 +422,10 @@ class NewTaskPage(QWidget):
 
     def _sync_interactive_options(self) -> None:
         env_id = str(self._environment.currentData() or "")
-        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
+        desktop_enabled = self._env_desktop_enabled.get(env_id, False)
         self._run_interactive.set_menu(
             self._run_interactive_menu
-            if (env_id and workspace_type == WORKSPACE_CLONED)
+            if (env_id and desktop_enabled)
             else None
         )
 
