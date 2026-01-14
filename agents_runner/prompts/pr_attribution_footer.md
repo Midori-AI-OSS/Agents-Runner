@@ -12,8 +12,8 @@ This footer is appended to PR descriptions to attribute work to Midori AI Agents
 ## Prompt
 ---
 {marker}
-Created by [Midori AI Agents Runner]({agents_runner_url}).
+Created by [Midori AI Agents Runner]({agents_runner_url})
 Agent Used: {agent_used}
-Related: [Midori AI Monorepo]({midori_ai_url}).
+Related: [Midori AI Monorepo]({midori_ai_url})
 
 
