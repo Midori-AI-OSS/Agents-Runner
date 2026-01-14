@@ -382,15 +382,19 @@ class GlassRoot(QWidget):
 
     def _get_top_band_color(self, phase: float) -> QColor:
         """
-        Get top band color by blending LightBlue and DarkOrange based on phase.
+        Get top band color by blending dark blue and dark orange based on phase.
 
         Args:
-            phase: Blend phase from 0.0 (LightBlue #ADD8E6) to 1.0 (DarkOrange #FF8C00)
+            phase: Blend phase from 0.0 (Dark Blue #2B5A8E) to 1.0 (Dark Orange #AA5500)
 
         Returns:
             Blended QColor for top band
+        
+        Note:
+            Colors chosen for WCAG AA compliance (4.5:1 contrast with light text).
+            #2B5A8E provides 7.10:1 contrast, #AA5500 provides 5.24:1 contrast.
         """
-        return self._blend_colors("#ADD8E6", "#FF8C00", phase)
+        return self._blend_colors("#2B5A8E", "#AA5500", phase)
 
     def _get_bottom_band_color(self, phase: float) -> QColor:
         """
