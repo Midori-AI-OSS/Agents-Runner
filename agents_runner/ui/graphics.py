@@ -351,6 +351,58 @@ class GlassRoot(QWidget):
 
         self.update()
 
+    def _blend_colors(
+        self, color1: QColor | str, color2: QColor | str, t: float
+    ) -> QColor:
+        """
+        Blend between two colors using linear RGB interpolation.
+
+        Args:
+            color1: First color (QColor or hex string)
+            color2: Second color (QColor or hex string)
+            t: Blend factor from 0.0 (color1) to 1.0 (color2)
+
+        Returns:
+            Blended QColor
+        """
+        # Convert to QColor if needed
+        c1 = QColor(color1) if isinstance(color1, str) else color1
+        c2 = QColor(color2) if isinstance(color2, str) else color2
+
+        # Clamp t to [0.0, 1.0]
+        t = max(0.0, min(1.0, t))
+
+        # Linear RGB interpolation
+        r = int(c1.red() + (c2.red() - c1.red()) * t)
+        g = int(c1.green() + (c2.green() - c1.green()) * t)
+        b = int(c1.blue() + (c2.blue() - c1.blue()) * t)
+
+        return QColor(r, g, b)
+
+    def _get_top_band_color(self, phase: float) -> QColor:
+        """
+        Get top band color by blending LightBlue and DarkOrange based on phase.
+
+        Args:
+            phase: Blend phase from 0.0 (LightBlue #ADD8E6) to 1.0 (DarkOrange #FF8C00)
+
+        Returns:
+            Blended QColor for top band
+        """
+        return self._blend_colors("#ADD8E6", "#FF8C00", phase)
+
+    def _get_bottom_band_color(self, phase: float) -> QColor:
+        """
+        Get bottom band color by blending between two dark grays based on phase.
+
+        Args:
+            phase: Blend phase from 0.0 (#2A2A2A darker) to 1.0 (#3A3A3A lighter)
+
+        Returns:
+            Blended QColor for bottom band
+        """
+        return self._blend_colors("#2A2A2A", "#3A3A3A", phase)
+
     def _calc_split_ratio(self) -> float:
         """
         Calculate split ratio oscillating between 0.3 and 0.6 with 45-second period.
