@@ -120,6 +120,7 @@ class TaskDetailsPage(QWidget):
 
         self._tabs = QTabWidget()
         self._tabs.setDocumentMode(True)
+        self._tabs.tabBar().setDrawBase(False)
         self._tabs.currentChanged.connect(self._on_tab_changed)
 
         task_tab = QWidget()

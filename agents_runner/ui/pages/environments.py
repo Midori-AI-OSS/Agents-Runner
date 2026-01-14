@@ -134,6 +134,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         tabs = QTabWidget()
         tabs.setDocumentMode(True)
+        tabs.tabBar().setDrawBase(False)
 
         general_tab = QWidget()
         general_layout = QVBoxLayout(general_tab)

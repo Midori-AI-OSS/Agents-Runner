@@ -246,8 +246,9 @@ TEMPLATE_BASE = """
 
     QTabWidget::pane {
         border: 1px solid rgba(255, 255, 255, 14);
+        border-top: 0px;
         background: rgba(18, 20, 28, 55);
-        margin-top: -1px;
+        margin-top: 0px;
         border-radius: 0px;
     }
 
@@ -255,6 +256,11 @@ TEMPLATE_BASE = """
         border: none;
         background: transparent;
         margin-top: 0px;
+    }
+
+    QTabBar::base {
+        border: none;
+        background: transparent;
     }
 
     QTabBar::tab {
