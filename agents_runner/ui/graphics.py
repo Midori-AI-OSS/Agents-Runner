@@ -449,6 +449,42 @@ class GlassRoot(QWidget):
         if self._theme.name == "codex":
             self.update()
 
+    def _paint_codex_background(self, painter: QPainter, rect: QWidget) -> None:
+        """
+        Paint the two-band background composition for Codex theme.
+
+        Renders animated background with:
+        - Top band: LightBlue to DarkOrange gradient
+        - Bottom band: Dark gray gradient
+        - Soft feathered boundary between bands
+
+        Args:
+            painter: QPainter instance to draw with
+            rect: Rectangle defining the paint area
+        """
+        # Get current phase values
+        split_ratio = self._calc_split_ratio()
+        top_phase = self._calc_top_phase()
+        bottom_phase = self._calc_bottom_phase()
+
+        # Calculate colors based on phase
+        top_color = self._get_top_band_color(top_phase)
+        bottom_color = self._get_bottom_band_color(bottom_phase)
+
+        # Calculate boundary position
+        boundary_y = int(rect.height() * split_ratio)
+
+        # Paint top band
+        painter.fillRect(0, 0, rect.width(), boundary_y, top_color)
+
+        # Paint bottom band
+        painter.fillRect(
+            0, boundary_y, rect.width(), rect.height() - boundary_y, bottom_color
+        )
+
+        # Apply soft boundary blend over the bands
+        self._paint_band_boundary(painter, rect, split_ratio, top_color, bottom_color)
+
     def _paint_band_boundary(
         self,
         painter: QPainter,
