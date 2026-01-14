@@ -8,6 +8,7 @@ import shutil
 from uuid import uuid4
 
 from PySide6.QtCore import Signal, QTimer
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QStackedWidget, QVBoxLayout, QWidget,
@@ -20,6 +21,8 @@ from agents_runner.environments import (
     WORKSPACE_CLONED, WORKSPACE_MOUNTED,
 )
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
+from agents_runner.ui.graphics import _EnvironmentTintOverlay
+from agents_runner.ui.utils import _apply_environment_combo_tint, _stain_color
 from agents_runner.widgets import GlassCard
 
 
@@ -30,6 +33,16 @@ class NewEnvironmentWizard(QDialog):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("NewEnvironmentWizard")
+        self.setStyleSheet(
+            "\n".join(
+                [
+                    "#NewEnvironmentWizard {",
+                    "  background-color: rgba(10, 12, 18, 255);",
+                    "}",
+                ]
+            )
+        )
         self._clone_test_passed = False
         self._test_folder = ""
         self._advanced_modified = False
@@ -46,6 +59,15 @@ class NewEnvironmentWizard(QDialog):
         self._stack.addWidget(self._step1_widget)
         self._stack.addWidget(self._step2_widget)
         self._stack.setCurrentIndex(0)
+        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=22)
+        self._tint_overlay.setGeometry(self.rect())
+        self._tint_overlay.raise_()
+        self._apply_environment_tint()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._tint_overlay.setGeometry(self.rect())
+        self._tint_overlay.raise_()
 
     def _setup_step1(self) -> QWidget:
         widget = QWidget()
@@ -179,7 +201,7 @@ class NewEnvironmentWizard(QDialog):
                 self._color_combo.setCurrentIndex(idx)
             finally:
                 self._color_combo.blockSignals(False)
-        self._color_combo.currentIndexChanged.connect(self._on_advanced_changed)
+        self._color_combo.currentIndexChanged.connect(self._on_color_changed)
         color_row.addWidget(self._color_combo, 1)
         card_layout.addLayout(color_row)
 
@@ -212,6 +234,22 @@ class NewEnvironmentWizard(QDialog):
         btn_layout.addWidget(self._finish_btn)
         layout.addLayout(btn_layout)
         return widget
+
+    def _current_stain(self) -> str:
+        combo = getattr(self, "_color_combo", None)
+        stain = str(combo.currentData() or "").strip().lower() if combo is not None else ""
+        return stain or str(self._suggested_color or "").strip().lower()
+
+    def _apply_environment_tint(self) -> None:
+        if not hasattr(self, "_tint_overlay"):
+            return
+        stain = self._current_stain()
+        if not stain:
+            self._tint_overlay.set_tint_color(None)
+            return
+        self._tint_overlay.set_tint_color(_stain_color(stain))
+        if hasattr(self, "_color_combo"):
+            _apply_environment_combo_tint(self._color_combo, stain)
 
     def _on_source_changed(self, index: int) -> None:
         is_folder = index == 0
@@ -392,6 +430,10 @@ read
     def _on_advanced_changed(self) -> None:
         self._advanced_modified = True
         self._finish_btn.setText("OK")
+
+    def _on_color_changed(self) -> None:
+        self._apply_environment_tint()
+        self._on_advanced_changed()
 
     def _on_finish(self) -> None:
         env = self._create_environment()
