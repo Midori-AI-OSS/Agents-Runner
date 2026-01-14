@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QSize
@@ -51,6 +52,7 @@ class NewTaskPage(QWidget):
         self._env_stains: dict[str, str] = {}
         self._env_workspace_types: dict[str, str] = {}  # Track workspace types for environments
         self._env_template_injection: dict[str, bool] = {}
+        self._env_desktop_enabled: dict[str, bool] = {}
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
@@ -59,6 +61,7 @@ class NewTaskPage(QWidget):
         self._mic_recording: MicRecording | None = None
         self._stt_thread: QThread | None = None
         self._stt_worker: SttWorker | None = None
+        self._current_interactive_slot: Callable | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -229,12 +232,13 @@ class NewTaskPage(QWidget):
         self._run_interactive = StainedGlassButton("Run Interactive")
         self._run_interactive.set_glass_enabled(False)
         self._run_interactive.clicked.connect(self._on_launch)
+        self._current_interactive_slot = self._on_launch
 
         self._run_interactive_menu = QMenu(self)
-        self._run_interactive_desktop = self._run_interactive_menu.addAction(
-            "With desktop"
+        self._run_interactive_no_desktop = self._run_interactive_menu.addAction(
+            "Without desktop"
         )
-        self._run_interactive_desktop.triggered.connect(self._on_launch_with_desktop)
+        self._run_interactive_no_desktop.triggered.connect(self._on_launch_without_desktop)
         self._run_interactive.set_menu(None)
 
         self._run_agent = StainedGlassButton("Run Agent")
@@ -419,14 +423,30 @@ class NewTaskPage(QWidget):
             helpme_script,
         )
 
+    def _reconnect_interactive_button(self, new_slot) -> None:
+        """Safely reconnect the interactive button click handler."""
+        if hasattr(self, '_current_interactive_slot') and self._current_interactive_slot:
+            try:
+                self._run_interactive.clicked.disconnect(self._current_interactive_slot)
+            except (RuntimeError, TypeError):
+                pass  # Already disconnected
+        self._run_interactive.clicked.connect(new_slot)
+        self._current_interactive_slot = new_slot
+
     def _sync_interactive_options(self) -> None:
         env_id = str(self._environment.currentData() or "")
-        workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
-        self._run_interactive.set_menu(
-            self._run_interactive_menu
-            if (env_id and workspace_type == WORKSPACE_CLONED)
-            else None
-        )
+        desktop_enabled = self._env_desktop_enabled.get(env_id, False)
+        
+        if env_id and desktop_enabled:
+            # Desktop enabled: show dropdown with "Without desktop" option
+            self._run_interactive.set_menu(self._run_interactive_menu)
+            # Wire primary button to launch WITH desktop
+            self._reconnect_interactive_button(self._on_launch_with_desktop)
+        else:
+            # Desktop not enabled: no dropdown
+            self._run_interactive.set_menu(None)
+            # Wire primary button to launch without desktop
+            self._reconnect_interactive_button(self._on_launch)
 
     def _emit_interactive_launch(self, *, extra_preflight_script: str = "") -> None:
         prompt = sanitize_prompt((self._prompt.toPlainText() or "").strip())
@@ -470,6 +490,9 @@ class NewTaskPage(QWidget):
         )
 
     def _on_launch(self) -> None:
+        self._emit_interactive_launch(extra_preflight_script="")
+
+    def _on_launch_without_desktop(self) -> None:
         self._emit_interactive_launch(extra_preflight_script="")
 
     def _on_launch_with_desktop(self) -> None:
@@ -536,6 +559,17 @@ class NewTaskPage(QWidget):
             str(k): bool(v) for k, v in (statuses or {}).items()
         }
         self._sync_template_prompt_indicator()
+
+    def set_environment_desktop_enabled(self, desktop_enabled: dict[str, bool]) -> None:
+        """Set desktop enablement status for environments.
+        
+        Args:
+            desktop_enabled: Dictionary mapping environment IDs to desktop enablement status
+        """
+        self._env_desktop_enabled = {
+            str(k): bool(v) for k, v in (desktop_enabled or {}).items()
+        }
+        self._sync_interactive_options()
 
     def _sync_template_prompt_indicator(self) -> None:
         env_id = str(self._environment.currentData() or "")
