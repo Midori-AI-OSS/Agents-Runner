@@ -200,12 +200,25 @@ class GlassRoot(QWidget):
         self._theme_blend = 0.0
         self._theme_anim: QPropertyAnimation | None = None
 
+        # Codex background animation phase parameters
+        self._codex_split_ratio: float = 0.45
+        self._codex_color_blend_phase_top: float = 0.0
+        self._codex_color_blend_phase_bottom: float = 0.0
+        self._codex_jitter_x: float = 0.0
+        self._codex_jitter_y: float = 0.0
+
         if self._animate_orbs:
             timer = QTimer(self)
             timer.setInterval(33)
             timer.timeout.connect(self._tick_orbs)
             timer.start()
             self._orb_timer = timer
+
+        # Start Codex background animation timer
+        codex_timer = QTimer(self)
+        codex_timer.setInterval(100)
+        codex_timer.timeout.connect(self._update_background_animation)
+        codex_timer.start()
 
     @staticmethod
     def _darken_overlay_alpha(theme: _AgentTheme) -> int:
@@ -337,6 +350,11 @@ class GlassRoot(QWidget):
                 orb.vy = -abs(orb.vy)
 
         self.update()
+
+    def _update_background_animation(self) -> None:
+        """Update Codex background animation phase parameters."""
+        # Placeholder for animation logic - will be implemented in subsequent tasks
+        pass
 
     def _paint_orbs(self, painter: QPainter, theme: _AgentTheme) -> None:
         if not self._orbs:
