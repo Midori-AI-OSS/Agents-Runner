@@ -209,6 +209,20 @@ class _ClaudeBranchSegment:
     tone: int
 
 
+@dataclass
+class _GeminiChromaOrb:
+    side: str
+    x: float
+    y: float
+    vx: float
+    vy: float
+    radius: float
+    color_idx: int
+    color_to_idx: int
+    color_elapsed_s: float
+    color_blend_s: float
+
+
 class GlassRoot(QWidget):
     _CODEX_BOUNDARY_ANGLE_DEG: float = 15.0
     _CLAUDE_STEP_S: float = 0.06
@@ -253,6 +267,11 @@ class GlassRoot(QWidget):
         self._claude_palette_phase = 0.0
         self._claude_next_reset_s = self._claude_last_tick_s + 0.5
 
+        self._gemini_rng = random.Random()
+        self._gemini_orbs: list[_GeminiChromaOrb] = []
+        self._gemini_last_tick_s = time.monotonic()
+        self._gemini_tick_accum_s = 0.0
+
         if self._animate_orbs:
             timer = QTimer(self)
             timer.setInterval(33)
@@ -272,6 +291,8 @@ class GlassRoot(QWidget):
             return 28
         if theme.name == "claude":
             return 22
+        if theme.name in {"copilot", "gemini"}:
+            return 18
         lightness = float(theme.base.lightnessF())
         # Keep the background readable without crushing the palette into near-black.
         # Slightly stronger darkening on light themes, lighter on dark themes.
@@ -285,6 +306,9 @@ class GlassRoot(QWidget):
 
         if theme.name == "claude":
             self._claude_next_reset_s = time.monotonic()
+        if theme.name == "gemini":
+            self._gemini_tick_accum_s = 0.0
+            self._gemini_last_tick_s = time.monotonic()
 
         self._theme_to = theme
         self._set_theme_blend(0.0)
@@ -314,6 +338,10 @@ class GlassRoot(QWidget):
             self._theme_to is not None and self._theme_to.name == "claude"
         ):
             self._claude_next_reset_s = time.monotonic()
+        if self._theme.name == "gemini" or (
+            self._theme_to is not None and self._theme_to.name == "gemini"
+        ):
+            self._constrain_gemini_orbs()
 
     def _get_theme_blend(self) -> float:
         return float(self._theme_blend)
@@ -535,10 +563,30 @@ class GlassRoot(QWidget):
                     self._tick_claude_tree(dt_s=step_s, now_s=now_s)
                     steps += 1
 
+        dt_gemini = now_s - self._gemini_last_tick_s
+        if dt_gemini > 0.0:
+            self._gemini_last_tick_s = now_s
+            dt_gemini = min(dt_gemini, 0.25)
+            if (
+                self._theme.name == "gemini"
+                or (self._theme_to is not None and self._theme_to.name == "gemini")
+            ):
+                self._gemini_tick_accum_s += float(dt_gemini)
+                step_s = 0.05
+                max_steps = 6
+                steps = 0
+                while self._gemini_tick_accum_s >= step_s and steps < max_steps:
+                    self._gemini_tick_accum_s -= step_s
+                    self._tick_gemini_chroma_orbs(dt_s=step_s)
+                    steps += 1
+
         # Trigger repaint if using Codex / Claude theme
         if (
-            self._theme.name in {"codex", "claude"}
-            or (self._theme_to is not None and self._theme_to.name in {"codex", "claude"})
+            self._theme.name in {"codex", "claude", "gemini"}
+            or (
+                self._theme_to is not None
+                and self._theme_to.name in {"codex", "claude", "gemini"}
+            )
         ):
             self.update()
 
@@ -604,6 +652,175 @@ class GlassRoot(QWidget):
         self._claude_next_reset_s = float(now_s) + float(
             self._claude_rng.uniform(55.0, 85.0)
         )
+
+    def _gemini_palette(self) -> tuple[QColor, ...]:
+        return (
+            QColor("#4285F4"),  # blue
+            QColor("#EA4335"),  # red
+            QColor("#FBBC04"),  # yellow
+            QColor("#34A853"),  # green
+        )
+
+    def _ensure_gemini_orbs(self) -> None:
+        if self._gemini_orbs:
+            return
+        w, h = self.width(), self.height()
+        if w < 80 or h < 80:
+            return
+
+        orbs: list[_GeminiChromaOrb] = []
+        # Fixed Google colors: one orb per color, no color cycling.
+        # Place each orb near a different quadrant initially for balance.
+        color_init: tuple[tuple[str, int, float, float], ...] = (
+            ("blue", 0, 0.18, 0.34),
+            ("red", 1, 0.84, 0.24),
+            ("yellow", 2, 0.22, 0.86),
+            ("green", 3, 0.88, 0.70),
+        )
+        for name, color_idx, fx, fy in color_init:
+            radius = float(self._gemini_rng.uniform(210.0, 320.0))
+            render_r = radius * 1.55
+            x = float(w) * fx + self._gemini_rng.uniform(-45.0, 45.0)
+            y = float(h) * fy + self._gemini_rng.uniform(-45.0, 45.0)
+            x = min(max(x, render_r), max(render_r, float(w) - render_r))
+            y = min(max(y, render_r), max(render_r, float(h) - render_r))
+
+            angle = self._gemini_rng.uniform(0.0, 6.283185307179586)
+            speed = self._gemini_rng.uniform(4.5, 10.5)
+            vx = math.cos(angle) * speed
+            vy = math.sin(angle) * speed
+
+            orbs.append(
+                _GeminiChromaOrb(
+                    side=name,
+                    x=float(x),
+                    y=float(y),
+                    vx=float(vx),
+                    vy=float(vy),
+                    radius=float(radius),
+                    color_idx=int(color_idx),
+                    color_to_idx=int(color_idx),
+                    color_elapsed_s=0.0,
+                    color_blend_s=1.0,
+                )
+            )
+
+        # Small relaxation step to keep the four colors from clustering.
+        desired = float(min(w, h)) * 0.40
+        for _ in range(18):
+            moved = False
+            for i in range(len(orbs)):
+                for j in range(i + 1, len(orbs)):
+                    a = orbs[i]
+                    b = orbs[j]
+                    dx = float(b.x - a.x)
+                    dy = float(b.y - a.y)
+                    d = math.hypot(dx, dy)
+                    if d <= 1e-6 or d >= desired:
+                        continue
+                    push = (desired - d) * 0.5
+                    ux = dx / d
+                    uy = dy / d
+                    a.x -= ux * push
+                    a.y -= uy * push
+                    b.x += ux * push
+                    b.y += uy * push
+                    moved = True
+            if not moved:
+                break
+
+        self._gemini_orbs = orbs
+        self._constrain_gemini_orbs()
+
+    def _constrain_gemini_orbs(self) -> None:
+        if not self._gemini_orbs:
+            return
+        w = float(max(1, self.width()))
+        h = float(max(1, self.height()))
+        for orb in self._gemini_orbs:
+            r = orb.radius * 1.55
+            orb.x = min(max(orb.x, r), max(r, w - r))
+            orb.y = min(max(orb.y, r), max(r, h - r))
+
+    def _tick_gemini_chroma_orbs(self, *, dt_s: float) -> None:
+        self._ensure_gemini_orbs()
+        if not self._gemini_orbs:
+            return
+
+        w = float(max(1, self.width()))
+        h = float(max(1, self.height()))
+
+        for orb in self._gemini_orbs:
+            orb.x += orb.vx * dt_s
+            orb.y += orb.vy * dt_s
+
+            r = orb.radius * 1.55
+            if orb.x - r <= 0.0:
+                orb.x = r
+                orb.vx = abs(orb.vx)
+            elif orb.x + r >= w:
+                orb.x = w - r
+                orb.vx = -abs(orb.vx)
+
+            if orb.y - r <= 0.0:
+                orb.y = r
+                orb.vy = abs(orb.vy)
+            elif orb.y + r >= h:
+                orb.y = h - r
+                orb.vy = -abs(orb.vy)
+
+            # Gentle drift so paths aren't perfectly periodic.
+            if self._gemini_rng.random() < (0.05 * dt_s):
+                orb.vx *= float(self._gemini_rng.uniform(0.985, 1.015))
+                orb.vy *= float(self._gemini_rng.uniform(0.985, 1.015))
+
+        self._constrain_gemini_orbs()
+
+    def _paint_gemini_background(self, painter: QPainter, rect: QWidget) -> None:
+        painter.save()
+        painter.setRenderHint(QPainter.Antialiasing, True)
+
+        w = max(1, rect.width())
+        h = max(1, rect.height())
+
+        base = QLinearGradient(0, 0, 0, h)
+        base.setColorAt(0.0, QColor("#222C3F"))
+        base.setColorAt(0.55, QColor("#172133"))
+        base.setColorAt(1.0, QColor("#10192A"))
+        painter.fillRect(rect, base)
+
+        self._ensure_gemini_orbs()
+        if self._gemini_orbs:
+            palette = self._gemini_palette()
+            painter.setPen(Qt.NoPen)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Screen)
+            for orb in self._gemini_orbs:
+                c = palette[int(orb.color_idx) % len(palette)]
+                center = QPointF(float(orb.x), float(orb.y))
+                rx = max(1.0, float(orb.radius) * 1.70)
+                ry = max(1.0, float(orb.radius) * 1.45)
+
+                painter.save()
+                painter.translate(center)
+                painter.scale(float(rx), float(ry))
+
+                # Codex-style soft blob, but locked to Google colors.
+                grad = QRadialGradient(QPointF(0.0, 0.0), 1.0)
+                grad.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), 220))
+                grad.setColorAt(
+                    0.45, QColor(c.red(), c.green(), c.blue(), int(220 * 0.28))
+                )
+                grad.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
+                painter.setBrush(grad)
+                painter.drawEllipse(QPointF(0.0, 0.0), 1.0, 1.0)
+                painter.restore()
+
+        vignette = QRadialGradient(QPointF(w * 0.5, h * 0.45), float(max(w, h) * 0.85))
+        vignette.setColorAt(0.0, QColor(0, 0, 0, 0))
+        vignette.setColorAt(1.0, QColor(0, 0, 0, 46))
+        painter.fillRect(rect, vignette)
+
+        painter.restore()
 
     def _tick_claude_tree(self, *, dt_s: float, now_s: float) -> None:
         self._claude_palette_phase = (1.0 + math.sin(time.time() / 240.0 * 2.0 * math.pi)) * 0.5
@@ -1042,6 +1259,9 @@ class GlassRoot(QWidget):
         if theme.name == "claude":
             self._paint_claude_background(painter, self.rect())
             return  # Claude has its own animated background
+        if theme.name == "gemini":
+            self._paint_gemini_background(painter, self.rect())
+            return  # Gemini has its own animated background
 
         painter.fillRect(self.rect(), theme.base)
 
