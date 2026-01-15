@@ -6,9 +6,6 @@ in a sequential flow.
 """
 
 import asyncio
-import os
-import shutil
-import tempfile
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
@@ -23,7 +20,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QProgressBar,
     QWidget,
-    QMessageBox,
 )
 
 from agents_runner.setup.agent_status import detect_all_agents, AgentStatus, StatusType
@@ -32,7 +28,7 @@ from agents_runner.setup.orchestrator import (
     mark_setup_complete,
     mark_setup_skipped,
 )
-from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
+from agents_runner.ui.dialogs.docker_validator import DockerValidator
 
 
 class FirstRunSetupDialog(QDialog):
@@ -53,8 +49,7 @@ class FirstRunSetupDialog(QDialog):
         self._agent_statuses: list[AgentStatus] = []
         self._checkboxes: dict[str, QCheckBox] = {}
         self._orchestrator: SetupOrchestrator | None = None
-        self._docker_test_folder: str | None = None
-        self._docker_check_count = 0
+        self._docker_validator: DockerValidator | None = None
 
         self._setup_ui()
         self._detect_agents()
@@ -210,127 +205,23 @@ class FirstRunSetupDialog(QDialog):
 
     def _on_check_docker(self) -> None:
         """Handle Docker check button click."""
-        # Check if docker is available
-        if shutil.which("docker") is None:
-            self._docker_status_label.setText("✗ Docker CLI not found in PATH")
-            self._docker_status_label.setStyleSheet("color: #f44336; font-size: 11px;")
-            self._show_docker_setup_help()
-            return
-
-        # Create test folder
-        self._docker_test_folder = tempfile.mkdtemp(prefix="docker-check-")
-        marker_file = os.path.join(self._docker_test_folder, "test-result.txt")
+        if self._docker_validator is None:
+            self._docker_validator = DockerValidator(self)
         
-        # Launch terminal with docker commands
-        terminals = detect_terminal_options()
-        if not terminals:
-            self._docker_status_label.setText("✗ No terminal found on system")
-            self._docker_status_label.setStyleSheet("color: #f44336; font-size: 11px;")
-            self._show_docker_setup_help()
-            return
-
-        script = f"""
-echo "=== Docker Smoke Test ==="
-echo ""
-echo "Step 1: Pulling PixelArch image..."
-if docker pull lunamidori5/pixelarch:emerald; then
-    echo ""
-    echo "Step 2: Running test container..."
-    if docker run --rm lunamidori5/pixelarch:emerald /bin/bash -lc 'echo hello world'; then
-        echo ""
-        echo "✓ Docker test PASSED"
-        echo "success" > "{marker_file}"
-    else
-        echo ""
-        echo "✗ Docker test FAILED: Container execution failed"
-        echo "fail" > "{marker_file}"
-    fi
-else
-    echo ""
-    echo "✗ Docker test FAILED: Image pull failed"
-    echo "fail" > "{marker_file}"
-fi
-echo ""
-echo "Press Enter to close..."
-read
-"""
+        # Update UI callback
+        def update_status(message: str, color: str) -> None:
+            self._docker_status_label.setText(message)
+            self._docker_status_label.setStyleSheet(f"color: {color}; font-size: 11px;")
         
-        terminal_launched = False
-        for terminal in terminals:
-            try:
-                launch_in_terminal(terminal, script, cwd="/tmp")
-                terminal_launched = True
-                self._docker_status_label.setText("⏳ Running Docker test in terminal...")
-                self._docker_status_label.setStyleSheet("color: #2196f3; font-size: 11px;")
-                self._docker_check_button.setEnabled(False)
-                self._docker_check_count = 0
-                QTimer.singleShot(2000, self._check_docker_result)
-                break
-            except Exception:
-                continue
-        
-        if not terminal_launched:
-            self._docker_status_label.setText("✗ Failed to launch terminal")
-            self._docker_status_label.setStyleSheet("color: #f44336; font-size: 11px;")
-            self._show_docker_setup_help()
-
-    def _check_docker_result(self) -> None:
-        """Poll for Docker test result."""
-        if not self._docker_test_folder:
-            return
-            
-        marker_file = os.path.join(self._docker_test_folder, "test-result.txt")
-        self._docker_check_count += 1
-        
-        if os.path.exists(marker_file):
-            try:
-                with open(marker_file, "r") as f:
-                    result = f.read().strip()
-                if result == "success":
-                    self._docker_status_label.setText("✓ Docker test passed! PixelArch image pulled and container executed successfully.")
-                    self._docker_status_label.setStyleSheet("color: #4caf50; font-size: 11px;")
-                else:
-                    self._docker_status_label.setText("✗ Docker test failed. Check terminal output for details.")
-                    self._docker_status_label.setStyleSheet("color: #f44336; font-size: 11px;")
-                    self._show_docker_setup_help()
-            except Exception:
-                self._docker_status_label.setText("✗ Could not read test result")
-                self._docker_status_label.setStyleSheet("color: #f44336; font-size: 11px;")
-                self._show_docker_setup_help()
-            finally:
-                self._docker_check_button.setEnabled(True)
-                self._cleanup_docker_test_folder()
-        elif self._docker_check_count >= 60:  # 2 minutes timeout
-            self._docker_status_label.setText("✗ Docker test timeout (120s)")
-            self._docker_status_label.setStyleSheet("color: #f44336; font-size: 11px;")
+        # Completion callback
+        def on_complete(success: bool) -> None:
             self._docker_check_button.setEnabled(True)
-            self._docker_check_button.setText("Try Again")
-            self._show_docker_setup_help()
-            self._cleanup_docker_test_folder()
-        else:
-            QTimer.singleShot(2000, self._check_docker_result)
-
-    def _show_docker_setup_help(self) -> None:
-        """Show a message box with Docker setup help."""
-        QMessageBox.information(
-            self,
-            "Docker Setup Help",
-            "Docker setup instructions are available at:\n\n"
-            "https://io.midori-ai.xyz/support/dockersetup/\n\n"
-            "Common issues:\n"
-            "• Docker daemon not running\n"
-            "• Docker socket permissions\n"
-            "• Docker CLI not installed"
-        )
-
-    def _cleanup_docker_test_folder(self) -> None:
-        """Clean up the Docker test folder."""
-        if self._docker_test_folder and os.path.exists(self._docker_test_folder):
-            try:
-                shutil.rmtree(self._docker_test_folder, ignore_errors=True)
-            except Exception:
-                pass
-            self._docker_test_folder = None
+            if not success:
+                self._docker_check_button.setText("Try Again")
+        
+        self._docker_check_button.setEnabled(False)
+        self._docker_check_button.setText("Check Docker")
+        self._docker_validator.start_validation(update_status, on_complete)
 
     def _on_skip(self) -> None:
         """Handle skip button click."""
