@@ -349,6 +349,7 @@ class GlassRoot(QWidget):
         )
 
     def _ensure_copilot_panes(self) -> None:
+        self._ensure_copilot_sources()
         self._copilot_panes = copilot_bg.ensure_copilot_panes(
             self,
             self._copilot_panes,
