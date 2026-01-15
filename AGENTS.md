@@ -68,3 +68,13 @@ Use these mode guides from `.agents/modes/` when working on specific tasks:
 
 Use GitHub issues/PRs/comments as the primary async communication channel. Keep commit messages and PR descriptions concise and outcome-focused.
 Do not use emoticons, emoji, or other non-text icons in commit messages, issue/PR descriptions, comments, documentation, or source code.
+
+---
+
+## Agent Run Log (Required)
+
+All contributor modes must use a shared run log at `/tmp/agents-artifacts/agent-output.md`:
+
+- Before starting work (and again before appending), read `/tmp/agents-artifacts/agent-output.md` for user feedback or updated constraints.
+- After each run, append a short entry describing: role, task/file(s) involved, intent, actions taken, results, and any task file moves (for example `wip/ → done/`, `done/ → wip/`, `done/ → taskmaster/`, or deleted).
+- Create `/tmp/agents-artifacts/agent-output.md` if it does not exist.
