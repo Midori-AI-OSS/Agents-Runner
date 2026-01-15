@@ -160,10 +160,14 @@ class _MainWindowEnvironmentMixin:
     def _populate_environment_pickers(self) -> None:
         active_id = self._active_environment_id()
         envs = self._environment_list()
+        disk_envs = load_environments()
         stains = {e.env_id: e.color for e in envs}
         workspace_types = {e.env_id: e.workspace_type or WORKSPACE_NONE for e in envs}
         template_statuses = {
-            e.env_id: bool(getattr(e, "midoriai_template_detected", False)) for e in envs
+            e.env_id: bool(
+                getattr(disk_envs.get(e.env_id) or e, "midoriai_template_detected", False)
+            )
+            for e in envs
         }
         desktop_enabled = {
             e.env_id: (
