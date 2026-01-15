@@ -29,6 +29,7 @@ from PySide6.QtGui import QResizeEvent
 from PySide6.QtGui import QStaticText
 from PySide6.QtWidgets import QWidget
 
+from agents_runner.ui.themes.claude import background as claude_bg
 from agents_runner.ui.themes.gemini import background as gemini_bg
 
 
@@ -88,27 +89,6 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
 
 
 @dataclass
-class _ClaudeBranchTip:
-    x: float
-    y: float
-    angle: float
-    thickness: float
-    depth: int
-    speed: float
-
-
-@dataclass
-class _ClaudeBranchSegment:
-    x0: float
-    y0: float
-    x1: float
-    y1: float
-    thickness: float
-    age_s: float
-    tone: int
-
-
-@dataclass
 class _CopilotRenderedLine:
     text: str
     static_text: QStaticText
@@ -149,8 +129,6 @@ class _CopilotPane:
 class GlassRoot(QWidget):
     _CODEX_BOUNDARY_ANGLE_DEG: float = 15.0
     _CLAUDE_STEP_S: float = 0.06
-    _CLAUDE_SEGMENT_LIFETIME_S: float = 90.0
-    _CLAUDE_SEGMENT_FADE_IN_S: float = 1.8
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -178,8 +156,8 @@ class GlassRoot(QWidget):
         self._cached_gradient_bottom_color: QColor | None = None
 
         self._claude_rng = random.Random()
-        self._claude_tips: list[_ClaudeBranchTip] = []
-        self._claude_segments: list[_ClaudeBranchSegment] = []
+        self._claude_tips: list[claude_bg._ClaudeBranchTip] = []
+        self._claude_segments: list[claude_bg._ClaudeBranchSegment] = []
         self._claude_last_tick_s = time.monotonic()
         self._claude_tick_accum_s = 0.0
         self._claude_palette_phase = 0.0
@@ -406,7 +384,21 @@ class GlassRoot(QWidget):
                 steps = 0
                 while self._claude_tick_accum_s >= step_s and steps < max_steps:
                     self._claude_tick_accum_s -= step_s
-                    self._tick_claude_tree(dt_s=step_s, now_s=now_s)
+                    (
+                        self._claude_tips,
+                        self._claude_segments,
+                        self._claude_palette_phase,
+                        self._claude_next_reset_s,
+                    ) = claude_bg.tick_claude_tree(
+                        self._claude_tips,
+                        self._claude_segments,
+                        self._claude_rng,
+                        self.width(),
+                        self.height(),
+                        self._claude_next_reset_s,
+                        dt_s=step_s,
+                        now_s=now_s,
+                    )
                     steps += 1
 
         dt_gemini = now_s - self._gemini_last_tick_s
@@ -452,69 +444,6 @@ class GlassRoot(QWidget):
             )
         ):
             self.update()
-
-    def _claude_palette(self) -> tuple[QColor, QColor, QColor, QColor]:
-        """
-        Warm dark palette blended between "browser dark" and "code" moods.
-        Returns: (top, bottom, accent, accent_dim)
-        """
-        t = float(self._claude_palette_phase)
-        top = self._blend_colors("#201D18", "#1B1612", t)
-        bottom = self._blend_colors("#1A1815", "#141210", t)
-        accent = self._blend_colors("#C15F3C", "#A14A2F", 0.35 + 0.25 * (1.0 - t))
-        accent_dim = self._blend_colors("#C15F3C", "#A14A2F", 0.75)
-        return top, bottom, accent, accent_dim
-
-    def _ensure_claude_tree(self) -> None:
-        if self._claude_tips:
-            return
-        w, h = self.width(), self.height()
-        if w < 80 or h < 80:
-            return
-        self._reset_claude_tree(now_s=time.monotonic())
-
-    def _reset_claude_tree(self, *, now_s: float) -> None:
-        self._claude_tips = []
-
-        w = float(max(1, self.width()))
-        h = float(max(1, self.height()))
-        if w < 80.0 or h < 80.0:
-            return
-
-        root_count = int(self._claude_rng.randint(1, 2))
-        for _ in range(root_count):
-            side = self._claude_rng.choice(("left", "right", "bottom", "top"))
-            if side == "left":
-                x = 0.0
-                y = self._claude_rng.uniform(h * 0.12, h * 0.88)
-                angle = self._claude_rng.uniform(-0.35, 0.35)
-            elif side == "right":
-                x = w
-                y = self._claude_rng.uniform(h * 0.12, h * 0.88)
-                angle = math.pi + self._claude_rng.uniform(-0.35, 0.35)
-            elif side == "top":
-                x = self._claude_rng.uniform(w * 0.18, w * 0.82)
-                y = 0.0
-                angle = (math.pi * 0.5) + self._claude_rng.uniform(-0.45, 0.45)
-            else:
-                x = self._claude_rng.uniform(w * 0.18, w * 0.82)
-                y = h
-                angle = -(math.pi * 0.5) + self._claude_rng.uniform(-0.45, 0.45)
-
-            self._claude_tips.append(
-                _ClaudeBranchTip(
-                    x=float(x),
-                    y=float(y),
-                    angle=float(angle),
-                    thickness=float(self._claude_rng.uniform(1.0, 1.8)),
-                    depth=0,
-                    speed=float(self._claude_rng.uniform(16.0, 24.0)),
-                )
-            )
-
-        self._claude_next_reset_s = float(now_s) + float(
-            self._claude_rng.uniform(55.0, 85.0)
-        )
 
     def _ensure_gemini_orbs(self) -> None:
         self._gemini_orbs = gemini_bg.ensure_gemini_orbs(
@@ -969,160 +898,19 @@ class GlassRoot(QWidget):
 
         painter.restore()
 
-    def _tick_claude_tree(self, *, dt_s: float, now_s: float) -> None:
-        self._claude_palette_phase = (1.0 + math.sin(time.time() / 240.0 * 2.0 * math.pi)) * 0.5
-
-        w = float(max(1, self.width()))
-        h = float(max(1, self.height()))
-        if w < 80.0 or h < 80.0:
-            return
-
-        if not self._claude_tips or now_s >= self._claude_next_reset_s:
-            self._reset_claude_tree(now_s=now_s)
-
-        for seg in self._claude_segments:
-            seg.age_s += float(dt_s)
-
-        max_age_s = float(self._CLAUDE_SEGMENT_LIFETIME_S)
-        self._claude_segments = [s for s in self._claude_segments if s.age_s <= max_age_s]
-
-        tips_next: list[_ClaudeBranchTip] = []
-        max_tips = 14
-        max_depth = 180
-
-        for tip in self._claude_tips:
-            if tip.depth > max_depth or tip.thickness < 0.55:
-                continue
-
-            if self._claude_rng.random() < (0.020 * dt_s) and tip.depth >= 10:
-                continue
-
-            step = tip.speed * dt_s
-            if step <= 0.1:
-                tips_next.append(tip)
-                continue
-
-            # Apply a small dt-scaled drift to avoid visible "jumps" in direction.
-            drift = self._claude_rng.uniform(-0.28, 0.28) * dt_s
-            angle = tip.angle + drift
-            nx = tip.x + math.cos(angle) * step
-            ny = tip.y + math.sin(angle) * step
-
-            # Keep growth loosely contained inside the viewport with a small buffer.
-            if nx < -40.0 or nx > w + 40.0 or ny < -40.0 or ny > h + 40.0:
-                continue
-
-            roll = self._claude_rng.random()
-            tone = 0 if roll < 0.68 else (1 if roll < 0.90 else 2)
-            self._claude_segments.append(
-                _ClaudeBranchSegment(
-                    x0=float(tip.x),
-                    y0=float(tip.y),
-                    x1=float(nx),
-                    y1=float(ny),
-                    thickness=float(tip.thickness),
-                    age_s=0.0,
-                    tone=int(tone),
-                )
-            )
-
-            next_tip = _ClaudeBranchTip(
-                x=float(nx),
-                y=float(ny),
-                angle=float(angle),
-                thickness=float(tip.thickness * self._claude_rng.uniform(0.985, 0.997)),
-                depth=int(tip.depth + 1),
-                speed=float(tip.speed * self._claude_rng.uniform(0.985, 1.01)),
-            )
-
-            if len(tips_next) < max_tips:
-                tips_next.append(next_tip)
-
-            if len(tips_next) < max_tips and tip.depth >= 2:
-                branch_chance = 0.065 * dt_s
-                if self._claude_rng.random() < branch_chance:
-                    spread = self._claude_rng.uniform(0.28, 0.72)
-                    sign = -1.0 if self._claude_rng.random() < 0.5 else 1.0
-                    tips_next.append(
-                        _ClaudeBranchTip(
-                            x=float(nx),
-                            y=float(ny),
-                            angle=float(angle + sign * spread),
-                            thickness=float(tip.thickness * self._claude_rng.uniform(0.78, 0.92)),
-                            depth=int(tip.depth + 1),
-                            speed=float(tip.speed * self._claude_rng.uniform(0.90, 1.05)),
-                        )
-                    )
-
-        self._claude_tips = tips_next
-        if len(self._claude_segments) > 900:
-            self._claude_segments = self._claude_segments[-900:]
-
     def _paint_claude_background(self, painter: QPainter, rect: QWidget) -> None:
-        w = int(rect.width())
-        h = int(rect.height())
-        if w <= 0 or h <= 0:
-            return
-
-        self._ensure_claude_tree()
-        top, bottom, accent, accent_dim = self._claude_palette()
-
-        grad = QLinearGradient(0, 0, w, h)
-        grad.setColorAt(0.0, top)
-        grad.setColorAt(0.55, self._blend_colors(top, bottom, 0.55))
-        grad.setColorAt(1.0, bottom)
-        painter.fillRect(0, 0, w, h, grad)
-
-        vignette = QRadialGradient(QPointF(w * 0.5, h * 0.5), float(max(w, h)) * 0.75)
-        vignette.setColorAt(0.0, QColor(0, 0, 0, 0))
-        vignette.setColorAt(1.0, QColor(0, 0, 0, 44))
-        painter.fillRect(0, 0, w, h, vignette)
-
-        if not self._claude_segments:
-            return
-
-        painter.save()
-        painter.setRenderHint(QPainter.Antialiasing, True)
-
-        max_age_s = float(self._CLAUDE_SEGMENT_LIFETIME_S)
-        for seg in self._claude_segments:
-            t = max(0.0, min(1.0, float(seg.age_s) / max_age_s))
-            fade_out = 1.0 - t
-            fade_in = min(1.0, float(seg.age_s) / float(self._CLAUDE_SEGMENT_FADE_IN_S))
-            fade = fade_in * fade_out
-
-            if seg.tone == 0:
-                base_color = accent
-            elif seg.tone == 2:
-                base_color = accent_dim
-            else:
-                base_color = QColor(232, 230, 227)
-
-            core_alpha = int(92 * fade)
-            glow_alpha = int(34 * fade)
-            haze_alpha = int(18 * fade)
-
-            for width_scale, alpha in (
-                (3.8, haze_alpha),
-                (2.2, glow_alpha),
-                (1.0, core_alpha),
-            ):
-                if alpha <= 0:
-                    continue
-                pen = QPen(
-                    QColor(base_color.red(), base_color.green(), base_color.blue(), alpha),
-                    max(1.0, float(seg.thickness) * width_scale),
-                    Qt.SolidLine,
-                    Qt.PenCapStyle.FlatCap,
-                    Qt.PenJoinStyle.MiterJoin,
-                )
-                painter.setPen(pen)
-                painter.drawLine(
-                    QPointF(float(seg.x0), float(seg.y0)),
-                    QPointF(float(seg.x1), float(seg.y1)),
-                )
-
-        painter.restore()
+        self._claude_tips, self._claude_next_reset_s = claude_bg.paint_claude_background(
+            painter,
+            rect,
+            self._claude_tips,
+            self._claude_segments,
+            self._claude_rng,
+            self._claude_palette_phase,
+            self.width(),
+            self.height(),
+            time.monotonic(),
+            self._blend_colors,
+        )
 
     def _paint_codex_background(self, painter: QPainter, rect: QWidget) -> None:
         """
