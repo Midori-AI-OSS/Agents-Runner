@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+from dataclasses import replace
 from uuid import uuid4
 
 from PySide6.QtWidgets import QFileDialog
@@ -14,6 +15,7 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import delete_environment
+from agents_runner.environments import load_environments
 from agents_runner.environments import parse_env_vars_text
 from agents_runner.environments import parse_mounts_text
 from agents_runner.environments import save_environment
@@ -112,6 +114,8 @@ class _EnvironmentsPageActionsMixin:
             return False
 
         existing = self._environments.get(env_id)
+        disk_existing = load_environments().get(env_id)
+        base_env = disk_existing or existing
         max_agents_text = str(self._max_agents_running.text() or "-1").strip()
         try:
             max_agents_running = int(max_agents_text)
@@ -172,29 +176,61 @@ class _EnvironmentsPageActionsMixin:
             preflight_enabled = bool(self._preflight_enabled.isChecked())
             preflight_script = str(self._preflight_script.toPlainText() or "")
 
-        env = Environment(
-            env_id=env_id,
-            name=name,
-            color=str(self._color.currentData() or "slate"),
-            host_workdir="",
-            max_agents_running=max_agents_running,
-            headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
-            cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
-            container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
-            cached_preflight_script=cached_preflight_script,
-            preflight_enabled=preflight_enabled,
-            preflight_script=preflight_script,
-            env_vars=env_vars,
-            extra_mounts=mounts,
-            gh_management_locked=gh_locked,
-            workspace_type=workspace_type,
-            workspace_target=workspace_target,
-            gh_use_host_cli=gh_use_host_cli,
-            gh_context_enabled=gh_context_enabled,
-            prompts=prompts,
-            prompts_unlocked=prompts_unlocked,
-            agent_selection=agent_selection,
-        )
+        if base_env is None:
+            env = Environment(
+                env_id=env_id,
+                name=name,
+                color=str(self._color.currentData() or "slate"),
+                host_workdir="",
+                max_agents_running=max_agents_running,
+                headless_desktop_enabled=bool(
+                    self._headless_desktop_enabled.isChecked()
+                ),
+                cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
+                container_caching_enabled=bool(
+                    self._container_caching_enabled.isChecked()
+                ),
+                cached_preflight_script=cached_preflight_script,
+                preflight_enabled=preflight_enabled,
+                preflight_script=preflight_script,
+                env_vars=env_vars,
+                extra_mounts=mounts,
+                gh_management_locked=gh_locked,
+                workspace_type=workspace_type,
+                workspace_target=workspace_target,
+                gh_use_host_cli=gh_use_host_cli,
+                gh_context_enabled=gh_context_enabled,
+                prompts=prompts,
+                prompts_unlocked=prompts_unlocked,
+                agent_selection=agent_selection,
+            )
+        else:
+            env = replace(
+                base_env,
+                name=name,
+                color=str(self._color.currentData() or "slate"),
+                max_agents_running=max_agents_running,
+                headless_desktop_enabled=bool(
+                    self._headless_desktop_enabled.isChecked()
+                ),
+                cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
+                container_caching_enabled=bool(
+                    self._container_caching_enabled.isChecked()
+                ),
+                cached_preflight_script=cached_preflight_script,
+                preflight_enabled=preflight_enabled,
+                preflight_script=preflight_script,
+                env_vars=env_vars,
+                extra_mounts=mounts,
+                gh_management_locked=gh_locked,
+                workspace_type=workspace_type,
+                workspace_target=workspace_target,
+                gh_use_host_cli=gh_use_host_cli,
+                gh_context_enabled=gh_context_enabled,
+                prompts=prompts,
+                prompts_unlocked=prompts_unlocked,
+                agent_selection=agent_selection,
+            )
         save_environment(env)
         self.updated.emit(preferred_env_id if preferred_env_id is not None else env_id)
         return True
@@ -269,13 +305,43 @@ class _EnvironmentsPageActionsMixin:
             preflight_enabled = bool(self._preflight_enabled.isChecked())
             preflight_script = str(self._preflight_script.toPlainText() or "")
 
-        return Environment(
-            env_id=env_id,
+        if existing is None:
+            return Environment(
+                env_id=env_id,
+                name=name,
+                color=str(self._color.currentData() or "slate"),
+                host_workdir="",
+                max_agents_running=max_agents_running,
+                headless_desktop_enabled=bool(
+                    self._headless_desktop_enabled.isChecked()
+                ),
+                cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
+                container_caching_enabled=bool(
+                    self._container_caching_enabled.isChecked()
+                ),
+                cached_preflight_script=cached_preflight_script,
+                preflight_enabled=preflight_enabled,
+                preflight_script=preflight_script,
+                env_vars=env_vars,
+                extra_mounts=mounts,
+                gh_management_locked=gh_locked,
+                workspace_type=workspace_type,
+                workspace_target=workspace_target,
+                gh_use_host_cli=gh_use_host_cli,
+                gh_context_enabled=gh_context_enabled,
+                prompts=prompts,
+                prompts_unlocked=prompts_unlocked,
+                agent_selection=agent_selection,
+            )
+
+        return replace(
+            existing,
             name=name,
             color=str(self._color.currentData() or "slate"),
-            host_workdir="",
             max_agents_running=max_agents_running,
-            headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
+            headless_desktop_enabled=bool(
+                self._headless_desktop_enabled.isChecked()
+            ),
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
             cached_preflight_script=cached_preflight_script,
