@@ -66,7 +66,7 @@ You only dispatch sub-agents and pass along minimal routing signals.
   - Dispatch coder sub-agent(s) to **fix the audit issues** (as identified by the auditor’s mechanism).
   - Instruct coders: **when they believe the issues are resolved, delete the audit file**.
   - Then dispatch the auditor again.
-- Repeat until the auditor is satisfied.
+- Repeat until the auditor is satisfied (Remind the auditor to **review the task in the `tasks/done` folder and move them to the right place**).
 
 ### Clean up (When all other sub agents are done)
 - Make sure the task folders only have `AGENTS.md` in them. Else dispatch a Task Master for insight. (May have to remind the task master to delete done tasks)
