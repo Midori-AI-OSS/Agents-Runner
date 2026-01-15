@@ -4,7 +4,10 @@ from agents_runner.app import run_app
 
 
 def main() -> None:
-    run_app(sys.argv)
+    try:
+        run_app(sys.argv)
+    except Exception as error:
+        print(str(error))
 
 
 if __name__ == "__main__":
