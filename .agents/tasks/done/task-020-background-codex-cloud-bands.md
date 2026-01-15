@@ -38,3 +38,39 @@ Update the Codex (default) app background to a slow-moving, airy two-band compos
   - Keep update frequency low (e.g., a few times per second) and use continuous time functions to avoid stutter.
 - Keep “sharp UI” constraint: avoid rounded-rect UI styling and `addRoundedRect(...)`.
 
+
+## Technical Requirements
+- Import needed: `from PySide6.QtGui import QLinearGradient` (not currently imported)
+- Type hints required: all methods must use Python 3.13+ type annotations
+- Performance target: paint method < 5ms, CPU usage < 3% idle
+- Timer frequency: 100ms (10 FPS) recommended for balance of smoothness and efficiency
+- Color values:
+  - Top band: #ADD8E6 (LightBlue) ↔ #FF8C00 (DarkOrange)
+  - Bottom band: #2A2A2A ↔ #3A3A3A (specific grays for consistency)
+- Gradient: 80px feather above/below boundary, 7 color stops (0.0, 0.15, 0.35, 0.5, 0.65, 0.85, 1.0)
+- Phase calculation periods:
+  - Split ratio: 45 seconds (oscillates 0.3 to 0.6)
+  - Top color blend: 35 seconds (0.0 to 1.0)
+  - Bottom color blend: 40 seconds (0.0 to 1.0)
+
+## Integration Points
+- Theme transition system: preserve `_theme_blend` animation compatibility (line 403-410)
+- Dark overlay: ensure `_darken_overlay_alpha()` still applies correctly (line 399-401)
+- Window resize: existing `resizeEvent()` handler should work with new background (line 244)
+- Must not interfere with other agent themes (copilot, claude, gemini)
+- Current theme accessed via `self._theme.name` (string: "codex", "copilot", "claude", "gemini")
+
+## Subtasks
+This parent task is broken down into 9 sequential subtasks (task-020-1 through task-020-9):
+1. Animation timer infrastructure (task-020-1)
+2. Phase calculation functions (task-020-2)
+3. Color blending utilities (task-020-3)
+4. Soft boundary gradient renderer (task-020-4)
+5. Codex-specific paint method (task-020-5)
+6. Integration into theme selection (task-020-6)
+7. Visual validation testing (task-020-7)
+8. Readability and accessibility testing (task-020-8)
+9. Performance optimization (task-020-9)
+
+Each subtask has detailed acceptance criteria and technical context in separate files.
+
