@@ -22,7 +22,7 @@ Managers ensure contributors have accurate, up-to-date instructions. They stewar
 - Draft and circulate updates to contributor mode guides or cheat sheets.
 - Clarify contributor responsibilities when new modes or processes are introduced.
 - Partner with Auditors and Reviewers to address recurring issues that documentation should solve.
-- Track instruction gaps and ensure they are represented in `.agents/tasks/`.
+- Track instruction gaps and ensure they are represented in `.agents/tasks/wip/`.
 - Communicate upcoming changes so contributors have time to adjust.
 
 ## Communication

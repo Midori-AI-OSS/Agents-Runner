@@ -18,12 +18,15 @@ Coders implement, refactor, and review code. The focus is on maintainable, well-
 - Self-review your work for correctness, clarity, and completeness before submitting
 
 ## Typical Actions
-- Implement features, bug fixes, or refactors referenced by `.agents/tasks/`.
+- Implement one task at a time from `.agents/tasks/wip/`.
 - Confirm current behavior in the codebase before changing code.
 - Verify changes with clear checks (tests, repro steps, or targeted runs).
 - Provide constructive feedback on peer contributions when requested.
 - Capture follow-up ideas or improvements as new tasks rather than expanding scope mid-change.
 - **Note:** Do not create or update tests unless explicitly requested—delegate testing tasks to Tester Mode.
+- Task file lifecycle:
+  - On completion, move the task file from `.agents/tasks/wip/` to `.agents/tasks/done/` and add a short completion note to the task file.
+  - If the task cannot be completed due to unclear scope/requirements, keep it in `.agents/tasks/wip/` and add explicit questions and what’s needed to proceed.
 
 ## Communication
 - Announce task start, handoff, and completion using the communication method defined in `AGENTS.md`.
