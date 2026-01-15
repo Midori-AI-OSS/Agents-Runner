@@ -1,7 +1,7 @@
 # [UI] Background system refactor: remove legacy orb/shard renderer
 
 ## Summary
-After Gemini and Copilot have dedicated backgrounds (Codex and Claude already do), remove the legacy shared “orbs + shards” renderer and migrate fully to per-agent background code paths.
+Remove the legacy shared “orbs + shards” renderer and migrate fully to per-agent background code paths.
 
 ## Motivation
 - The legacy background code mixes multiple unrelated visual systems (orbs + shard polygons) and makes per-agent art direction harder.
@@ -28,6 +28,7 @@ After Gemini and Copilot have dedicated backgrounds (Codex and Claude already do
 - Simplify `_AgentTheme` to only the fields still required for background selection and overlays.
 - Delete unused shard point constants and orb state that are no longer used once all agents are migrated.
 - Keep changes minimal and focused; avoid drive-by refactors.
+- Place each agent's theme files in a `themes` subfolder inside the `ui` folder (e.g., `agents_runner/ui/themes/<agent>`).
 
 ## Manual verification
 - Run GUI: `uv run main.py`
