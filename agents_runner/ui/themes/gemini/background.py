@@ -4,10 +4,8 @@ import math
 import random
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF
+from PySide6.QtCore import QPointF, QRect, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QRadialGradient
-from PySide6.QtWidgets import QWidget
-from PySide6.QtCore import Qt
 
 
 @dataclass
@@ -167,7 +165,7 @@ def tick_gemini_chroma_orbs(
 
 def paint_gemini_background(
     painter: QPainter,
-    rect: QWidget,
+    rect: QRect,
     orbs: list[_GeminiChromaOrb],
 ) -> None:
     painter.save()

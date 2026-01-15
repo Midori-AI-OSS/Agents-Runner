@@ -5,9 +5,8 @@ import random
 import time
 from dataclasses import dataclass
 
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtCore import QPointF, QRect, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen, QRadialGradient
-from PySide6.QtWidgets import QWidget
 
 
 _CLAUDE_SEGMENT_LIFETIME_S: float = 90.0
@@ -230,7 +229,7 @@ def tick_claude_tree(
 
 def paint_claude_background(
     painter: QPainter,
-    rect: QWidget,
+    rect: QRect,
     claude_tips: list[_ClaudeBranchTip],
     claude_segments: list[_ClaudeBranchSegment],
     claude_rng: random.Random,

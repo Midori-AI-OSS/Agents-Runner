@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import random
 import time
 from dataclasses import dataclass
@@ -8,7 +7,7 @@ from pathlib import Path
 
 from PySide6.QtCore import (
     QEasingCurve,
-    QPointF,
+    QRect,
     QRectF,
     Property,
     QPropertyAnimation,
@@ -17,16 +16,10 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QFont
-from PySide6.QtGui import QFontDatabase
 from PySide6.QtGui import QFontMetricsF
-from PySide6.QtGui import QLinearGradient
 from PySide6.QtGui import QPainter
-from PySide6.QtGui import QPainterPath
 from PySide6.QtGui import QPaintEvent
-from PySide6.QtGui import QPen
-from PySide6.QtGui import QRadialGradient
 from PySide6.QtGui import QResizeEvent
-from PySide6.QtGui import QStaticText
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.ui.themes.claude import background as claude_bg
@@ -331,7 +324,7 @@ class GlassRoot(QWidget):
             dt_s,
         )
 
-    def _paint_gemini_background(self, painter: QPainter, rect: QWidget) -> None:
+    def _paint_gemini_background(self, painter: QPainter, rect: QRect) -> None:
         self._ensure_gemini_orbs()
         gemini_bg.paint_gemini_background(painter, rect, self._gemini_orbs)
 
@@ -355,46 +348,12 @@ class GlassRoot(QWidget):
             self._copilot_repo_root,
         )
 
-    def _copilot_pick_snippet(self) -> list[str]:
-        self._ensure_copilot_sources()
-        return copilot_bg.copilot_pick_snippet(
-            self._copilot_rng,
-            self._copilot_source_files,
-        )
-
     def _ensure_copilot_panes(self) -> None:
         self._copilot_panes = copilot_bg.ensure_copilot_panes(
             self,
             self._copilot_panes,
             self._copilot_rng,
             self._copilot_source_files,
-        )
-
-    def _copilot_fill_pending(self, pane: copilot_bg._CopilotPane, *, min_lines: int) -> None:
-        copilot_bg.copilot_fill_pending(
-            pane,
-            self._copilot_rng,
-            self._copilot_source_files,
-            min_lines=min_lines,
-        )
-
-    def _copilot_pick_color(self) -> QColor:
-        return copilot_bg.copilot_pick_color(self._copilot_rng)
-
-    def _copilot_pick_style(self) -> tuple[QColor, str | None]:
-        return copilot_bg.copilot_pick_style(self._copilot_rng)
-
-    @staticmethod
-    def _copilot_clamp_line(text: str, *, max_cols: int) -> str:
-        return copilot_bg.copilot_clamp_line(text, max_cols=max_cols)
-
-    def _copilot_make_active_line(self, text: str, *, max_cols: int) -> copilot_bg._CopilotActiveLine:
-        font, _, _, _ = self._copilot_font_metrics()
-        return copilot_bg.copilot_make_active_line(
-            text,
-            self._copilot_rng,
-            font,
-            max_cols=max_cols,
         )
 
     def _tick_copilot_typed_code(self, *, dt_s: float) -> None:
@@ -414,14 +373,11 @@ class GlassRoot(QWidget):
             dt_s=dt_s,
         )
 
-    def _copilot_pane_rects(self, rect: QWidget) -> list[QRectF]:
-        return copilot_bg.copilot_pane_rects(rect, self._copilot_panes)
-
-    def _paint_copilot_background(self, painter: QPainter, rect: QWidget) -> None:
+    def _paint_copilot_background(self, painter: QPainter, rect: QRect) -> None:
         self._ensure_copilot_panes()
         font, _, char_w, line_h = self._copilot_font_metrics()
         
-        pane_rects = self._copilot_pane_rects(rect)
+        pane_rects = copilot_bg.copilot_pane_rects(rect, self._copilot_panes)
         if len(pane_rects) != len(self._copilot_panes):
             # Pane count can change across resizes; keep the visuals stable.
             self._copilot_panes = []
@@ -436,7 +392,7 @@ class GlassRoot(QWidget):
             line_h,
         )
 
-    def _paint_claude_background(self, painter: QPainter, rect: QWidget) -> None:
+    def _paint_claude_background(self, painter: QPainter, rect: QRect) -> None:
         self._claude_tips, self._claude_next_reset_s = claude_bg.paint_claude_background(
             painter,
             rect,
@@ -450,7 +406,7 @@ class GlassRoot(QWidget):
             codex_bg.blend_colors,
         )
 
-    def _paint_codex_background(self, painter: QPainter, rect: QWidget) -> None:
+    def _paint_codex_background(self, painter: QPainter, rect: QRect) -> None:
         """
         Paint the two-band background composition for Codex theme.
 

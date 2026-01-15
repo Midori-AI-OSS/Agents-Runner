@@ -8,11 +8,8 @@ from __future__ import annotations
 import math
 import time
 
-from PySide6.QtCore import QPointF
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QRadialGradient
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPainterPath
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QPointF, QRect, Qt
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QRadialGradient
 
 # Codex theme constant: diagonal boundary angle in degrees
 _CODEX_BOUNDARY_ANGLE_DEG: float = 15.0
@@ -128,7 +125,7 @@ def calc_bottom_phase() -> float:
 
 def paint_codex_background(
     painter: QPainter,
-    rect: QWidget,
+    rect: QRect,
     split_ratio: float,
     top_phase: float,
     bottom_phase: float,
@@ -197,7 +194,7 @@ def paint_codex_background(
 
 def paint_band_boundary_diagonal(
     painter: QPainter,
-    rect: QWidget,
+    rect: QRect,
     *,
     y_left: float,
     y_right: float,
@@ -263,7 +260,7 @@ def paint_band_boundary_diagonal(
     painter.restore()
 
 
-def paint_codex_blobs(painter: QPainter, rect: QWidget) -> None:
+def paint_codex_blobs(painter: QPainter, rect: QRect) -> None:
     """
     Paint large, soft color blobs for organic background appearance.
 
@@ -348,7 +345,7 @@ def paint_codex_blobs(painter: QPainter, rect: QWidget) -> None:
 
 def paint_band_boundary(
     painter: QPainter,
-    rect: QWidget,
+    rect: QRect,
     split_ratio: float,
     top_color: QColor,
     bottom_color: QColor,
