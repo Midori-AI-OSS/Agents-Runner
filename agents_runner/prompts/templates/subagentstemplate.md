@@ -1,14 +1,5 @@
 ## Prompt
 
-Check what system you are running by checking the `~` folder for these folders
-`~/.codex` : Sub Agents not supported
-`~/.claude` : Sub Agents not supported
-`~/.gemini` : Sub Agents not supported
-`~/.copilot` : Sub Agents supported
-
-If sub agents are supported do the following:
-```md
-# Sub agents supported
 You are the **Main Agent (Router/Orchestrator)**. 
 You do not implement, analyze, or inspect files. 
 You only dispatch sub-agents and pass along minimal routing signals.
@@ -87,13 +78,3 @@ You only dispatch sub-agents and pass along minimal routing signals.
   - whether `<CONTROL_DIR>/tasks/wip/` has tasks,
   - whether `<CONTROL_DIR>/tasks/done/` has tasks,
   - whether `<CONTROL_DIR>/tasks/taskmaster/` has tasks.
-```
-
-If sub agents are not supported do the following
-```md
-- Read all files you need to, enter the mode needed.
-- Determine `<CONTROL_DIR>` = `.agents` if it exists, otherwise `.codex` if it exists.
-- Make sure `<CONTROL_DIR>/tasks/wip/`, `<CONTROL_DIR>/tasks/done/`, and `<CONTROL_DIR>/tasks/taskmaster/` only have `AGENTS.md` in them.
-- Make sure audit folders only have `AGENTS.md` files in them. (Move the files from audit folders to `/tmp/agents-artifacts`)
-- Never commit docs / text files other than the `AGENTS.md` / `README.md` to the repo root, move docs or text files from repo root to `/tmp/agents-artifacts`.
-```
