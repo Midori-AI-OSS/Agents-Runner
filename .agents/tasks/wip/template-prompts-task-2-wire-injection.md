@@ -39,7 +39,8 @@ Quick reference (current behavior):
 - `codex`: `codex exec --sandbox danger-full-access [--skip-git-repo-check] <PROMPT>`
 - `claude`: `claude --print --output-format text --permission-mode bypassPermissions --add-dir <WORKDIR> <PROMPT>`
 - `copilot`: `copilot --allow-all-tools --allow-all-paths --add-dir <WORKDIR> -p <PROMPT>`
-- `gemini`: `gemini --no-sandbox --approval-mode yolo --include-directories <WORKDIR> --include-directories /tmp <PROMPT>`
-  - `gemini --help` indicates `--prompt` is deprecated in favor of a positional prompt; the current implementation passes the prompt positionally.
+- `gemini`: `gemini --no-sandbox --approval-mode yolo --include-directories <WORKDIR> --include-directories /tmp [<PROMPT>]`
+  - Agents Runner appends the prompt positionally only when non-empty (no `--prompt` flag is used).
+- Docker validation PixelArch image: `lunamidori5/pixelarch:emerald` (`agents_runner/ui/dialogs/docker_validator.py`, `agents_runner/ui/constants.py`).
 
 Use these command-shape notes as part of the placeholder content for each per-CLI template file in `agents_runner/prompts/templates/agentcli/` (i.e. include the relevant “how this CLI is invoked by Agents Runner” snippet inside `codex.md`, `claude.md`, `copilot.md`, and `gemini.md`).

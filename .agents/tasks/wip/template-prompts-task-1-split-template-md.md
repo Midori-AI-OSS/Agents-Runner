@@ -8,7 +8,7 @@ Create a new prompt subfolder and move template prompting into a shared template
 
 ## 3. Implementation notes (key decisions + constraints)
 - Today, the template prompt is injected only in non-interactive runs when the Midori AI template is detected (`agents_runner/docker/agent_worker.py:376` loads `load_prompt("template")`).
-- `load_prompt(name)` resolves to `agents_runner/prompts/{name}.md` and supports subpaths like `templates/foo` (because it uses `Path(...) / f"{name}.md"`) (`agents_runner/prompts/loader.py:45`).
+- `load_prompt(name)` loads from `agents_runner/prompts/<name>.md` and supports subpaths like `templates/foo` (it uses `PROMPTS_DIR / f"{name}.md"`) (`agents_runner/prompts/loader.py`).
 - Create a new folder: `agents_runner/prompts/templates/`.
 - Create a new folder: `agents_runner/prompts/templates/agentcli/`.
 - Create these new prompt files (exact filenames):
