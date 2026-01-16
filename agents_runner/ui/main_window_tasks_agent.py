@@ -409,6 +409,15 @@ class _MainWindowTasksAgentMixin:
             container_cache = "/home/midori-ai/.cache"
             extra_mounts_for_task.append(f"{host_cache}:{container_cache}:rw")
 
+        # Add cross-agent config mounts if enabled
+        cross_agent_mounts = self._compute_cross_agent_config_mounts(
+            env=env,
+            primary_agent_cli=agent_cli,
+            primary_config_dir=host_config_dir,
+            settings=self._settings_data,
+        )
+        extra_mounts_for_task.extend(cross_agent_mounts)
+
         # GitHub context preparation
         # For cloned: Create empty file before clone, populate after clone completes
         # For mounted: Detect git and populate immediately if it's a git repo

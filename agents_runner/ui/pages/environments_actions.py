@@ -157,6 +157,10 @@ class _EnvironmentsPageActionsMixin:
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
+        
+        # Read cross-agents configuration
+        use_cross_agents = bool(self._use_cross_agents.isChecked())
+        cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
         # Read preflight scripts based on container caching state
         container_caching_enabled = bool(self._container_caching_enabled.isChecked())
@@ -203,6 +207,8 @@ class _EnvironmentsPageActionsMixin:
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
+                use_cross_agents=use_cross_agents,
+                cross_agent_allowlist=cross_agent_allowlist,
             )
         else:
             env = replace(
@@ -230,6 +236,8 @@ class _EnvironmentsPageActionsMixin:
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
+                use_cross_agents=use_cross_agents,
+                cross_agent_allowlist=cross_agent_allowlist,
             )
         save_environment(env)
         self.updated.emit(preferred_env_id if preferred_env_id is not None else env_id)
@@ -286,6 +294,10 @@ class _EnvironmentsPageActionsMixin:
         name = (self._name.text() or "").strip() or env_id
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
+        
+        # Read cross-agents configuration
+        use_cross_agents = bool(self._use_cross_agents.isChecked())
+        cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
         # Read preflight scripts based on container caching state
         container_caching_enabled = bool(self._container_caching_enabled.isChecked())
@@ -332,6 +344,8 @@ class _EnvironmentsPageActionsMixin:
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
+                use_cross_agents=use_cross_agents,
+                cross_agent_allowlist=cross_agent_allowlist,
             )
 
         return replace(
@@ -357,6 +371,8 @@ class _EnvironmentsPageActionsMixin:
             prompts=prompts,
             prompts_unlocked=prompts_unlocked,
             agent_selection=agent_selection,
+            use_cross_agents=use_cross_agents,
+            cross_agent_allowlist=cross_agent_allowlist,
         )
 
     def _on_test_preflight(self) -> None:
