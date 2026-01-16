@@ -444,6 +444,7 @@ class DockerAgentWorker:
                 
                 # 3. Conditionally append cross-agents template
                 cross_agents_enabled = False
+                env = None
                 if self._config.environment_id:
                     try:
                         environments = load_environments()
@@ -478,6 +479,40 @@ class DockerAgentWorker:
                                 f"failed to load templates/crossagentstemplate: {exc}",
                             )
                         )
+                
+                # 3.5. Append CLI templates for all cross-agents in allowlist
+                if cross_agents_enabled and env is not None:
+                    agent_cli_by_id: dict[str, str] = {}
+                    if env.agent_selection is not None and env.agent_selection.agents:
+                        agent_cli_by_id = {
+                            agent.agent_id: agent.agent_cli
+                            for agent in env.agent_selection.agents
+                        }
+                    
+                    loaded_allowlist_clis: set[str] = set()
+                    for agent_id in env.cross_agent_allowlist:
+                        allowlist_agent_cli = agent_cli_by_id.get(agent_id)
+                        if not allowlist_agent_cli:
+                            continue
+                        
+                        normalized_cli = normalize_agent(allowlist_agent_cli)
+                        if normalized_cli == agent_cli or normalized_cli in loaded_allowlist_clis:
+                            continue
+                        
+                        try:
+                            allowlist_cli_prompt = load_prompt(f"templates/agentcli/{normalized_cli}").strip()
+                            if allowlist_cli_prompt:
+                                template_parts.append(allowlist_cli_prompt)
+                                loaded_allowlist_clis.add(normalized_cli)
+                        except Exception as exc:
+                            self._on_log(
+                                format_log(
+                                    "env",
+                                    "template",
+                                    "WARN",
+                                    f"failed to load templates/agentcli/{normalized_cli} for allowlist: {exc}",
+                                )
+                            )
                 
                 # 4. Always append CLI-specific template (LAST)
                 try:
