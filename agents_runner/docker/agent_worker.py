@@ -252,7 +252,7 @@ class DockerAgentWorker:
                         "env",
                         "template",
                         "INFO",
-                        "Midori AI Agents Template detected; will inject template.md prompt",
+                        "Midori AI Agents Template detected; will inject template prompts",
                     )
                 )
             container_name = f"agents-runner-{uuid.uuid4().hex[:10]}"
