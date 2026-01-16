@@ -337,7 +337,7 @@ class DockerPreflightWorker:
                     and "GITHUB_TOKEN" not in (self._config.env_vars or {})
                 ):
                     self._on_log(
-                        "[auth] forwarding GitHub token for cross-agent copilot"
+                        format_log("docker", "auth", "INFO", "forwarding GitHub token for cross-agent copilot")
                     )
                     if docker_env is None:
                         docker_env = dict(os.environ)
