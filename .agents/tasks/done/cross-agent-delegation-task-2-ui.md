@@ -36,3 +36,33 @@ Add a per-environment checkbox on the General tab and a cross-agent allowlist UI
 - No prompt-format/injection work.
 - Do not update `README.md` or add tests.
 
+
+---
+
+## Completion Notes
+
+**Completed by:** Coder Mode
+**Date:** 2025-01-16
+**Commit:** d2a8512
+
+### Summary:
+Successfully implemented per-environment "Use cross agents" checkbox on General tab and cross-agent allowlist UI in Agents tab. All acceptance criteria met:
+
+1. ✓ General tab shows "Use cross agents" checkbox, persisted per environment
+2. ✓ Allowlist UI hidden when checkbox unchecked, visible when checked
+3. ✓ Allowlist populated from current agent rows with agent_id + agent_cli
+4. ✓ Selection stored as list[str] of agent_ids, persists across save/reload
+5. ✓ "One instance per CLI" validation enforced via disable/grey-out
+6. ✓ Deleted agents automatically removed from allowlist
+
+### Implementation Details:
+- Added `_use_cross_agents` checkbox to General tab (row 7 in grid)
+- Created cross-agent allowlist section with GlassCard, scrollable area, and checkboxes
+- Validation enforces one-per-CLI rule by disabling other instances when one is checked
+- All state properly saved/loaded through environments_actions.py
+- Agent ID renames and deletions properly update allowlist
+
+### Testing:
+- All imports successful
+- Basic instantiation working
+- No runtime changes in this task (deferred to Task 3)
