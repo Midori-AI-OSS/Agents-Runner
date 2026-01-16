@@ -671,7 +671,7 @@ class DockerAgentWorker:
                     and "GITHUB_TOKEN" not in (self._config.env_vars or {})
                 ):
                     self._on_log(
-                        "[auth] forwarding GitHub token for cross-agent copilot"
+                        format_log("docker", "auth", "INFO", "forwarding GitHub token for cross-agent copilot")
                     )
                     docker_env = dict(os.environ)
                     docker_env["GH_TOKEN"] = token
