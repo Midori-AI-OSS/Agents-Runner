@@ -5,6 +5,7 @@ import re
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QFileDialog
 from PySide6.QtWidgets import QHBoxLayout
@@ -12,6 +13,7 @@ from PySide6.QtWidgets import QHeaderView
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QScrollArea
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QTableWidget
 from PySide6.QtWidgets import QToolButton
@@ -51,6 +53,9 @@ class AgentsTabWidget(QWidget):
 
         self._rows: list[AgentInstance] = []
         self._fallbacks: dict[str, str] = {}
+        self._cross_agents_enabled: bool = False
+        self._cross_agent_allowlist: set[str] = set()
+        self._allowlist_checkboxes: dict[str, QCheckBox] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*TAB_CONTENT_MARGINS)
@@ -150,6 +155,44 @@ class AgentsTabWidget(QWidget):
         controls_row.addStretch(1)
         layout.addWidget(controls_container, 0)
 
+        # Cross-agent allowlist section (hidden by default)
+        from agents_runner.widgets import GlassCard
+        self._cross_agents_card = GlassCard()
+        self._cross_agents_card.setVisible(False)
+        cross_agents_layout = QVBoxLayout(self._cross_agents_card)
+        cross_agents_layout.setContentsMargins(18, 16, 18, 16)
+        cross_agents_layout.setSpacing(10)
+        
+        cross_agents_header = QLabel("Cross-agent allowlist")
+        cross_agents_header.setStyleSheet("font-size: 14px; font-weight: 650;")
+        cross_agents_layout.addWidget(cross_agents_header)
+        
+        cross_agents_desc = QLabel(
+            "Select agent instances to mount as cross-agents in task containers.\n"
+            "Only one instance per CLI can be selected (enforced by disabling duplicates)."
+        )
+        cross_agents_desc.setStyleSheet("color: rgba(237, 239, 245, 160);")
+        cross_agents_desc.setWordWrap(True)
+        cross_agents_layout.addWidget(cross_agents_desc)
+        
+        # Scrollable container for checkboxes
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setMinimumHeight(150)
+        scroll.setMaximumHeight(250)
+        
+        self._allowlist_container = QWidget()
+        self._allowlist_layout = QVBoxLayout(self._allowlist_container)
+        self._allowlist_layout.setContentsMargins(0, 0, 0, 0)
+        self._allowlist_layout.setSpacing(8)
+        self._allowlist_layout.addStretch(1)
+        
+        scroll.setWidget(self._allowlist_container)
+        cross_agents_layout.addWidget(scroll, 1)
+        
+        layout.addWidget(self._cross_agents_card, 0)
+
         self._refresh_fallback_visibility()
         self._render_table()
 
@@ -226,6 +269,10 @@ class AgentsTabWidget(QWidget):
         self._update_fallback_options()
         self._refresh_priority_visibility()
         self._refresh_fallback_visibility()
+        
+        # Refresh cross-agent allowlist UI if enabled
+        if self._cross_agents_enabled:
+            self._refresh_allowlist_ui()
 
     def _on_test_chain(self) -> None:
         """Handle test chain button click."""
@@ -335,6 +382,12 @@ class AgentsTabWidget(QWidget):
             if kk and vv and kk != vv:
                 updated_fallbacks[kk] = vv
         self._fallbacks = updated_fallbacks
+        
+        # Update cross-agent allowlist
+        if old_id in self._cross_agent_allowlist:
+            self._cross_agent_allowlist.discard(old_id)
+            self._cross_agent_allowlist.add(new_id)
+        
         self._rows[row_index] = AgentInstance(
             agent_id=new_id,
             agent_cli=current.agent_cli,
@@ -450,6 +503,10 @@ class AgentsTabWidget(QWidget):
         for k, v in list(self._fallbacks.items()):
             if v == removed_id:
                 self._fallbacks.pop(k, None)
+        
+        # Remove from cross-agent allowlist
+        self._cross_agent_allowlist.discard(removed_id)
+        
         self._render_table()
         self.agents_changed.emit()
 
@@ -539,3 +596,113 @@ class AgentsTabWidget(QWidget):
             selection_mode=str(self._selection_mode.currentData() or "round-robin"),
             agent_fallbacks=cleaned_fallbacks,
         )
+
+    def set_cross_agents_enabled(self, enabled: bool) -> None:
+        """Show/hide the cross-agent allowlist UI section."""
+        self._cross_agents_enabled = enabled
+        self._cross_agents_card.setVisible(enabled)
+        if enabled:
+            self._refresh_allowlist_ui()
+
+    def set_cross_agent_allowlist(self, allowlist: list[str]) -> None:
+        """Set the cross-agent allowlist from saved data."""
+        self._cross_agent_allowlist = set(allowlist or [])
+        if self._cross_agents_enabled:
+            self._refresh_allowlist_ui()
+
+    def get_cross_agent_allowlist(self) -> list[str]:
+        """Return the cross-agent allowlist as a list of agent_ids."""
+        # Filter to only include agent_ids that still exist
+        known_ids = {a.agent_id for a in self._rows}
+        return [aid for aid in sorted(self._cross_agent_allowlist) if aid in known_ids]
+
+    def _refresh_allowlist_ui(self) -> None:
+        """Rebuild the cross-agent allowlist checkboxes from current agent rows."""
+        # Clear existing checkboxes
+        while self._allowlist_layout.count() > 1:  # Keep the stretch
+            item = self._allowlist_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        self._allowlist_checkboxes.clear()
+        
+        if not self._rows:
+            no_agents_label = QLabel("No agents configured. Add agents above first.")
+            no_agents_label.setStyleSheet("color: rgba(237, 239, 245, 160); font-style: italic;")
+            self._allowlist_layout.insertWidget(0, no_agents_label)
+            return
+        
+        # Build a map of agent_cli to list of agent instances
+        cli_to_instances: dict[str, list[AgentInstance]] = {}
+        for inst in self._rows:
+            cli = normalize_agent(inst.agent_cli)
+            if cli not in cli_to_instances:
+                cli_to_instances[cli] = []
+            cli_to_instances[cli].append(inst)
+        
+        # Create checkboxes for each agent instance
+        for inst in self._rows:
+            cli = normalize_agent(inst.agent_cli)
+            
+            checkbox = QCheckBox()
+            checkbox.setText(f"{inst.agent_id} ({cli})")
+            if inst.config_dir:
+                checkbox.setToolTip(f"Agent CLI: {cli}\nConfig: {inst.config_dir}")
+            else:
+                checkbox.setToolTip(f"Agent CLI: {cli}\nConfig: Inherit Settings")
+            
+            # Set checked state
+            checkbox.setChecked(inst.agent_id in self._cross_agent_allowlist)
+            
+            # Connect to handler
+            checkbox.stateChanged.connect(
+                lambda state, aid=inst.agent_id: self._on_allowlist_checkbox_changed(aid, state)
+            )
+            
+            self._allowlist_checkboxes[inst.agent_id] = checkbox
+            self._allowlist_layout.insertWidget(self._allowlist_layout.count() - 1, checkbox)
+        
+        # Apply "one instance per CLI" validation
+        self._update_allowlist_validation()
+
+    def _on_allowlist_checkbox_changed(self, agent_id: str, state: int) -> None:
+        """Handle allowlist checkbox state change."""
+        is_checked = state == Qt.CheckState.Checked.value
+        
+        if is_checked:
+            self._cross_agent_allowlist.add(agent_id)
+        else:
+            self._cross_agent_allowlist.discard(agent_id)
+        
+        # Update validation to enforce "one instance per CLI"
+        self._update_allowlist_validation()
+
+    def _update_allowlist_validation(self) -> None:
+        """Enforce 'one instance per CLI' rule in allowlist UI."""
+        # Build map of agent_cli to agent_ids that are checked
+        cli_to_checked: dict[str, list[str]] = {}
+        for inst in self._rows:
+            cli = normalize_agent(inst.agent_cli)
+            if inst.agent_id in self._cross_agent_allowlist:
+                if cli not in cli_to_checked:
+                    cli_to_checked[cli] = []
+                cli_to_checked[cli].append(inst.agent_id)
+        
+        # Disable/enable checkboxes based on validation
+        for inst in self._rows:
+            checkbox = self._allowlist_checkboxes.get(inst.agent_id)
+            if not checkbox:
+                continue
+            
+            cli = normalize_agent(inst.agent_cli)
+            checked_for_cli = cli_to_checked.get(cli, [])
+            
+            if inst.agent_id in self._cross_agent_allowlist:
+                # This checkbox is checked, keep it enabled
+                checkbox.setEnabled(True)
+            elif len(checked_for_cli) > 0:
+                # Another instance of same CLI is checked, disable this one
+                checkbox.setEnabled(False)
+            else:
+                # No instance of this CLI is checked, enable this one
+                checkbox.setEnabled(True)
