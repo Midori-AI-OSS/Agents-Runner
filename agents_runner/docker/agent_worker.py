@@ -663,7 +663,7 @@ class DockerAgentWorker:
                     docker_env["GH_TOKEN"] = token
                     docker_env["GITHUB_TOKEN"] = token
                     env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
-            elif _needs_cross_agent_gh_token(self._config.environment_id):
+            elif _needs_cross_agent_gh_token(self._config.environment_id) and agent_cli != "copilot":
                 token = resolve_github_token()
                 if (
                     token
