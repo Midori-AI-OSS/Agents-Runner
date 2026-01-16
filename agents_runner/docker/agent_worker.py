@@ -406,22 +406,7 @@ class DockerAgentWorker:
                         )
                     )
                 
-                # 3. Always append CLI-specific template
-                try:
-                    cli_prompt = load_prompt(f"templates/agentcli/{agent_cli}").strip()
-                    if cli_prompt:
-                        template_parts.append(cli_prompt)
-                except Exception as exc:
-                    self._on_log(
-                        format_log(
-                            "env",
-                            "template",
-                            "WARN",
-                            f"failed to load templates/agentcli/{agent_cli}: {exc}",
-                        )
-                    )
-                
-                # 4. Conditionally append cross-agents template
+                # 3. Conditionally append cross-agents template
                 cross_agents_enabled = False
                 if self._config.environment_id:
                     try:
@@ -457,7 +442,21 @@ class DockerAgentWorker:
                                 f"failed to load templates/crossagentstemplate: {exc}",
                             )
                         )
-
+                
+                # 4. Always append CLI-specific template (LAST)
+                try:
+                    cli_prompt = load_prompt(f"templates/agentcli/{agent_cli}").strip()
+                    if cli_prompt:
+                        template_parts.append(cli_prompt)
+                except Exception as exc:
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "template",
+                            "WARN",
+                            f"failed to load templates/agentcli/{agent_cli}: {exc}",
+                        )
+                    )
                 
                 # Combine all template parts and inject
                 if template_parts:
