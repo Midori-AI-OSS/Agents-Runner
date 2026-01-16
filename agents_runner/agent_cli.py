@@ -18,6 +18,15 @@ DEFAULT_HOST_CONFIG_DIRS: dict[str, str] = {
 
 def normalize_agent(value: str | None) -> str:
     agent = str(value or "").strip().lower()
+    
+    # Handle "gh copilot" → "copilot"
+    if "copilot" in agent:
+        return "copilot"
+    
+    # Handle "gh" (standalone) → treat as copilot alias
+    if agent == "gh":
+        return "copilot"
+    
     return agent if agent in SUPPORTED_AGENTS else "codex"
 
 
