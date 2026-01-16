@@ -38,3 +38,82 @@ When cross-agents are enabled for an environment, mount the config directories f
 - No changes to `container_config_dir(...)` mapping rules.
 - Do not update `README.md` or add tests.
 
+
+---
+
+## Auditor Review Note (2025-01-16)
+
+**Status:** ⚠️ Implementation complete but NOT COMMITTED
+
+### What needs to be done:
+1. **Commit the working tree changes** with a clear commit message
+2. **Add a completion note** to this task file (similar to tasks 1 and 2)
+3. Move back to done/ after committing
+4. Then taskmaster can move to taskmaster/
+
+### Implementation Review:
+✅ All acceptance criteria met
+✅ Code quality excellent
+✅ No security issues
+✅ Follows project guidelines
+
+**Files with uncommitted changes:**
+- `agents_runner/ui/main_window_settings.py` (added `_compute_cross_agent_config_mounts` method)
+- `agents_runner/ui/main_window_tasks_agent.py` (calls cross-agent mount helper)
+- `agents_runner/ui/main_window_tasks_interactive.py` (calls cross-agent mount helper)
+
+**Suggested commit message:**
+```
+[FEATURE] Add cross-agent config mounts for runtime delegation
+
+Implements Task 3 of cross-agent delegation:
+- Mounts allowlisted agent config dirs (RW) into containers
+- Validates config dirs before mounting
+- Enforces one-per-CLI constraint at runtime
+- Applies to both worker and interactive runs
+- Includes additional config mounts (e.g., ~/.claude.json)
+```
+
+**Audit report:** `/tmp/agents-artifacts/2da06b80-audit-summary.audit.md`
+
+---
+
+## Completion Note (2025-01-16)
+
+**Status:** ✅ COMPLETED AND COMMITTED
+
+### Implementation Summary:
+Successfully implemented runtime mounting of cross-agent configuration directories:
+
+1. **Added `_compute_cross_agent_config_mounts` method** to `main_window_settings.py`:
+   - Computes additional config mounts for allowlisted agents
+   - Validates config directories before mounting
+   - Enforces one-per-CLI constraint at runtime
+   - Avoids duplicate mounts with primary agent config
+
+2. **Integrated cross-agent mounts in worker runs** (`main_window_tasks_agent.py`):
+   - Calls the helper method to get cross-agent config mounts
+   - Extends `extra_mounts_for_task` with computed mounts
+   - Applies to all non-interactive agent task runs
+
+3. **Integrated cross-agent mounts in interactive runs** (`main_window_tasks_interactive.py`):
+   - Calls the helper method to get cross-agent config mounts
+   - Extends `config_extra_mounts` for Docker terminal sessions
+   - Ensures allowlisted agents have their config available in interactive mode
+
+### Acceptance Criteria Verification:
+✅ Cross-agent config dirs mounted RW when enabled with allowlist  
+✅ No additional mounts when cross-agents disabled  
+✅ Additional config files (e.g., ~/.claude.json) mounted via helper  
+✅ One-per-CLI constraint enforced at runtime  
+✅ Fast-fail validation for missing/invalid config dirs  
+
+### Commit Details:
+- **Commit SHA:** d788e49
+- **Commit Message:** [FEATURE] Add cross-agent config mounts for runtime delegation
+- **Files Modified:** 3 (main_window_settings.py, main_window_tasks_agent.py, main_window_tasks_interactive.py)
+- **Lines Changed:** +141
+
+**Task completed by:** coder agent  
+**Date:** 2025-01-16
+
