@@ -663,6 +663,20 @@ class DockerAgentWorker:
                     docker_env["GH_TOKEN"] = token
                     docker_env["GITHUB_TOKEN"] = token
                     env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
+            elif _needs_cross_agent_gh_token(self._config.environment_id):
+                token = resolve_github_token()
+                if (
+                    token
+                    and "GH_TOKEN" not in (self._config.env_vars or {})
+                    and "GITHUB_TOKEN" not in (self._config.env_vars or {})
+                ):
+                    self._on_log(
+                        "[auth] forwarding GitHub token for cross-agent copilot"
+                    )
+                    docker_env = dict(os.environ)
+                    docker_env["GH_TOKEN"] = token
+                    docker_env["GITHUB_TOKEN"] = token
+                    env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
 
             if desktop_enabled:
                 env_args.extend(
