@@ -33,3 +33,35 @@ Add new per-environment fields to store whether cross-agent delegation is enable
 - Do not change `ENVIRONMENT_VERSION`.
 - Do not update `README.md` or add tests.
 
+
+---
+
+## Completion Note
+
+**Status:** ✅ Complete  
+**Completed:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+### Implementation Summary
+Added `use_cross_agents` (bool) and `cross_agent_allowlist` (list[str]) fields to Environment dataclass with full serialization/deserialization support and validation logic.
+
+### Changes Made
+- **model.py**: Added two new fields to Environment dataclass
+- **serialize.py**: 
+  - Implemented `_validate_cross_agent_allowlist()` helper with comprehensive validation
+  - Updated `_environment_from_payload()` to deserialize and validate new fields
+  - Updated `serialize_environment()` to serialize with pre-save validation
+
+### Validation Rules Implemented
+1. Coerce to list[str], strip empties, de-dupe
+2. Force empty list if no agents configured
+3. Filter unknown agent_ids (must exist in agent_selection.agents)
+4. Enforce max 1 allowlisted per agent_cli (keeps first occurrence per normalized CLI)
+
+### Testing
+All acceptance criteria verified:
+- ✅ Backward compatibility with missing keys
+- ✅ Round-trip save/load preservation
+- ✅ Invalid payload sanitization
+- ✅ Agent ID (not CLI) storage format
+
+No issues found. Ready for integration.
