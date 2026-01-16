@@ -12,15 +12,18 @@ Create a new prompt subfolder and move template prompting into a shared template
 - Create a new folder: `agents_runner/prompts/templates/`.
 - Create a new folder: `agents_runner/prompts/templates/agentcli/`.
 - Create these new prompt files (exact filenames):
-  - `agents_runner/prompts/templates/allprompttemplate.md`
+  - `agents_runner/prompts/templates/midoriaibasetemplate.md`
+  - `agents_runner/prompts/templates/subagentstemplate.md`
+  - `agents_runner/prompts/templates/crossagentstemplate.md`
   - `agents_runner/prompts/templates/agentcli/codex.md`
   - `agents_runner/prompts/templates/agentcli/claude.md`
   - `agents_runner/prompts/templates/agentcli/copilot.md`
   - `agents_runner/prompts/templates/agentcli/gemini.md`
 - Content guidance:
-  - `allprompttemplate.md` should contain shared “template context” content (keep it minimal and stable).
-  - The four `templates/agentcli/*.md` files are placeholders for future per-CLI prompting; for now they can be minimal placeholder text, but the files must exist.
-- Remove the “sub agents not supported template” split from this plan (no `subagentsnotsupportedtemplate.md` file).
+  - `midoriaibasetemplate.md`: shared “Midori AI template context” content (keep it minimal and stable).
+  - `subagentstemplate.md`: shared sub-agent prompting (how to use sub-agents / how sub-agents work). This is intentionally generic so it can be updated independently from the Midori AI template context and per-CLI details.
+  - `crossagentstemplate.md`: shared cross-agent prompting (how to use other agent CLIs as cross-agents). This should be treated as a placeholder until prompts are tuned; create the markdown file but do not hard-code prompt strings in Python.
+  - `templates/agentcli/*.md`: per-agent-CLI placeholders (Codex/Claude/Copilot/Gemini). For now they can be minimal placeholder text, but the files must exist.
 - Follow the existing prompt file convention by including a `## Prompt` marker and placing the actual prompt text after it (see `agents_runner/prompts/headless_desktop.md`).
 - Do not add new logic here; just create the markdown prompt files.
 
@@ -32,7 +35,9 @@ Create a new prompt subfolder and move template prompting into a shared template
 ## 5. Expected files to modify (explicit paths)
 - `agents_runner/prompts/template.md` (source content for splitting; may be left as-is until Task 2)
 - Add:
-  - `agents_runner/prompts/templates/allprompttemplate.md`
+  - `agents_runner/prompts/templates/midoriaibasetemplate.md`
+  - `agents_runner/prompts/templates/subagentstemplate.md`
+  - `agents_runner/prompts/templates/crossagentstemplate.md`
   - `agents_runner/prompts/templates/agentcli/codex.md`
   - `agents_runner/prompts/templates/agentcli/claude.md`
   - `agents_runner/prompts/templates/agentcli/copilot.md`

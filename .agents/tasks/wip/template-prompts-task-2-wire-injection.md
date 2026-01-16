@@ -9,9 +9,16 @@ Update the non-interactive worker prompt assembly so that when the Midori AI tem
 ## 3. Implementation notes (key decisions + constraints)
 - Current injection point: `agents_runner/docker/agent_worker.py:376`–`400`.
 - Keep the existing detection condition: only inject when `template_detection.midoriai_template_detected` is true.
+- Do not inject (or even attempt to `load_prompt(...)` from `templates/`) when the template is not detected.
+- Do not add template-prompt injection to other execution paths (e.g. interactive runs in `agents_runner/ui/main_window_tasks_interactive.py`); this task is non-interactive worker only.
 - Injection behavior should become:
-  - Always append `load_prompt("templates/allprompttemplate")`.
+  - Always append `load_prompt("templates/midoriaibasetemplate")`.
+  - Always append `load_prompt("templates/subagentstemplate")`.
   - Always append the per-CLI prompt: `load_prompt(f"templates/agentcli/{agent_cli}")` (where `agent_cli` is already normalized in the worker).
+- If cross-agents are enabled for the environment, append `load_prompt("templates/crossagentstemplate")` last.
+- Prompt order matters; keep the concatenation order exactly as listed above.
+- Cross-agents trigger (repo-grounded): mounts are enabled when `env.use_cross_agents` is true and `env.cross_agent_allowlist` is non-empty (see `agents_runner/ui/main_window_settings.py:_compute_cross_agent_config_mounts`). Use the same condition for whether to append `templates/crossagentstemplate`.
+- Cross-agents state lookup: the worker only has `environment_id`; load the environment (if present) to read `use_cross_agents` and `cross_agent_allowlist`. If there is no environment (or it can’t be loaded), treat cross-agents as disabled for prompting.
 - Do not add the “sub agents not supported” branch here; we’ll do per-CLI prompting later by filling in the placeholder markdown files (the code should already be wired to load them).
 - Important: do not “hard code” prompt strings in Python. All template instructions must be stored in `.md` files and loaded via `load_prompt(...)`.
 - Keep logging behavior roughly equivalent; it’s ok to adjust the log message text to reflect the new prompts (e.g. “injected template prompts”).
@@ -21,8 +28,10 @@ Update the non-interactive worker prompt assembly so that when the Midori AI tem
 
 ## 4. Acceptance criteria (clear, testable statements)
 - `agents_runner/docker/agent_worker.py` no longer calls `load_prompt("template")`.
-- When template is detected, the injected content includes `templates/allprompttemplate` plus `templates/agentcli/<agent_cli>`.
+- When template is detected, the injected content includes `templates/midoriaibasetemplate`, `templates/subagentstemplate`, and `templates/agentcli/<agent_cli>` in that order.
+- When template is detected and cross-agents are enabled for the environment, the injected content additionally includes `templates/crossagentstemplate` (appended last).
 - When template is not detected, no template prompts are injected (unchanged behavior).
+- No other code path injects or loads `templates/*` prompts (non-interactive worker only).
 
 ## 5. Expected files to modify (explicit paths)
 - `agents_runner/docker/agent_worker.py`
