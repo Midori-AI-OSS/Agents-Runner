@@ -12,6 +12,7 @@ from PySide6.QtGui import QPainter
 from PySide6.QtGui import QPixmap
 from PySide6.QtGui import QPolygon
 from PySide6.QtGui import QShowEvent
+from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
@@ -31,6 +32,7 @@ except Exception:  # pragma: no cover
 from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
 
 from agents_runner.artifacts import get_artifact_info
+from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import _task_display_status
 from agents_runner.ui.utils import _format_duration
@@ -130,53 +132,35 @@ class TaskDetailsPage(QWidget):
 
         mid = QHBoxLayout()
         mid.setSpacing(14)
-        task_layout.addLayout(mid, 2)
+        task_layout.addLayout(mid, 1)
 
-        left = GlassCard()
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(18, 16, 18, 16)
-        left_layout.setSpacing(10)
+        # Left side: Logs card (full height)
+        logs = GlassCard()
+        logs_layout = QVBoxLayout(logs)
+        logs_layout.setContentsMargins(18, 16, 18, 16)
+        logs_layout.setSpacing(10)
 
-        left_title = QLabel("Prompt")
-        left_title.setStyleSheet("font-size: 14px; font-weight: 650;")
+        ltitle = QLabel("Logs")
+        ltitle.setStyleSheet("font-size: 14px; font-weight: 650;")
+        self._logs = QPlainTextEdit()
+        self._logs.setObjectName("LogsView")
+        self._logs.setReadOnly(True)
+        self._logs.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self._logs.setMaximumBlockCount(5000)
+        self._log_highlighter = LogHighlighter(self._logs.document())
+        logs_layout.addWidget(ltitle)
+        logs_layout.addWidget(self._logs, 1)
+        mid.addWidget(logs, 3)
 
-        self._prompt = QPlainTextEdit()
-        self._prompt.setReadOnly(True)
-        self._prompt.setMaximumBlockCount(2000)
-
-        cfg = QGridLayout()
-        cfg.setHorizontalSpacing(10)
-        cfg.setVerticalSpacing(8)
-
-        self._workdir = QLabel("—")
-        self._codexdir = QLabel("—")
-        self._container = QLabel("—")
-        self._container.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._workdir.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._codexdir.setTextInteractionFlags(Qt.TextSelectableByMouse)
-
-        cfg.addWidget(QLabel("Host Workdir"), 0, 0)
-        cfg.addWidget(self._workdir, 0, 1)
-        cfg.addWidget(QLabel("Host Config folder"), 1, 0)
-        cfg.addWidget(self._codexdir, 1, 1)
-        cfg.addWidget(QLabel("Container ID"), 2, 0)
-        cfg.addWidget(self._container, 2, 1)
-
-        prompt_page = QWidget()
-        prompt_layout = QVBoxLayout(prompt_page)
-        prompt_layout.setContentsMargins(0, 0, 0, 0)
-        prompt_layout.setSpacing(10)
-        prompt_layout.addWidget(self._prompt, 1)
-        prompt_layout.addLayout(cfg)
-
-        left_layout.addWidget(left_title)
-        left_layout.addWidget(prompt_page, 1)
-        mid.addWidget(left, 3)
-
-        right = GlassCard()
-        right_layout = QVBoxLayout(right)
-        right_layout.setContentsMargins(18, 16, 18, 16)
-        right_layout.setSpacing(12)
+        # Right side: Container state + Prompt cards stacked vertically
+        right_column = QVBoxLayout()
+        right_column.setSpacing(14)
+        
+        # Container state card (top-right)
+        state_card = GlassCard()
+        state_layout = QVBoxLayout(state_card)
+        state_layout.setContentsMargins(18, 16, 18, 16)
+        state_layout.setSpacing(12)
 
         stitle = QLabel("Container state")
         stitle.setStyleSheet("font-size: 14px; font-weight: 650;")
@@ -246,28 +230,58 @@ class TaskDetailsPage(QWidget):
         details.addWidget(QLabel("Exit code"), 2, 0)
         details.addWidget(self._exit, 2, 1)
 
-        right_layout.addLayout(title_row)
-        right_layout.addLayout(state_row)
-        right_layout.addLayout(details)
-        right_layout.addStretch(1)
-        mid.addWidget(right, 2)
+        state_layout.addLayout(title_row)
+        state_layout.addLayout(state_row)
+        state_layout.addLayout(details)
+        right_column.addWidget(state_card)
+        
+        # Prompt card (bottom-right)
+        prompt_card = GlassCard()
+        prompt_layout = QVBoxLayout(prompt_card)
+        prompt_layout.setContentsMargins(18, 16, 18, 16)
+        prompt_layout.setSpacing(10)
 
-        logs = GlassCard()
-        logs_layout = QVBoxLayout(logs)
-        logs_layout.setContentsMargins(18, 16, 18, 16)
-        logs_layout.setSpacing(10)
+        prompt_title_row = QHBoxLayout()
+        prompt_title_row.setSpacing(8)
+        prompt_title = QLabel("Prompt")
+        prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
+        prompt_title_row.addWidget(prompt_title)
+        prompt_title_row.addStretch(1)
+        
+        self._btn_copy_prompt = QToolButton()
+        self._btn_copy_prompt.setText("Copy")
+        self._btn_copy_prompt.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._btn_copy_prompt.setToolTip("Copy prompt to clipboard")
+        self._btn_copy_prompt.clicked.connect(self._copy_prompt_to_clipboard)
+        prompt_title_row.addWidget(self._btn_copy_prompt)
 
-        ltitle = QLabel("Logs")
-        ltitle.setStyleSheet("font-size: 14px; font-weight: 650;")
-        self._logs = QPlainTextEdit()
-        self._logs.setObjectName("LogsView")
-        self._logs.setReadOnly(True)
-        self._logs.setLineWrapMode(QPlainTextEdit.NoWrap)
-        self._logs.setMaximumBlockCount(5000)
-        self._log_highlighter = LogHighlighter(self._logs.document())
-        logs_layout.addWidget(ltitle)
-        logs_layout.addWidget(self._logs, 1)
-        task_layout.addWidget(logs, 2)
+        self._prompt = QPlainTextEdit()
+        self._prompt.setReadOnly(True)
+        self._prompt.setMaximumBlockCount(2000)
+
+        cfg = QGridLayout()
+        cfg.setHorizontalSpacing(10)
+        cfg.setVerticalSpacing(8)
+
+        self._workdir = QLabel("—")
+        self._workdir_label = QLabel("Host Workdir")
+        self._container = QLabel("—")
+        self._container.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._workdir.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        self._workdir_row = 0
+        cfg.addWidget(self._workdir_label, self._workdir_row, 0)
+        cfg.addWidget(self._workdir, self._workdir_row, 1)
+        self._container_row = 1
+        cfg.addWidget(QLabel("Container ID"), self._container_row, 0)
+        cfg.addWidget(self._container, self._container_row, 1)
+
+        prompt_layout.addLayout(prompt_title_row)
+        prompt_layout.addWidget(self._prompt, 1)
+        prompt_layout.addLayout(cfg)
+        right_column.addWidget(prompt_card, 1)
+        
+        mid.addLayout(right_column, 2)
 
         desktop_tab = QWidget()
         desktop_layout = QVBoxLayout(desktop_tab)
@@ -418,6 +432,14 @@ class TaskDetailsPage(QWidget):
                 self._btn_kill.setEnabled(False)
             self.container_action_requested.emit(task_id, str(action or "").strip())
 
+    def _copy_prompt_to_clipboard(self) -> None:
+        """Copy the full prompt text to clipboard."""
+        prompt_text = self._prompt.toPlainText()
+        if prompt_text:
+            clipboard = QApplication.clipboard()
+            if clipboard:
+                clipboard.setText(prompt_text)
+
     def _sync_container_actions(self, task: Task) -> None:
         has_container = bool(str(task.container_id or "").strip())
         is_paused = (task.status or "").lower() == "paused"
@@ -437,8 +459,14 @@ class TaskDetailsPage(QWidget):
         self._title.setText(f"Task {task.task_id}")
         self._subtitle.setText(task.prompt_one_line())
         self._prompt.setPlainText(task.prompt)
-        self._workdir.setText(task.host_workdir)
-        self._codexdir.setText(task.host_codex_dir)
+        
+        # Show/hide Host Workdir based on workspace type
+        is_cloned = task.workspace_type == WORKSPACE_CLONED
+        self._workdir_label.setVisible(not is_cloned)
+        self._workdir.setVisible(not is_cloned)
+        if not is_cloned:
+            self._workdir.setText(task.host_workdir)
+        
         self._container.setText(task.container_id or "—")
         self._tabs.setCurrentIndex(self._task_tab_index)
         self._sync_desktop(task)

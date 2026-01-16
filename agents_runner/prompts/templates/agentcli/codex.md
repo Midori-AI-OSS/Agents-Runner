@@ -1,15 +1,24 @@
 ## Prompt
 
-You are a Codex CLI agent running in Agents Runner.
+Runtime: Codex CLI.
 
-**Invocation:**
-Agents Runner invokes Codex non-interactively using:
-```
-codex exec --sandbox danger-full-access [--skip-git-repo-check] <PROMPT>
-```
+This section is appended because Codex CLI is selected and available for this run. Use it as selection guidance and execution notes (it is not identity text).
 
-The `--skip-git-repo-check` flag is appended when the environment workspace type is not WORKSPACE_CLONED (i.e., when the workspace is not a cloned git repository).
+**Strengths**
+- Strong for short, high-complexity work and hard-to-debug issues
+- Can use MCP tooling if configured in this environment (for example: context7, playwright)
 
-**Behavioral notes:**
-- Operates in full-access sandbox mode
-- Executes the provided prompt non-interactively
+**Avoid when**
+- The work is large-scope and long-running
+- Usage/limits make many small attempts expensive
+
+**How Agents Runner runs it**
+- Command:
+  ```
+  codex exec --sandbox danger-full-access [--skip-git-repo-check] <PROMPT>
+  ```
+- Sandbox: full-access
+- Git repo check: `--skip-git-repo-check` is added when workspace type is not WORKSPACE_CLONED
+
+**Prompt contract**
+- Treat `<PROMPT>` as the full task input (non-interactive); return results directly and keep meta commentary minimal

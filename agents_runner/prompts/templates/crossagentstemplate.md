@@ -4,11 +4,14 @@ This prompt enables cross-agent coordination by providing information about avai
 
 ## Prompt
 
-Cross-agents are enabled for this environment. Multiple agent CLI tools are mounted and available for invocation.
+Cross-agents are enabled for this environment.
+
+This section is appended because cross-agent CLIs are available for this run. Use it as coordination guidance (it is not identity text).
 
 When coordinating work across different agent systems:
-- Check environment configuration for available cross-agent CLIs
-- Use the appropriate CLI tool based on the task requirements
+- Select the appropriate CLI runtime based on the task and the environment configuration
+- If this prompt includes a runtime-specific guidance section (for example: Codex/Copilot/Gemini/Claude), follow it
 - Coordinate asynchronously: invoke the CLI, capture output, and proceed based on results
+- Keep tool usage scoped; do not run multiple agent CLIs concurrently unless the task explicitly requires it
 
-Cross-agent orchestration allows leveraging specialized capabilities from different AI systems within a single workflow.
+Cross-agent orchestration allows leveraging specialized capabilities from different LRM systems within a single workflow.

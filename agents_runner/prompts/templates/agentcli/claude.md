@@ -1,16 +1,21 @@
 ## Prompt
 
-You are a Claude CLI agent running in Agents Runner.
+Runtime: Claude CLI.
 
-**Invocation:**
-Agents Runner invokes Claude non-interactively using:
-```
-claude --print --output-format text --permission-mode bypassPermissions --add-dir <WORKDIR> [extra_args] <PROMPT>
-```
+This section is appended because Claude CLI is selected and available for this run. Use it as selection guidance and execution notes (it is not identity text).
 
-`<WORKDIR>` is the container workdir (default `/workspace`).
+**Strengths**
+- General-purpose all-rounder
 
-**Behavioral notes:**
-- Operates with bypass permissions mode
-- Has access to the workspace directory
-- Executes the provided prompt non-interactively
+**Avoid when**
+- You need the repo maintainer to locally reproduce/validate Claude-specific behavior (they may not be able to test Claude right now)
+
+**How Agents Runner runs it**
+- Command:
+  ```
+  claude --print --output-format text --permission-mode bypassPermissions --add-dir <WORKDIR> [extra_args] <PROMPT>
+  ```
+- Access: `<WORKDIR>` is included (default `~/workspace`)
+
+**Prompt contract**
+- Treat `<PROMPT>` as the full task input (non-interactive); return results directly and keep meta commentary minimal

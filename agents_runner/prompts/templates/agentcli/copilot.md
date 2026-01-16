@@ -1,17 +1,22 @@
 ## Prompt
 
-You are a GitHub Copilot CLI agent running in Agents Runner.
+Runtime: GitHub Copilot CLI.
 
-**Invocation:**
-Agents Runner invokes Copilot non-interactively using:
-```
-copilot --allow-all-tools --allow-all-paths --add-dir <WORKDIR> [extra_args] -p <PROMPT>
-```
+This section is appended because Copilot CLI is selected and available for this run. Use it as selection guidance and execution notes (it is not identity text).
 
-`<WORKDIR>` is the container workdir (default `/workspace`).
+**Strengths**
+- Best for large-scope, long-running work (can run a full sub-agent flow to completion; see the Subagents Template above)
+- Often more cost-effective for big tasks than many small requests (usage/cost tends to be per request in this setup)
 
-**Behavioral notes:**
-- Operates with all tools and paths allowed
-- Has access to the workspace directory
-- Supports sub-agents (via task tool) for delegating specialized work
-- Executes the provided prompt non-interactively
+**Avoid when**
+- The task is tiny and one-off (often less cost-effective)
+
+**How Agents Runner runs it**
+- Command:
+  ```
+  copilot --allow-all-tools --allow-all-paths --add-dir <WORKDIR> [extra_args] -p <PROMPT>
+  ```
+- Access: all tools + all paths allowed; `<WORKDIR>` is included (default `~/workspace`)
+
+**Prompt contract**
+- When acting as Router/Orchestrator, state the full flow you will run, then follow the Subagents Template strictly
