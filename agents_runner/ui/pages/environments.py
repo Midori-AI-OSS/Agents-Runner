@@ -640,9 +640,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         # Load agent selection and cross-agent allowlist
         use_cross_agents = bool(getattr(env, "use_cross_agents", False))
         cross_agent_allowlist = list(getattr(env, "cross_agent_allowlist", []))
+        self._agents_tab.set_cross_agent_allowlist(cross_agent_allowlist)
         self._agents_tab.set_agent_selection(env.agent_selection)
         self._agents_tab.set_cross_agents_enabled(use_cross_agents)
-        self._agents_tab.set_cross_agent_allowlist(cross_agent_allowlist)
 
     def _on_prompts_changed(self) -> None:
         pass
