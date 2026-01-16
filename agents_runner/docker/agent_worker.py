@@ -457,6 +457,7 @@ class DockerAgentWorker:
                                 f"failed to load templates/crossagentstemplate: {exc}",
                             )
                         )
+
                 
                 # Combine all template parts and inject
                 if template_parts:
