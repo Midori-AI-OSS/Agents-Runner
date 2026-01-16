@@ -20,6 +20,7 @@ from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import docker_platform_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
+from agents_runner.environments import load_environments
 from agents_runner.github_token import resolve_github_token
 from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.gh_management import GhManagementError
@@ -212,7 +213,6 @@ class DockerAgentWorker:
             template_detection = scan_midoriai_agents_template(host_mount)
             if self._config.environment_id:
                 try:
-                    from agents_runner.environments import load_environments
                     from agents_runner.environments import save_environment
 
                     env = load_environments().get(str(self._config.environment_id))
@@ -374,28 +374,102 @@ class DockerAgentWorker:
                 )
 
             if template_detection.midoriai_template_detected:
+                template_parts = []
+                
+                # 1. Always append base template
                 try:
-                    template_prompt = load_prompt("template").strip()
+                    base_prompt = load_prompt("templates/midoriaibasetemplate").strip()
+                    if base_prompt:
+                        template_parts.append(base_prompt)
                 except Exception as exc:
                     self._on_log(
                         format_log(
                             "env",
                             "template",
                             "WARN",
-                            f"failed to load template.md prompt: {exc}",
+                            f"failed to load templates/midoriaibasetemplate: {exc}",
                         )
                     )
-                else:
-                    if template_prompt:
-                        prompt_for_agent = sanitize_prompt(
-                            f"{prompt_for_agent.rstrip()}\n\n{template_prompt}"
+                
+                # 2. Always append subagents template
+                try:
+                    subagents_prompt = load_prompt("templates/subagentstemplate").strip()
+                    if subagents_prompt:
+                        template_parts.append(subagents_prompt)
+                except Exception as exc:
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "template",
+                            "WARN",
+                            f"failed to load templates/subagentstemplate: {exc}",
                         )
+                    )
+                
+                # 3. Always append CLI-specific template
+                try:
+                    cli_prompt = load_prompt(f"templates/agentcli/{agent_cli}").strip()
+                    if cli_prompt:
+                        template_parts.append(cli_prompt)
+                except Exception as exc:
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "template",
+                            "WARN",
+                            f"failed to load templates/agentcli/{agent_cli}: {exc}",
+                        )
+                    )
+                
+                # 4. Conditionally append cross-agents template
+                cross_agents_enabled = False
+                if self._config.environment_id:
+                    try:
+                        environments = load_environments()
+                        env = environments.get(str(self._config.environment_id))
+                        if env is not None:
+                            cross_agents_enabled = (
+                                env.use_cross_agents is True
+                                and env.cross_agent_allowlist
+                                and len(env.cross_agent_allowlist) > 0
+                            )
+                    except Exception as exc:
+                        self._on_log(
+                            format_log(
+                                "env",
+                                "template",
+                                "WARN",
+                                f"failed to check cross-agents config: {exc}",
+                            )
+                        )
+                
+                if cross_agents_enabled:
+                    try:
+                        cross_agents_prompt = load_prompt("templates/crossagentstemplate").strip()
+                        if cross_agents_prompt:
+                            template_parts.append(cross_agents_prompt)
+                    except Exception as exc:
+                        self._on_log(
+                            format_log(
+                                "env",
+                                "template",
+                                "WARN",
+                                f"failed to load templates/crossagentstemplate: {exc}",
+                            )
+                        )
+                
+                # Combine all template parts and inject
+                if template_parts:
+                    combined_template = "\n\n".join(template_parts)
+                    prompt_for_agent = sanitize_prompt(
+                        f"{prompt_for_agent.rstrip()}\n\n{combined_template}"
+                    )
                     self._on_log(
                         format_log(
                             "env",
                             "template",
                             "INFO",
-                            "injected template.md prompt",
+                            "injected template prompts",
                         )
                     )
 

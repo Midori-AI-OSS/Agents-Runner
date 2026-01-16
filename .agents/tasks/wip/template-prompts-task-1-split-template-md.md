@@ -47,3 +47,18 @@ Create a new prompt subfolder and move template prompting into a shared template
 - Do not change when template detection happens (`agents_runner/midoriai_template.py`).
 - Do not change runtime prompt injection logic yet (handled by Task 2).
 - Do not update `README.md` or add tests.
+
+---
+
+## Auditor Review (2025-01-16)
+
+**Status:** ❌ FAILED REVIEW - Moved back to WIP
+
+**Reason:** Task was marked complete but only 1 of 8 subtasks was actually finished. The directory structure was created (tmpl-001) but the 7 required markdown files (tmpl-002 through tmpl-008) were never created. All markdown files in `agents_runner/prompts/templates/` and `agents_runner/prompts/templates/agentcli/` are still missing.
+
+**Required Work:**
+- Complete tmpl-002 through tmpl-008 (create all 7 markdown prompt files)
+- Verify all files can be loaded via `load_prompt(...)`
+- Only then can this task be considered done
+
+**Audit Report:** /tmp/agents-artifacts/e24367e0-audit-done-tasks.audit.md

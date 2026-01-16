@@ -53,3 +53,18 @@ Quick reference (current behavior):
 - Docker validation PixelArch image: `lunamidori5/pixelarch:emerald` (`agents_runner/ui/dialogs/docker_validator.py`, `agents_runner/ui/constants.py`).
 
 Use these command-shape notes as part of the placeholder content for each per-CLI template file in `agents_runner/prompts/templates/agentcli/` (i.e. include the relevant “how this CLI is invoked by Agents Runner” snippet inside `codex.md`, `claude.md`, `copilot.md`, and `gemini.md`).
+
+---
+
+## Auditor Review (2025-01-16)
+
+**Status:** ❌ FAILED REVIEW - Moved back to WIP
+
+**Reason:** No work has been started on this task. The code at `agents_runner/docker/agent_worker.py:378` still uses the old `load_prompt("template")` call. No new template injection logic has been implemented. This task is blocked until template-prompts-task-1 is 100% complete (all markdown files from tmpl-002 through tmpl-008 must exist).
+
+**Required Work:**
+- Wait for template-prompts-task-1 to be fully completed
+- Then implement new injection logic via tmpl-009
+- Then deprecate old template.md via tmpl-010
+
+**Audit Report:** /tmp/agents-artifacts/e24367e0-audit-done-tasks.audit.md
