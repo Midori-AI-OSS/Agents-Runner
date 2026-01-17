@@ -178,7 +178,10 @@ def launch_docker_terminal_task(
         )
 
         # Check if we need to forward GH_TOKEN
-        forward_gh_token = bool(cmd_parts and cmd_parts[0] == "copilot")
+        forward_gh_token = bool(
+            (cmd_parts and cmd_parts[0] == "copilot")
+            or (env and getattr(env, "gh_context_enabled", False))
+        )
         docker_env_passthrough: list[str] = []
         if forward_gh_token:
             docker_env_passthrough = ["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"]
