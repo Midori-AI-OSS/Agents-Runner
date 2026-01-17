@@ -28,6 +28,7 @@ from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
 
 from agents_runner.artifacts import get_artifact_info
 from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import _task_display_status
 from agents_runner.ui.utils import _format_duration
@@ -172,7 +173,7 @@ class TaskDetailsPage(QWidget):
         self._btn_freeze = QToolButton()
         self._btn_freeze.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_freeze.setAutoRaise(True)
-        self._btn_freeze.setIcon(self.style().standardIcon(QStyle.SP_MediaPause))
+        self._btn_freeze.setIcon(lucide_icon("pause"))
         self._btn_freeze.setIconSize(QSize(16, 16))
         self._btn_freeze.setToolTip("Freeze: Pause the container")
         self._btn_freeze.clicked.connect(lambda: self._emit_container_action("freeze"))
@@ -180,7 +181,7 @@ class TaskDetailsPage(QWidget):
         self._btn_unfreeze = QToolButton()
         self._btn_unfreeze.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_unfreeze.setAutoRaise(True)
-        self._btn_unfreeze.setIcon(self.style().standardIcon(QStyle.SP_MediaPlay))
+        self._btn_unfreeze.setIcon(lucide_icon("play"))
         self._btn_unfreeze.setIconSize(QSize(16, 16))
         self._btn_unfreeze.setToolTip("Unfreeze: Resume the container")
         self._btn_unfreeze.clicked.connect(
@@ -190,7 +191,7 @@ class TaskDetailsPage(QWidget):
         self._btn_stop = QToolButton()
         self._btn_stop.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_stop.setAutoRaise(True)
-        self._btn_stop.setIcon(self.style().standardIcon(QStyle.SP_MediaStop))
+        self._btn_stop.setIcon(lucide_icon("square"))
         self._btn_stop.setIconSize(QSize(16, 16))
         self._btn_stop.setToolTip("Stop container")
         self._btn_stop.clicked.connect(lambda: self._emit_container_action("stop"))
