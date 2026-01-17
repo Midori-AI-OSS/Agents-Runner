@@ -26,6 +26,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import ALLOWED_STAINS
+from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.pages.dashboard_animations import PastTaskAnimator
 from agents_runner.ui.pages.dashboard_loader import PastTaskProgressiveLoader
 from agents_runner.ui.pages.dashboard_row import TaskRow
@@ -124,7 +125,7 @@ class DashboardPage(QWidget):
 
         clear_filters = QToolButton()
         clear_filters.setObjectName("RowTrash")
-        clear_filters.setIcon(self.style().standardIcon(QStyle.SP_DialogResetButton))
+        clear_filters.setIcon(lucide_icon("rotate-ccw"))
         clear_filters.setToolButtonStyle(Qt.ToolButtonIconOnly)
         clear_filters.setToolTip("Clear filters")
         clear_filters.setAccessibleName("Clear filters")
@@ -132,7 +133,7 @@ class DashboardPage(QWidget):
 
         self._btn_clean_old = QToolButton()
         self._btn_clean_old.setObjectName("RowTrash")
-        self._btn_clean_old.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
+        self._btn_clean_old.setIcon(lucide_icon("trash-2"))
         self._btn_clean_old.setToolTip("Clean finished tasks")
         self._btn_clean_old.setAccessibleName("Clean finished tasks")
         self._btn_clean_old.setToolButtonStyle(Qt.ToolButtonIconOnly)
