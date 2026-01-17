@@ -240,4 +240,7 @@ class MainWindow(
             self._save_state()
         except Exception:
             pass
+        # Clean up external viewer process
+        if hasattr(self, "_details"):
+            self._details.cleanup()
         super().closeEvent(event)
