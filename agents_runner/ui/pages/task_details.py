@@ -600,3 +600,13 @@ class TaskDetailsPage(QWidget):
             self._uptime.setText("—")
             return
         self._uptime.setText(_format_duration(task.elapsed_seconds()))
+
+    def cleanup(self) -> None:
+        """Clean up resources, including external viewer process."""
+        if self._desktop_viewer_process is not None:
+            if self._desktop_viewer_process.state() == QProcess.ProcessState.Running:
+                self._desktop_viewer_process.terminate()
+                # Give it a moment to terminate gracefully
+                if not self._desktop_viewer_process.waitForFinished(2000):
+                    self._desktop_viewer_process.kill()
+            self._desktop_viewer_process = None
