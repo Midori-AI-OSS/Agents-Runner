@@ -44,6 +44,8 @@ class Task:
     desktop_display: str = ""
     artifacts: list[str] = field(default_factory=list)
     attempt_history: list[dict[str, object]] = field(default_factory=list)
+    finalization_state: str = "pending"
+    finalization_error: str = ""
 
     def last_nonblank_log_line(self) -> str:
         for line in reversed(self.logs):

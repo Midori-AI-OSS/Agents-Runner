@@ -320,6 +320,8 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "desktop_display": getattr(task, "desktop_display", ""),
         "artifacts": list(getattr(task, "artifacts", [])),
         "attempt_history": list(getattr(task, "attempt_history", [])),
+        "finalization_state": str(getattr(task, "finalization_state", "pending") or "pending"),
+        "finalization_error": str(getattr(task, "finalization_error", "") or ""),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
         "logs": list(task.logs[-2000:]),
@@ -378,6 +380,8 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         desktop_display=str(data.get("desktop_display") or ""),
         artifacts=list(data.get("artifacts") or []),
         attempt_history=list(data.get("attempt_history") or []),
+        finalization_state=str(data.get("finalization_state") or "pending"),
+        finalization_error=str(data.get("finalization_error") or ""),
         logs=list(data.get("logs") or []),
     )
     runner_prompt = data.get("runner_prompt")

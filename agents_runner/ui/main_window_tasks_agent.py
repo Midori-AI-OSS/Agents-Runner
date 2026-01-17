@@ -46,7 +46,11 @@ class _MainWindowTasksAgentMixin:
         to_remove: set[str] = set()
         for task_id, task in self._tasks.items():
             status = (task.status or "").lower()
-            if status in {"done", "failed", "error"} and not task.is_active():
+            if (
+                status in {"done", "failed", "error"}
+                and not task.is_active()
+                and (str(getattr(task, "finalization_state", "") or "").lower() == "done")
+            ):
                 to_remove.add(task_id)
         if not to_remove:
             return

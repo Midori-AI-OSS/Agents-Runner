@@ -17,11 +17,22 @@ from agents_runner.ui.utils import _stain_color
 
 class _MainWindowPersistenceMixin:
     @staticmethod
+    def _is_missing_container_error(exc: Exception) -> bool:
+        text = str(exc or "").lower()
+        if "no such" in text and ("container" in text or "object" in text):
+            return True
+        if "could not find" in text and "container" in text:
+            return True
+        return False
+
+    @staticmethod
     def _should_archive_task(task: Task) -> bool:
         status = (task.status or "").lower()
         if status == "discarded":
             return True
-        return task.is_done() or task.is_failed()
+        if not (task.is_done() or task.is_failed()):
+            return False
+        return (str(getattr(task, "finalization_state", "") or "").lower() == "done")
 
     @staticmethod
     def _try_sync_container_state(task: Task) -> bool:
@@ -34,7 +45,22 @@ class _MainWindowPersistenceMixin:
             return False
         try:
             state = _inspect_state(container_id)
-        except Exception:
+        except Exception as exc:
+            if _MainWindowPersistenceMixin._is_missing_container_error(exc):
+                status = (task.status or "").lower()
+                if status not in {"cancelled", "killed"}:
+                    task.status = "failed"
+                if task.exit_code is None and task.status == "failed":
+                    task.exit_code = 1
+                if task.finished_at is None:
+                    from datetime import timezone
+                    from datetime import datetime
+
+                    task.finished_at = datetime.now(tz=timezone.utc)
+                detail = str(task.error or "").strip()
+                reason = "container missing on restart"
+                task.error = f"{detail}; {reason}" if detail else reason
+                return True
             return False
         if not isinstance(state, dict) or not state:
             return False
@@ -167,13 +193,14 @@ class _MainWindowPersistenceMixin:
                     for line in task.logs
                     if isinstance(line, str)
                 ]
-            status = (task.status or "").lower()
             synced = False
+            status = (task.status or "").lower()
             if status != "queued":
                 synced = self._try_sync_container_state(task)
             if self._should_archive_task(task):
                 save_task_payload(self._state_path, serialize_task(task), archived=True)
                 continue
+            status = (task.status or "").lower()
             if not synced and task.is_active() and status != "queued":
                 task.status = "unknown"
             loaded.append(task)
@@ -209,3 +236,8 @@ class _MainWindowPersistenceMixin:
             stain = env.color if env else None
             spinner = _stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+
+        try:
+            self._reconcile_tasks_after_restart()
+        except Exception:
+            pass
