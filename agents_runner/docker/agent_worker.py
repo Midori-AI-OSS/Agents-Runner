@@ -496,7 +496,9 @@ class DockerAgentWorker:
                             continue
                         
                         normalized_cli = normalize_agent(allowlist_agent_cli)
-                        if normalized_cli == agent_cli or normalized_cli in loaded_allowlist_clis:
+                        if normalized_cli == agent_cli:
+                            continue
+                        if normalized_cli in loaded_allowlist_clis:
                             continue
                         
                         try:
