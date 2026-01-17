@@ -19,6 +19,7 @@ from agents_runner.persistence import default_state_path
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import APP_TITLE
 from agents_runner.ui.graphics import GlassRoot
+from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.pages import DashboardPage
 from agents_runner.ui.pages import EnvironmentsPage
 from agents_runner.ui.pages import NewTaskPage
@@ -146,27 +147,25 @@ class MainWindow(
         self._btn_home = QToolButton()
         self._btn_home.setText("Home")
         self._btn_home.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self._btn_home.setIcon(self.style().standardIcon(QStyle.SP_DirHomeIcon))
+        self._btn_home.setIcon(lucide_icon("house"))
         self._btn_home.clicked.connect(self._show_dashboard)
 
         self._btn_new = QToolButton()
         self._btn_new.setText("New task")
         self._btn_new.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self._btn_new.setIcon(self.style().standardIcon(QStyle.SP_FileDialogNewFolder))
+        self._btn_new.setIcon(lucide_icon("folder-plus"))
         self._btn_new.clicked.connect(self._show_new_task)
 
         self._btn_envs = QToolButton()
         self._btn_envs.setText("Environments")
         self._btn_envs.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self._btn_envs.setIcon(self.style().standardIcon(QStyle.SP_DirIcon))
+        self._btn_envs.setIcon(lucide_icon("folder"))
         self._btn_envs.clicked.connect(self._show_environments)
 
         self._btn_settings = QToolButton()
         self._btn_settings.setText("Settings")
         self._btn_settings.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self._btn_settings.setIcon(
-            self.style().standardIcon(QStyle.SP_FileDialogDetailedView)
-        )
+        self._btn_settings.setIcon(lucide_icon("list"))
         self._btn_settings.clicked.connect(self._show_settings)
 
         top_layout.addWidget(self._btn_home)
