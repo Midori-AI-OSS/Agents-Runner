@@ -515,6 +515,16 @@ class DockerAgentWorker:
                                     f"failed to load templates/agentcli/{normalized_cli} for allowlist: {exc}",
                                 )
                             )
+                    
+                    if loaded_allowlist_clis:
+                        self._on_log(
+                            format_log(
+                                "env",
+                                "template",
+                                "INFO",
+                                f"cross-agent CLI context: {', '.join(sorted(loaded_allowlist_clis))}",
+                            )
+                        )
                 
                 # 4. Always append CLI-specific template (LAST)
                 try:
