@@ -2,7 +2,7 @@
 
 Runtime: Gemini CLI.
 
-This section is appended because Gemini CLI is selected and available for this run. Use it as selection guidance and execution notes (it is not identity text).
+This section is appended because Gemini CLI is selected and available for this run. Use it as selection guidance and execution notes.
 
 **Strengths**
 - Good for small tasks and reviews (good tooling; easy prompting)

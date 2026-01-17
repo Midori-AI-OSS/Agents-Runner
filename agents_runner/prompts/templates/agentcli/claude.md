@@ -2,7 +2,7 @@
 
 Runtime: Claude CLI.
 
-This section is appended because Claude CLI is selected and available for this run. Use it as selection guidance and execution notes (it is not identity text).
+This section is appended because Claude CLI is selected and available for this run. Use it as selection guidance and execution notes.
 
 **Strengths**
 - General-purpose all-rounder
