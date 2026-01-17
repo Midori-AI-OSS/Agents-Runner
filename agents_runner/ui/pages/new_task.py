@@ -30,6 +30,7 @@ from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.icons import mic_icon
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
+from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
 from agents_runner.widgets import GlassCard
@@ -701,9 +702,7 @@ class NewTaskPage(QWidget):
             finally:
                 self._voice_btn.blockSignals(False)
             return
-        self._voice_btn.setIcon(
-            self._voice_btn.style().standardIcon(QStyle.SP_MediaStop)
-        )
+        self._voice_btn.setIcon(lucide_icon("square"))
         self._voice_btn.setToolTip("Stop recording and transcribe into the prompt editor.")
 
     def _stop_voice_recording_and_transcribe(self) -> None:
@@ -731,7 +730,7 @@ class NewTaskPage(QWidget):
             self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
             return
 
-        self._voice_btn.setIcon(self._voice_btn.style().standardIcon(QStyle.SP_BrowserReload))
+        self._voice_btn.setIcon(lucide_icon("refresh-cw"))
         self._voice_btn.setToolTip("Transcribing speech-to-text…")
 
         print("[STT] Creating worker and thread...")
