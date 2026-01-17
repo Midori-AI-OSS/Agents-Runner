@@ -82,6 +82,19 @@ class _MainWindowPersistenceMixin:
                 task.exit_code = int(exit_code)
             except Exception:
                 pass
+
+        status = (task.status or "").lower()
+        if (
+            status in {"exited", "dead"}
+            and task.exit_code is not None
+            and (task.status or "").lower() not in {"cancelled", "killed"}
+        ):
+            task.status = "done" if status == "exited" and task.exit_code == 0 else "failed"
+            if task.finished_at is None:
+                from datetime import datetime
+                from datetime import timezone
+
+                task.finished_at = datetime.now(tz=timezone.utc)
         return True
 
     def _schedule_save(self) -> None:
