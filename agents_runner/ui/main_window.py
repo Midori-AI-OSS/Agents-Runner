@@ -36,6 +36,7 @@ from agents_runner.ui.main_window_persistence import _MainWindowPersistenceMixin
 from agents_runner.ui.main_window_preflight import _MainWindowPreflightMixin
 from agents_runner.ui.main_window_settings import _MainWindowSettingsMixin
 from agents_runner.ui.main_window_task_events import _MainWindowTaskEventsMixin
+from agents_runner.ui.main_window_task_recovery import _MainWindowTaskRecoveryMixin
 from agents_runner.ui.main_window_task_review import _MainWindowTaskReviewMixin
 from agents_runner.ui.main_window_tasks_agent import _MainWindowTasksAgentMixin
 from agents_runner.ui.main_window_tasks_interactive import (
@@ -58,6 +59,7 @@ class MainWindow(
     _MainWindowTasksInteractiveFinalizeMixin,
     _MainWindowPreflightMixin,
     _MainWindowTaskReviewMixin,
+    _MainWindowTaskRecoveryMixin,
     _MainWindowTaskEventsMixin,
     _MainWindowPersistenceMixin,
 ):
@@ -131,6 +133,13 @@ class MainWindow(
         self._dashboard_ticker.setInterval(1000)
         self._dashboard_ticker.timeout.connect(self._tick_dashboard_elapsed)
         self._dashboard_ticker.start()
+
+        self._recovery_log_stop: dict[str, threading.Event] = {}
+        self._finalization_threads: dict[str, threading.Thread] = {}
+        self._recovery_ticker = QTimer(self)
+        self._recovery_ticker.setInterval(1000)
+        self._recovery_ticker.timeout.connect(self._tick_recovery)
+        self._recovery_ticker.start()
 
         self._root = GlassRoot()
         self.setCentralWidget(self._root)

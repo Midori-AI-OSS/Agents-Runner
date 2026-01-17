@@ -128,13 +128,10 @@ class _MainWindowTaskEventsMixin:
             self._details.update_task(task)
             self._schedule_save()
 
-            # Clean up task workspace (if using cloned GitHub repo)
-            if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
-                threading.Thread(
-                    target=self._cleanup_task_workspace_async,
-                    args=(task_id, task.environment_id),
-                    daemon=True,
-                ).start()
+            task.finalization_state = "pending"
+            task.finalization_error = ""
+            self._schedule_save()
+            self._queue_task_finalization(task_id, reason="user_stop")
 
             return
 
@@ -504,10 +501,10 @@ class _MainWindowTaskEventsMixin:
         task = self._tasks.get(task_id)
         if task is None:
             return
-        pr_worker_started = False
-
         try:
-            self._on_task_log(task_id, format_log("host", "finalize", "INFO", "finalization started"))
+            self._on_task_log(
+                task_id, format_log("host", "finalize", "INFO", "finalization queued")
+            )
 
             if task.started_at is None:
                 started_s = self._run_started_s.get(task_id)
@@ -563,68 +560,14 @@ class _MainWindowTaskEventsMixin:
                 task_id,
                 format_log("host", "finalize", "INFO", f"task marked complete: status={task.status} exit_code={task.exit_code}"),
             )
-            if user_stop is None:
-                self._start_artifact_finalization(task)
-
             self._try_start_queued_tasks()
 
-            # Determine if PR should be created and log skip reason if not
-            should_create_pr = False
-            skip_reason = None
-
-            if user_stop is not None:
-                skip_reason = f"user stopped task ({user_stop})"
-            elif task.workspace_type != WORKSPACE_CLONED:
-                skip_reason = f"not a cloned workspace (type={task.workspace_type})"
-            elif not task.gh_repo_root:
-                skip_reason = "missing repository root information"
-            elif not task.gh_branch:
-                skip_reason = "missing branch information"
-            elif task.gh_pr_url:
-                skip_reason = "PR already created"
-            else:
-                should_create_pr = True
-
-            if should_create_pr:
-                repo_root = str(task.gh_repo_root or "").strip()
-                branch = str(task.gh_branch or "").strip()
-                base_branch = str(task.gh_base_branch or "").strip()
-                prompt_text = str(task.prompt or "")
-                task_token = str(task.task_id or task_id)
-                pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
-                pr_worker_started = True
-                threading.Thread(
-                    target=self._finalize_gh_management_worker,
-                    args=(
-                        task_id,
-                        repo_root,
-                        branch,
-                        base_branch,
-                        prompt_text,
-                        task_token,
-                        bool(task.gh_use_host_cli),
-                        pr_metadata_path,
-                        str(task.agent_cli or "").strip(),
-                        str(task.agent_cli_args or "").strip(),
-                    ),
-                    daemon=True,
-                ).start()
-            else:
-                self._on_task_log(task_id, format_log("gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"))
+            task.finalization_state = "pending"
+            task.finalization_error = ""
+            self._schedule_save()
+            self._queue_task_finalization(task_id, reason="task_done")
         finally:
-            # Cleanup must not race PR creation/validation: when a PR worker is started,
-            # it owns cleanup after finishing (success or failure).
-            if (
-                not pr_worker_started
-                and task.workspace_type == WORKSPACE_CLONED
-                and task.environment_id
-                and task_id
-            ):
-                threading.Thread(
-                    target=self._cleanup_cloned_repo_workspace_async,
-                    args=(task_id, task.environment_id),
-                    daemon=True,
-                ).start()
+            pass
 
     def _cleanup_cloned_repo_workspace_async(self, task_id: str, env_id: str) -> None:
         """Clean up cloned repo workspace for a task asynchronously.
