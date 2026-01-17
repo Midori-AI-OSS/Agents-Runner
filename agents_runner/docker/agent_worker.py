@@ -46,6 +46,26 @@ from agents_runner.midoriai_template import MidoriAITemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
 
 
+def _is_gh_context_enabled(environment_id: str | None) -> bool:
+    """Check if GitHub Context is enabled in environment settings.
+    
+    Returns True if gh_context_enabled is True in the environment.
+    """
+    if not environment_id:
+        return False
+    
+    try:
+        environments = load_environments()
+        env = environments.get(str(environment_id))
+    except Exception:
+        return False
+    
+    if env is None:
+        return False
+    
+    return bool(getattr(env, "gh_context_enabled", False))
+
+
 def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
     """Check if copilot is in the cross-agent allowlist.
     
@@ -696,7 +716,18 @@ class DockerAgentWorker:
                     continue
                 env_args.extend(["-e", f"{k}={value}"])
 
-            if agent_cli == "copilot":
+            # Forward GitHub tokens if:
+            # 1. gh_context_enabled is True, OR
+            # 2. agent_cli is copilot, OR
+            # 3. copilot is in cross-agent allowlist
+            gh_context_enabled = _is_gh_context_enabled(self._config.environment_id)
+            needs_token = (
+                gh_context_enabled
+                or agent_cli == "copilot"
+                or _needs_cross_agent_gh_token(self._config.environment_id)
+            )
+            
+            if needs_token:
                 token = resolve_github_token()
                 if (
                     token
@@ -705,20 +736,6 @@ class DockerAgentWorker:
                 ):
                     self._on_log(
                         "[auth] forwarding GitHub token from host -> container"
-                    )
-                    docker_env = dict(os.environ)
-                    docker_env["GH_TOKEN"] = token
-                    docker_env["GITHUB_TOKEN"] = token
-                    env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
-            elif _needs_cross_agent_gh_token(self._config.environment_id) and agent_cli != "copilot":
-                token = resolve_github_token()
-                if (
-                    token
-                    and "GH_TOKEN" not in (self._config.env_vars or {})
-                    and "GITHUB_TOKEN" not in (self._config.env_vars or {})
-                ):
-                    self._on_log(
-                        format_log("docker", "auth", "INFO", "forwarding GitHub token for cross-agent copilot")
                     )
                     docker_env = dict(os.environ)
                     docker_env["GH_TOKEN"] = token
