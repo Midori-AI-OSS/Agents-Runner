@@ -165,7 +165,7 @@ class MainWindow(
         self._btn_settings = QToolButton()
         self._btn_settings.setText("Settings")
         self._btn_settings.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self._btn_settings.setIcon(lucide_icon("list"))
+        self._btn_settings.setIcon(lucide_icon("settings"))
         self._btn_settings.clicked.connect(self._show_settings)
 
         top_layout.addWidget(self._btn_home)
