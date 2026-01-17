@@ -1,16 +1,10 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtCore import QPoint
 from PySide6.QtCore import QProcess
 from PySide6.QtCore import QSize
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QColor
-from PySide6.QtGui import QIcon
-from PySide6.QtGui import QPainter
-from PySide6.QtGui import QPixmap
-from PySide6.QtGui import QPolygon
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMenu
@@ -42,32 +36,6 @@ import logging
 import sys
 
 logger = logging.getLogger(__name__)
-
-
-def _diamond_icon(size: int = 16, color: QColor | None = None) -> QIcon:
-    color = color or QColor(237, 239, 245)
-    pm = QPixmap(size, size)
-    pm.fill(Qt.transparent)
-
-    half = (size - 1) / 2.0
-    inset = max(2, int(size * 0.22))
-    pts = QPolygon(
-        [
-            QPoint(int(half), inset),
-            QPoint(size - inset - 1, int(half)),
-            QPoint(int(half), size - inset - 1),
-            QPoint(inset, int(half)),
-        ]
-    )
-
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.Antialiasing, True)
-    p.setPen(Qt.NoPen)
-    p.setBrush(color)
-    p.drawPolygon(pts)
-    p.end()
-
-    return QIcon(pm)
 
 
 class TaskDetailsPage(QWidget):
@@ -199,7 +167,7 @@ class TaskDetailsPage(QWidget):
         self._btn_kill = QToolButton()
         self._btn_kill.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_kill.setAutoRaise(True)
-        self._btn_kill.setIcon(_diamond_icon(16))
+        self._btn_kill.setIcon(lucide_icon("circle-x"))
         self._btn_kill.setIconSize(QSize(16, 16))
         self._btn_kill.setToolTip("Kill: Force stop the container immediately")
         self._btn_kill.clicked.connect(lambda: self._emit_container_action("kill"))
