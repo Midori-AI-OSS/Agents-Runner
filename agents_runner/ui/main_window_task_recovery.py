@@ -31,7 +31,8 @@ class _MainWindowTaskRecoveryMixin:
             self._tick_recovery_task(task)
 
     def _tick_recovery_task(self, task: Task) -> None:
-        if task.is_active():
+        status_lower = (task.status or "").lower()
+        if task.is_active() or status_lower == "unknown":
             synced = self._try_sync_container_state(task)
             if synced:
                 self._update_task_ui(task)
@@ -291,4 +292,3 @@ class _MainWindowTaskRecoveryMixin:
                 task_id,
                 format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}"),
             )
-
