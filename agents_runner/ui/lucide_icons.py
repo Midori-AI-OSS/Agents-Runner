@@ -7,6 +7,8 @@ from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
+from agents_runner.style.palette import TEXT_PRIMARY
+
 
 def lucide_icon(
     name: str,
@@ -19,7 +21,7 @@ def lucide_icon(
     Args:
         name: Icon name (e.g., "house", "folder", "trash-2")
         size: Base icon size in logical pixels
-        color: Icon color (defaults to current text color)
+        color: Icon color (defaults to app primary text color)
 
     Returns:
         QIcon with properly scaled HiDPI pixmap
@@ -32,8 +34,11 @@ def lucide_icon(
     temp_pixmap = QPixmap(1, 1)
     dpr = temp_pixmap.devicePixelRatio()
 
+    if color is None:
+        color = QColor(TEXT_PRIMARY)
+
     # Convert color to RGBA tuple for cache key
-    color_key = color.getRgb() if color else None
+    color_key = color.getRgb()
 
     # Get cached or render new pixmap
     pixmap = _render_lucide_icon(name, size, color_key, dpr)
