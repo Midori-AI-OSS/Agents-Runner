@@ -176,16 +176,32 @@ class _MainWindowTaskRecoveryMixin:
                 }
                 env_name = str(task.environment_id or "")
                 start_s = time.monotonic()
-                self.host_log.emit(
-                    task_id,
-                    format_log("host", "artifacts", "INFO", "collecting artifacts from staging..."),
-                )
-                artifact_uuids = collect_artifacts_from_container_with_timeout(
-                    str(task.container_id or ""),
-                    task_dict,
-                    env_name,
-                    timeout_s=timeout_s,
-                )
+                
+                # For interactive v2 tasks, collect from staging directory
+                if task.is_interactive_run() and task.interactive_version == 2:
+                    self.host_log.emit(
+                        task_id,
+                        format_log("host", "artifacts", "INFO", "collecting artifacts from staging directory..."),
+                    )
+                    from agents_runner.artifacts import collect_artifacts_from_staging_dir
+                    artifact_uuids = collect_artifacts_from_staging_dir(
+                        task_id=str(task.task_id or ""),
+                        task_dict=task_dict,
+                        env_name=env_name,
+                    )
+                else:
+                    # Normal tasks: collect from container
+                    self.host_log.emit(
+                        task_id,
+                        format_log("host", "artifacts", "INFO", "collecting artifacts from container..."),
+                    )
+                    artifact_uuids = collect_artifacts_from_container_with_timeout(
+                        str(task.container_id or ""),
+                        task_dict,
+                        env_name,
+                        timeout_s=timeout_s,
+                    )
+                
                 elapsed_s = time.monotonic() - start_s
                 self.host_log.emit(
                     task_id,

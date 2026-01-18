@@ -555,3 +555,61 @@ def get_artifact_info(task_id: str) -> ArtifactInfo:
         file_count=file_count,
         exists=exists,
     )
+
+
+def collect_artifacts_from_staging_dir(
+    task_id: str,
+    task_dict: dict[str, Any],
+    env_name: str,
+) -> list[str]:
+    """Collect and encrypt artifacts from host staging directory (interactive v2).
+    
+    For interactive v2 tasks, artifacts are already in the host staging directory
+    (mounted to /tmp/agents-artifacts in container). This function collects them
+    directly from the host without needing the container.
+    
+    Args:
+        task_id: Task ID
+        task_dict: Task metadata dict
+        env_name: Environment name
+    
+    Returns:
+        List of artifact UUIDs
+    """
+    from agents_runner.ui.task_staging import get_artifacts_staging_dir
+    
+    staging_dir = get_artifacts_staging_dir(task_id)
+    if not staging_dir.exists():
+        logger.warning(f"Staging directory does not exist: {staging_dir}")
+        return []
+    
+    artifact_uuids: list[str] = []
+    
+    try:
+        for item in staging_dir.iterdir():
+            if not item.is_file():
+                continue
+            
+            # Skip hidden files except interactive-exit.json
+            if item.name.startswith(".") and item.name != ".container-entrypoint.sh":
+                continue
+            
+            # Encrypt and store artifact
+            try:
+                artifact_uuid = encrypt_artifact(
+                    task_dict=task_dict,
+                    env_name=env_name,
+                    source_path=str(item),
+                    original_filename=item.name,
+                )
+                if artifact_uuid:
+                    artifact_uuids.append(artifact_uuid)
+                    logger.info(f"Encrypted artifact from staging: {item.name} -> {artifact_uuid}")
+            except Exception as exc:
+                logger.warning(f"Failed to encrypt artifact {item.name}: {exc}")
+                continue
+    
+    except Exception as exc:
+        logger.error(f"Failed to collect artifacts from staging directory: {exc}")
+    
+    return artifact_uuids
