@@ -66,6 +66,11 @@ class _MainWindowTaskRecoveryMixin:
             return
         if (task.status or "").lower() not in {"starting", "running", "created", "cloning", "pulling"}:
             return
+        
+        # Skip if task has active bridge (bridge owns log streaming)
+        if task_id in self._bridges:
+            return
+        
         if task_id in self._recovery_log_stop:
             return
 
