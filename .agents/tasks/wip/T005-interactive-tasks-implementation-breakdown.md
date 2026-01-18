@@ -31,7 +31,10 @@ The design document (`.agents/design/interactive-task-lifecycle-redesign.md`) pr
 
 ## Task Breakdown
 
-### T006: Container Launch Refactor (Core Infrastructure)
+**NOTE:** Task numbers below have been renumbered to T010-T023 to avoid conflicts with existing duplicate logs tasks T006-T009.
+
+### T010: Container Launch Refactor (Core Infrastructure)
+**(Previously numbered T006 in this document)**
 
 **Priority:** HIGH  
 **Estimated LOC:** 150-200  
@@ -55,7 +58,8 @@ The design document (`.agents/design/interactive-task-lifecycle-redesign.md`) pr
 
 ---
 
-### T007: Entrypoint Script Generation
+### T011: Entrypoint Script Generation
+**(Previously numbered T007 in this document)**
 
 **Priority:** HIGH  
 **Estimated LOC:** 80-100  
@@ -86,11 +90,12 @@ The design document (`.agents/design/interactive-task-lifecycle-redesign.md`) pr
 - Agent CLI launches and runs as expected
 - Completion marker created in `/tmp/agents-artifacts/interactive-exit.json`
 
-**Dependencies:** T006 (requires staging mount and entrypoint execution)
+**Dependencies:** T010 (requires staging mount and entrypoint execution)
 
 ---
 
-### T008: Terminal Attach Mechanism
+### T012: Terminal Attach Mechanism
+**(Previously numbered T008 in this document)**
 
 **Priority:** HIGH  
 **Estimated LOC:** 100-120  
@@ -115,11 +120,12 @@ The design document (`.agents/design/interactive-task-lifecycle-redesign.md`) pr
 - User can reattach via "Attach Terminal" button
 - Graceful fallback if no terminal emulator found
 
-**Dependencies:** T006 (requires detached container)
+**Dependencies:** T010 (requires detached container)
 
 ---
 
-### T009: Restart Recovery for Interactive Tasks
+### T013: Restart Recovery for Interactive Tasks
+**(Previously numbered T009 in this document)**
 
 **Priority:** HIGH  
 **Estimated LOC:** 120-150  
@@ -148,11 +154,12 @@ def _recover_interactive_v2_task(task: Task):
 - Task still running → shows as running with reattach option
 - Task container missing → marked as unknown with helpful error
 
-**Dependencies:** T006, T007 (requires completion marker)
+**Dependencies:** T010, T011 (requires completion marker)
 
 ---
 
-### T010: Docker Wait Monitor (Completion Detection)
+### T014: Docker Wait Monitor (Completion Detection)
+**(Previously numbered T010 in this document)**
 
 **Priority:** HIGH  
 **Estimated LOC:** 80-100  
@@ -185,11 +192,12 @@ def _wait_for_container_exit(container_name: str, task_id: str):
 - Fallback to `docker wait` exit code if marker missing
 - No resource leaks (thread terminates cleanly)
 
-**Dependencies:** T007 (requires completion marker)
+**Dependencies:** T011 (requires completion marker)
 
 ---
 
-### T011: Log Tail Integration for Interactive Tasks
+### T015: Log Tail Integration for Interactive Tasks
+**(Previously numbered T011 in this document)**
 
 **Priority:** MEDIUM  
 **Estimated LOC:** 60-80  
@@ -205,13 +213,14 @@ def _wait_for_container_exit(container_name: str, task_id: str):
 - Logs appear in UI for interactive tasks
 - Log tail stops cleanly on container exit
 - Restart recovery resumes log tail if container running
-- No duplicate logs (coordinate with T003)
+- No duplicate logs (coordinate with duplicate logs fix tasks T006-T009)
 
-**Dependencies:** T006 (requires container launch), T003 (avoid log duplication)
+**Dependencies:** T010 (requires container launch), duplicate logs fix (T006-T009)
 
 ---
 
-### T012: Finalization Without Container Dependency
+### T016: Finalization Without Container Dependency
+**(Previously numbered T012 in this document)**
 
 **Priority:** HIGH  
 **Estimated LOC:** 100-120  
@@ -240,11 +249,12 @@ def _wait_for_container_exit(container_name: str, task_id: str):
 - Staging directory cleaned up after finalization
 - PR prompt appears if enabled
 
-**Dependencies:** T007, T009 (requires completion marker and recovery logic)
+**Dependencies:** T011, T013 (requires completion marker and recovery logic)
 
 ---
 
-### T013: Migration Plan for Existing Interactive Tasks
+### T017: Migration Plan for Existing Interactive Tasks
+**(Previously numbered T013 in this document)**
 
 **Priority:** LOW  
 **Estimated LOC:** 50-70  
@@ -272,11 +282,12 @@ def _migrate_interactive_task(task: Task):
 - New tasks always use version 2 lifecycle
 - No crashes or errors during migration
 
-**Dependencies:** T006-T012 (all core infrastructure must be complete)
+**Dependencies:** T010-T016 (all core infrastructure must be complete)
 
 ---
 
-### T014: Testing and Validation Script
+### T018: Testing and Validation Script
+**(Previously numbered T014 in this document)**
 
 **Priority:** MEDIUM  
 **Estimated LOC:** 150-200  
@@ -310,37 +321,37 @@ echo "Test 2: Restart recovery - container running"
 - Test output logged to `/tmp/agents-artifacts/interactive-tests.log`
 - Tests can run independently or as suite
 
-**Dependencies:** T006-T012 (requires complete implementation)
+**Dependencies:** T010-T017 (requires complete implementation)
 
 ---
 
 ## Task Dependency Graph
 
 ```
-T006 (Container Launch)
-  ├─> T007 (Entrypoint Script)
-  │     └─> T009 (Restart Recovery)
-  │           └─> T012 (Finalization)
-  ├─> T008 (Terminal Attach)
-  ├─> T010 (Docker Wait Monitor)
-  └─> T011 (Log Tail Integration)
-            └─> T012 (Finalization)
+T010 (Container Launch)
+  ├─> T011 (Entrypoint Script)
+  │     └─> T013 (Restart Recovery)
+  │           └─> T016 (Finalization)
+  ├─> T012 (Terminal Attach)
+  ├─> T014 (Docker Wait Monitor)
+  └─> T015 (Log Tail Integration)
+            └─> T016 (Finalization)
 
-T013 (Migration) depends on ALL above
+T017 (Migration) depends on ALL above
 
-T014 (Testing) depends on T006-T013 complete
+T018 (Testing) depends on T010-T017 complete
 ```
 
 **Suggested Execution Order:**
-1. T006 (foundational)
-2. T007 (enables completion detection)
-3. T010 (completion detection)
-4. T008 (user interaction)
-5. T009 (restart recovery)
-6. T011 (logging)
-7. T012 (finalization)
-8. T013 (migration)
-9. T014 (testing)
+1. T010 (foundational)
+2. T011 (enables completion detection)
+3. T014 (completion detection)
+4. T012 (user interaction)
+5. T013 (restart recovery)
+6. T015 (logging)
+7. T016 (finalization)
+8. T017 (migration)
+9. T018 (testing)
 
 ---
 
@@ -348,12 +359,12 @@ T014 (Testing) depends on T006-T013 complete
 
 If issues arise during implementation:
 
-**Phase 1 Rollback:** (T006-T008)
+**Phase 1 Rollback:** (T010-T012)
 - Add feature flag: `interactive_tasks_use_app_lifecycle: bool = False`
 - Revert to old script-based approach
 - Users can toggle in settings
 
-**Phase 2 Rollback:** (T009-T012)
+**Phase 2 Rollback:** (T013-T016)
 - Keep new container launch but disable restart recovery
 - Fall back to marking interactive as "unknown" on restart
 
@@ -379,13 +390,14 @@ After full implementation, these should be true:
 
 - Total estimated LOC: 900-1100 across all tasks
 - Estimated implementation time: 3-4 full agent runs (if parallelized)
-- High-priority tasks (T006-T010, T012) should be done first
-- T014 (testing) should be done last to validate entire system
+- High-priority tasks (T010-T014, T016) should be done first
+- T018 (testing) should be done last to validate entire system
+- **Task numbers updated:** Previous T006-T014 renumbered to T010-T018 to avoid conflicts with duplicate logs bug tasks (T006-T009)
 
 ---
 
 **Task Master Action Required:**
 1. Review this breakdown
-2. Create individual task files (T006-T014) if approved
+2. Create individual task files (T010-T018) if approved
 3. Assign priority and order
 4. Move to appropriate queues based on dependencies

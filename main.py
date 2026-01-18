@@ -1,9 +1,15 @@
+import logging
 import sys
 
 from agents_runner.app import run_app
 
 
 def main() -> None:
+    # Enable debug logging for duplicate log investigation (T007)
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    )
     try:
         # Check if running in desktop viewer mode
         if len(sys.argv) > 1 and sys.argv[1] == "--desktop-viewer":

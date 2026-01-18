@@ -1,9 +1,11 @@
 # T002: Add Log Deduplication to _on_task_log
 
+**Status:** ⚠️ FALLBACK OPTION (Use if T006-T009 approach insufficient)  
 **Priority:** MEDIUM  
-**Suggested Order:** 3 (Execute if T003 insufficient)  
+**Suggested Order:** Execute only if primary fix (T006-T009) doesn't resolve issue  
 **Type:** Implementation (defensive fix)  
-**Prerequisites:** Read T001 findings first
+**Prerequisites:** Read T001 findings or T007 analysis first  
+**Estimated Time:** 45 minutes
 
 ## Problem
 _on_task_log receives duplicate logs from both TaskRunnerBridge and recovery log tail.
@@ -51,5 +53,6 @@ self._log_dedup_cache: dict[str, deque] = {}  # task_id -> deque of (hash, times
 
 ## Notes
 - This is a defensive approach—fixes symptom but not root cause
-- Consider T003 as a better root cause fix
-- If T003 works, this task may be unnecessary
+- **Primary approach:** T006-T009 sequence (diagnostic-based fix)
+- If T006-T009 resolves the issue, this task may be unnecessary
+- Keep as fallback if race conditions prove unavoidable

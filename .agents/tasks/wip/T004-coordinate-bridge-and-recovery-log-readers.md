@@ -1,9 +1,11 @@
 # T004: Coordinate Bridge and Recovery Log Readers
 
+**Status:** ⚠️ OPTIONAL/FALLBACK (Use only if simpler approaches fail)  
 **Priority:** LOW (OPTIONAL)  
-**Suggested Order:** 4 (Only if T003 insufficient)  
+**Suggested Order:** Execute only if T006-T009 insufficient  
 **Type:** Implementation (robust coordination)  
-**Prerequisites:** Attempt T003 first—only do this if T003 fails
+**Prerequisites:** Attempt primary fix (T006-T009) first—only do this if that fails  
+**Estimated Time:** 60 minutes
 
 ## Problem
 Two independent log readers (bridge and recovery) operate simultaneously without coordination.
@@ -72,9 +74,10 @@ class MainWindow:
 5. Kill bridge thread—verify recovery takes over within 2 seconds
 
 ## Why This May Be Unnecessary
-The existing `self._bridges` dict already tracks active bridges. T003 uses this for coordination without new state. Only implement T004 if T003 proves insufficient.
+The existing `self._bridges` dict already tracks active bridges. The primary fix (T006-T009) uses this for coordination without new state. Only implement T004 if the primary approach proves insufficient.
 
 ## Notes
 - Most robust solution but adds complexity
 - May be overkill for this problem
-- Consider T003 first (simpler, leverages existing state)
+- **Primary approach:** T006-T009 sequence (simpler, leverages existing state)
+- Consider as fallback only if primary fix doesn't work

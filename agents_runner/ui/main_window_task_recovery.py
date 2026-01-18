@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import threading
@@ -15,6 +16,9 @@ from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _stain_color
+
+
+logger = logging.getLogger(__name__)
 
 
 class _MainWindowTaskRecoveryMixin:
@@ -74,6 +78,15 @@ class _MainWindowTaskRecoveryMixin:
         if task_id in self._recovery_log_stop:
             return
 
+        # Check if bridge recently disconnected (within last 5 seconds)
+        # If yes, use --tail 0 to avoid duplicate logs
+        # If no (cold start/recovery), use --tail 200 to show recent context
+        disconnect_time = self._bridge_disconnect_times.get(task_id, 0.0)
+        time_since_disconnect = time.time() - disconnect_time
+        is_recent_disconnect = disconnect_time > 0 and time_since_disconnect < 5.0
+        
+        tail_count = "0" if is_recent_disconnect else "200"
+
         stop = threading.Event()
         self._recovery_log_stop[task_id] = stop
 
@@ -81,7 +94,7 @@ class _MainWindowTaskRecoveryMixin:
             proc: subprocess.Popen[str] | None = None
             try:
                 proc = subprocess.Popen(
-                    ["docker", "logs", "-f", "--tail", "200", container_id],
+                    ["docker", "logs", "-f", "--tail", tail_count, container_id],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                     text=True,

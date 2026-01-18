@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 import threading
 import time
@@ -25,6 +26,9 @@ from agents_runner.ui.task_git_metadata import derive_task_git_metadata
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _parse_docker_time
 from agents_runner.ui.utils import _stain_color
+
+
+logger = logging.getLogger(__name__)
 
 
 class _MainWindowTaskEventsMixin:
@@ -225,6 +229,7 @@ class _MainWindowTaskEventsMixin:
         self._run_started_s.pop(task_id, None)
         self._dashboard_log_refresh_s.pop(task_id, None)
         self._interactive_watch.pop(task_id, None)
+        self._bridge_disconnect_times.pop(task_id, None)
         self._schedule_save()
 
         if self._details.isVisible() and self._details.current_task_id() == task_id:
@@ -323,6 +328,9 @@ class _MainWindowTaskEventsMixin:
         task = self._tasks.get(task_id)
         if task is None:
             return
+
+        # Record bridge disconnect time for recovery deduplication
+        self._bridge_disconnect_times[task_id] = time.time()
 
         # Capture GitHub repo info from the worker if available
         if isinstance(bridge, TaskRunnerBridge):

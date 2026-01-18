@@ -136,6 +136,7 @@ class MainWindow(
 
         self._recovery_log_stop: dict[str, threading.Event] = {}
         self._finalization_threads: dict[str, threading.Thread] = {}
+        self._bridge_disconnect_times: dict[str, float] = {}  # Track when bridges disconnect
         self._recovery_ticker = QTimer(self)
         self._recovery_ticker.setInterval(1000)
         self._recovery_ticker.timeout.connect(self._tick_recovery)

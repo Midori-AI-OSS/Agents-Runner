@@ -83,6 +83,7 @@ class _MainWindowTasksAgentMixin:
             self._bridges.pop(task_id, None)
             self._run_started_s.pop(task_id, None)
             self._dashboard_log_refresh_s.pop(task_id, None)
+            self._bridge_disconnect_times.pop(task_id, None)
         self._schedule_save()
 
     def _start_task_from_ui(
