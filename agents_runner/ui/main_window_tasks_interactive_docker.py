@@ -341,9 +341,9 @@ def _prepare_preflight_scripts(
         "helpme": "",
     }
 
-    settings_container_path = f"/tmp/codex-preflight-settings-{task_token}.sh"
-    environment_container_path = f"/tmp/codex-preflight-environment-{task_token}.sh"
-    extra_container_path = f"/tmp/codex-preflight-extra-{task_token}.sh"
+    settings_container_path = f"/tmp/agents-runner-preflight-settings-{task_token}.sh"
+    environment_container_path = f"/tmp/agents-runner-preflight-environment-{task_token}.sh"
+    extra_container_path = f"/tmp/agents-runner-preflight-extra-{task_token}.sh"
 
     preflights_host_dir = (Path(__file__).resolve().parent.parent / "preflights").resolve()
     preflights_container_dir = "/tmp/agents-runner-preflights"
@@ -351,7 +351,7 @@ def _prepare_preflight_scripts(
     def _write_preflight_script(script: str, label: str) -> str:
         """Write a preflight script to a temporary file."""
         fd, tmp_path = tempfile.mkstemp(
-            prefix=f"codex-preflight-{label}-{task_token}-", suffix=".sh"
+            prefix=f"agents-runner-preflight-{label}-{task_token}-", suffix=".sh"
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:

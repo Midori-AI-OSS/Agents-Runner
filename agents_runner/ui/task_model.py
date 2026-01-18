@@ -78,7 +78,7 @@ class Task:
 
     def is_interactive_run(self) -> bool:
         container_id = str(self.container_id or "")
-        return container_id.startswith("codex-gui-it-")
+        return container_id.startswith("agents-runner-tui-it-")
 
     def prompt_one_line(self) -> str:
         line = (self.prompt or "").strip().splitlines()[0] if self.prompt else ""

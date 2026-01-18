@@ -197,7 +197,7 @@ class _MainWindowTasksInteractiveMixin:
         if env and env.preflight_enabled and (env.preflight_script or "").strip():
             environment_preflight_script = env.preflight_script
 
-        container_name = f"codex-gui-it-{task_id}"
+        container_name = f"agents-runner-tui-it-{task_id}"
         container_agent_dir = container_config_dir(agent_cli)
         config_extra_mounts = additional_config_mounts(agent_cli, host_codex)
         
