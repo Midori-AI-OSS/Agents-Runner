@@ -31,6 +31,9 @@ from agents_runner.ui.main_window_tasks_interactive_command import (
 from agents_runner.ui.main_window_tasks_interactive_docker import (
     launch_docker_terminal_task,
 )
+from agents_runner.ui.main_window_tasks_interactive_docker_v2 import (
+    launch_docker_terminal_task_v2,
+)
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _stain_color
 
@@ -245,8 +248,8 @@ class _MainWindowTasksInteractiveMixin:
         if workspace_type == WORKSPACE_CLONED and env:
             gh_repo = str(env.workspace_target or "").strip()
 
-        # Launch interactive terminal - delegated to Docker launcher module
-        launch_docker_terminal_task(
+        # Launch interactive terminal - using v2 lifecycle (app-owned container)
+        launch_docker_terminal_task_v2(
             main_window=self,
             task=task,
             env=env,

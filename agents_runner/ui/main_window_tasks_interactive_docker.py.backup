@@ -16,8 +16,6 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox
 
-import subprocess
-
 from agents_runner.agent_cli import verify_cli_clause
 from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
@@ -30,10 +28,6 @@ from agents_runner.ui.shell_templates import build_git_clone_or_update_snippet
 from agents_runner.ui.shell_templates import git_identity_clause
 from agents_runner.ui.shell_templates import shell_log_statement
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.task_staging import ensure_artifacts_staging_dir
-from agents_runner.ui.task_staging import write_container_entrypoint_script
-from agents_runner.ui.task_container_lifecycle import start_container_wait_monitor
-from agents_runner.ui.task_container_lifecycle import launch_attach_terminal
 from agents_runner.ui.utils import _safe_str
 
 
