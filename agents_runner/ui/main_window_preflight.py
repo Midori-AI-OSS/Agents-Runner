@@ -123,6 +123,23 @@ class _MainWindowPreflightMixin:
             gh_recreate_if_needed=gh_recreate_if_needed,
             gh_base_branch=gh_base_branch,
         )
+        
+        # Clean up any existing bridge/thread for this task to prevent duplicate signal connections
+        old_bridge = self._bridges.pop(task_id, None)
+        old_thread = self._threads.pop(task_id, None)
+        if old_bridge is not None:
+            try:
+                old_bridge.request_stop()
+                old_bridge.deleteLater()
+            except Exception:
+                pass
+        if old_thread is not None:
+            try:
+                old_thread.quit()
+                old_thread.wait(100)  # Wait up to 100ms
+            except Exception:
+                pass
+
         bridge = TaskRunnerBridge(task_id=task_id, config=config, mode="preflight")
         thread = QThread(self)
         bridge.moveToThread(thread)
