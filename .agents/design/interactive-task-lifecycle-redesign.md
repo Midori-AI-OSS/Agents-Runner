@@ -1,4 +1,17 @@
-# Task — Interactive tasks lifecycle redesign
+# Design Document — Interactive Tasks Lifecycle Redesign
+
+**Type:** Design Document (not an executable task)  
+**Status:** Complete  
+**Implementation Tasks:** See `.agents/tasks/wip/T005-interactive-tasks-implementation-breakdown.md`
+
+---
+
+
+**Type:** Design Document (not an executable task)  
+**Status:** Complete  
+**Implementation Tasks:** See `.agents/tasks/wip/T005-interactive-tasks-implementation-breakdown.md`
+
+---
 
 ## Problem
 

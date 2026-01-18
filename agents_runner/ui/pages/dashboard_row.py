@@ -72,6 +72,7 @@ class TaskRow(QWidget):
 
     clicked = Signal()
     discard_requested = Signal(str)
+    attach_terminal_requested = Signal(str)
 
     def __init__(
         self, parent: QWidget | None = None, *, discard_enabled: bool = True
@@ -134,10 +135,23 @@ class TaskRow(QWidget):
         self._btn_discard.clicked.connect(self._on_discard_clicked)
         self._btn_discard.setVisible(bool(discard_enabled))
         self._btn_discard.setEnabled(bool(discard_enabled))
+        
+        self._btn_attach = QToolButton()
+        self._btn_attach.setObjectName("RowAttach")
+        self._btn_attach.setIcon(lucide_icon("terminal"))
+        self._btn_attach.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_attach.setToolTip("Attach Terminal")
+        self._btn_attach.setCursor(Qt.PointingHandCursor)
+        self._btn_attach.setIconSize(
+            self._btn_attach.iconSize().expandedTo(self._glyph.size())
+        )
+        self._btn_attach.clicked.connect(self._on_attach_clicked)
+        self._btn_attach.setVisible(False)  # Hidden by default
 
         layout.addWidget(self._task, 5)
         layout.addWidget(state_wrap, 0)
         layout.addWidget(self._info, 4)
+        layout.addWidget(self._btn_attach, 0, Qt.AlignRight)
         layout.addWidget(self._btn_discard, 0, Qt.AlignRight)
 
         self.setCursor(Qt.PointingHandCursor)
