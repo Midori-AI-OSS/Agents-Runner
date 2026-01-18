@@ -97,6 +97,23 @@ def _cleanup_stale_temp_files() -> None:
         print(f"[cleanup] Warning: failed to clean stale temp files: {exc}")
 
 
+def _configure_logging() -> None:
+    """Configure Python's logging module to prevent duplicate log emissions.
+    
+    Disables Python's lastResort handler and ensures loggers don't propagate
+    to prevent duplicate log output when using custom callback-based logging.
+    """
+    import logging
+    
+    # Disable the lastResort handler that Python adds automatically
+    logging.lastResort = None
+    
+    # Configure root logger to not emit anything
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.setLevel(logging.CRITICAL + 1)  # Higher than any real level
+
+
 def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
     tokens: list[str] = []
     existing = (existing or "").strip()
@@ -135,6 +152,7 @@ def _initialize_qtwebengine() -> None:
         from PySide6.QtWebEngineWidgets import QWebEngineView
         import logging
         logger = logging.getLogger(__name__)
+        logger.propagate = False  # Prevent duplicate logs
         
         # Create a hidden dummy view to force Chromium initialization
         # This is garbage collected after initialization
@@ -147,11 +165,13 @@ def _initialize_qtwebengine() -> None:
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
+        logger.propagate = False  # Prevent duplicate logs
         logger.debug(f"QtWebEngine not available: {e}")
 
 
 def run_app(argv: list[str]) -> None:
     _maybe_enable_faulthandler()
+    _configure_logging()
     _configure_qtwebengine_runtime()
 
     from PySide6.QtWidgets import QApplication
