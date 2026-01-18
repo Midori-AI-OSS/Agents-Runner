@@ -46,6 +46,8 @@ class Task:
     attempt_history: list[dict[str, object]] = field(default_factory=list)
     finalization_state: str = "pending"
     finalization_error: str = ""
+    interactive_version: int = 1
+    artifacts_staging_dir: str = ""
 
     def last_nonblank_log_line(self) -> str:
         for line in reversed(self.logs):

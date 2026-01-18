@@ -79,6 +79,71 @@ Interactive variant should:
 - Mount the task’s host staging directory to `/tmp/agents-artifacts` (same as normal tasks)
 - Run the agent as the main process so the container exits when the agent exits (so auto-remove triggers cleanly)
 
+#### Complete Docker command template
+
+```bash
+docker run \
+  --rm \
+  -dit \
+  --name "agents-runner-tui-it-${TASK_ID}" \
+  -v "${HOST_ARTIFACTS_STAGING}:/tmp/agents-artifacts" \
+  -v "${HOST_CODEX_DIR}:/root/.codex" \
+  -v "${HOST_WORKDIR}:/workspace" \
+  -e TASK_ID="${TASK_ID}" \
+  -e OPENAI_API_KEY="${OPENAI_API_KEY}" \
+  -e ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}" \
+  -e GITHUB_TOKEN="${GITHUB_TOKEN}" \
+  --workdir /workspace \
+  "${IMAGE}" \
+  /bin/bash -c '/tmp/agents-artifacts/.container-entrypoint.sh'
+```
+
+Key points:
+- `-dit`: detached, interactive, pseudo-TTY (required for `docker attach`)
+- `--rm`: auto-remove on exit (keep existing behavior)
+- Volume mounts match normal task pattern (artifacts, codex config, workspace)
+- Environment variables passed through (agent needs API keys)
+- Entrypoint script written by app to staging dir before `docker run`
+
+#### Container entrypoint script (`.container-entrypoint.sh`)
+
+The app should write this script to `${HOST_ARTIFACTS_STAGING}/.container-entrypoint.sh` before launching:
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+# Trap EXIT to write completion marker even on normal exit
+write_completion_marker() {
+    local exit_code=$?
+    cat > /tmp/agents-artifacts/interactive-exit.json <<EOF
+{
+  "task_id": "${TASK_ID}",
+  "container_name": "$(hostname)",
+  "exit_code": ${exit_code},
+  "started_at": "${STARTED_AT}",
+  "finished_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "reason": "process_exit"
+}
+EOF
+    exit ${exit_code}
+}
+
+trap write_completion_marker EXIT
+
+# Record start time
+STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# Launch the agent CLI (replace with actual agent command)
+exec ${AGENT_CLI} ${AGENT_CLI_ARGS}
+```
+
+Notes:
+- `trap` ensures completion marker is written on normal exit
+- `SIGKILL` will bypass the trap (app should use `docker wait` as backup)
+- Script is executable: app must `chmod +x` before `docker run`
+- Environment variables (`TASK_ID`, `AGENT_CLI`, etc.) passed via `docker run -e`
+
 ### Terminal attach/detach
 
 Terminal command should be “attach to existing container” (not “run the container”):
@@ -185,3 +250,230 @@ Likely touch points for an implementation agent:
 ## Notes
 
 - This is intentionally separate from “normal task state recovery + finalization across restarts”, but it should reuse the same recovery/finalization primitives where possible.
+
+---
+
+## Additional Implementation Details (Added by Auditor)
+
+### Terminal Window Launch Mechanism
+
+Platform detection (Linux terminal emulators in priority order):
+
+```python
+import subprocess
+import shutil
+
+TERMINAL_EMULATORS = [
+    ["konsole", "--hold", "-e"],           # KDE
+    ["gnome-terminal", "--wait", "--"],    # GNOME
+    ["xfce4-terminal", "--hold", "-e"],    # XFCE
+    ["xterm", "-hold", "-e"],              # Fallback
+]
+
+def launch_terminal_attach(container_name: str) -> subprocess.Popen | None:
+    """Launch terminal emulator with docker attach command."""
+    attach_cmd = ["docker", "attach", container_name]
+    
+    for term_cmd in TERMINAL_EMULATORS:
+        if shutil.which(term_cmd[0]):
+            try:
+                full_cmd = term_cmd + attach_cmd
+                proc = subprocess.Popen(full_cmd, 
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL)
+                return proc
+            except Exception:
+                continue
+    
+    # No terminal emulator found - notify user
+    return None
+```
+
+UI integration:
+- Add "Attach Terminal" button to task row for interactive tasks in `running` state  
+- Button opens terminal via `launch_terminal_attach(task.container_id)`  
+- If terminal launch fails, show error dialog with manual attach command  
+- Do not track terminal PID (closing terminal does not affect container)
+
+### Log Tailing Lifecycle
+
+When to start log tail:
+- **Container start:** Immediately after `docker run` succeeds, start `docker logs -f` in background thread
+- **Restart recovery:** If container is running, call `_ensure_recovery_log_tail()` to resume tailing
+- **No duplication:** Check if log tail thread already exists before starting
+
+Integration with existing machinery:
+- Use `agents_runner/ui/main_window_task_recovery.py:_ensure_recovery_log_tail`
+- Store log tail thread reference in task metadata or UI state
+- On task completion, stop log tail thread (container is auto-removed anyway)
+
+### Error Recovery Scenarios
+
+| Scenario | Detection | Recovery Action |
+|----------|-----------|-----------------|
+| Container crashes on start | `docker run` fails | Set `status="failed"`, `exit_code=1`, queue finalization |
+| User kills container manually | `docker wait` returns early | Read completion marker if present, else mark `status="unknown"` |
+| Completion marker malformed | JSON parse error | Use `docker wait` exit code as fallback, log warning |
+| Staging directory deleted mid-run | File IO error during finalization | Mark `finalization_state="failed"`, log error, don't block UI |
+| Container killed with SIGKILL | `docker wait` returns 137 | Mark `status="failed"`, `exit_code=137`, queue finalization |
+
+Fallback strategy:
+- Always attempt `docker wait <container_name>` in background to capture exit code
+- If completion marker exists, prefer it (has timestamps)
+- If only `docker wait` result available, use that
+- If neither available (restart scenario), mark `status="unknown"`
+
+### Migration Plan for Existing Tasks
+
+**Deployment impact:** Users may have in-progress interactive tasks using old script-based approach.
+
+**Strategy:**
+1. Add version marker to `Task` model: `interactive_version: int = 1` (old) or `2` (new)
+2. On app startup, reconcile old-style tasks:
+   - If `interactive_version == 1` and task is `running`: mark as `unknown` with message "Please restart task (old format)"
+   - If `interactive_version == 1` and task is `done`: leave as-is (historical data)
+3. New interactive tasks always use `interactive_version = 2`
+4. Document in release notes: "In-progress interactive tasks will be marked as unknown; please restart them"
+
+**No automatic migration:** Old tasks use different container launch mechanism; safest to fail-fast and require restart.
+
+### Performance and Resource Management
+
+**Polling frequency:**
+- No active polling for completion marker (wasteful)
+- Use `docker wait` in background thread (blocks until container exits)
+- On exit, `docker wait` thread checks for completion marker file
+
+**Log tail buffer limits:**
+- Reuse existing log tail implementation from `agent_worker.py`
+- Existing code already handles line-by-line buffering
+- No changes needed
+
+**Staging directory cleanup:**
+- After finalization completes, staging directory can be deleted
+- Encrypted artifact bundle is the long-term storage
+- Add cleanup step in `_finalize_task_worker` after encryption
+- Keep staging for 24 hours in case of finalization retry (user preference)
+
+### Testing Script (Step-by-Step)
+
+#### Test 1: Basic interactive task lifecycle
+
+```bash
+# 1. Start interactive task via UI
+# 2. Verify container exists: docker ps | grep agents-runner-tui-it
+# 3. Verify staging dir exists: ls ~/.midoriai/agents-runner/artifacts/<task_id>/staging
+# 4. Click "Attach Terminal" button
+# 5. Verify terminal opens with agent prompt
+# 6. Exit agent (type 'exit' or Ctrl-D)
+# 7. Verify completion marker created: cat ~/.midoriai/agents-runner/artifacts/<task_id>/staging/interactive-exit.json
+# 8. Verify UI shows task as "done" with correct exit code
+# 9. Verify finalization runs (artifact encryption, PR prompt if enabled)
+# 10. Verify container is removed: docker ps -a | grep agents-runner-tui-it (should be empty)
+```
+
+#### Test 2: Restart recovery (container still running)
+
+```bash
+# 1. Start interactive task via UI
+# 2. Attach terminal and leave agent running
+# 3. Close the UI app (not the terminal)
+# 4. Reopen the UI app
+# 5. Verify task shows as "running" in UI
+# 6. Verify log tail resumes (new logs appear in UI)
+# 7. Click "Attach Terminal" again (reattach)
+# 8. Verify terminal attaches to same running container
+# 9. Exit agent in terminal
+# 10. Verify UI detects completion and finalizes
+```
+
+#### Test 3: Restart recovery (container exited while UI closed)
+
+```bash
+# 1. Start interactive task via UI
+# 2. Attach terminal
+# 3. Close the UI app
+# 4. Exit agent in terminal (container exits and is removed)
+# 5. Reopen the UI app
+# 6. Verify UI reads completion marker
+# 7. Verify task shows as "done" with correct exit code
+# 8. Verify finalization runs (even though container is gone)
+```
+
+#### Test 4: Edge case - SIGKILL
+
+```bash
+# 1. Start interactive task via UI
+# 2. Attach terminal
+# 3. From another terminal: docker kill -s SIGKILL agents-runner-tui-it-<task_id>
+# 4. Verify UI detects exit via docker wait
+# 5. Verify task shows as "failed" with exit_code=137
+# 6. Verify finalization still runs
+```
+
+#### Test 5: Edge case - manual docker rm
+
+```bash
+# 1. Start interactive task via UI
+# 2. From another terminal: docker rm -f agents-runner-tui-it-<task_id>
+# 3. Verify UI detects missing container
+# 4. Verify task shows as "failed" or "unknown"
+# 5. Verify finalization attempts best-effort cleanup
+```
+
+### Security Considerations
+
+**Completion marker contents:**
+- NEVER include secrets (API keys, tokens, passwords)
+- Task ID is safe (already visible in UI)
+- Container name is safe (derived from task ID)
+- Exit code is safe (integer status)
+- Timestamps are safe (metadata)
+
+**Staging directory permissions:**
+- Host staging directory: `~/.midoriai/agents-runner/artifacts/<task_id>/staging`
+- Owned by user running the app (standard Linux permissions)
+- No special permission hardening needed (user's home directory)
+- Container runs as root inside, mounts staging directory (standard Docker pattern)
+
+**Environment variable handling:**
+- API keys passed via `docker run -e` (standard Docker pattern)
+- Never log environment variables in completion marker or logs
+- Environment variables not visible in `docker ps` (Docker obscures `-e` values)
+
+### Artifact Collection Details
+
+**Expected artifacts in staging directory:**
+- `interactive-exit.json`: Completion marker (required)
+- `agent-output.md`: Agent run log (if agent writes it)
+- `.container-entrypoint.sh`: Launch script (cleanup after finalization)
+- Any files the agent writes to `/tmp/agents-artifacts/` in-container
+
+**Finalization steps:**
+1. Check if staging directory exists (handle missing directory gracefully)
+2. Read `interactive-exit.json` for metadata
+3. Collect all files in staging directory
+4. Encrypt and bundle into artifact tarball
+5. Clean up staging directory (optional: keep for 24h for debugging)
+6. Prompt for PR creation if enabled
+7. Set `finalization_state="done"`
+
+**Handling partial artifacts:**
+- If agent crashes mid-run, staging directory may have incomplete files
+- Finalization should collect whatever exists (best-effort)
+- Missing `interactive-exit.json` is OK (use `docker wait` exit code instead)
+
+### Rollback Plan
+
+**Feature flag approach:**
+- Add config option: `interactive_tasks_use_app_lifecycle: bool = True`
+- Default to `True` for new deployments
+- If issues arise, user can set to `False` to revert to old script-based approach
+- Config stored in `~/.midoriai/agents-runner/config.json`
+
+**Minimum viable implementation (MVP):**
+- Phase 1: App-owned container launch + basic completion marker (no restart recovery yet)
+- Phase 2: Add restart recovery + log tailing
+- Phase 3: Full finalization integration + artifact collection
+
+This allows incremental rollout with fallback at each phase.
