@@ -36,6 +36,10 @@ class _MainWindowPersistenceMixin:
 
     @staticmethod
     def _try_sync_container_state(task: Task) -> bool:
+        # Special handling for interactive v2 tasks
+        if task.is_interactive_run() and task.interactive_version == 2:
+            return _MainWindowPersistenceMixin._try_sync_interactive_v2_state(task)
+        
         container_id = str(task.container_id or "").strip()
         if not container_id:
             return False
@@ -95,6 +99,92 @@ class _MainWindowPersistenceMixin:
                 from datetime import timezone
 
                 task.finished_at = datetime.now(tz=timezone.utc)
+        return True
+    
+    @staticmethod
+    def _try_sync_interactive_v2_state(task: Task) -> bool:
+        """Sync interactive v2 task state after restart.
+        
+        For interactive v2 tasks:
+        1. Check for completion marker in staging directory
+        2. If marker exists, task is done - read exit code and timestamps
+        3. If no marker and container is running, task is still active
+        4. If no marker and no container, mark as unknown
+        
+        Args:
+            task: Task object
+        
+        Returns:
+            True if state was synced
+        """
+        from agents_runner.ui.task_staging import read_interactive_completion_marker
+        
+        # Check for completion marker first
+        marker = read_interactive_completion_marker(task.task_id)
+        if marker:
+            # Task completed, read from marker
+            task.exit_code = int(marker.get("exit_code", 0))
+            task.status = "done" if task.exit_code == 0 else "failed"
+            
+            # Parse timestamps
+            finished_at_str = str(marker.get("finished_at", ""))
+            try:
+                from datetime import datetime
+                task.finished_at = datetime.fromisoformat(
+                    finished_at_str.replace("Z", "+00:00")
+                )
+            except Exception:
+                from datetime import datetime, timezone
+                task.finished_at = datetime.now(tz=timezone.utc)
+            
+            started_at_str = str(marker.get("started_at", ""))
+            try:
+                from datetime import datetime
+                task.started_at = datetime.fromisoformat(
+                    started_at_str.replace("Z", "+00:00")
+                )
+            except Exception:
+                pass
+            
+            return True
+        
+        # No completion marker, check if container is running
+        container_id = str(task.container_id or "").strip()
+        if not container_id:
+            # Mark as unknown - no marker and no container ID
+            task.status = "unknown"
+            task.error = "Interactive task missing completion marker and container ID"
+            return True
+        
+        try:
+            from agents_runner.docker.process import _inspect_state
+            state = _inspect_state(container_id)
+        except Exception as exc:
+            if _MainWindowPersistenceMixin._is_missing_container_error(exc):
+                # Container is gone but no completion marker
+                # This happens if container was manually removed or crashed
+                task.status = "unknown"
+                task.error = "Interactive task container missing (no completion marker)"
+                from datetime import datetime, timezone
+                if task.finished_at is None:
+                    task.finished_at = datetime.now(tz=timezone.utc)
+                return True
+            return False
+        
+        if not isinstance(state, dict) or not state:
+            return False
+        
+        # Container exists, sync state
+        incoming = str(state.get("Status") or "").strip().lower()
+        if incoming and (task.status or "").lower() not in {"cancelled", "killed"}:
+            task.status = incoming
+        
+        started_at = _parse_docker_time(state.get("StartedAt"))
+        if started_at:
+            task.started_at = started_at
+        
+        # If container is running, we're good
+        # The docker wait monitor will pick it up when the app fully starts
         return True
 
     def _schedule_save(self) -> None:

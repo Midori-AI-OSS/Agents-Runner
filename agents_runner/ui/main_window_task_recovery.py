@@ -38,6 +38,9 @@ class _MainWindowTaskRecoveryMixin:
                 self._update_task_ui(task)
             if task.is_active():
                 self._ensure_recovery_log_tail(task)
+                # For interactive v2 tasks, restart docker wait monitor
+                if task.is_interactive_run() and task.interactive_version == 2:
+                    self._ensure_interactive_v2_wait_monitor(task)
                 return
 
         if self._task_needs_finalization(task):
@@ -292,3 +295,25 @@ class _MainWindowTaskRecoveryMixin:
                 task_id,
                 format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}"),
             )
+    
+    def _ensure_interactive_v2_wait_monitor(self, task: Task) -> None:
+        """Ensure docker wait monitor is running for interactive v2 task.
+        
+        Called during recovery to restart monitoring for running containers.
+        
+        Args:
+            task: Task object
+        """
+        from agents_runner.ui.task_container_lifecycle import start_recovery_container_monitor
+        
+        # Check if already monitoring (avoid duplicates)
+        task_id = task.task_id
+        if hasattr(self, "_interactive_v2_monitors"):
+            if task_id in self._interactive_v2_monitors:
+                return
+        else:
+            self._interactive_v2_monitors = set()
+        
+        # Start monitor
+        start_recovery_container_monitor(main_window=self, task=task)
+        self._interactive_v2_monitors.add(task_id)
