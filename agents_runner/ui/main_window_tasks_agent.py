@@ -570,12 +570,21 @@ class _MainWindowTasksAgentMixin:
         spinner = _stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
-        # Clean up any existing bridge/thread for this task to prevent duplicate signal connections
+        # Clean up any existing bridge/thread for this task to prevent duplicate log emissions
         old_bridge = self._bridges.pop(task.task_id, None)
         old_thread = self._threads.pop(task.task_id, None)
         if old_bridge is not None:
             try:
-                # Request the bridge to stop and wait briefly for it to respond
+                # Disconnect all signal connections to prevent duplicate log emissions
+                old_bridge.log.disconnect()
+                old_bridge.state.disconnect()
+                old_bridge.done.disconnect()
+                old_bridge.retry_attempt.disconnect()
+                old_bridge.agent_switched.disconnect()
+            except Exception:
+                pass
+            try:
+                # Request the bridge to stop
                 old_bridge.request_stop()
             except Exception:
                 pass
@@ -588,9 +597,7 @@ class _MainWindowTasksAgentMixin:
             try:
                 # Request thread to quit and wait for it to finish
                 old_thread.quit()
-                if not old_thread.wait(200):  # Wait up to 200ms for graceful shutdown
-                    # If thread doesn't terminate, it will be cleaned up eventually by Qt
-                    pass
+                old_thread.wait(100)  # Wait up to 100ms for graceful shutdown
             except Exception:
                 pass
 

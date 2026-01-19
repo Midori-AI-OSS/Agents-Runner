@@ -124,12 +124,19 @@ class _MainWindowPreflightMixin:
             gh_base_branch=gh_base_branch,
         )
         
-        # Clean up any existing bridge/thread for this task to prevent duplicate signal connections
+        # Clean up any existing bridge/thread for this task to prevent duplicate log emissions
         old_bridge = self._bridges.pop(task_id, None)
         old_thread = self._threads.pop(task_id, None)
         if old_bridge is not None:
             try:
-                # Request the bridge to stop and wait briefly for it to respond
+                # Disconnect all signal connections to prevent duplicate log emissions
+                old_bridge.log.disconnect()
+                old_bridge.state.disconnect()
+                old_bridge.done.disconnect()
+            except Exception:
+                pass
+            try:
+                # Request the bridge to stop
                 old_bridge.request_stop()
             except Exception:
                 pass
@@ -142,9 +149,7 @@ class _MainWindowPreflightMixin:
             try:
                 # Request thread to quit and wait for it to finish
                 old_thread.quit()
-                if not old_thread.wait(200):  # Wait up to 200ms for graceful shutdown
-                    # If thread doesn't terminate, it will be cleaned up eventually by Qt
-                    pass
+                old_thread.wait(100)  # Wait up to 100ms for graceful shutdown
             except Exception:
                 pass
 
