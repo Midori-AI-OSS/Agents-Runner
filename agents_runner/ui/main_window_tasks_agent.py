@@ -570,6 +570,37 @@ class _MainWindowTasksAgentMixin:
         spinner = _stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
+        # Clean up any existing bridge/thread for this task to prevent duplicate log emissions
+        old_bridge = self._bridges.pop(task.task_id, None)
+        old_thread = self._threads.pop(task.task_id, None)
+        if old_bridge is not None:
+            try:
+                # Disconnect all signal connections to prevent duplicate log emissions
+                old_bridge.log.disconnect()
+                old_bridge.state.disconnect()
+                old_bridge.done.disconnect()
+                old_bridge.retry_attempt.disconnect()
+                old_bridge.agent_switched.disconnect()
+            except Exception:
+                pass
+            try:
+                # Request the bridge to stop
+                old_bridge.request_stop()
+            except Exception:
+                pass
+            try:
+                # Schedule deletion on next event loop iteration
+                old_bridge.deleteLater()
+            except Exception:
+                pass
+        if old_thread is not None:
+            try:
+                # Request thread to quit and wait for it to finish
+                old_thread.quit()
+                old_thread.wait(100)  # Wait up to 100ms for graceful shutdown
+            except Exception:
+                pass
+
         bridge = TaskRunnerBridge(
             task_id=task.task_id,
             config=config,

@@ -65,6 +65,9 @@ class _MainWindowTaskRecoveryMixin:
             return
         if task_id in self._recovery_log_stop:
             return
+        # Don't start recovery log tail if task has an active bridge (bridge already streams logs)
+        if task_id in self._bridges:
+            return
 
         stop = threading.Event()
         self._recovery_log_stop[task_id] = stop
