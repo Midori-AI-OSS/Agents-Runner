@@ -133,6 +133,11 @@ class _MainWindowPreflightMixin:
                 old_bridge.log.disconnect()
                 old_bridge.state.disconnect()
                 old_bridge.done.disconnect()
+                # Preflight bridges don't have these signals, but disconnect them for consistency
+                if hasattr(old_bridge, 'retry_attempt'):
+                    old_bridge.retry_attempt.disconnect()
+                if hasattr(old_bridge, 'agent_switched'):
+                    old_bridge.agent_switched.disconnect()
             except Exception:
                 pass
             try:
