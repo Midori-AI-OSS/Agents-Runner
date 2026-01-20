@@ -275,31 +275,18 @@ class _MainWindowTasksInteractiveMixin:
             gh_prefer_gh_cli=bool(task.gh_use_host_cli),
         )
 
-    def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
-        """Watch for interactive container completion using dual completion signals.
+    def _start_interactive_finish_watch(self, task_id: str) -> None:
+        """Watch for interactive container completion using JSON completion marker.
         
-        This function monitors two completion mechanisms:
-        1. Host-side finish file (interactive-finish-*.txt) - written by host shell script
-        2. Container-side JSON marker (interactive-exit.json) - written by container EXIT trap
-        
-        Architecture:
-        - The host finish file is the primary completion signal (always present, reliable)
-        - The JSON marker provides richer metadata from inside the container (timestamps, etc.)
-        - If the JSON marker is available, we prefer the container-reported exit code
-        - If the JSON marker is missing/invalid, we fallback to the host exit code
-        
-        This dual approach ensures reliability (host fallback) while providing better
-        observability (container timestamps) when the container completes normally.
+        This function monitors the container-side JSON completion marker
+        (interactive-exit.json) written by the container EXIT trap. The marker
+        provides exit code and timing metadata from inside the container.
         
         Args:
             task_id: Task identifier
-            finish_path: Path to host-side finish file
         """
         task_id = str(task_id or "").strip()
-        finish_path = os.path.abspath(
-            os.path.expanduser(str(finish_path or "").strip())
-        )
-        if not task_id or not finish_path:
+        if not task_id:
             return
 
         existing = self._interactive_watch.get(task_id)
@@ -308,29 +295,10 @@ class _MainWindowTasksInteractiveMixin:
             stop.set()
 
         stop_event = threading.Event()
-        self._interactive_watch[task_id] = (finish_path, stop_event)
+        self._interactive_watch[task_id] = (None, stop_event)
 
         def _worker() -> None:
-            # Wait for host finish file (primary completion signal)
-            while not stop_event.is_set():
-                if os.path.exists(finish_path):
-                    break
-                time.sleep(0.35)
-            if stop_event.is_set():
-                return
-            
-            # Read host-side exit code (fallback value)
-            exit_code = 0
-            for _ in range(6):
-                try:
-                    with open(finish_path, "r", encoding="utf-8") as f:
-                        raw = (f.read() or "").strip().splitlines()[0] if f else ""
-                    exit_code = int(raw or "0")
-                    break
-                except Exception:
-                    time.sleep(0.2)
-            
-            # Read container-side completion marker (preferred source for exit code and metadata)
+            # Wait for container-side JSON completion marker
             try:
                 from agents_runner.artifacts import get_staging_dir
                 import json
@@ -338,57 +306,43 @@ class _MainWindowTasksInteractiveMixin:
                 staging_dir = get_staging_dir(task_id)
                 marker_path = staging_dir / "interactive-exit.json"
                 
-                if marker_path.exists():
-                    with open(marker_path, "r", encoding="utf-8") as f:
-                        marker_data = json.load(f)
-                    
-                    # Validate marker data
-                    if marker_data.get("task_id") == task_id:
-                        # Use container-reported exit code if available
-                        container_exit_code = marker_data.get("exit_code", exit_code)
-                        print(f"[marker] Container reported exit code: {container_exit_code}")
-                        print(f"[marker] Container started at: {marker_data.get('started_at')}")
-                        print(f"[marker] Container finished at: {marker_data.get('finished_at')}")
+                # Poll for completion marker
+                while not stop_event.is_set():
+                    if marker_path.exists():
+                        break
+                    time.sleep(0.35)
+                
+                if stop_event.is_set():
+                    return
+                
+                # Read and validate completion marker
+                exit_code = 0
+                for _ in range(6):
+                    try:
+                        with open(marker_path, "r", encoding="utf-8") as f:
+                            marker_data = json.load(f)
                         
-                        # Use container exit code for task finalization
-                        exit_code = container_exit_code
-                    else:
-                        print(f"[marker] Warning: task_id mismatch in marker (expected {task_id}, got {marker_data.get('task_id')})")
-                else:
-                    print(f"[marker] Warning: completion marker not found at {marker_path}")
-            except json.JSONDecodeError as exc:
-                print(f"[marker] Error parsing completion marker JSON: {exc}")
-            except Exception as exc:
-                print(f"[marker] Error reading completion marker: {exc}")
-            
-            # Encrypt finish file as artifact before deleting
-            try:
-                from agents_runner.artifacts import encrypt_artifact
+                        # Validate marker data
+                        if marker_data.get("task_id") == task_id:
+                            exit_code = marker_data.get("exit_code", 0)
+                            print(f"[marker] Container reported exit code: {exit_code}")
+                            print(f"[marker] Container started at: {marker_data.get('started_at')}")
+                            print(f"[marker] Container finished at: {marker_data.get('finished_at')}")
+                            break
+                        else:
+                            print(f"[marker] Warning: task_id mismatch in marker (expected {task_id}, got {marker_data.get('task_id')})")
+                            # Wait and retry
+                            time.sleep(0.2)
+                    except json.JSONDecodeError as exc:
+                        print(f"[marker] Error parsing completion marker JSON: {exc}, retrying...")
+                        time.sleep(0.2)
+                    except Exception as exc:
+                        print(f"[marker] Error reading completion marker: {exc}, retrying...")
+                        time.sleep(0.2)
                 
-                task_dict = {"id": task_id, "task_id": task_id}
-                env_name = getattr(self, "_current_env_name", "unknown")
-                
-                artifact_uuid = encrypt_artifact(
-                    task_dict=task_dict,
-                    env_name=env_name,
-                    source_path=finish_path,
-                    original_filename=os.path.basename(finish_path),
-                )
-                
-                if artifact_uuid:
-                    print(f"[finish] Encrypted finish file as artifact: {artifact_uuid}")
-                else:
-                    print("[finish] Failed to encrypt finish file, but continuing")
             except Exception as exc:
-                print(f"[finish] Error encrypting finish file: {exc}")
-            
-            # Delete plaintext finish file
-            try:
-                if os.path.exists(finish_path):
-                    os.unlink(finish_path)
-                    print(f"[finish] Deleted plaintext finish file: {finish_path}")
-            except Exception as exc:
-                print(f"[finish] Warning: failed to delete finish file: {exc}")
+                print(f"[marker] Fatal error in completion watch: {exc}")
+                exit_code = 1
             
             self.interactive_finished.emit(task_id, int(exit_code))
 

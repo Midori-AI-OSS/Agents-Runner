@@ -40,7 +40,6 @@ def _cleanup_stale_temp_files() -> None:
     """Clean up stale temporary files from previous runs.
     
     Removes files older than 24 hours from ~/.midoriai/agents-runner/:
-    - interactive-finish-*.txt
     - stt-*.wav (audio recordings)
     - Other stale temporary files
     
@@ -57,7 +56,6 @@ def _cleanup_stale_temp_files() -> None:
         
         # Patterns to clean up
         patterns = [
-            "interactive-finish-*.txt",
             "stt-*.wav",
         ]
         

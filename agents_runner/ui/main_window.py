@@ -201,6 +201,7 @@ class MainWindow(
         self._details.back_requested.connect(self._show_dashboard)
         self._details.pr_requested.connect(self._on_task_pr_requested)
         self._details.container_action_requested.connect(self._on_task_container_action)
+        self._details.reattach_requested.connect(self._on_task_reattach_requested)
         self._envs_page = EnvironmentsPage()
         self._envs_page.back_requested.connect(self._show_dashboard)
         self._envs_page.updated.connect(self._reload_environments, Qt.QueuedConnection)

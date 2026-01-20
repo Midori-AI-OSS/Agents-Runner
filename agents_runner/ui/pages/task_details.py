@@ -42,6 +42,7 @@ class TaskDetailsPage(QWidget):
     back_requested = Signal()
     pr_requested = Signal(str)
     container_action_requested = Signal(str, str)
+    reattach_requested = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -172,10 +173,18 @@ class TaskDetailsPage(QWidget):
         self._btn_kill.setToolTip("Kill: Force stop the container immediately")
         self._btn_kill.clicked.connect(lambda: self._emit_container_action("kill"))
 
+        self._btn_attach = QToolButton()
+        self._btn_attach.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._btn_attach.setText("Attach")
+        self._btn_attach.setToolTip("Reattach to the running container")
+        self._btn_attach.clicked.connect(self._emit_reattach)
+        self._btn_attach.setVisible(False)
+
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
         title_row.addWidget(stitle)
         title_row.addStretch(1)
+        title_row.addWidget(self._btn_attach)
         title_row.addWidget(self._btn_freeze)
         title_row.addWidget(self._btn_unfreeze)
         title_row.addWidget(self._btn_stop)
@@ -355,6 +364,11 @@ class TaskDetailsPage(QWidget):
                 self._btn_kill.setEnabled(False)
             self.container_action_requested.emit(task_id, str(action or "").strip())
 
+    def _emit_reattach(self) -> None:
+        task_id = str(self._current_task_id or "").strip()
+        if task_id:
+            self.reattach_requested.emit(task_id)
+
     def _copy_prompt_to_clipboard(self) -> None:
         """Copy the full prompt text to clipboard."""
         prompt_text = self._prompt.toPlainText()
@@ -423,6 +437,12 @@ class TaskDetailsPage(QWidget):
         has_container = bool(str(task.container_id or "").strip())
         is_paused = (task.status or "").lower() == "paused"
         is_terminal = (task.status or "").lower() in {"cancelled", "killed"}
+        is_running = (task.status or "").lower() == "running"
+        is_interactive = task.is_interactive_run()
+        
+        # Show attach button for running interactive containers
+        self._btn_attach.setVisible(is_interactive and is_running and has_container)
+        
         self._btn_freeze.setEnabled(has_container and not is_paused and not is_terminal)
         self._btn_unfreeze.setEnabled(has_container and is_paused and not is_terminal)
         self._btn_stop.setEnabled(has_container and not is_terminal)

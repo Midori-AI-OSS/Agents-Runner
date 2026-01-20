@@ -173,6 +173,125 @@ class _MainWindowTaskEventsMixin:
         self._details.update_task(task)
         self._schedule_save()
 
+    def _on_task_reattach_requested(self, task_id: str) -> None:
+        """Handle reattach request for running interactive containers."""
+        task_id = str(task_id or "").strip()
+        task = self._tasks.get(task_id)
+        if task is None:
+            QMessageBox.warning(self, "Task not found", "Task not found.")
+            return
+        
+        if not task.is_interactive_run():
+            QMessageBox.warning(self, "Not an interactive task", "This task is not interactive.")
+            return
+        
+        container_id = str(task.container_id or "").strip()
+        if not container_id:
+            QMessageBox.warning(self, "No container", "This task does not have a container ID.")
+            return
+        
+        # Check if container is still running
+        status = (task.status or "").lower()
+        if status not in {"running", "starting", "created"}:
+            QMessageBox.warning(
+                self,
+                "Container not running",
+                f"Container is in '{status}' state, cannot reattach.",
+            )
+            return
+        
+        # Get environment and terminal info
+        env = self._environments.get(task.environment_id)
+        if env is None:
+            QMessageBox.warning(self, "Environment not found", "Task environment not found.")
+            return
+        
+        # Get terminal options
+        from agents_runner.terminal_apps import detect_terminal_options
+        
+        options = {opt.terminal_id: opt for opt in detect_terminal_options()}
+        # Try to get the last used terminal or default to the first available
+        terminal_id = getattr(self._settings_data, "terminal_id", None)
+        if not terminal_id or terminal_id not in options:
+            if options:
+                terminal_id = list(options.keys())[0]
+        
+        terminal_opt = options.get(terminal_id) if terminal_id else None
+        if terminal_opt is None:
+            QMessageBox.warning(
+                self,
+                "No terminal available",
+                "No terminal emulator found to reattach.",
+            )
+            return
+        
+        # Launch terminal with attach mode
+        self._launch_reattach_terminal(task, env, terminal_opt)
+
+    def _launch_reattach_terminal(self, task: Task, env: object, terminal_opt: object) -> None:
+        """Launch terminal and attach to running container."""
+        from agents_runner.ui.shell_templates import shell_log_statement
+        from agents_runner.terminal_apps import launch_in_terminal
+        from pathlib import Path
+        import tempfile
+        import shlex
+        
+        task_id = str(task.task_id or "")
+        container_name = str(task.container_id or "")
+        
+        # Build host shell script in reattach mode
+        from agents_runner.ui.main_window_tasks_interactive_docker import (
+            _build_host_shell_script,
+        )
+        
+        host_script_content = _build_host_shell_script(
+            container_name=container_name,
+            task_token=f"reattach-{task_id}",
+            tmp_paths={},
+            gh_token_snippet="",
+            rosetta_snippet="",
+            gh_clone_snippet="",
+            attach_mode=True,
+        )
+        
+        # Write to temp file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".sh", delete=False, prefix=f"agents-runner-reattach-{task_id}-"
+        ) as temp:
+            temp.write(host_script_content)
+            temp_script_path = temp.name
+        
+        # Make executable
+        import os
+        import stat
+        
+        st = os.stat(temp_script_path)
+        os.chmod(temp_script_path, st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        
+        # Log reattach action
+        self._on_task_log(
+            task_id,
+            format_log("host", "reattach", "INFO", f"reattaching to container {container_name}"),
+        )
+        
+        # Launch terminal
+        try:
+            launch_in_terminal(
+                terminal_opt=terminal_opt,
+                script_path=temp_script_path,
+                title=f"Task {task_id} (reattach)",
+            )
+        except Exception as exc:
+            QMessageBox.critical(
+                self,
+                "Failed to launch terminal",
+                f"Failed to launch terminal: {exc}",
+            )
+            return
+        
+        # Start watching for completion again
+        self._start_interactive_finish_watch(task_id)
+
     def _discard_task_from_ui(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         task = self._tasks.get(task_id)

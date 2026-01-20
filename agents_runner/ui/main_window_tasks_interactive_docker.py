@@ -217,17 +217,6 @@ def launch_docker_terminal_task(
             detached=True,
         )
 
-        # Prepare finish file for exit code tracking
-        finish_dir = os.path.dirname(main_window._state_path)
-        os.makedirs(finish_dir, exist_ok=True)
-        finish_path = os.path.join(finish_dir, f"interactive-finish-{task_id}.txt")
-        try:
-            if os.path.exists(finish_path):
-                os.unlink(finish_path)
-        except Exception:
-            # Best-effort cleanup: ignore errors while removing stale finish file.
-            pass
-
         # Build Rosetta warning snippet
         rosetta_snippet = ""
         if has_rosetta() is False:
@@ -321,7 +310,6 @@ def launch_docker_terminal_task(
             container_name=container_name,
             task_token=task_token,
             tmp_paths=tmp_paths,
-            finish_path=finish_path,
             gh_token_snippet="",
             rosetta_snippet=rosetta_snippet,
             gh_clone_snippet=gh_clone_snippet,
@@ -358,8 +346,8 @@ def launch_docker_terminal_task(
         main_window._details.update_task(task)
         main_window._schedule_save()
 
-        # Start finish file watcher
-        main_window._start_interactive_finish_watch(task_id, finish_path)
+        # Start completion marker watcher
+        main_window._start_interactive_finish_watch(task_id)
 
         # Log launch
         main_window._on_task_log(
@@ -771,7 +759,6 @@ def _build_host_shell_script(
     container_name: str,
     task_token: str,
     tmp_paths: dict[str, str],
-    finish_path: str,
     gh_token_snippet: str,
     rosetta_snippet: str,
     gh_clone_snippet: str,
@@ -783,7 +770,6 @@ def _build_host_shell_script(
         container_name: Container name
         task_token: Unique task token
         tmp_paths: Dict of temp file paths for cleanup
-        finish_path: Path to finish file
         gh_token_snippet: GH token setup snippet
         rosetta_snippet: Rosetta warning snippet
         gh_clone_snippet: Git clone/update snippet
@@ -798,14 +784,12 @@ def _build_host_shell_script(
         f"TMP_SETTINGS={shlex.quote(tmp_paths.get('settings', ''))}",
         f"TMP_ENV={shlex.quote(tmp_paths.get('environment', ''))}",
         f"TMP_HELPME={shlex.quote(tmp_paths.get('helpme', ''))}",
-        f"FINISH_FILE={shlex.quote(finish_path)}",
-        'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
         'cleanup() { '
         + 'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_HELPME" ]; then rm -f -- "$TMP_HELPME" >/dev/null 2>&1 || true; fi; }',
-        'finish() { STATUS=$?; if [ ! -e "$FINISH_FILE" ]; then write_finish "$STATUS"; fi; cleanup; }',
+        'finish() { cleanup; }',
         "trap finish EXIT",
     ]
 
@@ -818,7 +802,7 @@ def _build_host_shell_script(
         # Attach to existing detached container (app already launched it)
         attach_cmd = f"docker attach {shlex.quote(container_name)}"
         host_script_parts.append(
-            f'{attach_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then {shell_log_statement("host", "docker", "ERROR", "container attach failed (exit $STATUS)")}; fi; write_finish "$STATUS"; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS'
+            f'{attach_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then {shell_log_statement("host", "docker", "ERROR", "container attach failed (exit $STATUS)")}; fi; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS'
         )
     
     return " ; ".join(host_script_parts)
