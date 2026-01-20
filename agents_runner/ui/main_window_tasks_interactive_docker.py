@@ -201,7 +201,7 @@ def launch_docker_terminal_task(
         )
 
         # Build Docker command for detached launch
-        docker_cmd = _build_docker_command(
+        docker_cmd_parts = _build_docker_command_parts(
             container_name=container_name,
             host_codex=host_codex,
             host_workdir=host_workdir,
@@ -279,14 +279,35 @@ def launch_docker_terminal_task(
         )
         try:
             subprocess.run(
-                docker_cmd,
-                shell=True,
+                docker_cmd_parts,
                 check=True,
                 capture_output=True,
                 text=True,
             )
         except subprocess.CalledProcessError as e:
             error_msg = f"docker run failed: {e.stderr.strip() if e.stderr else str(e)}"
+            _handle_launch_error(
+                main_window, task, tmp_paths, stain, spinner, error_msg
+            )
+            return
+
+        # Verify container is running
+        try:
+            inspect_result = subprocess.run(
+                ["docker", "inspect", "--format={{.State.Running}}", container_name],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            is_running = inspect_result.stdout.strip().lower() == "true"
+            if not is_running:
+                error_msg = f"container {container_name} started but is not running"
+                _handle_launch_error(
+                    main_window, task, tmp_paths, stain, spinner, error_msg
+                )
+                return
+        except subprocess.CalledProcessError as e:
+            error_msg = f"failed to verify container state: {e.stderr.strip() if e.stderr else str(e)}"
             _handle_launch_error(
                 main_window, task, tmp_paths, stain, spinner, error_msg
             )
@@ -677,6 +698,73 @@ def _build_docker_command(
         container_script,
     ]
     return " ".join(shlex.quote(part) for part in docker_args)
+
+
+def _build_docker_command_parts(
+    container_name: str,
+    host_codex: str,
+    host_workdir: str,
+    container_agent_dir: str,
+    container_workdir: str,
+    extra_mount_args: list[str],
+    preflight_mounts: list[str],
+    env_args: list[str],
+    port_args: list[str],
+    docker_env_passthrough: list[str],
+    image: str,
+    container_script: str,
+    detached: bool = False,
+) -> list[str]:
+    """Build complete Docker run command as list of arguments.
+
+    Args:
+        container_name: Container name
+        host_codex: Host config directory path
+        host_workdir: Host workspace directory path
+        container_agent_dir: Container config directory path
+        container_workdir: Container workspace directory path
+        extra_mount_args: Additional mount arguments
+        preflight_mounts: Preflight script mount arguments
+        env_args: Environment variable arguments
+        port_args: Port mapping arguments
+        docker_env_passthrough: Environment passthrough arguments
+        image: Docker image name
+        container_script: Container script to execute
+        detached: If True, use -dit (detached with interactive TTY); if False, use -it
+
+    Returns:
+        Complete Docker command as list of arguments
+    """
+    docker_platform_args = docker_platform_args_for_pixelarch()
+    
+    # Choose flags based on detached mode
+    mode_flags = ["-dit"] if detached else ["-it"]
+    
+    docker_args = [
+        "docker",
+        "run",
+        *docker_platform_args,
+        *mode_flags,
+        "--rm",
+        "--name",
+        container_name,
+        "-v",
+        f"{host_codex}:{container_agent_dir}",
+        "-v",
+        f"{host_workdir}:{container_workdir}",
+        *extra_mount_args,
+        *preflight_mounts,
+        *env_args,
+        *port_args,
+        *docker_env_passthrough,
+        "-w",
+        container_workdir,
+        image,
+        "/bin/bash",
+        "-lc",
+        container_script,
+    ]
+    return docker_args
 
 
 def _build_host_shell_script(
