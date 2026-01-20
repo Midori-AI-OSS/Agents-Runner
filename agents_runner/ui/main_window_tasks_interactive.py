@@ -276,6 +276,25 @@ class _MainWindowTasksInteractiveMixin:
         )
 
     def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
+        """Watch for interactive container completion using dual completion signals.
+        
+        This function monitors two completion mechanisms:
+        1. Host-side finish file (interactive-finish-*.txt) - written by host shell script
+        2. Container-side JSON marker (interactive-exit.json) - written by container EXIT trap
+        
+        Architecture:
+        - The host finish file is the primary completion signal (always present, reliable)
+        - The JSON marker provides richer metadata from inside the container (timestamps, etc.)
+        - If the JSON marker is available, we prefer the container-reported exit code
+        - If the JSON marker is missing/invalid, we fallback to the host exit code
+        
+        This dual approach ensures reliability (host fallback) while providing better
+        observability (container timestamps) when the container completes normally.
+        
+        Args:
+            task_id: Task identifier
+            finish_path: Path to host-side finish file
+        """
         task_id = str(task_id or "").strip()
         finish_path = os.path.abspath(
             os.path.expanduser(str(finish_path or "").strip())
@@ -292,12 +311,15 @@ class _MainWindowTasksInteractiveMixin:
         self._interactive_watch[task_id] = (finish_path, stop_event)
 
         def _worker() -> None:
+            # Wait for host finish file (primary completion signal)
             while not stop_event.is_set():
                 if os.path.exists(finish_path):
                     break
                 time.sleep(0.35)
             if stop_event.is_set():
                 return
+            
+            # Read host-side exit code (fallback value)
             exit_code = 0
             for _ in range(6):
                 try:
@@ -308,7 +330,7 @@ class _MainWindowTasksInteractiveMixin:
                 except Exception:
                     time.sleep(0.2)
             
-            # Read and process completion marker from container
+            # Read container-side completion marker (preferred source for exit code and metadata)
             try:
                 from agents_runner.artifacts import get_staging_dir
                 import json

@@ -527,7 +527,17 @@ def _prepare_preflight_scripts(
 
 def _build_completion_marker_script(task_id: str, container_name: str) -> str:
     """Build shell script to write completion marker on EXIT.
-
+    
+    This generates a shell trap that writes a JSON completion marker when the
+    container exits. The marker provides:
+    - Container-side exit code (more accurate than host-side)
+    - Precise start/finish timestamps from inside the container
+    - Task and container identifiers for validation
+    
+    The marker is written to the mounted staging directory so it persists after
+    the container is auto-removed. The host reads this marker to get accurate
+    completion metadata from inside the container.
+    
     Args:
         task_id: Task ID
         container_name: Container name
