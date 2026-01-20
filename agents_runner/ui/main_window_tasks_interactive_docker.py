@@ -17,6 +17,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import verify_cli_clause
+from agents_runner.artifacts import get_staging_dir
 from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
@@ -160,6 +161,11 @@ def launch_docker_terminal_task(
         # Prepare extra mounts
         extra_mount_args: list[str] = []
         
+        # Create and mount staging directory for artifacts and completion markers
+        artifacts_staging_dir = get_staging_dir(task_id)
+        artifacts_staging_dir.mkdir(parents=True, exist_ok=True)
+        extra_mount_args.extend(["-v", f"{artifacts_staging_dir}:/tmp/agents-artifacts"])
+        
         # Add host cache mount if enabled in settings
         if main_window._settings_data.get("mount_host_cache", False):
             host_cache = os.path.expanduser("~/.cache")
@@ -184,8 +190,13 @@ def launch_docker_terminal_task(
         if cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
             verify_clause = verify_cli_clause(cmd_parts[0])
 
+        # Build completion marker function
+        marker_script = _build_completion_marker_script(task_id, container_name)
+
         container_script = (
-            "set -euo pipefail; " f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
+            "set -euo pipefail; "
+            f"{marker_script}"
+            f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
         )
 
         # Build Docker command
@@ -512,6 +523,45 @@ def _prepare_preflight_scripts(
         # Clean up any created temp files
         _cleanup_temp_files(tmp_paths)
         return None, [], tmp_paths
+
+
+def _build_completion_marker_script(task_id: str, container_name: str) -> str:
+    """Build shell script to write completion marker on EXIT.
+
+    Args:
+        task_id: Task ID
+        container_name: Container name
+
+    Returns:
+        Shell script with trap and marker writing function
+    """
+    # Escape quotes in task_id and container_name
+    safe_task_id = shlex.quote(task_id)
+    safe_container_name = shlex.quote(container_name)
+    
+    marker_function = (
+        f'TASK_ID={safe_task_id}; '
+        f'CONTAINER_NAME={safe_container_name}; '
+        'STARTED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ"); '
+        'write_completion_marker() { '
+        'EXIT_CODE=$?; '
+        'FINISHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ"); '
+        'MARKER_FILE="/tmp/agents-artifacts/interactive-exit.json"; '
+        'mkdir -p /tmp/agents-artifacts >/dev/null 2>&1 || true; '
+        'cat > "$MARKER_FILE" <<EOF\n'
+        '{\n'
+        '  "task_id": "$TASK_ID",\n'
+        '  "container_name": "$CONTAINER_NAME",\n'
+        '  "exit_code": $EXIT_CODE,\n'
+        '  "started_at": "$STARTED_AT",\n'
+        '  "finished_at": "$FINISHED_AT",\n'
+        '  "reason": "process_exit"\n'
+        '}\n'
+        'EOF\n'
+        '}; '
+        'trap write_completion_marker EXIT; '
+    )
+    return marker_function
 
 
 def _build_docker_command(
