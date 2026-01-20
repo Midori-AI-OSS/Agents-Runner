@@ -22,10 +22,13 @@ from agents_runner.gh_management import is_gh_available
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.log_format import format_log
 from agents_runner.pr_metadata import ensure_github_context_file
-from agents_runner.pr_metadata import github_context_container_path
 from agents_runner.pr_metadata import github_context_host_path
 from agents_runner.pr_metadata import github_context_prompt_instructions
 from agents_runner.pr_metadata import GitHubContext
+from agents_runner.pr_metadata import ensure_pr_metadata_file
+from agents_runner.pr_metadata import pr_metadata_container_path
+from agents_runner.pr_metadata import pr_metadata_host_path
+from agents_runner.pr_metadata import pr_metadata_prompt_instructions
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
@@ -477,15 +480,22 @@ class _MainWindowTasksAgentMixin:
             
             # Create GitHub context file
             if should_generate:
-                host_path = github_context_host_path(
+                host_context_path = github_context_host_path(
                     os.path.dirname(self._state_path), task_id
                 )
-                container_path = github_context_container_path(task_id)
+                pr_host_path = pr_metadata_host_path(
+                    os.path.dirname(self._state_path), task_id
+                )
+                pr_container_path = pr_metadata_container_path(task_id)
                 try:
                     ensure_github_context_file(
-                        host_path, 
+                        host_context_path,
                         task_id=task_id,
                         github_context=github_context,
+                    )
+                    ensure_pr_metadata_file(
+                        pr_host_path,
+                        task_id=task_id,
                     )
                 except Exception as exc:
                     logger.error(format_log("gh", "context", "ERROR", f"failed to create GitHub context file: {exc}"))
@@ -493,27 +503,56 @@ class _MainWindowTasksAgentMixin:
                         task_id, format_log("gh", "context", "ERROR", f"failed to create GitHub context file: {exc}; continuing without context")
                     )
                 else:
-                    task.gh_pr_metadata_path = host_path
-                    extra_mounts_for_task.append(f"{host_path}:{container_path}:rw")
+                    task.gh_context_path = host_context_path
+                    task.gh_pr_metadata_path = pr_host_path
+
+                    # Only mount the PR title/body JSON into the container (agents edit this).
+                    extra_mounts_for_task.append(
+                        f"{pr_host_path}:{pr_container_path}:rw"
+                    )
+
+                    # Provide read-only repo context inline; do not mount the repo metadata JSON.
+                    repo_url = ""
+                    repo_owner = ""
+                    repo_name = ""
+                    base_branch = ""
+                    task_branch = ""
+                    head_commit = ""
+                    if github_context is not None:
+                        repo_url = github_context.repo_url
+                        repo_owner = github_context.repo_owner or ""
+                        repo_name = github_context.repo_name or ""
+                        base_branch = github_context.base_branch
+                        task_branch = github_context.task_branch or ""
+                        head_commit = github_context.head_commit
+                    else:
+                        # For cloned repos, we may not know branch/commit until after clone.
+                        repo_url = str(getattr(env, "workspace_target", "") or "").strip()
+                        base_branch = str(desired_base or "").strip() or "auto"
+                        task_branch = "(already created by runner)"
+                        head_commit = "(set after clone)"
+
                     runner_prompt = (
-                        f"{runner_prompt}{github_context_prompt_instructions(container_path)}"
+                        f"{runner_prompt}"
+                        f"{github_context_prompt_instructions(repo_url=repo_url, repo_owner=repo_owner, repo_name=repo_name, base_branch=base_branch, task_branch=task_branch, head_commit=head_commit)}"
+                        f"{pr_metadata_prompt_instructions(pr_container_path)}"
                     )
                     # Clarify two-phase process for cloned repo environments
                     if workspace_type == WORKSPACE_CLONED:
                         self._on_task_log(
-                            task_id, format_log("gh", "context", "INFO", f"GitHub context file created and mounted -> {container_path}")
+                            task_id, format_log("gh", "context", "INFO", "GitHub context enabled (host-only) and PR metadata file mounted")
                         )
                         self._on_task_log(
                             task_id, format_log("gh", "context", "INFO", "Repository metadata will be populated after clone completes")
                         )
                     else:
                         self._on_task_log(
-                            task_id, format_log("gh", "context", "INFO", f"GitHub context enabled; mounted -> {container_path}")
+                            task_id, format_log("gh", "context", "INFO", "GitHub context enabled (host-only) and PR metadata file mounted")
                         )
 
         # Build config with GitHub repo info if needed
-        # Get the context file path if it was created (regardless of mode)
-        gh_context_file = getattr(task, "gh_pr_metadata_path", None)
+        # Get the host GitHub context path if it was created (regardless of mode)
+        gh_context_file = getattr(task, "gh_context_path", None)
         gh_repo: str | None = None
         if workspace_type == WORKSPACE_CLONED and env:
             gh_repo = str(env.workspace_target or "").strip() or None

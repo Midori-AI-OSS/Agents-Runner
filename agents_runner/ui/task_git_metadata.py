@@ -68,7 +68,7 @@ def derive_task_git_metadata(task: Any) -> dict[str, object] | None:
         if pr_number is not None:
             metadata["pull_request_number"] = pr_number
 
-    context_path = str(getattr(task, "gh_pr_metadata_path", "") or "").strip()
+    context_path = str(getattr(task, "gh_context_path", "") or "").strip()
     if context_path:
         try:
             gh_metadata = load_github_metadata(context_path)

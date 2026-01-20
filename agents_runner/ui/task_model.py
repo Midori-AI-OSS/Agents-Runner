@@ -33,6 +33,7 @@ class Task:
     gh_branch: str = ""
     gh_pr_url: str = ""
     gh_pr_metadata_path: str = ""
+    gh_context_path: str = ""
     workspace_type: str = WORKSPACE_NONE
     git: dict[str, object] | None = None
     agent_cli: str = ""
