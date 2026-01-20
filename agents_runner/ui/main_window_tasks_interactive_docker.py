@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import shlex
 import socket
+import subprocess
 import tempfile
 from datetime import datetime
 from datetime import timezone
@@ -199,7 +200,7 @@ def launch_docker_terminal_task(
             f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
         )
 
-        # Build Docker command
+        # Build Docker command for detached launch
         docker_cmd = _build_docker_command(
             container_name=container_name,
             host_codex=host_codex,
@@ -213,6 +214,7 @@ def launch_docker_terminal_task(
             docker_env_passthrough=[],
             image=image,
             container_script=container_script,
+            detached=True,
         )
 
         # Prepare finish file for exit code tracking
@@ -251,12 +253,49 @@ def launch_docker_terminal_task(
             task.gh_base_branch = desired_base
             main_window._schedule_save()
 
-        # Build docker pull command
+        # Pull Docker image (app-side)
         docker_platform_args = docker_platform_args_for_pixelarch()
         docker_pull_parts = ["docker", "pull", *docker_platform_args, image]
-        docker_pull_cmd = " ".join(shlex.quote(part) for part in docker_pull_parts)
+        main_window._on_task_log(
+            task_id, format_log("docker", "pull", "INFO", f"pulling image {image}")
+        )
+        try:
+            subprocess.run(
+                docker_pull_parts,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as e:
+            error_msg = f"docker pull failed: {e.stderr.strip() if e.stderr else str(e)}"
+            _handle_launch_error(
+                main_window, task, tmp_paths, stain, spinner, error_msg
+            )
+            return
 
-        # Build host shell script
+        # Launch container detached (app-side)
+        main_window._on_task_log(
+            task_id, format_log("docker", "launch", "INFO", f"starting container {container_name}")
+        )
+        try:
+            subprocess.run(
+                docker_cmd,
+                shell=True,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as e:
+            error_msg = f"docker run failed: {e.stderr.strip() if e.stderr else str(e)}"
+            _handle_launch_error(
+                main_window, task, tmp_paths, stain, spinner, error_msg
+            )
+            return
+
+        # Store container name in task payload
+        task.container_id = container_name
+
+        # Build host shell script in attach mode
         host_script = _build_host_shell_script(
             container_name=container_name,
             task_token=task_token,
@@ -265,8 +304,7 @@ def launch_docker_terminal_task(
             gh_token_snippet="",
             rosetta_snippet=rosetta_snippet,
             gh_clone_snippet=gh_clone_snippet,
-            docker_pull_cmd=docker_pull_cmd,
-            docker_cmd=docker_cmd,
+            attach_mode=True,
         )
 
         # Log base branch if specified
@@ -587,6 +625,7 @@ def _build_docker_command(
     docker_env_passthrough: list[str],
     image: str,
     container_script: str,
+    detached: bool = False,
 ) -> str:
     """Build complete Docker run command string.
 
@@ -603,16 +642,22 @@ def _build_docker_command(
         docker_env_passthrough: Environment passthrough arguments
         image: Docker image name
         container_script: Container script to execute
+        detached: If True, use -dit (detached with interactive TTY); if False, use -it
 
     Returns:
         Complete Docker command string
     """
     docker_platform_args = docker_platform_args_for_pixelarch()
+    
+    # Choose flags based on detached mode
+    mode_flags = ["-dit"] if detached else ["-it"]
+    
     docker_args = [
         "docker",
         "run",
         *docker_platform_args,
-        "-it",
+        *mode_flags,
+        "--rm",
         "--name",
         container_name,
         "-v",
@@ -642,8 +687,7 @@ def _build_host_shell_script(
     gh_token_snippet: str,
     rosetta_snippet: str,
     gh_clone_snippet: str,
-    docker_pull_cmd: str,
-    docker_cmd: str,
+    attach_mode: bool = False,
 ) -> str:
     """Build host-side shell script with cleanup and error handling.
 
@@ -655,8 +699,7 @@ def _build_host_shell_script(
         gh_token_snippet: GH token setup snippet
         rosetta_snippet: Rosetta warning snippet
         gh_clone_snippet: Git clone/update snippet
-        docker_pull_cmd: Docker pull command
-        docker_cmd: Docker run command
+        attach_mode: If True, attach to existing container; if False, legacy mode (unused)
 
     Returns:
         Complete host shell script
@@ -669,7 +712,7 @@ def _build_host_shell_script(
         f"TMP_HELPME={shlex.quote(tmp_paths.get('helpme', ''))}",
         f"FINISH_FILE={shlex.quote(finish_path)}",
         'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
-        'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
+        'cleanup() { '
         + 'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; '
@@ -683,13 +726,13 @@ def _build_host_shell_script(
     if gh_clone_snippet:
         host_script_parts.append(gh_clone_snippet)
 
-    host_script_parts.extend(
-        [
-            f'{docker_pull_cmd} || {{ STATUS=$?; {shell_log_statement("host", "docker", "ERROR", "docker pull failed (exit $STATUS)")}; write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; }}',
-            f'{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then {shell_log_statement("host", "docker", "ERROR", "container command failed (exit $STATUS)")}; fi; write_finish "$STATUS"; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS',
-        ]
-    )
-
+    if attach_mode:
+        # Attach to existing detached container (app already launched it)
+        attach_cmd = f"docker attach {shlex.quote(container_name)}"
+        host_script_parts.append(
+            f'{attach_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then {shell_log_statement("host", "docker", "ERROR", "container attach failed (exit $STATUS)")}; fi; write_finish "$STATUS"; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS'
+        )
+    
     return " ; ".join(host_script_parts)
 
 
