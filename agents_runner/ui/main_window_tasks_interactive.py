@@ -282,6 +282,10 @@ class _MainWindowTasksInteractiveMixin:
         (interactive-exit.json) written by the container EXIT trap. The marker
         provides exit code and timing metadata from inside the container.
         
+        Additionally starts a docker wait process as a backup mechanism to capture
+        the container exit code. If the completion marker doesn't exist when docker
+        wait completes, the exit code from docker wait is used to create it.
+        
         Args:
             task_id: Task identifier
         """
@@ -296,6 +300,84 @@ class _MainWindowTasksInteractiveMixin:
 
         stop_event = threading.Event()
         self._interactive_watch[task_id] = (None, stop_event)
+
+        # Start docker wait backup thread
+        def _docker_wait_worker() -> None:
+            """Background worker that runs docker wait to capture exit code."""
+            try:
+                import subprocess
+                from agents_runner.artifacts import get_staging_dir
+                import json
+                from datetime import datetime, timezone
+                
+                # Get container name from task
+                task = self._get_task_by_id(task_id)
+                if not task or not task.container_id:
+                    print(f"[docker-wait] Cannot start: no container_id for task {task_id}")
+                    return
+                
+                container_name = task.container_id
+                print(f"[docker-wait] Starting docker wait for container: {container_name}")
+                
+                # Run docker wait - this blocks until container exits
+                result = subprocess.run(
+                    ["docker", "wait", container_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=None,  # No timeout, wait indefinitely
+                )
+                
+                if stop_event.is_set():
+                    return
+                
+                # Parse exit code from docker wait output
+                wait_exit_code = 0
+                try:
+                    wait_exit_code = int(result.stdout.strip())
+                    print(f"[docker-wait] Container exit code: {wait_exit_code}")
+                except ValueError:
+                    print(f"[docker-wait] Warning: could not parse exit code from: {result.stdout}")
+                
+                # Check if completion marker exists
+                staging_dir = get_staging_dir(task_id)
+                marker_path = staging_dir / "interactive-exit.json"
+                
+                if not marker_path.exists():
+                    # Marker doesn't exist - write it using docker wait exit code
+                    print(f"[docker-wait] Completion marker missing, creating it with exit code {wait_exit_code}")
+                    marker_data = {
+                        "task_id": task_id,
+                        "exit_code": wait_exit_code,
+                        "finished_at": datetime.now(tz=timezone.utc).isoformat(),
+                        "source": "docker-wait-backup",
+                    }
+                    try:
+                        with open(marker_path, "w", encoding="utf-8") as f:
+                            json.dump(marker_data, f, indent=2)
+                        print(f"[docker-wait] Completion marker written successfully")
+                    except Exception as exc:
+                        print(f"[docker-wait] Error writing completion marker: {exc}")
+                else:
+                    # Marker exists - validate it matches docker wait exit code
+                    try:
+                        with open(marker_path, "r", encoding="utf-8") as f:
+                            marker_data = json.load(f)
+                        marker_exit_code = marker_data.get("exit_code", 0)
+                        if marker_exit_code != wait_exit_code:
+                            print(f"[docker-wait] WARNING: Exit code mismatch! "
+                                  f"Marker reports {marker_exit_code}, docker wait reports {wait_exit_code}")
+                        else:
+                            print(f"[docker-wait] Exit codes match: {wait_exit_code}")
+                    except Exception as exc:
+                        print(f"[docker-wait] Error validating completion marker: {exc}")
+                
+            except subprocess.TimeoutExpired:
+                print(f"[docker-wait] docker wait timed out (should not happen)")
+            except Exception as exc:
+                print(f"[docker-wait] Error in docker wait worker: {exc}")
+        
+        # Start docker wait in background thread
+        threading.Thread(target=_docker_wait_worker, daemon=True).start()
 
         def _worker() -> None:
             # Wait for container-side JSON completion marker
