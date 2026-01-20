@@ -24,15 +24,24 @@ Teach restart recovery to check for the interactive completion marker and finali
 - Function: `_reconcile_tasks_after_restart` or helper function
 
 ## Acceptance Criteria
-- [ ] Recovery checks for completion marker file before docker inspect
-- [ ] Successfully parses marker JSON
-- [ ] Sets task status based on exit_code from marker
-- [ ] Sets task.finished_at from marker timestamp
-- [ ] Queues task for finalization if marker indicates completion
-- [ ] Handles missing marker gracefully (doesn't crash)
+- [x] Recovery checks for completion marker file before docker inspect
+- [x] Successfully parses marker JSON
+- [x] Sets task status based on exit_code from marker
+- [x] Sets task.finished_at from marker timestamp
+- [x] Queues task for finalization if marker indicates completion
+- [x] Handles missing marker gracefully (doesn't crash)
 
 ## Notes
 - Check for marker existence with `os.path.exists()`
 - Use `json.load()` to parse marker content
 - This fixes the bug where UI restart causes task to be stuck in "running/unknown"
 - Depends on task 001 (marker writing must be working)
+
+## Completion Notes
+- Added `_check_completion_marker()` static method to check for and parse marker file
+- Modified `_tick_recovery_task()` to check marker before docker inspect
+- Marker path: `~/.midoriai/agents-runner/artifacts/<task_id>/staging/interactive-exit.json`
+- Gracefully handles missing marker and JSON parse errors
+- Sets task status to "done" or "failed" based on exit code
+- Queues task for finalization with reason "recovery_tick_marker"
+- Committed in b293243
