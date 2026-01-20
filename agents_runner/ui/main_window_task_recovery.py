@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import threading
@@ -7,6 +8,7 @@ import time
 
 from datetime import datetime
 from datetime import timezone
+from pathlib import Path
 
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.environments import WORKSPACE_CLONED
@@ -18,6 +20,66 @@ from agents_runner.ui.utils import _stain_color
 
 
 class _MainWindowTaskRecoveryMixin:
+    @staticmethod
+    def _check_completion_marker(task: Task) -> bool:
+        """Check for interactive completion marker and update task if found.
+        
+        Returns True if marker was found and task was updated, False otherwise.
+        """
+        task_id = str(task.task_id or "").strip()
+        if not task_id:
+            return False
+        
+        marker_path = (
+            Path.home() / ".midoriai" / "agents-runner" / "artifacts" 
+            / task_id / "staging" / "interactive-exit.json"
+        )
+        
+        if not marker_path.exists():
+            return False
+        
+        try:
+            with open(marker_path, "r", encoding="utf-8") as f:
+                marker_data = json.load(f)
+        except Exception:
+            return False
+        
+        if not isinstance(marker_data, dict):
+            return False
+        
+        # Extract data from marker
+        exit_code = marker_data.get("exit_code")
+        finished_at_str = marker_data.get("finished_at")
+        
+        # Set exit code
+        if exit_code is not None:
+            try:
+                task.exit_code = int(exit_code)
+            except (ValueError, TypeError):
+                task.exit_code = 1
+        else:
+            task.exit_code = 1
+        
+        # Set status based on exit code
+        if task.exit_code == 0:
+            task.status = "done"
+        else:
+            task.status = "failed"
+        
+        # Set finished_at from marker
+        if finished_at_str:
+            try:
+                task.finished_at = datetime.fromisoformat(
+                    str(finished_at_str).replace("Z", "+00:00")
+                )
+            except Exception:
+                if task.finished_at is None:
+                    task.finished_at = datetime.now(tz=timezone.utc)
+        elif task.finished_at is None:
+            task.finished_at = datetime.now(tz=timezone.utc)
+        
+        return True
+
     def _reconcile_tasks_after_restart(self) -> None:
         for task in list(self._tasks.values()):
             if task.is_active():
@@ -33,6 +95,16 @@ class _MainWindowTaskRecoveryMixin:
     def _tick_recovery_task(self, task: Task) -> None:
         status_lower = (task.status or "").lower()
         if task.is_active() or status_lower == "unknown":
+            # For active/unknown tasks, first check for completion marker
+            marker_found = self._check_completion_marker(task)
+            if marker_found:
+                self._update_task_ui(task)
+                # Task completed, queue for finalization
+                if self._task_needs_finalization(task):
+                    self._queue_task_finalization(task.task_id, reason="recovery_tick_marker")
+                return
+            
+            # No marker found, try syncing with container state
             synced = self._try_sync_container_state(task)
             if synced:
                 self._update_task_ui(task)
