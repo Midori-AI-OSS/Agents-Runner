@@ -113,7 +113,7 @@ def build_git_clone_or_update_snippet(
             f'{shell_log_statement("host", "clone", "INFO", "repo already exists, skipping clone")}; '
             f"else {clone_cmd} || {{ "
             f'STATUS=$?; {shell_log_statement("host", "clone", "ERROR", "git clone failed (exit $STATUS)")}; '
-            f'write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; '
+            f'read -r -p "Press Enter to close..."; exit $STATUS; '
             f"}}; fi"
         )
         parts.append(clone_step)
