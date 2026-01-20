@@ -237,6 +237,7 @@ class _MainWindowTaskRecoveryMixin:
 
             if (
                 not pr_worker_ran
+                and reason != "recovery_tick"  # Skip cleanup during recovery
                 and task.workspace_type == WORKSPACE_CLONED
                 and str(task.environment_id or "").strip()
                 and str(task.task_id or "").strip()
