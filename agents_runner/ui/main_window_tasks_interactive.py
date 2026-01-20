@@ -308,6 +308,37 @@ class _MainWindowTasksInteractiveMixin:
                 except Exception:
                     time.sleep(0.2)
             
+            # Read and process completion marker from container
+            try:
+                from agents_runner.artifacts import get_staging_dir
+                import json
+                
+                staging_dir = get_staging_dir(task_id)
+                marker_path = staging_dir / "interactive-exit.json"
+                
+                if marker_path.exists():
+                    with open(marker_path, "r", encoding="utf-8") as f:
+                        marker_data = json.load(f)
+                    
+                    # Validate marker data
+                    if marker_data.get("task_id") == task_id:
+                        # Use container-reported exit code if available
+                        container_exit_code = marker_data.get("exit_code", exit_code)
+                        print(f"[marker] Container reported exit code: {container_exit_code}")
+                        print(f"[marker] Container started at: {marker_data.get('started_at')}")
+                        print(f"[marker] Container finished at: {marker_data.get('finished_at')}")
+                        
+                        # Use container exit code for task finalization
+                        exit_code = container_exit_code
+                    else:
+                        print(f"[marker] Warning: task_id mismatch in marker (expected {task_id}, got {marker_data.get('task_id')})")
+                else:
+                    print(f"[marker] Warning: completion marker not found at {marker_path}")
+            except json.JSONDecodeError as exc:
+                print(f"[marker] Error parsing completion marker JSON: {exc}")
+            except Exception as exc:
+                print(f"[marker] Error reading completion marker: {exc}")
+            
             # Encrypt finish file as artifact before deleting
             try:
                 from agents_runner.artifacts import encrypt_artifact
