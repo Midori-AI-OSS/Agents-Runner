@@ -85,6 +85,9 @@ class _MainWindowTaskRecoveryMixin:
             if task.is_active():
                 self._tick_recovery_task(task)
                 continue
+            # Skip finalization for interactive tasks
+            if task.is_interactive_run():
+                continue
             if self._task_needs_finalization(task):
                 self._queue_task_finalization(task.task_id, reason="startup_reconcile")
 
@@ -111,6 +114,10 @@ class _MainWindowTaskRecoveryMixin:
             if task.is_active():
                 self._ensure_recovery_log_tail(task)
                 return
+
+        # Skip finalization for interactive tasks
+        if task.is_interactive_run():
+            return
 
         if self._task_needs_finalization(task):
             self._queue_task_finalization(task.task_id, reason="recovery_tick")
