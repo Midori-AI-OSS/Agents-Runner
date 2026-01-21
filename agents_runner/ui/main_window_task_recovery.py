@@ -23,7 +23,7 @@ class _MainWindowTaskRecoveryMixin:
             if task.is_active():
                 self._tick_recovery_task(task)
                 continue
-            if self._task_needs_finalization(task):
+            if self._task_needs_finalization(task) and not task.is_interactive_run():
                 self._queue_task_finalization(task.task_id, reason="startup_reconcile")
 
     def _tick_recovery(self) -> None:
@@ -40,7 +40,7 @@ class _MainWindowTaskRecoveryMixin:
                 self._ensure_recovery_log_tail(task)
                 return
 
-        if self._task_needs_finalization(task):
+        if self._task_needs_finalization(task) and not task.is_interactive_run():
             self._queue_task_finalization(task.task_id, reason="recovery_tick")
 
     def _task_needs_finalization(self, task: Task) -> bool:
