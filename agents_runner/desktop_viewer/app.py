@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import webbrowser
 from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt
@@ -47,8 +48,9 @@ def run_desktop_viewer(args: list[str]) -> int:
     parsed = parser.parse_args(args[1:])  # Skip program name
     
     if QWebEngineView is None:
-        print("Error: QtWebEngine not available", file=sys.stderr)
-        return 1
+        print("Error: QtWebEngine not available, opening in browser", file=sys.stderr)
+        webbrowser.open(parsed.url)
+        return 0
     
     app = QApplication.instance()
     if app is None:
@@ -59,10 +61,14 @@ def run_desktop_viewer(args: list[str]) -> int:
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
     
-    window = DesktopViewerWindow(url=parsed.url, title=parsed.title)
-    window.show()
-    
-    return app.exec()
+    try:
+        window = DesktopViewerWindow(url=parsed.url, title=parsed.title)
+        window.show()
+        return app.exec()
+    except Exception as e:
+        print(f"Error: QtWebEngine crashed: {e}, opening in browser", file=sys.stderr)
+        webbrowser.open(parsed.url)
+        return 0
 
 
 class DesktopViewerWindow(QMainWindow):

@@ -34,6 +34,7 @@ from agents_runner.widgets import StatusGlyph
 
 import logging
 import sys
+import webbrowser
 
 logger = logging.getLogger(__name__)
 
@@ -413,7 +414,9 @@ class TaskDetailsPage(QWidget):
     def _on_viewer_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
         """Handle desktop viewer process exit."""
         if exit_status == QProcess.ExitStatus.CrashExit:
-            logger.warning(f"Desktop viewer crashed (exit code {exit_code})")
+            logger.warning(f"Desktop viewer crashed (exit code {exit_code}), opening in browser")
+            if self._desktop_viewer_url:
+                webbrowser.open(self._desktop_viewer_url)
         else:
             logger.info(f"Desktop viewer exited (exit code {exit_code})")
         
