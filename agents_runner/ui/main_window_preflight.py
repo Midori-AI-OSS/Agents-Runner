@@ -111,6 +111,7 @@ class _MainWindowPreflightMixin:
             host_codex_dir=host_codex,
             host_workdir=host_workdir,
             agent_cli=agent_cli,
+            environment_id=env.env_id if env else "",
             auto_remove=True,
             pull_before_run=True,
             settings_preflight_script=settings_preflight_script,
