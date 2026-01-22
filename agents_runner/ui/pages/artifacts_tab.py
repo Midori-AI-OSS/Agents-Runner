@@ -36,7 +36,7 @@ class ArtifactsTab(QWidget):
         self._temp_files: list[Path] = []
         self._mode: str = "encrypted"  # "staging" or "encrypted"
         self._file_watcher: ArtifactFileWatcher | None = None
-        self._refresh_timer = QTimer()
+        self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.timeout.connect(self._refresh_file_list)
         self._preview_loader: PreviewLoader | None = None
@@ -237,7 +237,7 @@ class ArtifactsTab(QWidget):
             staging_dir = get_staging_dir(self._current_task.task_id)
             if self._file_watcher:
                 self._file_watcher.stop()
-            self._file_watcher = ArtifactFileWatcher(staging_dir)
+            self._file_watcher = ArtifactFileWatcher(staging_dir, parent=self)
             self._file_watcher.files_changed.connect(self._on_files_changed)
             self._file_watcher.start()
         
