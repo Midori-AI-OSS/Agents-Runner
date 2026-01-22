@@ -250,7 +250,8 @@ class DashboardPage(QWidget):
         # Initialize animator after widgets are created
         self._past_animator = PastTaskAnimator(
             self._scroll_past,
-            lambda: self._rows_past
+            lambda: self._rows_past,
+            parent=self
         )
 
         # Initialize progressive loader

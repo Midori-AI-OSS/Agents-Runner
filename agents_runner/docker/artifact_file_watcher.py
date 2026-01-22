@@ -25,18 +25,19 @@ class ArtifactFileWatcher(QObject):
     
     files_changed = Signal()
     
-    def __init__(self, staging_dir: Path, debounce_ms: int = 500) -> None:
+    def __init__(self, staging_dir: Path, debounce_ms: int = 500, parent: QObject | None = None) -> None:
         """
         Initialize file watcher.
         
         Args:
             staging_dir: Path to staging directory to watch
             debounce_ms: Debounce delay in milliseconds (default 500ms)
+            parent: Parent QObject for proper Qt lifecycle and thread affinity
         """
-        super().__init__()
+        super().__init__(parent)
         self._staging_dir = staging_dir
-        self._watcher = QFileSystemWatcher()
-        self._debounce_timer = QTimer()
+        self._watcher = QFileSystemWatcher(self)
+        self._debounce_timer = QTimer(self)
         self._debounce_timer.setSingleShot(True)
         self._debounce_timer.timeout.connect(self._emit_change)
         self._debounce_ms = debounce_ms
