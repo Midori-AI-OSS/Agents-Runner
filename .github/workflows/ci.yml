@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    container:
+      image: lunamidori5/pixelarch:emerald
+    env:
+      HOME: /home/midori-ai
+      UV_CACHE_DIR: /home/midori-ai/.cache/uv
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/midori-ai/.cache/uv
+          key: ${{ runner.os }}-pixelarch-uv-${{ hashFiles('uv.lock') }}
+
+      - name: Sync
+        run: uv sync --frozen --group lint --group test
+
+      - name: Lint
+        run: uv run ruff check --select F .
+
+      - name: Tests
+        run: uv run pytest -q

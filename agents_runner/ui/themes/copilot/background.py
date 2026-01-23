@@ -19,6 +19,7 @@ from PySide6.QtGui import (
     QRadialGradient,
     QStaticText,
 )
+from PySide6.QtWidgets import QWidget
 
 
 @dataclass

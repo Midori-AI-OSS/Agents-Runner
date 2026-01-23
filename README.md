@@ -8,12 +8,14 @@ A GUI for running AI agents in Docker containers with workspace and GitHub manag
 uv run main.py
 ```
 
+Requires `docker` and `ffmpeg` installed on the host.
+
 ## Supported Agents
 
 - **OpenAI Codex** - [Install](https://github.com/openai/codex/blob/main/README.md)
 - **Claude Code** - [Install](https://code.claude.com/docs/en/overview) # May not be fully supported, open a issue if you run into bugs
-- **GitHub Copilot** - [Install](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) # May not be fully supported, open a issue if you run into bugs
-- **Google Gemini** - [Install](https://github.com/google-gemini/gemini-cli) # May not be fully supported, open a issue if you run into bugs
+- **GitHub Copilot** - [Install](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli)
+- **Google Gemini** - [Install](https://github.com/google-gemini/gemini-cli)
 
 ## Features
 
@@ -33,4 +35,4 @@ uv run main.py
 
 - **State**: `~/.midoriai/agents-runner/state.json`
 - **Environments**: `~/.midoriai/agents-runner/environment-*.json`
-- **Agent Config**: `~/.codex`, `~/.claude`, `~/.gemini` or `~/.copilot` → `/home/midori-ai/.{agent}` (override: `AGENTS_RUNNER_STATE_PATH`)
+- **Agent Config**: `~/.codex`, `~/.claude`, `~/.gemini` or `~/.copilot` → `/home/midori-ai/.{agent}`

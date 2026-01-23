@@ -130,7 +130,7 @@ def launch_docker_terminal_task(
         if forward_gh_token:
             gh_token = resolve_github_token()
             if gh_token:
-                env_args.extend([f"-e", f"GH_TOKEN={gh_token}", f"-e", f"GITHUB_TOKEN={gh_token}"])
+                env_args.extend(["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"])
 
         # Check if desktop mode is enabled
         desktop_enabled = (
