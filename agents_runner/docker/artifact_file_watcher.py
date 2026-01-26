@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Signal
+from PySide6.QtCore import QFileSystemWatcher, QObject, QTimer, Qt, Signal
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +42,10 @@ class ArtifactFileWatcher(QObject):
         self._debounce_timer.timeout.connect(self._emit_change)
         self._debounce_ms = debounce_ms
         
-        # Connect watcher signals
-        self._watcher.directoryChanged.connect(self._on_directory_changed)
-        self._watcher.fileChanged.connect(self._on_file_changed)
+        # Connect watcher signals with QueuedConnection to ensure timer operations
+        # always happen in the correct thread (main GUI thread)
+        self._watcher.directoryChanged.connect(self._on_directory_changed, Qt.QueuedConnection)
+        self._watcher.fileChanged.connect(self._on_file_changed, Qt.QueuedConnection)
     
     def start(self) -> None:
         """Start watching the staging directory."""
