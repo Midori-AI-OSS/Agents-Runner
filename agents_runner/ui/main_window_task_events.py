@@ -562,6 +562,9 @@ class _MainWindowTaskEventsMixin:
             )
             self._try_start_queued_tasks()
 
+            if (task.finalization_state or "").lower() == "done":
+                return
+
             task.finalization_state = "pending"
             task.finalization_error = ""
             self._schedule_save()
