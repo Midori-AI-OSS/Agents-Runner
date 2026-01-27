@@ -9,7 +9,6 @@ from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QMainWindow
-from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget

@@ -18,7 +18,6 @@ from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
-from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
@@ -92,7 +91,6 @@ class _MainWindowTasksInteractiveMixin:
 
         if env and os.path.isdir(host_workdir):
             try:
-                from agents_runner.midoriai_template import MidoriAITemplateDetection
                 from agents_runner.midoriai_template import scan_midoriai_agents_template
 
                 # Only update template detection if not already set
