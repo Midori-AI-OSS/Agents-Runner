@@ -556,16 +556,19 @@ class _MainWindowTaskEventsMixin:
             if user_stop is None:
                 QApplication.beep()
 
-            self._on_task_log(
-                task_id,
-                format_log("host", "finalize", "INFO", f"task marked complete: status={task.status} exit_code={task.exit_code}"),
-            )
-            self._try_start_queued_tasks()
+        self._on_task_log(
+            task_id,
+            format_log("host", "finalize", "INFO", f"task marked complete: status={task.status} exit_code={task.exit_code}"),
+        )
+        self._try_start_queued_tasks()
 
-            task.finalization_state = "pending"
-            task.finalization_error = ""
-            self._schedule_save()
-            self._queue_task_finalization(task_id, reason="task_done")
+        if (task.finalization_state or "").lower() == "done":
+            return
+
+        task.finalization_state = "pending"
+        task.finalization_error = ""
+        self._schedule_save()
+        self._queue_task_finalization(task_id, reason="task_done")
         finally:
             pass
 

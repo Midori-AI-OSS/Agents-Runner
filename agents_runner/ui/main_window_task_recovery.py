@@ -29,6 +29,10 @@ class _MainWindowTaskRecoveryMixin:
             self._tick_recovery_task(task)
 
     def _tick_recovery_task(self, task: Task) -> None:
+        # If finalization already completed, no work is needed.
+        if (task.finalization_state or "").lower() == "done":
+            return
+
         status_lower = (task.status or "").lower()
         if task.is_active() or status_lower == "unknown":
             synced = self._try_sync_container_state(task)
