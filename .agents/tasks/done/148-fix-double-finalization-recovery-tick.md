@@ -64,3 +64,23 @@ Recovery tick should only run during startup reconciliation (not continuously), 
 - [ ] Recovery reconciliation still works correctly on app restart
 - [ ] No duplicate finalization events in logs
 - [ ] Finalization state tracking prevents re-runs
+
+---
+## AUDITOR REVIEW FAILURE
+
+**Critical Syntax Error Found**
+
+The fix in `agents_runner/ui/main_window_task_events.py` contains a syntax error that prevents the code from running:
+- Lines 559-571 were incorrectly un-indented outside the `try` block (line 504)
+- This breaks the `try-finally` structure ending at line 572
+- Python compilation fails with: `SyntaxError: expected 'except' or 'finally' block`
+
+**Required Fix:**
+Lines 559-571 must be properly indented to be inside the `try` block. The guard check at line 565-566 is correct logic, but it needs to be indented along with the rest of the finalization code.
+
+**Logic Review:**
+The fix logic itself is sound:
+1. Adding a guard in `_tick_recovery_task()` to return early if `finalization_state == "done"` ✓
+2. Adding a guard in `_on_task_done()` to skip queuing finalization if already done ✓
+
+Both guards prevent double finalization, but the indentation error must be fixed first.
