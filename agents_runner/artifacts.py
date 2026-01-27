@@ -342,8 +342,40 @@ def collect_artifacts_from_container(
                         logger.warning(f"Failed to remove {file_path}: {file_error}")
                 
                 # Remove staging directory
-                artifacts_staging.rmdir()
-                logger.debug(f"Cleaned up staging directory: {artifacts_staging}")
+                try:
+                    artifacts_staging.rmdir()
+                except Exception as rmdir_error:
+                    # Investigation logging for #141: diagnose ENOTEMPTY/cleanup issues.
+                    # Keep best-effort and do not change behavior beyond extra logging.
+                    logger.error(f"Staging cleanup failed (rmdir): {rmdir_error}")
+                    try:
+                        for entry in sorted(artifacts_staging.iterdir(), key=lambda p: p.name):
+                            try:
+                                stat = entry.lstat()
+                                kind = (
+                                    "symlink"
+                                    if entry.is_symlink()
+                                    else "dir"
+                                    if entry.is_dir()
+                                    else "file"
+                                    if entry.is_file()
+                                    else "other"
+                                )
+                                logger.error(
+                                    "Staging leftover: "
+                                    f"path={entry} kind={kind} size={stat.st_size} "
+                                    f"mode={oct(stat.st_mode)} mtime={stat.st_mtime}"
+                                )
+                            except Exception as entry_error:
+                                logger.error(
+                                    f"Staging leftover: path={entry} (failed to stat: {entry_error})"
+                                )
+                    except Exception as list_error:
+                        logger.error(
+                            f"Staging cleanup failed while listing leftovers: {list_error}"
+                        )
+                else:
+                    logger.debug(f"Cleaned up staging directory: {artifacts_staging}")
         except Exception as cleanup_error:
             logger.error(f"Staging cleanup failed: {cleanup_error}")
     
