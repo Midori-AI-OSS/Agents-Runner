@@ -5,8 +5,6 @@ import subprocess
 import threading
 import time
 
-from datetime import datetime
-from datetime import timezone
 
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.environments import WORKSPACE_CLONED

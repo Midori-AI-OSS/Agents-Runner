@@ -8,7 +8,6 @@ import logging
 import os
 import shutil
 import time
-from pathlib import Path
 from typing import Callable
 
 from agents_runner.log_format import format_log

@@ -6,7 +6,6 @@ from dataclasses import field
 from datetime import datetime
 
 from agents_runner.environments import WORKSPACE_NONE
-from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.utils import _format_duration
 
