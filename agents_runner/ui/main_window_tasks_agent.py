@@ -210,7 +210,7 @@ class _MainWindowTasksAgentMixin:
                 fallback_agent_name=fallback_name,
             )
 
-            result = modal.exec()
+            modal.exec()
             action = modal.get_result()
 
             if action == CooldownAction.CANCEL:

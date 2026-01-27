@@ -8,7 +8,6 @@ from pathlib import Path
 from PySide6.QtCore import (
     QEasingCurve,
     QRect,
-    QRectF,
     Property,
     QPropertyAnimation,
     Qt,

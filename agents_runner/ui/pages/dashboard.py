@@ -15,11 +15,8 @@ from PySide6.QtWidgets import QFrame
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
-from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QScrollArea
-from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QStackedWidget
-from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QTabBar
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout

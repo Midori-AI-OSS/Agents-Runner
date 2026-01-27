@@ -22,3 +22,4 @@ test = [
 
 [tool.pytest.ini_options]
 testpaths = ["agents_runner/tests"]
+pythonpath = ["."]

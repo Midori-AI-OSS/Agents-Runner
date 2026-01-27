@@ -26,7 +26,6 @@ from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.gh_management import GhManagementError
 
 from agents_runner.docker.config import DockerRunnerConfig
-from agents_runner.docker.paths import _is_git_repo_root
 from agents_runner.docker.process import _has_image
 from agents_runner.docker.process import _has_platform_image
 from agents_runner.docker.process import _inspect_state
