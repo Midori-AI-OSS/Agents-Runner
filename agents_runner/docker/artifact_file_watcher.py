@@ -8,6 +8,7 @@ in the staging directory during task runtime.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import threading
 import traceback
@@ -29,6 +30,10 @@ def _debug_thread_context(label: str) -> str:
 
 def _emit_timer_thread_debug(message: str) -> None:
     # These are temporary investigation logs.
+    # Only enable when explicitly requested to avoid noisy output.
+    if not str(os.environ.get("AGENTS_RUNNER_TIMER_THREAD_DEBUG") or "").strip():
+        return
+
     # - Use stderr so they show up even if Python logging isn't configured.
     # - Also append to a file so we can find them even if stderr is noisy.
     print(message, file=sys.stderr, flush=True)
