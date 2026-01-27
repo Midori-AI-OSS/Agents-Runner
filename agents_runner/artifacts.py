@@ -11,6 +11,7 @@ import logging
 import mimetypes
 import multiprocessing
 import queue
+import shutil
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -330,54 +331,68 @@ def collect_artifacts_from_container(
         logger.error(f"Failed to collect artifacts from staging: {e}")
     
     finally:
-        # ALWAYS clean up staging directory, even if encryption failed
-        try:
-            if artifacts_staging.exists():
-                # Remove any remaining files
-                for file_path in artifacts_staging.iterdir():
+        # ALWAYS clean up staging directory, even if encryption failed.
+        # This is best-effort: log warnings, do not raise.
+        if not artifacts_staging.exists():
+            # Nothing to clean.
+            pass
+
+        # Robust recursive cleanup with retry/backoff to handle race conditions
+        # with any active file watchers.
+        delays_s = [0.0, 0.05, 0.1, 0.2, 0.4]
+        last_exc: Exception | None = None
+        for attempt, delay_s in enumerate(delays_s, start=1):
+            if delay_s:
+                time.sleep(delay_s)
+
+            if not artifacts_staging.exists():
+                last_exc = None
+                break
+
+            try:
+                shutil.rmtree(artifacts_staging)
+            except Exception as cleanup_exc:
+                last_exc = cleanup_exc
+                # Only warn on intermediate failures; log details on final failure below.
+                logger.warning(
+                    "Staging cleanup attempt %d/%d failed: %s",
+                    attempt,
+                    len(delays_s),
+                    cleanup_exc,
+                )
+            else:
+                logger.debug(f"Cleaned up staging directory: {artifacts_staging}")
+                last_exc = None
+                break
+
+        if last_exc is not None and artifacts_staging.exists():
+            logger.warning(f"Staging cleanup ultimately failed: {last_exc}")
+            try:
+                for entry in sorted(artifacts_staging.rglob("*"), key=lambda p: str(p)):
                     try:
-                        if file_path.is_file():
-                            file_path.unlink()
-                    except Exception as file_error:
-                        logger.warning(f"Failed to remove {file_path}: {file_error}")
-                
-                # Remove staging directory
-                try:
-                    artifacts_staging.rmdir()
-                except Exception as rmdir_error:
-                    # Investigation logging for #141: diagnose ENOTEMPTY/cleanup issues.
-                    # Keep best-effort and do not change behavior beyond extra logging.
-                    logger.error(f"Staging cleanup failed (rmdir): {rmdir_error}")
-                    try:
-                        for entry in sorted(artifacts_staging.iterdir(), key=lambda p: p.name):
-                            try:
-                                stat = entry.lstat()
-                                kind = (
-                                    "symlink"
-                                    if entry.is_symlink()
-                                    else "dir"
-                                    if entry.is_dir()
-                                    else "file"
-                                    if entry.is_file()
-                                    else "other"
-                                )
-                                logger.error(
-                                    "Staging leftover: "
-                                    f"path={entry} kind={kind} size={stat.st_size} "
-                                    f"mode={oct(stat.st_mode)} mtime={stat.st_mtime}"
-                                )
-                            except Exception as entry_error:
-                                logger.error(
-                                    f"Staging leftover: path={entry} (failed to stat: {entry_error})"
-                                )
-                    except Exception as list_error:
-                        logger.error(
-                            f"Staging cleanup failed while listing leftovers: {list_error}"
+                        stat = entry.lstat()
+                        kind = (
+                            "symlink"
+                            if entry.is_symlink()
+                            else "dir"
+                            if entry.is_dir()
+                            else "file"
+                            if entry.is_file()
+                            else "other"
                         )
-                else:
-                    logger.debug(f"Cleaned up staging directory: {artifacts_staging}")
-        except Exception as cleanup_error:
-            logger.error(f"Staging cleanup failed: {cleanup_error}")
+                        logger.warning(
+                            "Staging leftover: "
+                            f"path={entry} kind={kind} size={stat.st_size} "
+                            f"mode={oct(stat.st_mode)} mtime={stat.st_mtime}"
+                        )
+                    except Exception as entry_error:
+                        logger.warning(
+                            f"Staging leftover: path={entry} (failed to stat: {entry_error})"
+                        )
+            except Exception as list_error:
+                logger.warning(
+                    f"Staging cleanup failed while listing leftovers: {list_error}"
+                )
     
     return artifact_uuids
 
