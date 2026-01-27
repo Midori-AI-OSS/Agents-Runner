@@ -421,6 +421,7 @@ class DashboardPage(QWidget):
             for task_id in task_ids:
                 row = rows.pop(task_id, None)
                 if row is not None:
+                    row.cancel_entrance()
                     row.setParent(None)
                     row.deleteLater()
                 if self._selected_task_id == task_id:
