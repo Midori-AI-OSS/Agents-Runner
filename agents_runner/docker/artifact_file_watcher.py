@@ -28,9 +28,21 @@ def _debug_thread_context(label: str) -> str:
 
 
 def _emit_timer_thread_debug(message: str) -> None:
-    # These are temporary investigation logs. Use stderr so they show up even if
-    # Python logging isn't configured.
+    # These are temporary investigation logs.
+    # - Use stderr so they show up even if Python logging isn't configured.
+    # - Also append to a file so we can find them even if stderr is noisy.
     print(message, file=sys.stderr, flush=True)
+    try:
+        Path("/tmp/agents-artifacts").mkdir(parents=True, exist_ok=True)
+        with open(
+            "/tmp/agents-artifacts/141-01-timer-thread-debug.log",
+            "a",
+            encoding="utf-8",
+        ) as handle:
+            handle.write(message)
+            handle.write("\n")
+    except Exception:
+        pass
 
 
 class ArtifactFileWatcher(QObject):
