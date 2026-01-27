@@ -48,6 +48,10 @@ class _MainWindowPersistenceMixin:
         except Exception as exc:
             if _MainWindowPersistenceMixin._is_missing_container_error(exc):
                 status = (task.status or "").lower()
+                # Interactive tasks can briefly lack a container during launch; avoid
+                # marking them failed while they are still starting/running.
+                if task.is_interactive_run() and status in {"starting", "running", "created"}:
+                    return True
                 if status not in {"cancelled", "killed"}:
                     task.status = "failed"
                 if task.exit_code is None and task.status == "failed":
