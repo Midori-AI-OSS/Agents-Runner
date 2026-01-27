@@ -8,6 +8,7 @@ in the staging directory during task runtime.
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import traceback
 from pathlib import Path
@@ -24,6 +25,12 @@ def _debug_thread_context(label: str) -> str:
         f"{label}: py_thread={thread.name} ident={thread.ident} "
         f"stack=\n{stack}"
     )
+
+
+def _emit_timer_thread_debug(message: str) -> None:
+    # These are temporary investigation logs. Use stderr so they show up even if
+    # Python logging isn't configured.
+    print(message, file=sys.stderr, flush=True)
 
 
 class ArtifactFileWatcher(QObject):
@@ -46,12 +53,11 @@ class ArtifactFileWatcher(QObject):
             parent: Parent QObject for proper Qt lifecycle and thread affinity
         """
         super().__init__(parent)
-        logger.warning(
-            "[timer-thread-debug] %s qt_thread=%s qt_ptr=%s parent_qt_thread=%s",
-            _debug_thread_context("ArtifactFileWatcher.__init__"),
-            str(self.thread()),
-            hex(int(self.__hash__())),
-            str(parent.thread()) if parent is not None else None,
+        _emit_timer_thread_debug(
+            "[timer-thread-debug] "
+            f"{_debug_thread_context('ArtifactFileWatcher.__init__')} "
+            f"qt_thread={self.thread()} qt_thread_obj_name={self.thread().objectName()} "
+            f"parent_qt_thread={parent.thread() if parent is not None else None}"
         )
         self._staging_dir = staging_dir
         self._watcher = QFileSystemWatcher(self)
@@ -67,10 +73,10 @@ class ArtifactFileWatcher(QObject):
     
     def start(self) -> None:
         """Start watching the staging directory."""
-        logger.warning(
-            "[timer-thread-debug] %s qt_thread=%s",
-            _debug_thread_context("ArtifactFileWatcher.start"),
-            str(self.thread()),
+        _emit_timer_thread_debug(
+            "[timer-thread-debug] "
+            f"{_debug_thread_context('ArtifactFileWatcher.start')} "
+            f"qt_thread={self.thread()} qt_thread_obj_name={self.thread().objectName()}"
         )
         if not self._staging_dir.exists():
             logger.warning(f"Staging directory does not exist: {self._staging_dir}")
@@ -91,10 +97,10 @@ class ArtifactFileWatcher(QObject):
     
     def stop(self) -> None:
         """Stop watching."""
-        logger.warning(
-            "[timer-thread-debug] %s qt_thread=%s",
-            _debug_thread_context("ArtifactFileWatcher.stop"),
-            str(self.thread()),
+        _emit_timer_thread_debug(
+            "[timer-thread-debug] "
+            f"{_debug_thread_context('ArtifactFileWatcher.stop')} "
+            f"qt_thread={self.thread()} qt_thread_obj_name={self.thread().objectName()}"
         )
         self._debounce_timer.stop()
         
@@ -117,10 +123,10 @@ class ArtifactFileWatcher(QObject):
     
     def _schedule_emit(self) -> None:
         """Schedule debounced signal emission."""
-        logger.warning(
-            "[timer-thread-debug] %s qt_thread=%s",
-            _debug_thread_context("ArtifactFileWatcher._schedule_emit"),
-            str(self.thread()),
+        _emit_timer_thread_debug(
+            "[timer-thread-debug] "
+            f"{_debug_thread_context('ArtifactFileWatcher._schedule_emit')} "
+            f"qt_thread={self.thread()} qt_thread_obj_name={self.thread().objectName()}"
         )
         self._debounce_timer.start(self._debounce_ms)
     
