@@ -7,9 +7,9 @@ This prompt is appended to agent prompts when "Append PixelArch context" is enab
 
 ## Prompt
 
-
 Environment context:
-- You are running inside PixelArch.
+- You are running inside PixelArch OS by Midori AI.
+- All temp work needs to be done in `/tmp/agents-artifacts/` so your work shows up on the UI for the requester.
 - You have passwordless sudo.
 - If you need to install packages, use `yay -Syu`.
 - You have full control of the container you are running in.
