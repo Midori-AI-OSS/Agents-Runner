@@ -8,10 +8,6 @@ in the staging directory during task runtime.
 from __future__ import annotations
 
 import logging
-import os
-import sys
-import threading
-import traceback
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -27,37 +23,6 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
-
-
-def _debug_thread_context(label: str) -> str:
-    thread = threading.current_thread()
-    stack = "".join(traceback.format_stack(limit=30))
-    return (
-        f"{label}: py_thread={thread.name} ident={thread.ident} "
-        f"stack=\n{stack}"
-    )
-
-
-def _emit_timer_thread_debug(message: str) -> None:
-    # These are temporary investigation logs.
-    # Only enable when explicitly requested to avoid noisy output.
-    if not str(os.environ.get("AGENTS_RUNNER_TIMER_THREAD_DEBUG") or "").strip():
-        return
-
-    # - Use stderr so they show up even if Python logging isn't configured.
-    # - Also append to a file so we can find them even if stderr is noisy.
-    print(message, file=sys.stderr, flush=True)
-    try:
-        Path("/tmp/agents-artifacts").mkdir(parents=True, exist_ok=True)
-        with open(
-            "/tmp/agents-artifacts/141-01-timer-thread-debug.log",
-            "a",
-            encoding="utf-8",
-        ) as handle:
-            handle.write(message)
-            handle.write("\n")
-    except Exception:
-        pass
 
 
 class ArtifactFileWatcher(QObject):
@@ -117,12 +82,6 @@ class ArtifactFileWatcher(QObject):
             # Attach on the GUI thread so QObject parenting rules are respected.
             QMetaObject.invokeMethod(self, "_attach_parent", Qt.QueuedConnection)
 
-        _emit_timer_thread_debug(
-            "[timer-thread-debug] "
-            f"{_debug_thread_context('ArtifactFileWatcher.__init__')} "
-            f"qt_thread={self.thread()} qt_thread_obj_name={self.thread().objectName()} "
-            f"parent_qt_thread={parent.thread() if parent is not None else None}"
-        )
 
         self._staging_dir = staging_dir
         self._debounce_ms = debounce_ms
@@ -170,11 +129,6 @@ class ArtifactFileWatcher(QObject):
 
     @Slot()
     def _start_impl(self) -> None:
-        _emit_timer_thread_debug(
-            "[timer-thread-debug] "
-            f"{_debug_thread_context('ArtifactFileWatcher.start')} "
-            f"qt_thread={self.thread()} qt_thread_obj_name={self.thread().objectName()}"
-        )
         if not self._staging_dir.exists():
             logger.warning(f"Staging directory does not exist: {self._staging_dir}")
             return
@@ -208,11 +162,6 @@ class ArtifactFileWatcher(QObject):
 
     @Slot()
     def _stop_impl(self) -> None:
-        _emit_timer_thread_debug(
-            "[timer-thread-debug] "
-            f"{_debug_thread_context('ArtifactFileWatcher.stop')} "
-            f"qt_thread={self.thread()} qt_thread_obj_name={self.thread().objectName()}"
-        )
         self._init_qt_objects()
         if self._debounce_timer is None or self._watcher is None:
             return
@@ -239,11 +188,6 @@ class ArtifactFileWatcher(QObject):
     @Slot()
     def _schedule_emit(self) -> None:
         """Schedule debounced signal emission."""
-        _emit_timer_thread_debug(
-            "[timer-thread-debug] "
-            f"{_debug_thread_context('ArtifactFileWatcher._schedule_emit')} "
-            f"qt_thread={self.thread()} qt_thread_obj_name={self.thread().objectName()}"
-        )
 
         # Keep timer start/stop confined to the owning Qt thread.
         if QThread.currentThread() is not self.thread():
