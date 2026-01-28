@@ -7,8 +7,6 @@ import time
 from datetime import datetime
 from datetime import timezone
 
-from PySide6.QtCore import QMetaObject
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
@@ -92,11 +90,10 @@ class _MainWindowTaskEventsMixin:
 
             if bridge is not None:
                 try:
-                    QMetaObject.invokeMethod(
-                        bridge,
-                        "request_user_kill" if is_kill else "request_user_cancel",
-                        Qt.DirectConnection,
-                    )
+                    if is_kill:
+                        bridge.request_user_kill()
+                    else:
+                        bridge.request_user_cancel()
                 except Exception:
                     bridge = None
 
@@ -215,9 +212,7 @@ class _MainWindowTaskEventsMixin:
 
         if bridge is not None:
             try:
-                QMetaObject.invokeMethod(
-                    bridge, "request_user_cancel", Qt.DirectConnection
-                )
+                bridge.request_user_cancel()
             except Exception:
                 pass
         if thread is not None:

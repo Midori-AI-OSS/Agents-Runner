@@ -28,6 +28,7 @@ from agents_runner.setup.orchestrator import (
     mark_setup_complete,
     mark_setup_skipped,
 )
+from agents_runner.ui.dialogs.docker_validator import DockerValidator
 
 
 class FirstRunSetupDialog(QDialog):
@@ -48,6 +49,7 @@ class FirstRunSetupDialog(QDialog):
         self._agent_statuses: list[AgentStatus] = []
         self._checkboxes: dict[str, QCheckBox] = {}
         self._orchestrator: SetupOrchestrator | None = None
+        self._docker_validator: DockerValidator | None = None
 
         self._setup_ui()
         self._detect_agents()
@@ -104,6 +106,34 @@ class FirstRunSetupDialog(QDialog):
             "You can configure individual agents later in Settings → Agent CLI section."
         )
         layout.addWidget(instructions_label)
+
+        # Docker check section
+        docker_section = QWidget()
+        docker_layout = QVBoxLayout(docker_section)
+        docker_layout.setContentsMargins(0, 10, 0, 0)
+        docker_layout.setSpacing(6)
+
+        docker_title = QLabel("Docker Validation (Optional)")
+        docker_title.setStyleSheet("font-weight: 600;")
+        docker_layout.addWidget(docker_title)
+
+        docker_desc = QLabel(
+            "Verify Docker is working by pulling PixelArch and running a test container."
+        )
+        docker_desc.setWordWrap(True)
+        docker_desc.setStyleSheet("color: #666; font-size: 11px;")
+        docker_layout.addWidget(docker_desc)
+
+        self._docker_status_label = QLabel("")
+        self._docker_status_label.setWordWrap(True)
+        self._docker_status_label.setStyleSheet("font-size: 11px;")
+        docker_layout.addWidget(self._docker_status_label)
+
+        self._docker_check_button = QPushButton("Check Docker")
+        self._docker_check_button.clicked.connect(self._on_check_docker)
+        docker_layout.addWidget(self._docker_check_button)
+
+        layout.addWidget(docker_section)
 
         # Buttons
         button_layout = QHBoxLayout()
@@ -172,6 +202,26 @@ class FirstRunSetupDialog(QDialog):
             checkbox_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             checkbox_layout.setContentsMargins(0, 0, 0, 0)
             self._status_table.setCellWidget(row, 3, checkbox_widget)
+
+    def _on_check_docker(self) -> None:
+        """Handle Docker check button click."""
+        if self._docker_validator is None:
+            self._docker_validator = DockerValidator(self)
+        
+        # Update UI callback
+        def update_status(message: str, color: str) -> None:
+            self._docker_status_label.setText(message)
+            self._docker_status_label.setStyleSheet(f"color: {color}; font-size: 11px;")
+        
+        # Completion callback
+        def on_complete(success: bool) -> None:
+            self._docker_check_button.setEnabled(True)
+            if not success:
+                self._docker_check_button.setText("Try Again")
+        
+        self._docker_check_button.setEnabled(False)
+        self._docker_check_button.setText("Check Docker")
+        self._docker_validator.start_validation(update_status, on_complete)
 
     def _on_skip(self) -> None:
         """Handle skip button click."""

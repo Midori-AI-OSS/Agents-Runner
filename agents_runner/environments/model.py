@@ -95,6 +95,8 @@ class Environment:
     prompts: list[PromptConfig] = field(default_factory=list)
     prompts_unlocked: bool = False
     agent_selection: AgentSelection | None = None
+    use_cross_agents: bool = False
+    cross_agent_allowlist: list[str] = field(default_factory=list)
     midoriai_template_likelihood: float = 0.0
     midoriai_template_detected: bool = False
     midoriai_template_detected_path: str | None = None

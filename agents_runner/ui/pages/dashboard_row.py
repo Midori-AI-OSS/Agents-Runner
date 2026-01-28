@@ -27,6 +27,7 @@ from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QWidget
 
+from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import _task_display_status
 from agents_runner.ui.utils import _rgba
@@ -123,7 +124,7 @@ class TaskRow(QWidget):
 
         self._btn_discard = QToolButton()
         self._btn_discard.setObjectName("RowTrash")
-        self._btn_discard.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
+        self._btn_discard.setIcon(lucide_icon("trash-2"))
         self._btn_discard.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_discard.setToolTip("Discard task")
         self._btn_discard.setCursor(Qt.PointingHandCursor)

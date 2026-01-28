@@ -30,6 +30,74 @@ def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) 
         i += 1
 
 
+def _validate_cross_agent_allowlist(
+    raw_allowlist: Any, agents: list[AgentInstance]
+) -> list[str]:
+    """Validate and sanitize cross-agent allowlist.
+    
+    Validation rules:
+    1. Coerce to list[str], strip empties, de-dupe
+    2. If agents list is empty, return empty list
+    3. Filter unknown agent_ids (must exist in agents list)
+    4. Enforce max 1 allowlisted per agent_cli (keep first occurrence)
+    
+    Args:
+        raw_allowlist: Raw allowlist data from JSON
+        agents: List of AgentInstance objects
+    
+    Returns:
+        Validated list of agent_ids
+    """
+    # Coerce to list[str]
+    if not isinstance(raw_allowlist, list):
+        return []
+    
+    allowlist = [str(item).strip() for item in raw_allowlist if str(item).strip()]
+    
+    # If no agents configured, return empty list
+    if not agents:
+        return []
+    
+    # Build lookups for validation
+    known_ids = {a.agent_id for a in agents}
+    cli_to_id: dict[str, str] = {}  # Normalized CLI -> first matching agent_id
+    for a in agents:
+        normalized_cli = a.agent_cli.strip().lower()
+        if normalized_cli not in cli_to_id:
+            cli_to_id[normalized_cli] = a.agent_id
+    
+    # Filter and deduplicate
+    seen_ids: set[str] = set()
+    seen_clis: set[str] = set()
+    validated: list[str] = []
+    
+    for agent_id in allowlist:
+        # Skip if not in known agents
+        if agent_id not in known_ids:
+            continue
+        
+        # Skip if already added
+        if agent_id in seen_ids:
+            continue
+        
+        # Find the agent and check CLI uniqueness
+        agent = next((a for a in agents if a.agent_id == agent_id), None)
+        if not agent:
+            continue
+        
+        normalized_cli = agent.agent_cli.strip().lower()
+        
+        # Enforce max 1 per CLI (keep first occurrence)
+        if normalized_cli in seen_clis:
+            continue
+        
+        validated.append(agent_id)
+        seen_ids.add(agent_id)
+        seen_clis.add(normalized_cli)
+    
+    return validated
+
+
 def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
     """Serialize prompts, managing external files.
     
@@ -207,11 +275,11 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
     agent_selection_data = payload.get("agent_selection")
     agent_selection = None
+    agents: list[AgentInstance] = []
     if isinstance(agent_selection_data, dict):
         selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
 
         agents_payload = agent_selection_data.get("agents")
-        agents: list[AgentInstance] = []
         seen_ids: set[str] = set()
 
         if isinstance(agents_payload, list):
@@ -306,6 +374,13 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
                 agent_fallbacks=cleaned_fallbacks,
             )
 
+    # Cross-agent delegation settings
+    use_cross_agents = bool(payload.get("use_cross_agents", False))
+    cross_agent_allowlist_raw = payload.get("cross_agent_allowlist", [])
+    cross_agent_allowlist = _validate_cross_agent_allowlist(
+        cross_agent_allowlist_raw, agents
+    )
+
     return Environment(
         env_id=env_id,
         name=name or env_id,
@@ -331,6 +406,8 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         prompts=prompts,
         prompts_unlocked=prompts_unlocked,
         agent_selection=agent_selection,
+        use_cross_agents=use_cross_agents,
+        cross_agent_allowlist=cross_agent_allowlist,
         midoriai_template_likelihood=midoriai_template_likelihood,
         midoriai_template_detected=midoriai_template_detected,
         midoriai_template_detected_path=midoriai_template_detected_path,
@@ -339,7 +416,10 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
 def serialize_environment(env: Environment) -> dict[str, Any]:
     selection_payload: dict[str, Any] | None = None
+    agents_list_for_validation: list[AgentInstance] = []
+    
     if env.agent_selection and env.agent_selection.agents:
+        agents_list_for_validation = env.agent_selection.agents
         agents_list = [
             {
                 "agent_id": a.agent_id,
@@ -370,6 +450,11 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
             "agent_config_dirs": legacy_config_dirs,
             "agent_fallbacks": dict(env.agent_selection.agent_fallbacks),
         }
+
+    # Validate cross-agent allowlist before serializing
+    validated_allowlist = _validate_cross_agent_allowlist(
+        env.cross_agent_allowlist, agents_list_for_validation
+    )
 
     return {
         "version": ENVIRONMENT_VERSION,
@@ -418,4 +503,6 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "prompts": _serialize_prompts(env.prompts or []),
         "prompts_unlocked": bool(env.prompts_unlocked),
         "agent_selection": selection_payload,
+        "use_cross_agents": bool(getattr(env, "use_cross_agents", False)),
+        "cross_agent_allowlist": validated_allowlist,
     }

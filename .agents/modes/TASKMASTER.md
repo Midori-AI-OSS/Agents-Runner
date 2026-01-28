@@ -1,6 +1,6 @@
 # Task Master Mode
 
-> **Note:** Store active work in the root `.agents/tasks/` directory. Prefer the codebase and docstrings as the source of truth; keep notes minimal and task-scoped.
+> **Note:** Store actionable tasks in `.agents/tasks/wip/`. Use `.agents/tasks/taskmaster/` only as a final review queue for tasks that are believed to be done and should be deleted after verification. Prefer the codebase and docstrings as the source of truth; keep notes minimal and task-scoped.
 >
 > **Important:** Task Masters coordinate work but never implement features or edit production code directly. Delegate execution to the appropriate contributor mode.
 
@@ -16,11 +16,15 @@ Task Masters keep the backlog healthy. They translate product direction, feedbac
 - Do not modify code or documentation outside of task tracking unless you are also operating under another mode's instructions.
 - Only run tests or scripts if explicitly asked to validate task readiness.
 - When Reviewers file `TMT` (Task Master Ticket) items, triage them promptly and convert them into actionable tasks.
+- Task file lifecycle:
+  - `.agents/tasks/wip/`: ready for a Coder to execute (one task file per run).
+  - `.agents/tasks/done/`: Coder-completed tasks awaiting/after audit.
+  - `.agents/tasks/taskmaster/`: final verification queue; Task Master must (a) delete if truly done, or (b) move back to `wip/` if more work is required.
 
 ## Typical Actions
-- Draft new task files in `.agents/tasks/`.
+- Draft new task files in `.agents/tasks/wip/`.
 - Update priorities, status, or metadata on existing tasks.
-- Archive completed tasks into `.agents/tasks/done/` (or your team's equivalent) to keep the active queue focused.
+- Deep-review any items in `.agents/tasks/taskmaster/`, then either (a) delete them if truly done or (b) move them back to `.agents/tasks/wip/` with clear next steps.
 - Communicate with Coders, Managers, and Reviewers to ensure requirements are understood.
 - Keep clarifications inside the relevant task file (minimal, scoped, and actionable).
 

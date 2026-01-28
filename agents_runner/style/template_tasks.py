@@ -117,7 +117,7 @@ TEMPLATE_TASKS = """    QWidget#TaskList {
         border-top-left-radius: 0px;
         border-top-right-radius: 0px;
         padding: 8px 12px;
-        margin-right: 6px;
+        margin-right: 0px;
         font-weight: 650;
     }
 
@@ -142,6 +142,12 @@ TEMPLATE_TASKS = """    QWidget#TaskList {
             stop: 1 rgba(18, 20, 28, 80)
         );
         border: 1px solid rgba(16, 185, 129, 170);
+    }
+
+    QWidget#DashboardScrim {
+        background-color: rgba(0, 0, 0, 65);
+        border: 1px solid rgba(255, 255, 255, 12);
+        border-radius: 0px;
     }
 
     QWidget#TaskRow[stain="slate"]:hover,

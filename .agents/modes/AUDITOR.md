@@ -14,6 +14,10 @@ Auditors perform comprehensive reviews of code, documentation, and process healt
 - Examine security, performance, maintainability, and architectural concerns.
 - Check for recurring issues or unresolved feedback from prior reviews.
 - Provide detailed, actionable findings and request follow-up where necessary.
+- Task file lifecycle (when tasks are tracked in `.agents/tasks/`):
+  - Audit tasks in `.agents/tasks/done/` after a Coder moves them there.
+  - If changes are required, move the task file back to `.agents/tasks/wip/` with a short note describing what’s missing.
+  - If acceptable, move the task file from `.agents/tasks/done/` to `.agents/tasks/taskmaster/` for final verification and deletion.
 
 ## Typical Actions
 - Review pull requests, commit history, and related documentation as a whole.

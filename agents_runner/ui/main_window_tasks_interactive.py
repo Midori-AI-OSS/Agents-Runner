@@ -200,6 +200,16 @@ class _MainWindowTasksInteractiveMixin:
         container_name = f"codex-gui-it-{task_id}"
         container_agent_dir = container_config_dir(agent_cli)
         config_extra_mounts = additional_config_mounts(agent_cli, host_codex)
+        
+        # Add cross-agent config mounts if enabled
+        cross_agent_mounts = self._compute_cross_agent_config_mounts(
+            env=env,
+            primary_agent_cli=agent_cli,
+            primary_config_dir=host_codex,
+            settings=self._settings_data,
+        )
+        config_extra_mounts.extend(cross_agent_mounts)
+        
         container_workdir = "/home/midori-ai/workspace"
 
         task = Task(

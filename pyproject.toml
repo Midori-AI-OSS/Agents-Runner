@@ -3,7 +3,7 @@ name = "agents-runner"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = "==3.13.11"
 dependencies = [
     "cryptography>=46.0.3",
     "faster-whisper>=1.2.1",
