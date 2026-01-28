@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QEvent, Qt, QTimer
@@ -26,6 +28,25 @@ from agents_runner.widgets.glass_card import GlassCard
 from agents_runner.widgets.artifact_highlighter import ArtifactSyntaxHighlighter
 
 logger = logging.getLogger(__name__)
+
+
+def _emit_watcher_lifecycle_debug(message: str) -> None:
+    if not str(os.environ.get("AGENTS_RUNNER_WATCHER_LIFECYCLE_DEBUG") or "").strip():
+        return
+
+    print(message, file=sys.stderr, flush=True)
+    try:
+        Path("/tmp/agents-artifacts").mkdir(parents=True, exist_ok=True)
+        with open(
+            "/tmp/agents-artifacts/141-05-watcher-lifecycle.log",
+            "a",
+            encoding="utf-8",
+        ) as handle:
+            handle.write(message)
+            handle.write("\n")
+    except Exception:
+        # Best-effort debug output.
+        pass
 
 
 class ArtifactsTab(QWidget):
@@ -224,6 +245,21 @@ class ArtifactsTab(QWidget):
             if expected > 0 and len(self._artifacts) != expected:
                 QTimer.singleShot(0, self._refresh_file_list)
     
+    def _stop_file_watcher(self, *, reason: str) -> None:
+        watcher = self._file_watcher
+        if watcher is None:
+            return
+
+        task_id = str(self._current_task.task_id) if self._current_task else ""
+        _emit_watcher_lifecycle_debug(
+            "[watcher-lifecycle] "
+            f"stop reason={reason} task_id={task_id} mode={self._mode}"
+        )
+        try:
+            watcher.stop()
+        finally:
+            self._file_watcher = None
+
     def _switch_to_staging_mode(self) -> None:
         """Switch to staging (live) mode."""
         self._mode = "staging"
@@ -231,16 +267,24 @@ class ArtifactsTab(QWidget):
         self._mode_label.setStyleSheet(
             "color: rgba(100, 255, 100, 200); font-weight: 600; font-size: 11px;"
         )
-        
+
         # Start file watcher
         if self._current_task:
             staging_dir = get_staging_dir(self._current_task.task_id)
             if self._file_watcher:
-                self._file_watcher.stop()
+                self._stop_file_watcher(reason="switch_to_staging_mode")
+            _emit_watcher_lifecycle_debug(
+                "[watcher-lifecycle] "
+                f"create task_id={self._current_task.task_id} staging_dir={staging_dir}"
+            )
             self._file_watcher = ArtifactFileWatcher(staging_dir, parent=self)
             self._file_watcher.files_changed.connect(self._on_files_changed)
             self._file_watcher.start()
-        
+            _emit_watcher_lifecycle_debug(
+                "[watcher-lifecycle] "
+                f"started task_id={self._current_task.task_id} staging_dir={staging_dir}"
+            )
+
         # Load staging artifacts
         self._refresh_file_list()
     
@@ -252,8 +296,7 @@ class ArtifactsTab(QWidget):
         
         # Stop file watcher
         if self._file_watcher:
-            self._file_watcher.stop()
-            self._file_watcher = None
+            self._stop_file_watcher(reason="switch_to_encrypted_mode")
         
         # Load encrypted artifacts
         if self._current_task:
@@ -491,5 +534,4 @@ class ArtifactsTab(QWidget):
             self._preview_loader.cleanup_temp_files()
         # Stop file watcher when tab is hidden
         if self._file_watcher:
-            self._file_watcher.stop()
-            self._file_watcher = None
+            self._stop_file_watcher(reason="hideEvent")
