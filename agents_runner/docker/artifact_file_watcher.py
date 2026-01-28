@@ -82,7 +82,6 @@ class ArtifactFileWatcher(QObject):
             # Attach on the GUI thread so QObject parenting rules are respected.
             QMetaObject.invokeMethod(self, "_attach_parent", Qt.QueuedConnection)
 
-
         self._staging_dir = staging_dir
         self._debounce_ms = debounce_ms
         self._watcher: QFileSystemWatcher | None = None
@@ -162,7 +161,8 @@ class ArtifactFileWatcher(QObject):
 
     @Slot()
     def _stop_impl(self) -> None:
-        self._init_qt_objects()
+        # Check if objects were ever initialized before trying to stop them.
+        # Don't call _init_qt_objects() here as that would create objects during shutdown.
         if self._debounce_timer is None or self._watcher is None:
             return
 
@@ -189,15 +189,22 @@ class ArtifactFileWatcher(QObject):
     def _schedule_emit(self) -> None:
         """Schedule debounced signal emission."""
 
-        # Keep timer start/stop confined to the owning Qt thread.
-        if QThread.currentThread() is not self.thread():
-            QMetaObject.invokeMethod(self, "_schedule_emit", Qt.QueuedConnection)
-            return
+        # If the debounce timer has not been created yet (e.g. before start
+        # or while shutting down), initialize Qt objects from the owning thread.
+        if self._debounce_timer is None:
+            if QThread.currentThread() is not self.thread():
+                QMetaObject.invokeMethod(self, "_schedule_emit", Qt.QueuedConnection)
+                return
 
-        if self._debounce_timer is None:
             self._init_qt_objects()
-        if self._debounce_timer is None:
-            return
+            if self._debounce_timer is None:
+                # Initialization failed or the watcher is being destroyed.
+                return
+        else:
+            # Keep timer start/stop confined to the owning Qt thread.
+            if QThread.currentThread() is not self.thread():
+                QMetaObject.invokeMethod(self, "_schedule_emit", Qt.QueuedConnection)
+                return
 
         self._debounce_timer.start(self._debounce_ms)
     

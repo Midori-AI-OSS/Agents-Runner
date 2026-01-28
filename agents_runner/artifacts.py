@@ -333,9 +333,6 @@ def collect_artifacts_from_container(
     finally:
         # ALWAYS clean up staging directory, even if encryption failed.
         # This is best-effort: log warnings, do not raise.
-        if not artifacts_staging.exists():
-            # Nothing to clean.
-            pass
 
         # Robust recursive cleanup with retry/backoff to handle race conditions
         # with any active file watchers.
@@ -368,7 +365,7 @@ def collect_artifacts_from_container(
         if last_exc is not None and artifacts_staging.exists():
             logger.warning(f"Staging cleanup ultimately failed: {last_exc}")
             try:
-                for entry in sorted(artifacts_staging.rglob("*"), key=lambda p: str(p)):
+                for entry in sorted(artifacts_staging.rglob("*"), key=str):
                     try:
                         stat = entry.lstat()
                         kind = (
