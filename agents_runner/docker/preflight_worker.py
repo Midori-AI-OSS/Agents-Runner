@@ -216,7 +216,7 @@ class DockerPreflightWorker:
                         "Midori AI Agents Template detected (preflight)",
                     )
                 )
-            container_name = f"codex-preflight-{uuid.uuid4().hex[:10]}"
+            container_name = f"agents-runner-preflight-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
             settings_container_path = (
                 self._config.container_settings_preflight_path.replace(

@@ -43,7 +43,6 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
             Number,
             Operator,
             String,
-            Text,
             Generic,
             Literal,
         )

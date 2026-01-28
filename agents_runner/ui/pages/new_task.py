@@ -20,7 +20,6 @@ from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
-from PySide6.QtWidgets import QStyle
 
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED

@@ -16,7 +16,6 @@ from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSplitter
 from PySide6.QtWidgets import QStackedWidget
-from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout

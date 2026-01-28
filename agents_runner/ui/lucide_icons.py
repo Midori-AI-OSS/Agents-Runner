@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, Qt
-from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
 from agents_runner.style.palette import TEXT_PRIMARY

@@ -23,7 +23,6 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QSizePolicy
-from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QWidget
 

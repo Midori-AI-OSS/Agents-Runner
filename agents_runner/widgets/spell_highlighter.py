@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QSyntaxHighlighter
 from PySide6.QtGui import QTextCharFormat
 from PySide6.QtGui import QColor

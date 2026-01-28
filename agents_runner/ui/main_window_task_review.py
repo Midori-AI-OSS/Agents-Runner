@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import threading
+import webbrowser
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
@@ -34,8 +35,11 @@ class _MainWindowTaskReviewMixin:
         # Handle existing PR URL
         pr_url = str(task.gh_pr_url or "").strip()
         if pr_url.startswith("http"):
-            if not QDesktopServices.openUrl(QUrl(pr_url)):
-                QMessageBox.warning(self, "Failed to open PR", pr_url)
+            try:
+                if not QDesktopServices.openUrl(QUrl(pr_url)):
+                    webbrowser.open(pr_url)
+            except Exception:
+                webbrowser.open(pr_url)
             return
 
         # Get repo root and branch, setting defaults for non-GitHub modes

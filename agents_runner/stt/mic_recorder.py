@@ -71,7 +71,7 @@ class FfmpegPulseRecorder:
         if recording.process.poll() is None:
             try:
                 recording.process.send_signal(signal.SIGINT)
-            except Exception as exc:
+            except Exception:
                 recording.process.terminate()
 
         try:

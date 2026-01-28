@@ -42,6 +42,8 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         task.finished_at = datetime.now(tz=timezone.utc)
         task.status = "done" if (task.exit_code or 0) == 0 else "failed"
         task.git = derive_task_git_metadata(task)
+        task.finalization_state = "done"
+        task.finalization_error = ""
 
         # Validate git metadata for cloned repo tasks
         if task.requires_git_metadata():

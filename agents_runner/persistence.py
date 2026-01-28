@@ -309,6 +309,7 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "gh_branch": getattr(task, "gh_branch", ""),
         "gh_pr_url": getattr(task, "gh_pr_url", ""),
         "gh_pr_metadata_path": getattr(task, "gh_pr_metadata_path", ""),
+        "gh_context_path": getattr(task, "gh_context_path", ""),
         "git": git_payload,
         "agent_cli": getattr(task, "agent_cli", ""),
         "agent_instance_id": getattr(task, "agent_instance_id", ""),
@@ -320,6 +321,8 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "desktop_display": getattr(task, "desktop_display", ""),
         "artifacts": list(getattr(task, "artifacts", [])),
         "attempt_history": list(getattr(task, "attempt_history", [])),
+        "finalization_state": str(getattr(task, "finalization_state", "pending") or "pending"),
+        "finalization_error": str(getattr(task, "finalization_error", "") or ""),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
         "logs": list(task.logs[-2000:]),
@@ -368,6 +371,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         gh_branch=str(data.get("gh_branch") or ""),
         gh_pr_url=str(data.get("gh_pr_url") or ""),
         gh_pr_metadata_path=str(data.get("gh_pr_metadata_path") or ""),
+        gh_context_path=str(data.get("gh_context_path") or ""),
         git=git_payload,
         agent_cli=str(data.get("agent_cli") or ""),
         agent_instance_id=str(data.get("agent_instance_id") or ""),
@@ -378,6 +382,8 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         desktop_display=str(data.get("desktop_display") or ""),
         artifacts=list(data.get("artifacts") or []),
         attempt_history=list(data.get("attempt_history") or []),
+        finalization_state=str(data.get("finalization_state") or "pending"),
+        finalization_error=str(data.get("finalization_error") or ""),
         logs=list(data.get("logs") or []),
     )
     runner_prompt = data.get("runner_prompt")

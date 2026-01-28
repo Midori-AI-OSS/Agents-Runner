@@ -129,7 +129,7 @@ class LogHighlighter(QSyntaxHighlighter):
         canonical_match = self.CANONICAL_LOG_RE.match(text)
         if canonical_match:
             scope = canonical_match.group(1).strip()
-            subscope = canonical_match.group(2).strip()
+            _ = canonical_match.group(2).strip()  # subscope unused
             level = canonical_match.group(3).strip()
             message = canonical_match.group(4)
 

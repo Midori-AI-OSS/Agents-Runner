@@ -14,10 +14,8 @@ import subprocess
 import tempfile
 
 from datetime import datetime
-from pathlib import Path
 from typing import Callable
 
-from agents_runner.setup.agent_status import detect_all_agents, AgentStatus
 from agents_runner.setup.commands import get_setup_command
 from agents_runner.terminal_apps import (
     detect_terminal_options,

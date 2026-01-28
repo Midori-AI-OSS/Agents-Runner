@@ -55,6 +55,41 @@ def github_context_host_path(data_dir: str, task_id: str) -> str:
     return os.path.join(root, "github-context", f"github-context-{task_token}.json")
 
 
+def pr_metadata_container_path(task_id: str) -> str:
+    """Container path for editable PR title/body only."""
+    task_token = _safe_task_token(task_id)
+    return f"/tmp/codex-pr-metadata-{task_token}.json"
+
+
+def pr_metadata_host_path(data_dir: str, task_id: str) -> str:
+    """Host path for editable PR title/body only."""
+    task_token = _safe_task_token(task_id)
+    root = os.path.abspath(os.path.expanduser(str(data_dir or "").strip() or "."))
+    return os.path.join(root, "pr-metadata", f"pr-metadata-{task_token}.json")
+
+
+def ensure_pr_metadata_file(path: str, *, task_id: str) -> None:
+    """Create a PR metadata file containing only title/body."""
+    path = os.path.abspath(os.path.expanduser(str(path or "").strip()))
+    if not path:
+        raise ValueError("missing PR metadata path")
+
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    payload: dict[str, str] = {
+        "title": "",
+        "body": "",
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
+        f.write("\n")
+
+    # Container-compatible permissions: allow container user (different UID) to write.
+    try:
+        os.chmod(path, 0o666)
+    except OSError:
+        pass
+
+
 def ensure_github_context_file(
     path: str,
     *,
@@ -234,14 +269,33 @@ def normalize_pr_title(title: str, *, fallback: str) -> str:
     return candidate
 
 
-def github_context_prompt_instructions(container_path: str) -> str:
-    """Generate v2 prompt instructions with GitHub context."""
-    container_path = str(container_path or "").strip()
-    if not container_path:
-        container_path = "/tmp/github-context.json"
+def github_context_prompt_instructions(
+    *,
+    repo_url: str,
+    repo_owner: str,
+    repo_name: str,
+    base_branch: str,
+    task_branch: str,
+    head_commit: str,
+) -> str:
+    """Generate read-only GitHub context prompt instructions."""
     return load_prompt(
         "github_context",
-        GITHUB_CONTEXT_FILE=container_path,
+        REPO_URL=str(repo_url or "").strip() or "(unknown)",
+        REPO_OWNER=str(repo_owner or "").strip() or "(unknown)",
+        REPO_NAME=str(repo_name or "").strip() or "(unknown)",
+        BASE_BRANCH=str(base_branch or "").strip() or "(unknown)",
+        TASK_BRANCH=str(task_branch or "").strip() or "(unknown)",
+        HEAD_COMMIT=str(head_commit or "").strip() or "(unknown)",
+    )
+
+
+def pr_metadata_prompt_instructions(container_path: str) -> str:
+    """Generate prompt instructions for editable PR title/body JSON."""
+    container_path = str(container_path or "").strip() or "/tmp/codex-pr-metadata.json"
+    return load_prompt(
+        "pr_metadata",
+        PR_METADATA_FILE=container_path,
     )
 
 

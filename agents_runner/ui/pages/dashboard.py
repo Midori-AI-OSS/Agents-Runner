@@ -15,11 +15,8 @@ from PySide6.QtWidgets import QFrame
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
-from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QScrollArea
-from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QStackedWidget
-from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QTabBar
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -250,7 +247,8 @@ class DashboardPage(QWidget):
         # Initialize animator after widgets are created
         self._past_animator = PastTaskAnimator(
             self._scroll_past,
-            lambda: self._rows_past
+            lambda: self._rows_past,
+            parent=self
         )
 
         # Initialize progressive loader
@@ -423,6 +421,7 @@ class DashboardPage(QWidget):
             for task_id in task_ids:
                 row = rows.pop(task_id, None)
                 if row is not None:
+                    row.cancel_entrance()
                     row.setParent(None)
                     row.deleteLater()
                 if self._selected_task_id == task_id:

@@ -5,7 +5,6 @@ Dialog for testing agent chain availability without leaking secrets.
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialog

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import Any
 
 
 def validate_pr_prerequisites(

@@ -14,7 +14,6 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.setup.agent_status import AgentStatus
-from agents_runner.setup.agent_status import StatusType
 
 
 class AgentStatusIndicator(QWidget):

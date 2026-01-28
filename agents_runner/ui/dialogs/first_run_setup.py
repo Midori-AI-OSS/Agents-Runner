@@ -7,7 +7,7 @@ in a sequential flow.
 
 import asyncio
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,

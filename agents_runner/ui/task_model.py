@@ -6,7 +6,6 @@ from dataclasses import field
 from datetime import datetime
 
 from agents_runner.environments import WORKSPACE_NONE
-from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.utils import _format_duration
 
@@ -33,6 +32,7 @@ class Task:
     gh_branch: str = ""
     gh_pr_url: str = ""
     gh_pr_metadata_path: str = ""
+    gh_context_path: str = ""
     workspace_type: str = WORKSPACE_NONE
     git: dict[str, object] | None = None
     agent_cli: str = ""
@@ -44,6 +44,8 @@ class Task:
     desktop_display: str = ""
     artifacts: list[str] = field(default_factory=list)
     attempt_history: list[dict[str, object]] = field(default_factory=list)
+    finalization_state: str = "pending"
+    finalization_error: str = ""
 
     def last_nonblank_log_line(self) -> str:
         for line in reversed(self.logs):
@@ -76,7 +78,7 @@ class Task:
 
     def is_interactive_run(self) -> bool:
         container_id = str(self.container_id or "")
-        return container_id.startswith("codex-gui-it-")
+        return container_id.startswith("agents-runner-tui-it-")
 
     def prompt_one_line(self) -> str:
         line = (self.prompt or "").strip().splitlines()[0] if self.prompt else ""
