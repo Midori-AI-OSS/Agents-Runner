@@ -15,10 +15,14 @@ This section is appended because Codex CLI is selected and available for this ru
 **How Agents Runner runs it**
 - Command:
   ```
-  codex exec --sandbox danger-full-access [--skip-git-repo-check] <PROMPT>
+  codex exec --sandbox danger-full-access [--skip-git-repo-check] -o /tmp/agents-artifacts/<name>.md <PROMPT> > /tmp/agents-artifacts/subagent-run.log 2>&1
   ```
 - Sandbox: full-access
 - Git repo check: `--skip-git-repo-check` is added when workspace type is not WORKSPACE_CLONED
+
+**Artifacts and chatter control**
+- Prefer `-o <artifact.md>` to capture the final answer in an artifacts file (for example `/tmp/agents-artifacts/<name>.md`, where `<name>` is the subagent task name).
+- Redirect any extra CLI chatter into a separate log artifact (example: `> /tmp/agents-artifacts/subagent-run.log 2>&1`).
 
 **MCP servers**
 - Add/remove: edit `~/.codex/config.toml` under `mcp_servers` (add a table to enable; delete it to disable)
