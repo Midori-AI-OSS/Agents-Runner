@@ -35,7 +35,7 @@ body:
     id: task_file
     attributes:
       label: Task file status
-      description: Is this request already represented as a task file under `.codex/tasks/`?
+      description: Is this request already represented as a task file under `.agents/tasks/`?
       options:
         - Already exists as a task file
         - Create a new task file
