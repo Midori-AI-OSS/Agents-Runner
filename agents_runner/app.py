@@ -157,6 +157,7 @@ def run_app(argv: list[str]) -> None:
     from PySide6.QtWidgets import QApplication
 
     from agents_runner.environments import load_environments
+    from agents_runner.qt_diagnostics import install_qt_message_handler
     from agents_runner.setup.orchestrator import check_setup_complete
     from agents_runner.style import app_stylesheet
     from agents_runner.ui.constants import APP_TITLE
@@ -169,6 +170,10 @@ def run_app(argv: list[str]) -> None:
     _cleanup_stale_temp_files()
 
     app = QApplication(argv)
+    
+    # Install Qt diagnostics handler for Issue #141 (QTimer thread warnings)
+    # Enable via AGENTS_RUNNER_QT_DIAGNOSTICS=1 environment variable
+    install_qt_message_handler()
     app.setApplicationDisplayName(APP_TITLE)
     app.setApplicationName(APP_TITLE)
     icon = _app_icon()
