@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from PySide6.QtCore import QObject
 from PySide6.QtCore import QPoint
 from PySide6.QtCore import QRect
 from PySide6.QtCore import QTimer
@@ -26,29 +27,34 @@ class PastTaskAnimator:
     """
 
     def __init__(
-        self, scroll_area: QScrollArea, get_rows_callback: Callable[[], dict[str, TaskRow]]
+        self, 
+        scroll_area: QScrollArea, 
+        get_rows_callback: Callable[[], dict[str, TaskRow]],
+        parent: QObject | None = None
     ) -> None:
         """Initialize the animator.
 
         Args:
             scroll_area: The scroll area containing the task rows.
             get_rows_callback: Callable that returns the current dict of task rows.
+            parent: Parent QObject for proper Qt lifecycle and thread affinity.
         """
         self._scroll = scroll_area
         self._get_rows = get_rows_callback
+        self._parent = parent
 
         # Animation queue and tracking
         self._entrance_queue: list[TaskRow] = []
         self._entrance_seen: set[str] = set()
 
-        # Timer for playing animations in sequence
-        self._entrance_timer = QTimer()
+        # Timer for playing animations in sequence (parent it to avoid thread affinity issues)
+        self._entrance_timer = QTimer(parent)
         self._entrance_timer.setSingleShot(True)
         self._entrance_timer.timeout.connect(self._play_next_entrance)
 
-        # Timer for scanning visible rows
+        # Timer for scanning visible rows (parent it to avoid thread affinity issues)
         self._visible_scan_reset_pending = False
-        self._visible_scan_timer = QTimer()
+        self._visible_scan_timer = QTimer(parent)
         self._visible_scan_timer.setSingleShot(True)
         self._visible_scan_timer.timeout.connect(self._queue_visible_entrances)
 

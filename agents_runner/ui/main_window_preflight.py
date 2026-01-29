@@ -111,6 +111,7 @@ class _MainWindowPreflightMixin:
             host_codex_dir=host_codex,
             host_workdir=host_workdir,
             agent_cli=agent_cli,
+            environment_id=env.env_id if env else "",
             auto_remove=True,
             pull_before_run=True,
             settings_preflight_script=settings_preflight_script,
@@ -123,6 +124,41 @@ class _MainWindowPreflightMixin:
             gh_recreate_if_needed=gh_recreate_if_needed,
             gh_base_branch=gh_base_branch,
         )
+        
+        # Clean up any existing bridge/thread for this task to prevent duplicate log emissions
+        old_bridge = self._bridges.pop(task_id, None)
+        old_thread = self._threads.pop(task_id, None)
+        if old_bridge is not None:
+            try:
+                # Disconnect all signal connections to prevent duplicate log emissions
+                old_bridge.log.disconnect()
+                old_bridge.state.disconnect()
+                old_bridge.done.disconnect()
+                # Preflight bridges don't have these signals, but disconnect them for consistency
+                if hasattr(old_bridge, 'retry_attempt'):
+                    old_bridge.retry_attempt.disconnect()
+                if hasattr(old_bridge, 'agent_switched'):
+                    old_bridge.agent_switched.disconnect()
+            except Exception:
+                pass
+            try:
+                # Request the bridge to stop
+                old_bridge.request_stop()
+            except Exception:
+                pass
+            try:
+                # Schedule deletion on next event loop iteration
+                old_bridge.deleteLater()
+            except Exception:
+                pass
+        if old_thread is not None:
+            try:
+                # Request thread to quit and wait for it to finish
+                old_thread.quit()
+                old_thread.wait(100)  # Wait up to 100ms for graceful shutdown
+            except Exception:
+                pass
+
         bridge = TaskRunnerBridge(task_id=task_id, config=config, mode="preflight")
         thread = QThread(self)
         bridge.moveToThread(thread)

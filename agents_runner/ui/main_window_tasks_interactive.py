@@ -18,7 +18,6 @@ from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
-from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
@@ -92,7 +91,6 @@ class _MainWindowTasksInteractiveMixin:
 
         if env and os.path.isdir(host_workdir):
             try:
-                from agents_runner.midoriai_template import MidoriAITemplateDetection
                 from agents_runner.midoriai_template import scan_midoriai_agents_template
 
                 # Only update template detection if not already set
@@ -197,9 +195,19 @@ class _MainWindowTasksInteractiveMixin:
         if env and env.preflight_enabled and (env.preflight_script or "").strip():
             environment_preflight_script = env.preflight_script
 
-        container_name = f"codex-gui-it-{task_id}"
+        container_name = f"agents-runner-tui-it-{task_id}"
         container_agent_dir = container_config_dir(agent_cli)
         config_extra_mounts = additional_config_mounts(agent_cli, host_codex)
+        
+        # Add cross-agent config mounts if enabled
+        cross_agent_mounts = self._compute_cross_agent_config_mounts(
+            env=env,
+            primary_agent_cli=agent_cli,
+            primary_config_dir=host_codex,
+            settings=self._settings_data,
+        )
+        config_extra_mounts.extend(cross_agent_mounts)
+        
         container_workdir = "/home/midori-ai/workspace"
 
         task = Task(

@@ -9,7 +9,6 @@ from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QMainWindow
-from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -19,6 +18,7 @@ from agents_runner.persistence import default_state_path
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import APP_TITLE
 from agents_runner.ui.graphics import GlassRoot
+from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.pages import DashboardPage
 from agents_runner.ui.pages import EnvironmentsPage
 from agents_runner.ui.pages import NewTaskPage
@@ -35,6 +35,7 @@ from agents_runner.ui.main_window_persistence import _MainWindowPersistenceMixin
 from agents_runner.ui.main_window_preflight import _MainWindowPreflightMixin
 from agents_runner.ui.main_window_settings import _MainWindowSettingsMixin
 from agents_runner.ui.main_window_task_events import _MainWindowTaskEventsMixin
+from agents_runner.ui.main_window_task_recovery import _MainWindowTaskRecoveryMixin
 from agents_runner.ui.main_window_task_review import _MainWindowTaskReviewMixin
 from agents_runner.ui.main_window_tasks_agent import _MainWindowTasksAgentMixin
 from agents_runner.ui.main_window_tasks_interactive import (
@@ -57,6 +58,7 @@ class MainWindow(
     _MainWindowTasksInteractiveFinalizeMixin,
     _MainWindowPreflightMixin,
     _MainWindowTaskReviewMixin,
+    _MainWindowTaskRecoveryMixin,
     _MainWindowTaskEventsMixin,
     _MainWindowPersistenceMixin,
 ):
@@ -131,6 +133,13 @@ class MainWindow(
         self._dashboard_ticker.timeout.connect(self._tick_dashboard_elapsed)
         self._dashboard_ticker.start()
 
+        self._recovery_log_stop: dict[str, threading.Event] = {}
+        self._finalization_threads: dict[str, threading.Thread] = {}
+        self._recovery_ticker = QTimer(self)
+        self._recovery_ticker.setInterval(1000)
+        self._recovery_ticker.timeout.connect(self._tick_recovery)
+        self._recovery_ticker.start()
+
         self._root = GlassRoot()
         self.setCentralWidget(self._root)
 
@@ -146,27 +155,25 @@ class MainWindow(
         self._btn_home = QToolButton()
         self._btn_home.setText("Home")
         self._btn_home.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self._btn_home.setIcon(self.style().standardIcon(QStyle.SP_DirHomeIcon))
+        self._btn_home.setIcon(lucide_icon("house"))
         self._btn_home.clicked.connect(self._show_dashboard)
 
         self._btn_new = QToolButton()
         self._btn_new.setText("New task")
         self._btn_new.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self._btn_new.setIcon(self.style().standardIcon(QStyle.SP_FileDialogNewFolder))
+        self._btn_new.setIcon(lucide_icon("folder-plus"))
         self._btn_new.clicked.connect(self._show_new_task)
 
         self._btn_envs = QToolButton()
         self._btn_envs.setText("Environments")
         self._btn_envs.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self._btn_envs.setIcon(self.style().standardIcon(QStyle.SP_DirIcon))
+        self._btn_envs.setIcon(lucide_icon("folder"))
         self._btn_envs.clicked.connect(self._show_environments)
 
         self._btn_settings = QToolButton()
         self._btn_settings.setText("Settings")
         self._btn_settings.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        self._btn_settings.setIcon(
-            self.style().standardIcon(QStyle.SP_FileDialogDetailedView)
-        )
+        self._btn_settings.setIcon(lucide_icon("settings"))
         self._btn_settings.clicked.connect(self._show_settings)
 
         top_layout.addWidget(self._btn_home)
@@ -240,4 +247,7 @@ class MainWindow(
             self._save_state()
         except Exception:
             pass
+        # Clean up external viewer process
+        if hasattr(self, "_details"):
+            self._details.cleanup()
         super().closeEvent(event)

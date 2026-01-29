@@ -20,12 +20,12 @@ from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import docker_platform_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
+from agents_runner.environments import load_environments
 from agents_runner.github_token import resolve_github_token
 from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.gh_management import GhManagementError
 
 from agents_runner.docker.config import DockerRunnerConfig
-from agents_runner.docker.paths import _is_git_repo_root
 from agents_runner.docker.process import _has_image
 from agents_runner.docker.process import _has_platform_image
 from agents_runner.docker.process import _inspect_state
@@ -43,6 +43,62 @@ from agents_runner.ui.shell_templates import git_identity_clause
 from agents_runner.ui.shell_templates import shell_log_statement
 from agents_runner.midoriai_template import MidoriAITemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
+
+
+def _is_gh_context_enabled(environment_id: str | None) -> bool:
+    """Check if GitHub Context is enabled in environment settings.
+    
+    Returns True if gh_context_enabled is True in the environment.
+    """
+    if not environment_id:
+        return False
+    
+    try:
+        environments = load_environments()
+        env = environments.get(str(environment_id))
+    except Exception:
+        return False
+    
+    if env is None:
+        return False
+    
+    return bool(getattr(env, "gh_context_enabled", False))
+
+
+def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
+    """Check if copilot is in the cross-agent allowlist.
+    
+    Returns True if any agent in cross_agent_allowlist uses copilot CLI.
+    """
+    if not environment_id:
+        return False
+    
+    # Load environment and validate structure
+    try:
+        environments = load_environments()
+        env = environments.get(str(environment_id))
+    except Exception:
+        return False
+    
+    if env is None or not env.cross_agent_allowlist:
+        return False
+    
+    if env.agent_selection is None or not env.agent_selection.agents:
+        return False
+    
+    # Build agent_id → agent_cli mapping for quick lookup
+    agent_cli_by_id: dict[str, str] = {
+        agent.agent_id: agent.agent_cli
+        for agent in env.agent_selection.agents
+    }
+    
+    # Check each allowlisted agent_id for copilot
+    for agent_id in env.cross_agent_allowlist:
+        agent_cli = agent_cli_by_id.get(agent_id)
+        if agent_cli and normalize_agent(agent_cli) == "copilot":
+            return True
+    
+    return False
 
 
 def _headless_desktop_prompt_instructions(*, display: str) -> str:
@@ -212,7 +268,6 @@ class DockerAgentWorker:
             template_detection = scan_midoriai_agents_template(host_mount)
             if self._config.environment_id:
                 try:
-                    from agents_runner.environments import load_environments
                     from agents_runner.environments import save_environment
 
                     env = load_environments().get(str(self._config.environment_id))
@@ -252,7 +307,7 @@ class DockerAgentWorker:
                         "env",
                         "template",
                         "INFO",
-                        "Midori AI Agents Template detected; will inject template.md prompt",
+                        "Midori AI Agents Template detected; will inject template prompts",
                     )
                 )
             container_name = f"agents-runner-{uuid.uuid4().hex[:10]}"
@@ -374,28 +429,149 @@ class DockerAgentWorker:
                 )
 
             if template_detection.midoriai_template_detected:
+                template_parts = []
+                
+                # 1. Always append base template
                 try:
-                    template_prompt = load_prompt("template").strip()
+                    base_prompt = load_prompt("templates/midoriaibasetemplate").strip()
+                    if base_prompt:
+                        template_parts.append(base_prompt)
                 except Exception as exc:
                     self._on_log(
                         format_log(
                             "env",
                             "template",
                             "WARN",
-                            f"failed to load template.md prompt: {exc}",
+                            f"failed to load templates/midoriaibasetemplate: {exc}",
                         )
                     )
-                else:
-                    if template_prompt:
-                        prompt_for_agent = sanitize_prompt(
-                            f"{prompt_for_agent.rstrip()}\n\n{template_prompt}"
+                
+                # 2. Always append subagents template
+                try:
+                    subagents_prompt = load_prompt("templates/subagentstemplate").strip()
+                    if subagents_prompt:
+                        template_parts.append(subagents_prompt)
+                except Exception as exc:
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "template",
+                            "WARN",
+                            f"failed to load templates/subagentstemplate: {exc}",
                         )
+                    )
+                
+                # 3. Conditionally append cross-agents template
+                cross_agents_enabled = False
+                env = None
+                if self._config.environment_id:
+                    try:
+                        environments = load_environments()
+                        env = environments.get(str(self._config.environment_id))
+                        if env is not None:
+                            cross_agents_enabled = (
+                                env.use_cross_agents is True
+                                and env.cross_agent_allowlist
+                                and len(env.cross_agent_allowlist) > 0
+                            )
+                    except Exception as exc:
+                        self._on_log(
+                            format_log(
+                                "env",
+                                "template",
+                                "WARN",
+                                f"failed to check cross-agents config: {exc}",
+                            )
+                        )
+                
+                if cross_agents_enabled:
+                    try:
+                        cross_agents_prompt = load_prompt("templates/crossagentstemplate").strip()
+                        if cross_agents_prompt:
+                            template_parts.append(cross_agents_prompt)
+                    except Exception as exc:
+                        self._on_log(
+                            format_log(
+                                "env",
+                                "template",
+                                "WARN",
+                                f"failed to load templates/crossagentstemplate: {exc}",
+                            )
+                        )
+                
+                # 3.5. Append CLI templates for all cross-agents in allowlist
+                if cross_agents_enabled and env is not None:
+                    agent_cli_by_id: dict[str, str] = {}
+                    if env.agent_selection is not None and env.agent_selection.agents:
+                        agent_cli_by_id = {
+                            agent.agent_id: agent.agent_cli
+                            for agent in env.agent_selection.agents
+                        }
+                    
+                    loaded_allowlist_clis: set[str] = set()
+                    for agent_id in env.cross_agent_allowlist:
+                        allowlist_agent_cli = agent_cli_by_id.get(agent_id)
+                        if not allowlist_agent_cli:
+                            continue
+                        
+                        normalized_cli = normalize_agent(allowlist_agent_cli)
+                        if normalized_cli == agent_cli:
+                            continue
+                        if normalized_cli in loaded_allowlist_clis:
+                            continue
+                        
+                        try:
+                            allowlist_cli_prompt = load_prompt(f"templates/agentcli/{normalized_cli}").strip()
+                            if allowlist_cli_prompt:
+                                template_parts.append(allowlist_cli_prompt)
+                                loaded_allowlist_clis.add(normalized_cli)
+                        except Exception as exc:
+                            self._on_log(
+                                format_log(
+                                    "env",
+                                    "template",
+                                    "WARN",
+                                    f"failed to load templates/agentcli/{normalized_cli} for allowlist: {exc}",
+                                )
+                            )
+                    
+                    if loaded_allowlist_clis:
+                        self._on_log(
+                            format_log(
+                                "env",
+                                "template",
+                                "INFO",
+                                f"cross-agent CLI context: {', '.join(sorted(loaded_allowlist_clis))}",
+                            )
+                        )
+                
+                # 4. Always append CLI-specific template (LAST)
+                try:
+                    cli_prompt = load_prompt(f"templates/agentcli/{agent_cli}").strip()
+                    if cli_prompt:
+                        template_parts.append(cli_prompt)
+                except Exception as exc:
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "template",
+                            "WARN",
+                            f"failed to load templates/agentcli/{agent_cli}: {exc}",
+                        )
+                    )
+                
+                # Combine all template parts and inject
+                if template_parts:
+                    combined_template = "\n\n".join(template_parts)
+                    prompt_for_agent = sanitize_prompt(
+                        f"{prompt_for_agent.rstrip()}\n\n{combined_template}"
+                    )
                     self._on_log(
                         format_log(
                             "env",
                             "template",
                             "INFO",
-                            "injected template.md prompt",
+                            "injected template prompts",
                         )
                     )
 
@@ -539,7 +715,18 @@ class DockerAgentWorker:
                     continue
                 env_args.extend(["-e", f"{k}={value}"])
 
-            if agent_cli == "copilot":
+            # Forward GitHub tokens if:
+            # 1. gh_context_enabled is True, OR
+            # 2. agent_cli is copilot, OR
+            # 3. copilot is in cross-agent allowlist
+            gh_context_enabled = _is_gh_context_enabled(self._config.environment_id)
+            needs_token = (
+                gh_context_enabled
+                or agent_cli == "copilot"
+                or _needs_cross_agent_gh_token(self._config.environment_id)
+            )
+            
+            if needs_token:
                 token = resolve_github_token()
                 if (
                     token

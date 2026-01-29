@@ -16,7 +16,6 @@ from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSplitter
 from PySide6.QtWidgets import QStackedWidget
-from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -134,6 +133,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         tabs = QTabWidget()
         tabs.setDocumentMode(True)
+        tabs.tabBar().setDrawBase(False)
 
         general_tab = QWidget()
         general_layout = QVBoxLayout(general_tab)
@@ -202,6 +202,17 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._on_container_caching_toggled
         )
 
+        self._use_cross_agents = QCheckBox(
+            "Use cross agents"
+        )
+        self._use_cross_agents.setToolTip(
+            "When enabled, allows agent instances from the Agents tab to be mounted\n"
+            "as cross-agents in task containers. Configure the allowlist in the Agents tab."
+        )
+        self._use_cross_agents.stateChanged.connect(
+            self._on_use_cross_agents_toggled
+        )
+
         self._gh_context_enabled = QCheckBox(
             "Provide GitHub context to agent"
         )
@@ -236,12 +247,21 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         container_caching_layout.addWidget(self._container_caching_enabled)
         container_caching_layout.addStretch(1)
 
+        cross_agents_row = QWidget(general_tab)
+        cross_agents_layout = QHBoxLayout(cross_agents_row)
+        cross_agents_layout.setContentsMargins(0, 0, 0, 0)
+        cross_agents_layout.setSpacing(BUTTON_ROW_SPACING)
+        cross_agents_layout.addWidget(self._use_cross_agents)
+        cross_agents_layout.addStretch(1)
+
         grid.addWidget(QLabel("Max agents running"), 3, 0)
         grid.addWidget(max_agents_row, 3, 1, 1, 2)
         grid.addWidget(QLabel("Headless desktop"), 5, 0)
         grid.addWidget(headless_desktop_row, 5, 1, 1, 2)
         grid.addWidget(QLabel("Container caching"), 6, 0)
         grid.addWidget(container_caching_row, 6, 1, 1, 2)
+        grid.addWidget(QLabel("Cross agents"), 7, 0)
+        grid.addWidget(cross_agents_row, 7, 1, 1, 2)
 
         self._gh_context_label = QLabel("GitHub context")
         self._gh_context_row = QWidget(general_tab)
@@ -517,6 +537,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._cache_desktop_build.setChecked(False)
             self._cache_desktop_build.setEnabled(False)
             self._container_caching_enabled.setChecked(False)
+            self._use_cross_agents.setChecked(False)
             self._gh_context_enabled.setChecked(False)
             self._gh_context_enabled.setEnabled(False)
             self._gh_context_label.setVisible(False)
@@ -557,6 +578,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         )
         self._container_caching_enabled.setChecked(
             bool(getattr(env, "container_caching_enabled", False))
+        )
+        self._use_cross_agents.setChecked(
+            bool(getattr(env, "use_cross_agents", False))
         )
         workspace_type = env.workspace_type or WORKSPACE_NONE
         is_github_env = workspace_type == WORKSPACE_CLONED
@@ -611,7 +635,13 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._env_vars.setPlainText(env_lines)
         self._mounts.setPlainText("\n".join(env.extra_mounts))
         self._prompts_tab.set_prompts(env.prompts or [], env.prompts_unlocked or False)
+        
+        # Load agent selection and cross-agent allowlist
+        use_cross_agents = bool(getattr(env, "use_cross_agents", False))
+        cross_agent_allowlist = list(getattr(env, "cross_agent_allowlist", []))
+        self._agents_tab.set_cross_agent_allowlist(cross_agent_allowlist)
         self._agents_tab.set_agent_selection(env.agent_selection)
+        self._agents_tab.set_cross_agents_enabled(use_cross_agents)
 
     def _on_prompts_changed(self) -> None:
         pass
@@ -635,6 +665,11 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         """Switch preflight tab layout based on container caching state."""
         is_enabled = state == Qt.CheckState.Checked.value
         self._preflight_stack.setCurrentIndex(1 if is_enabled else 0)
+
+    def _on_use_cross_agents_toggled(self, state: int) -> None:
+        """Handle use cross agents checkbox state change."""
+        is_enabled = state == Qt.CheckState.Checked.value
+        self._agents_tab.set_cross_agents_enabled(is_enabled)
 
     def _on_env_selected(self, index: int) -> None:
         old_env_id = self._current_env_id

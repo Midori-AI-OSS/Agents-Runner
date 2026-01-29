@@ -21,6 +21,7 @@ from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
 from agents_runner.environments import Environment
+from agents_runner.github_token import resolve_github_token
 from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.ui.shell_templates import build_git_clone_or_update_snippet
@@ -121,6 +122,16 @@ def launch_docker_terminal_task(
                 continue
             env_args.extend(["-e", f"{k}={value}"])
 
+        # Check if we need to forward GH_TOKEN
+        forward_gh_token = bool(
+            (cmd_parts and cmd_parts[0] == "copilot")
+            or (env and getattr(env, "gh_context_enabled", False))
+        )
+        if forward_gh_token:
+            gh_token = resolve_github_token()
+            if gh_token:
+                env_args.extend(["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"])
+
         # Check if desktop mode is enabled
         desktop_enabled = (
             "websockify" in extra_preflight_script
@@ -177,12 +188,6 @@ def launch_docker_terminal_task(
             "set -euo pipefail; " f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
         )
 
-        # Check if we need to forward GH_TOKEN
-        forward_gh_token = bool(cmd_parts and cmd_parts[0] == "copilot")
-        docker_env_passthrough: list[str] = []
-        if forward_gh_token:
-            docker_env_passthrough = ["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"]
-
         # Build Docker command
         docker_cmd = _build_docker_command(
             container_name=container_name,
@@ -194,7 +199,7 @@ def launch_docker_terminal_task(
             preflight_mounts=preflight_mounts,
             env_args=env_args,
             port_args=port_args,
-            docker_env_passthrough=docker_env_passthrough,
+            docker_env_passthrough=[],
             image=image,
             container_script=container_script,
         )
@@ -209,17 +214,6 @@ def launch_docker_terminal_task(
         except Exception:
             # Best-effort cleanup: ignore errors while removing stale finish file.
             pass
-
-        # Build git token snippet
-        gh_token_snippet = ""
-        if forward_gh_token:
-            gh_token_snippet = (
-                'if [ -z "${GH_TOKEN:-}" ] && [ -z "${GITHUB_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then '
-                'TOKEN="$(gh auth token -h github.com 2>/dev/null || true)"; '
-                'TOKEN="$(printf "%s" "$TOKEN" | tr -d "\\r\\n")"; '
-                'if [ -n "$TOKEN" ]; then export GH_TOKEN="$TOKEN"; export GITHUB_TOKEN="$TOKEN"; fi; '
-                "fi"
-            )
 
         # Build Rosetta warning snippet
         rosetta_snippet = ""
@@ -257,7 +251,7 @@ def launch_docker_terminal_task(
             task_token=task_token,
             tmp_paths=tmp_paths,
             finish_path=finish_path,
-            gh_token_snippet=gh_token_snippet,
+            gh_token_snippet="",
             rosetta_snippet=rosetta_snippet,
             gh_clone_snippet=gh_clone_snippet,
             docker_pull_cmd=docker_pull_cmd,
@@ -347,9 +341,9 @@ def _prepare_preflight_scripts(
         "helpme": "",
     }
 
-    settings_container_path = f"/tmp/codex-preflight-settings-{task_token}.sh"
-    environment_container_path = f"/tmp/codex-preflight-environment-{task_token}.sh"
-    extra_container_path = f"/tmp/codex-preflight-extra-{task_token}.sh"
+    settings_container_path = f"/tmp/agents-runner-preflight-settings-{task_token}.sh"
+    environment_container_path = f"/tmp/agents-runner-preflight-environment-{task_token}.sh"
+    extra_container_path = f"/tmp/agents-runner-preflight-extra-{task_token}.sh"
 
     preflights_host_dir = (Path(__file__).resolve().parent.parent / "preflights").resolve()
     preflights_container_dir = "/tmp/agents-runner-preflights"
@@ -357,7 +351,7 @@ def _prepare_preflight_scripts(
     def _write_preflight_script(script: str, label: str) -> str:
         """Write a preflight script to a temporary file."""
         fd, tmp_path = tempfile.mkstemp(
-            prefix=f"codex-preflight-{label}-{task_token}-", suffix=".sh"
+            prefix=f"agents-runner-preflight-{label}-{task_token}-", suffix=".sh"
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -624,8 +618,6 @@ def _build_host_shell_script(
         "trap finish EXIT",
     ]
 
-    if gh_token_snippet:
-        host_script_parts.append(gh_token_snippet)
     if rosetta_snippet:
         host_script_parts.append(rosetta_snippet)
     if gh_clone_snippet:

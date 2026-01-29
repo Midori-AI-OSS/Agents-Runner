@@ -6,27 +6,71 @@ from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QHideEvent
+from PySide6.QtGui import QLinearGradient
+from PySide6.QtGui import QPaintEvent
+from PySide6.QtGui import QPainter
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QFrame
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
-from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QScrollArea
-from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QStackedWidget
-from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QTabBar
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import ALLOWED_STAINS
+from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.pages.dashboard_animations import PastTaskAnimator
 from agents_runner.ui.pages.dashboard_loader import PastTaskProgressiveLoader
 from agents_runner.ui.pages.dashboard_row import TaskRow
 from agents_runner.ui.task_model import Task
+
+
+class _DashboardScrim(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("DashboardScrim")
+        self._alpha = 92
+        self._feather_px = 38
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        w = int(self.width())
+        h = int(self.height())
+        if w <= 0 or h <= 0:
+            return
+
+        feather = int(min(self._feather_px, h // 2))
+        alpha = int(min(max(self._alpha, 0), 255))
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, False)
+
+        if feather <= 0 or alpha <= 0:
+            return
+
+        # Center band (full width), leaving feather at top/bottom only.
+        painter.fillRect(
+            0,
+            feather,
+            w,
+            h - feather * 2,
+            QColor(0, 0, 0, alpha),
+        )
+
+        # Feather top/bottom edges.
+        top = QLinearGradient(0, 0, 0, feather)
+        top.setColorAt(0.0, QColor(0, 0, 0, 0))
+        top.setColorAt(1.0, QColor(0, 0, 0, alpha))
+        painter.fillRect(0, 0, w, feather, top)
+
+        bottom = QLinearGradient(0, h - feather, 0, h)
+        bottom.setColorAt(0.0, QColor(0, 0, 0, alpha))
+        bottom.setColorAt(1.0, QColor(0, 0, 0, 0))
+        painter.fillRect(0, h - feather, w, feather, bottom)
 
 
 class DashboardPage(QWidget):
@@ -49,14 +93,14 @@ class DashboardPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
 
-        table = QWidget()
+        table = _DashboardScrim()
         table_layout = QVBoxLayout(table)
         table_layout.setContentsMargins(0, 12, 0, 12)
         table_layout.setSpacing(0)
 
         filters = QWidget()
         filters_layout = QHBoxLayout(filters)
-        filters_layout.setContentsMargins(0, 0, 0, 0)
+        filters_layout.setContentsMargins(12, 0, 12, 0)
         filters_layout.setSpacing(10)
 
         self._filter_text = QLineEdit()
@@ -78,7 +122,7 @@ class DashboardPage(QWidget):
 
         clear_filters = QToolButton()
         clear_filters.setObjectName("RowTrash")
-        clear_filters.setIcon(self.style().standardIcon(QStyle.SP_DialogResetButton))
+        clear_filters.setIcon(lucide_icon("rotate-ccw"))
         clear_filters.setToolButtonStyle(Qt.ToolButtonIconOnly)
         clear_filters.setToolTip("Clear filters")
         clear_filters.setAccessibleName("Clear filters")
@@ -86,7 +130,7 @@ class DashboardPage(QWidget):
 
         self._btn_clean_old = QToolButton()
         self._btn_clean_old.setObjectName("RowTrash")
-        self._btn_clean_old.setIcon(self.style().standardIcon(QStyle.SP_TrashIcon))
+        self._btn_clean_old.setIcon(lucide_icon("trash-2"))
         self._btn_clean_old.setToolTip("Clean finished tasks")
         self._btn_clean_old.setAccessibleName("Clean finished tasks")
         self._btn_clean_old.setToolButtonStyle(Qt.ToolButtonIconOnly)
@@ -100,7 +144,7 @@ class DashboardPage(QWidget):
 
         columns = QWidget()
         columns_layout = QHBoxLayout(columns)
-        columns_layout.setContentsMargins(0, 0, 0, 0)
+        columns_layout.setContentsMargins(12, 0, 12, 0)
         columns_layout.setSpacing(12)
         c1 = QLabel("Task")
         c1.setStyleSheet("color: rgba(237, 239, 245, 150); font-weight: 650;")
@@ -118,6 +162,7 @@ class DashboardPage(QWidget):
         self._tabs = QTabBar()
         self._tabs.setObjectName("DashboardTabs")
         self._tabs.setDocumentMode(True)
+        self._tabs.setExpanding(True)
         self._tabs.addTab("Active Tasks")
         self._tabs.addTab("Past Tasks")
         self._tabs.currentChanged.connect(self._on_tab_changed)
@@ -151,7 +196,7 @@ class DashboardPage(QWidget):
         self._list_active = QWidget()
         self._list_active.setObjectName("TaskList")
         self._list_layout_active = QVBoxLayout(self._list_active)
-        self._list_layout_active.setContentsMargins(8, 8, 8, 8)
+        self._list_layout_active.setContentsMargins(12, 8, 12, 8)
         self._list_layout_active.setSpacing(6)
         self._list_layout_active.addStretch(1)
         self._scroll_active.setWidget(self._list_active)
@@ -171,7 +216,7 @@ class DashboardPage(QWidget):
         self._list_past = QWidget()
         self._list_past.setObjectName("TaskList")
         self._list_layout_past = QVBoxLayout(self._list_past)
-        self._list_layout_past.setContentsMargins(8, 8, 8, 8)
+        self._list_layout_past.setContentsMargins(12, 8, 12, 8)
         self._list_layout_past.setSpacing(6)
         self._list_layout_past.addStretch(1)
         self._scroll_past.setWidget(self._list_past)
@@ -202,7 +247,8 @@ class DashboardPage(QWidget):
         # Initialize animator after widgets are created
         self._past_animator = PastTaskAnimator(
             self._scroll_past,
-            lambda: self._rows_past
+            lambda: self._rows_past,
+            parent=self
         )
 
         # Initialize progressive loader
@@ -375,6 +421,7 @@ class DashboardPage(QWidget):
             for task_id in task_ids:
                 row = rows.pop(task_id, None)
                 if row is not None:
+                    row.cancel_entrance()
                     row.setParent(None)
                     row.deleteLater()
                 if self._selected_task_id == task_id:

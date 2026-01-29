@@ -170,6 +170,27 @@ TEMPLATE_BASE = """
         border: 1px solid rgba(255, 255, 255, 14);
     }
 
+    QToolButton[autoRaise="true"] {
+        background-color: rgba(0, 0, 0, 0);
+        border: 1px solid rgba(0, 0, 0, 0);
+        border-radius: 0px;
+        padding: 6px;
+    }
+
+    QToolButton[autoRaise="true"]:hover {
+        background-color: rgba(255, 255, 255, 10);
+        border: 1px solid rgba(255, 255, 255, 18);
+    }
+
+    QToolButton[autoRaise="true"]:pressed {
+        background-color: rgba(56, 189, 248, 60);
+        border: 1px solid rgba(56, 189, 248, 90);
+    }
+
+    QToolButton[autoRaise="true"]:focus {
+        border: 1px solid rgba(56, 189, 248, 105);
+    }
+
     QToolButton#RowTrash {
         background-color: rgba(0, 0, 0, 0);
         border: 1px solid rgba(255, 255, 255, 14);
@@ -246,8 +267,9 @@ TEMPLATE_BASE = """
 
     QTabWidget::pane {
         border: 1px solid rgba(255, 255, 255, 14);
+        border-top: 0px;
         background: rgba(18, 20, 28, 55);
-        margin-top: -1px;
+        margin-top: 0px;
         border-radius: 0px;
     }
 
@@ -255,6 +277,11 @@ TEMPLATE_BASE = """
         border: none;
         background: transparent;
         margin-top: 0px;
+    }
+
+    QTabBar::base {
+        border: none;
+        background: transparent;
     }
 
     QTabBar::tab {

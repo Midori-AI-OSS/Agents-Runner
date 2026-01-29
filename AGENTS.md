@@ -13,7 +13,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
 - **Docs:** Do not update `README.md`; prefer code and docstrings as the source of truth and keep notes minimal and task-scoped
 - **Commits:** Commit early and often — prefer many small, focused commits with clear `[TYPE]` messages and concise descriptions.
-- **Test:** Do not build tests unless asked to; delegate testing to Tester Mode when requested
+- **Test:** Do not build tests unless asked to; delegate testing to Tester Mode when requested. Tests live under `agents_runner/tests` and should be run via `uv run` (for example `uv run pytest`)
 
 ---
 
@@ -26,10 +26,10 @@ This project uses the Codex contributor coordination system. Follow these guidel
 ## Config & Data Directories
 
 - `~/.midoriai`: App data folder for this program (and other Midori AI programs)
-- `~/.codex`: Codex agent config folder (read-only)
-- `~/.copilot`: Copilot config folder (read-only)
-- `~/.claude`: Claude agent config folder (read-only)
-- `~/.gemini`: Gemini CLI config folder (read-only)
+- `~/.codex`: Codex agent config folder (read-write)
+- `~/.copilot`: Copilot config folder (read-write)
+- `~/.claude`: Claude agent config folder (read-write)
+- `~/.gemini`: Gemini CLI config folder (read-write)
 
 ---
 
@@ -68,3 +68,13 @@ Use these mode guides from `.agents/modes/` when working on specific tasks:
 
 Use GitHub issues/PRs/comments as the primary async communication channel. Keep commit messages and PR descriptions concise and outcome-focused.
 Do not use emoticons, emoji, or other non-text icons in commit messages, issue/PR descriptions, comments, documentation, or source code.
+
+---
+
+## Agent Run Log (Required)
+
+All contributor modes must use a shared run log at `/tmp/agents-artifacts/agent-output.md`:
+
+- Before starting work (and again before appending), read `/tmp/agents-artifacts/agent-output.md` for user feedback or updated constraints.
+- After each run, append a short entry describing: role, task/file(s) involved, intent, actions taken, results, and any task file moves (for example `wip/ → done/`, `done/ → wip/`, `done/ → taskmaster/`, or deleted).
+- Create `/tmp/agents-artifacts/agent-output.md` if it does not exist.

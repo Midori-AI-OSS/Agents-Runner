@@ -37,6 +37,43 @@ from agents_runner.midoriai_template import MidoriAITemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
 
 
+def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
+    """Check if copilot is in the cross-agent allowlist.
+    
+    Returns True if any agent in cross_agent_allowlist uses copilot CLI.
+    """
+    if not environment_id:
+        return False
+    
+    # Load environment and validate structure
+    try:
+        from agents_runner.environments import load_environments
+        environments = load_environments()
+        env = environments.get(str(environment_id))
+    except Exception:
+        return False
+    
+    if env is None or not env.cross_agent_allowlist:
+        return False
+    
+    if env.agent_selection is None or not env.agent_selection.agents:
+        return False
+    
+    # Build agent_id → agent_cli mapping for quick lookup
+    agent_cli_by_id: dict[str, str] = {
+        agent.agent_id: agent.agent_cli
+        for agent in env.agent_selection.agents
+    }
+    
+    # Check each allowlisted agent_id for copilot
+    for agent_id in env.cross_agent_allowlist:
+        agent_cli = agent_cli_by_id.get(agent_id)
+        if agent_cli and normalize_agent(agent_cli) == "copilot":
+            return True
+    
+    return False
+
+
 class DockerPreflightWorker:
     def __init__(
         self,
@@ -179,7 +216,7 @@ class DockerPreflightWorker:
                         "Midori AI Agents Template detected (preflight)",
                     )
                 )
-            container_name = f"codex-preflight-{uuid.uuid4().hex[:10]}"
+            container_name = f"agents-runner-preflight-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
             settings_container_path = (
                 self._config.container_settings_preflight_path.replace(
@@ -289,6 +326,21 @@ class DockerPreflightWorker:
                     and "GITHUB_TOKEN" not in (self._config.env_vars or {})
                 ):
                     docker_env = dict(os.environ)
+                    docker_env["GH_TOKEN"] = token
+                    docker_env["GITHUB_TOKEN"] = token
+                    env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
+            elif _needs_cross_agent_gh_token(self._config.environment_id) and agent_cli != "copilot":
+                token = resolve_github_token()
+                if (
+                    token
+                    and "GH_TOKEN" not in (self._config.env_vars or {})
+                    and "GITHUB_TOKEN" not in (self._config.env_vars or {})
+                ):
+                    self._on_log(
+                        format_log("docker", "auth", "INFO", "forwarding GitHub token for cross-agent copilot")
+                    )
+                    if docker_env is None:
+                        docker_env = dict(os.environ)
                     docker_env["GH_TOKEN"] = token
                     docker_env["GITHUB_TOKEN"] = token
                     env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])

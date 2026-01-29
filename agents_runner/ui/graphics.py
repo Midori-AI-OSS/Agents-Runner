@@ -1,25 +1,31 @@
 from __future__ import annotations
 
-import math
 import random
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import (
     QEasingCurve,
-    QPointF,
+    QRect,
     Property,
     QPropertyAnimation,
     Qt,
     QTimer,
 )
 from PySide6.QtGui import QColor
+from PySide6.QtGui import QFont
+from PySide6.QtGui import QFontMetricsF
+from PySide6.QtGui import QLinearGradient
 from PySide6.QtGui import QPainter
-from PySide6.QtGui import QPainterPath
 from PySide6.QtGui import QPaintEvent
-from PySide6.QtGui import QRadialGradient
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QWidget
+
+from agents_runner.ui.themes.claude import background as claude_bg
+from agents_runner.ui.themes.codex import background as codex_bg
+from agents_runner.ui.themes.copilot import background as copilot_bg
+from agents_runner.ui.themes.gemini import background as gemini_bg
 
 
 class _EnvironmentTintOverlay(QWidget):
@@ -50,42 +56,6 @@ class _EnvironmentTintOverlay(QWidget):
 class _AgentTheme:
     name: str
     base: QColor
-    orb_colors: tuple[QColor, ...]
-    shard_colors: tuple[QColor, ...]
-    shard_points: tuple[tuple[tuple[float, float], ...], ...]
-
-
-_SHARD_POINTS_CODEX: tuple[tuple[tuple[float, float], ...], ...] = (
-    ((0.00, 0.10), (0.38, 0.00), (0.55, 0.23), (0.22, 0.34)),
-    ((0.62, 0.00), (1.00, 0.14), (0.88, 0.42), (0.58, 0.28)),
-    ((0.08, 0.48), (0.28, 0.38), (0.52, 0.64), (0.20, 0.80)),
-    ((0.62, 0.56), (0.94, 0.46), (1.00, 0.82), (0.76, 1.00)),
-    ((0.00, 0.78), (0.20, 0.64), (0.40, 1.00), (0.00, 1.00)),
-)
-
-_SHARD_POINTS_COPILOT: tuple[tuple[tuple[float, float], ...], ...] = (
-    ((0.00, 0.04), (0.30, 0.00), (0.44, 0.18), (0.16, 0.28)),
-    ((0.54, 0.00), (1.00, 0.06), (0.86, 0.34), (0.62, 0.20)),
-    ((0.30, 0.38), (0.58, 0.30), (0.72, 0.56), (0.40, 0.66)),
-    ((0.70, 0.64), (1.00, 0.56), (1.00, 1.00), (0.80, 1.00)),
-    ((0.00, 0.70), (0.22, 0.56), (0.46, 0.86), (0.14, 1.00), (0.00, 1.00)),
-)
-
-_SHARD_POINTS_CLAUDE: tuple[tuple[tuple[float, float], ...], ...] = (
-    ((0.00, 0.08), (0.18, 0.00), (0.30, 0.12), (0.10, 0.24)),
-    ((0.30, 0.00), (0.52, 0.00), (0.44, 0.34), (0.24, 0.26)),
-    ((0.54, 0.18), (0.74, 0.08), (0.82, 0.40), (0.56, 0.48)),
-    ((0.72, 0.56), (0.92, 0.48), (1.00, 0.78), (0.84, 0.90)),
-    ((0.00, 0.64), (0.22, 0.48), (0.38, 0.72), (0.18, 1.00), (0.00, 1.00)),
-)
-
-_SHARD_POINTS_GEMINI: tuple[tuple[tuple[float, float], ...], ...] = (
-    ((0.00, 0.00), (0.34, 0.00), (0.14, 0.26)),
-    ((0.66, 0.00), (1.00, 0.00), (0.88, 0.30), (0.70, 0.18)),
-    ((0.10, 0.44), (0.34, 0.34), (0.24, 0.70), (0.00, 0.62)),
-    ((0.62, 0.42), (0.92, 0.34), (1.00, 0.56), (0.74, 0.66)),
-    ((0.32, 0.84), (0.62, 0.74), (0.84, 1.00), (0.18, 1.00)),
-)
 
 
 def _theme_for_agent(agent_cli: str) -> _AgentTheme:
@@ -94,121 +64,91 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
         return _AgentTheme(
             name="copilot",
             base=QColor(13, 17, 23),  # #0D1117
-            orb_colors=(
-                QColor(192, 110, 255),  # #C06EFF
-                QColor(95, 237, 131),  # #5FED83
-                QColor(80, 29, 175),  # #501DAF
-                QColor(88, 166, 255),
-                QColor(139, 148, 158),
-            ),
-            shard_colors=(
-                QColor(192, 110, 255, 34),
-                QColor(95, 237, 131, 26),
-                QColor(88, 166, 255, 20),
-                QColor(80, 29, 175, 18),
-                QColor(139, 148, 158, 14),
-            ),
-            shard_points=_SHARD_POINTS_COPILOT,
         )
     if agent_cli == "claude":
         return _AgentTheme(
             name="claude",
             base=QColor(245, 245, 240),  # #F5F5F0
-            orb_colors=(
-                QColor(174, 86, 48),  # #AE5630
-                QColor(221, 217, 206),  # #DDD9CE
-                QColor(107, 106, 104),  # #6B6A68
-                QColor(196, 99, 58),  # #C4633A
-                QColor(26, 26, 24),
-            ),
-            shard_colors=(
-                QColor(174, 86, 48, 18),
-                QColor(196, 99, 58, 14),
-                QColor(221, 217, 206, 14),
-                QColor(107, 106, 104, 10),
-                QColor(26, 26, 24, 8),
-            ),
-            shard_points=_SHARD_POINTS_CLAUDE,
         )
     if agent_cli == "gemini":
         return _AgentTheme(
             name="gemini",
             base=QColor(18, 20, 28),  # #12141C (avoid white flash)
-            orb_colors=(
-                QColor(66, 133, 244),  # #4285F4
-                QColor(234, 67, 53),  # #EA4335
-                QColor(251, 188, 4),  # #FBBC04
-                QColor(52, 168, 83),  # #34A853
-                QColor(154, 160, 166),  # #9AA0A6
-            ),
-            shard_colors=(
-                QColor(66, 133, 244, 16),
-                QColor(234, 67, 53, 14),
-                QColor(251, 188, 4, 12),
-                QColor(52, 168, 83, 12),
-                QColor(154, 160, 166, 10),
-            ),
-            shard_points=_SHARD_POINTS_GEMINI,
         )
 
     # codex / ChatGPT neutral
     return _AgentTheme(
         name="codex",
         base=QColor(12, 13, 15),
-        orb_colors=(
-            QColor(31, 117, 254),  # #1F75FE
-            QColor(0, 165, 90),  # #00A55A
-            QColor(178, 186, 194),
-            QColor(92, 99, 112),
-            QColor(240, 240, 240),
-        ),
-        shard_colors=(
-            QColor(31, 117, 254, 20),
-            QColor(0, 165, 90, 16),
-            QColor(178, 186, 194, 10),
-            QColor(92, 99, 112, 10),
-            QColor(240, 240, 240, 8),
-        ),
-        shard_points=_SHARD_POINTS_CODEX,
     )
 
 
-@dataclass
-class _BackgroundOrb:
-    x: float
-    y: float
-    vx: float
-    vy: float
-    radius: float
-    color_idx: int
-
-    def render_radius(self) -> float:
-        return self.radius * 1.65
-
-
 class GlassRoot(QWidget):
+    _CLAUDE_STEP_S: float = 0.06
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._animate_orbs = False
-        self._orb_rng = random.Random()
-        self._orbs: list[_BackgroundOrb] = []
-        self._orb_last_tick_s = time.monotonic()
-        self._orb_timer: QTimer | None = None
 
         self._theme = _theme_for_agent("codex")
         self._theme_to: _AgentTheme | None = None
         self._theme_blend = 0.0
         self._theme_anim: QPropertyAnimation | None = None
 
-        if self._animate_orbs:
-            timer = QTimer(self)
-            timer.setInterval(33)
-            timer.timeout.connect(self._tick_orbs)
-            timer.start()
-            self._orb_timer = timer
+        # Codex background animation phase parameters
+        self._codex_split_ratio: float = 0.45
+        self._codex_color_blend_phase_top: float = 0.0
+        self._codex_color_blend_phase_bottom: float = 0.0
+        self._codex_jitter_x: float = 0.0
+        self._codex_jitter_y: float = 0.0
+
+        # Performance optimization: cache colors and gradient
+        self._cached_top_color: QColor | None = None
+        self._cached_bottom_color: QColor | None = None
+        self._cached_top_phase: float = -1.0
+        self._cached_bottom_phase: float = -1.0
+        self._cached_gradient: QLinearGradient | None = None
+        self._cached_boundary_y: int = -1
+        self._cached_gradient_top_color: QColor | None = None
+        self._cached_gradient_bottom_color: QColor | None = None
+
+        self._claude_rng = random.Random()
+        self._claude_tips: list[claude_bg._ClaudeBranchTip] = []
+        self._claude_segments: list[claude_bg._ClaudeBranchSegment] = []
+        self._claude_last_tick_s = time.monotonic()
+        self._claude_tick_accum_s = 0.0
+        self._claude_palette_phase = 0.0
+        self._claude_next_reset_s = self._claude_last_tick_s + 0.5
+
+        self._gemini_rng = random.Random()
+        self._gemini_orbs: list[gemini_bg._GeminiChromaOrb] = []
+        self._gemini_last_tick_s = time.monotonic()
+        self._gemini_tick_accum_s = 0.0
+
+        self._copilot_rng = random.Random()
+        self._copilot_panes: list[copilot_bg._CopilotPane] = []
+        self._copilot_last_tick_s = time.monotonic()
+        self._copilot_tick_accum_s = 0.0
+        self._copilot_repo_root: Path | None = None
+        self._copilot_source_files: list[Path] = []
+        self._copilot_font: QFont | None = None
+        self._copilot_metrics: QFontMetricsF | None = None
+        self._copilot_char_w: float = 8.0
+        self._copilot_line_h: float = 16.0
+
+        # Start Codex background animation timer
+        codex_timer = QTimer(self)
+        codex_timer.setInterval(100)
+        codex_timer.timeout.connect(self._update_background_animation)
+        codex_timer.start()
 
     @staticmethod
     def _darken_overlay_alpha(theme: _AgentTheme) -> int:
+        if theme.name == "codex":
+            return 28
+        if theme.name == "claude":
+            return 22
+        if theme.name in {"copilot", "gemini"}:
+            return 18
         lightness = float(theme.base.lightnessF())
         # Keep the background readable without crushing the palette into near-black.
         # Slightly stronger darkening on light themes, lighter on dark themes.
@@ -219,6 +159,16 @@ class GlassRoot(QWidget):
         theme = _theme_for_agent(agent_cli)
         if theme.name == self._theme.name:
             return
+
+        if theme.name == "claude":
+            self._claude_next_reset_s = time.monotonic()
+        if theme.name == "gemini":
+            self._gemini_tick_accum_s = 0.0
+            self._gemini_last_tick_s = time.monotonic()
+        if theme.name == "copilot":
+            self._copilot_tick_accum_s = 0.0
+            self._copilot_last_tick_s = time.monotonic()
+            self._copilot_panes = []
 
         self._theme_to = theme
         self._set_theme_blend(0.0)
@@ -243,7 +193,19 @@ class GlassRoot(QWidget):
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
-        self._constrain_orbs()
+        self._copilot_metrics = None
+        if self._theme.name == "claude" or (
+            self._theme_to is not None and self._theme_to.name == "claude"
+        ):
+            self._claude_next_reset_s = time.monotonic()
+        if self._theme.name == "gemini" or (
+                self._theme_to is not None and self._theme_to.name == "gemini"
+            ):
+            self._constrain_gemini_orbs()
+        if self._theme.name == "copilot" or (
+            self._theme_to is not None and self._theme_to.name == "copilot"
+        ):
+            self._copilot_panes = []
 
     def _get_theme_blend(self) -> float:
         return float(self._theme_blend)
@@ -254,142 +216,245 @@ class GlassRoot(QWidget):
 
     themeBlend = Property(float, _get_theme_blend, _set_theme_blend)
 
-    def _ensure_orbs(self) -> None:
-        if self._orbs:
-            return
-        w, h = self.width(), self.height()
-        if w < 80 or h < 80:
-            return
+    def _update_background_animation(self) -> None:
+        """Update Codex background animation phase parameters."""
+        self._codex_split_ratio = codex_bg.calc_split_ratio()
+        self._codex_color_blend_phase_top = codex_bg.calc_top_phase()
+        self._codex_color_blend_phase_bottom = codex_bg.calc_bottom_phase()
 
-        orbs: list[_BackgroundOrb] = []
-        for idx in range(9):
-            radius = self._orb_rng.uniform(140.0, 260.0)
-            render_r = radius * 1.65
-            x = self._orb_rng.uniform(render_r, max(render_r, w - render_r))
-            y = self._orb_rng.uniform(render_r, max(render_r, h - render_r))
-
-            if self._animate_orbs:
-                angle = self._orb_rng.uniform(0.0, 6.283185307179586)
-                speed = self._orb_rng.uniform(8.0, 22.0)
-                vx = math.cos(angle) * speed
-                vy = math.sin(angle) * speed
-            else:
-                vx = vy = 0.0
-
-            orbs.append(
-                _BackgroundOrb(
-                    x=x,
-                    y=y,
-                    vx=vx,
-                    vy=vy,
-                    radius=radius,
-                    color_idx=idx,
-                )
-            )
-
-        self._orbs = orbs
-        self._constrain_orbs()
-
-    def _constrain_orbs(self) -> None:
-        w = self.width()
-        h = self.height()
-        if w <= 0 or h <= 0 or not self._orbs:
-            return
-        for orb in self._orbs:
-            r = orb.render_radius()
-            orb.x = min(max(orb.x, r), w - r)
-            orb.y = min(max(orb.y, r), h - r)
-
-    def _tick_orbs(self) -> None:
-        if not self._animate_orbs:
-            return
         now_s = time.monotonic()
-        dt = now_s - self._orb_last_tick_s
-        self._orb_last_tick_s = now_s
+        dt = now_s - self._claude_last_tick_s
+        if dt > 0.0:
+            self._claude_last_tick_s = now_s
+            dt = min(dt, 0.25)
+            if (
+                self._theme.name == "claude"
+                or (self._theme_to is not None and self._theme_to.name == "claude")
+            ):
+                self._claude_tick_accum_s += float(dt)
+                step_s = float(self._CLAUDE_STEP_S)
+                # Use fixed-timestep integration for smoother motion.
+                max_steps = 8
+                steps = 0
+                while self._claude_tick_accum_s >= step_s and steps < max_steps:
+                    self._claude_tick_accum_s -= step_s
+                    (
+                        self._claude_tips,
+                        self._claude_segments,
+                        self._claude_palette_phase,
+                        self._claude_next_reset_s,
+                    ) = claude_bg.tick_claude_tree(
+                        self._claude_tips,
+                        self._claude_segments,
+                        self._claude_rng,
+                        self.width(),
+                        self.height(),
+                        self._claude_next_reset_s,
+                        dt_s=step_s,
+                        now_s=now_s,
+                    )
+                    steps += 1
 
-        if dt <= 0:
-            return
-        dt = min(dt, 0.060)
+        dt_gemini = now_s - self._gemini_last_tick_s
+        if dt_gemini > 0.0:
+            self._gemini_last_tick_s = now_s
+            dt_gemini = min(dt_gemini, 0.25)
+            if (
+                self._theme.name == "gemini"
+                or (self._theme_to is not None and self._theme_to.name == "gemini")
+            ):
+                self._gemini_tick_accum_s += float(dt_gemini)
+                step_s = 0.05
+                max_steps = 6
+                steps = 0
+                while self._gemini_tick_accum_s >= step_s and steps < max_steps:
+                    self._gemini_tick_accum_s -= step_s
+                    self._tick_gemini_chroma_orbs(dt_s=step_s)
+                    steps += 1
 
-        self._ensure_orbs()
-        if not self._orbs:
-            return
+        dt_copilot = now_s - self._copilot_last_tick_s
+        if dt_copilot > 0.0:
+            self._copilot_last_tick_s = now_s
+            dt_copilot = min(dt_copilot, 0.25)
+            if (
+                self._theme.name == "copilot"
+                or (self._theme_to is not None and self._theme_to.name == "copilot")
+            ):
+                self._copilot_tick_accum_s += float(dt_copilot)
+                step_s = 0.05
+                max_steps = 6
+                steps = 0
+                while self._copilot_tick_accum_s >= step_s and steps < max_steps:
+                    self._copilot_tick_accum_s -= step_s
+                    self._tick_copilot_typed_code(dt_s=step_s)
+                    steps += 1
 
-        w = float(max(1, self.width()))
-        h = float(max(1, self.height()))
-        for orb in self._orbs:
-            orb.x += orb.vx * dt
-            orb.y += orb.vy * dt
+        # Trigger repaint if using Codex / Claude theme
+        if (
+            self._theme.name in {"codex", "claude", "gemini", "copilot"}
+            or (
+                self._theme_to is not None
+                and self._theme_to.name in {"codex", "claude", "gemini", "copilot"}
+            )
+        ):
+            self.update()
 
-            r = orb.render_radius()
-            if orb.x - r <= 0.0:
-                orb.x = r
-                orb.vx = abs(orb.vx)
-            elif orb.x + r >= w:
-                orb.x = w - r
-                orb.vx = -abs(orb.vx)
-
-            if orb.y - r <= 0.0:
-                orb.y = r
-                orb.vy = abs(orb.vy)
-            elif orb.y + r >= h:
-                orb.y = h - r
-                orb.vy = -abs(orb.vy)
-
-        self.update()
-
-    def _paint_orbs(self, painter: QPainter, theme: _AgentTheme) -> None:
-        if not self._orbs:
-            return
-        painter.save()
-        painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.setPen(Qt.NoPen)
-
-        colors = theme.orb_colors
-        if not colors:
-            painter.restore()
-            return
-
-        for orb in self._orbs:
-            c = colors[orb.color_idx % len(colors)]
-            for shrink, alpha in ((1.0, 34), (0.82, 24), (0.66, 16)):
-                r = max(1.0, orb.render_radius() * shrink)
-                center = QPointF(float(orb.x), float(orb.y))
-                grad = QRadialGradient(center, float(r))
-                grad.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), alpha))
-                grad.setColorAt(
-                    0.55, QColor(c.red(), c.green(), c.blue(), int(alpha * 0.30))
-                )
-                grad.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
-                painter.setBrush(grad)
-                painter.drawEllipse(center, float(r), float(r))
-
-        painter.restore()
-
-    def _paint_theme(self, painter: QPainter, theme: _AgentTheme) -> None:
-        painter.fillRect(self.rect(), theme.base)
-
-        self._ensure_orbs()
-        self._paint_orbs(painter, theme)
-
-        w = max(1, self.width())
-        h = max(1, self.height())
-        outline = (
-            QColor(0, 0, 0, 12)
-            if theme.base.lightnessF() > 0.6
-            else QColor(255, 255, 255, 10)
+    def _ensure_gemini_orbs(self) -> None:
+        self._gemini_orbs = gemini_bg.ensure_gemini_orbs(
+            self._gemini_orbs,
+            self._gemini_rng,
+            self.width(),
+            self.height(),
         )
 
-        for color, points in zip(theme.shard_colors, theme.shard_points, strict=False):
-            path = QPainterPath()
-            x0, y0 = points[0]
-            path.moveTo(int(x0 * w), int(y0 * h))
-            for x, y in points[1:]:
-                path.lineTo(int(x * w), int(y * h))
-            path.closeSubpath()
-            painter.fillPath(path, color)
-            painter.setPen(outline)
-            painter.drawPath(path)
+    def _constrain_gemini_orbs(self) -> None:
+        gemini_bg.constrain_gemini_orbs(
+            self._gemini_orbs,
+            self.width(),
+            self.height(),
+        )
+
+    def _tick_gemini_chroma_orbs(self, *, dt_s: float) -> None:
+        self._ensure_gemini_orbs()
+        gemini_bg.tick_gemini_chroma_orbs(
+            self._gemini_orbs,
+            self._gemini_rng,
+            self.width(),
+            self.height(),
+            dt_s,
+        )
+
+    def _paint_gemini_background(self, painter: QPainter, rect: QRect) -> None:
+        self._ensure_gemini_orbs()
+        gemini_bg.paint_gemini_background(painter, rect, self._gemini_orbs)
+
+    def _copilot_font_metrics(self) -> tuple[QFont, QFontMetricsF, float, float]:
+        font, metrics, char_w, line_h = copilot_bg.copilot_font_metrics(
+            self,
+            self._copilot_font,
+            self._copilot_metrics,
+            self._copilot_char_w,
+            self._copilot_line_h,
+        )
+        self._copilot_font = font
+        self._copilot_metrics = metrics
+        self._copilot_char_w = char_w
+        self._copilot_line_h = line_h
+        return font, metrics, char_w, line_h
+
+    def _ensure_copilot_sources(self) -> None:
+        self._copilot_source_files, self._copilot_repo_root = copilot_bg.ensure_copilot_sources(
+            self._copilot_source_files,
+            self._copilot_repo_root,
+        )
+
+    def _ensure_copilot_panes(self) -> None:
+        self._ensure_copilot_sources()
+        self._copilot_panes = copilot_bg.ensure_copilot_panes(
+            self,
+            self._copilot_panes,
+            self._copilot_rng,
+            self._copilot_source_files,
+        )
+
+    def _tick_copilot_typed_code(self, *, dt_s: float) -> None:
+        self._ensure_copilot_panes()
+        if not self._copilot_panes:
+            return
+
+        font, _, char_w, line_h = self._copilot_font_metrics()
+        copilot_bg.tick_copilot_typed_code(
+            self,
+            self._copilot_panes,
+            self._copilot_rng,
+            self._copilot_source_files,
+            font,
+            char_w,
+            line_h,
+            dt_s=dt_s,
+        )
+
+    def _paint_copilot_background(self, painter: QPainter, rect: QRect) -> None:
+        self._ensure_copilot_panes()
+        font, _, char_w, line_h = self._copilot_font_metrics()
+        
+        pane_rects = copilot_bg.copilot_pane_rects(rect, self._copilot_panes)
+        if len(pane_rects) != len(self._copilot_panes):
+            # Pane count can change across resizes; keep the visuals stable.
+            self._copilot_panes = []
+            self._ensure_copilot_panes()
+        
+        copilot_bg.paint_copilot_background(
+            painter,
+            rect,
+            self._copilot_panes,
+            font,
+            char_w,
+            line_h,
+        )
+
+    def _paint_claude_background(self, painter: QPainter, rect: QRect) -> None:
+        self._claude_tips, self._claude_next_reset_s = claude_bg.paint_claude_background(
+            painter,
+            rect,
+            self._claude_tips,
+            self._claude_segments,
+            self._claude_rng,
+            self._claude_palette_phase,
+            self.width(),
+            self.height(),
+            time.monotonic(),
+            codex_bg.blend_colors,
+        )
+
+    def _paint_codex_background(self, painter: QPainter, rect: QRect) -> None:
+        """
+        Paint the two-band background composition for Codex theme.
+
+        Renders animated background with:
+        - Top band: DarkBlue to DarkGreen gradient
+        - Bottom band: Dark accent gradient
+        - Soft feathered diagonal boundary between bands
+        - Large soft color blobs overlay
+
+        Args:
+            painter: QPainter instance to draw with
+            rect: Rectangle defining the paint area
+        """
+        # Use cached phase values (updated by timer)
+        (
+            self._cached_top_color,
+            self._cached_top_phase,
+            self._cached_bottom_color,
+            self._cached_bottom_phase,
+        ) = codex_bg.paint_codex_background(
+            painter,
+            rect,
+            self._codex_split_ratio,
+            self._codex_color_blend_phase_top,
+            self._codex_color_blend_phase_bottom,
+            self._cached_top_color,
+            self._cached_top_phase,
+            self._cached_bottom_color,
+            self._cached_bottom_phase,
+        )
+
+    def _paint_theme(self, painter: QPainter, theme: _AgentTheme) -> None:
+        if theme.name == "codex":
+            self._paint_codex_background(painter, self.rect())
+            return
+        if theme.name == "claude":
+            self._paint_claude_background(painter, self.rect())
+            return
+        if theme.name == "gemini":
+            self._paint_gemini_background(painter, self.rect())
+            return
+        if theme.name == "copilot":
+            self._paint_copilot_background(painter, self.rect())
+            return
+
+        # Fallback for any unknown themes
+        painter.fillRect(self.rect(), theme.base)
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)

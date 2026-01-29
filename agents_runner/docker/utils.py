@@ -9,7 +9,7 @@ def _write_preflight_script(
     preflight_tmp_paths: list[str],
 ) -> str:
     fd, tmp_path = tempfile.mkstemp(
-        prefix=f"codex-preflight-{label}-{task_id or 'task'}-",
+        prefix=f"agents-runner-preflight-{label}-{task_id or 'task'}-",
         suffix=".sh",
     )
     try:
