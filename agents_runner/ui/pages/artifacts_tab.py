@@ -256,6 +256,14 @@ class ArtifactsTab(QWidget):
             f"stop reason={reason} task_id={task_id} mode={self._mode}"
         )
         try:
+            # Disconnect signal to prevent queued callbacks from firing during/after stop.
+            # This prevents QTimer cross-thread warnings when filesystem callbacks arrive
+            # after the watcher has been stopped and its reference cleared (Issue #141).
+            try:
+                watcher.files_changed.disconnect(self._on_files_changed)
+            except RuntimeError:
+                # Signal may already be disconnected or never connected
+                pass
             watcher.stop()
         finally:
             self._file_watcher = None
