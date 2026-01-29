@@ -7,7 +7,6 @@ Shown when user tries to run an agent that is on cooldown.
 from __future__ import annotations
 
 from PySide6.QtCore import QTimer
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel

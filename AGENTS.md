@@ -13,7 +13,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
 - **Docs:** Do not update `README.md`; prefer code and docstrings as the source of truth and keep notes minimal and task-scoped
 - **Commits:** Commit early and often — prefer many small, focused commits with clear `[TYPE]` messages and concise descriptions.
-- **Test:** Do not build tests unless asked to; delegate testing to Tester Mode when requested
+- **Test:** Do not build tests unless asked to; delegate testing to Tester Mode when requested. Tests live under `agents_runner/tests` and should be run via `uv run` (for example `uv run pytest`)
 
 ---
 

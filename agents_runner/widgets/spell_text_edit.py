@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QPlainTextEdit
-from PySide6.QtWidgets import QMenu
 
 from agents_runner.widgets.spell_highlighter import SpellHighlighter
 
@@ -76,7 +74,7 @@ class SpellTextEdit(QPlainTextEdit):
                     
                     # Add separator after suggestions
                     if first_action:
-                        separator = menu.insertSeparator(menu.actions()[len(suggestions)])
+                        menu.insertSeparator(menu.actions()[len(suggestions)])
                     else:
                         menu.addSeparator()
                 

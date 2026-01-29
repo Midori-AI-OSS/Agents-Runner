@@ -8,7 +8,6 @@ from pathlib import Path
 from PySide6.QtCore import (
     QEasingCurve,
     QRect,
-    QRectF,
     Property,
     QPropertyAnimation,
     Qt,
@@ -17,6 +16,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor
 from PySide6.QtGui import QFont
 from PySide6.QtGui import QFontMetricsF
+from PySide6.QtGui import QLinearGradient
 from PySide6.QtGui import QPainter
 from PySide6.QtGui import QPaintEvent
 from PySide6.QtGui import QResizeEvent

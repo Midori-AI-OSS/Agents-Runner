@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QProcess
+from PySide6.QtCore import QUrl
 from PySide6.QtCore import QSize
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMenu
@@ -12,7 +14,6 @@ from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QPlainTextEdit
-from PySide6.QtWidgets import QStyle
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -414,6 +415,8 @@ class TaskDetailsPage(QWidget):
         """Handle desktop viewer process exit."""
         if exit_status == QProcess.ExitStatus.CrashExit:
             logger.warning(f"Desktop viewer crashed (exit code {exit_code})")
+            if self._desktop_viewer_url.startswith("http") and exit_code != 9:
+                QDesktopServices.openUrl(QUrl(self._desktop_viewer_url))
         else:
             logger.info(f"Desktop viewer exited (exit code {exit_code})")
         

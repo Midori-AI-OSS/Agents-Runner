@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-import os
 
 from dataclasses import replace
-from uuid import uuid4
 
-from PySide6.QtWidgets import QFileDialog
-from PySide6.QtWidgets import QInputDialog
 from PySide6.QtWidgets import QMessageBox
 
-from agents_runner.environments import ALLOWED_STAINS
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED

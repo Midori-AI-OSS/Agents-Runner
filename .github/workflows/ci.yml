@@ -1,0 +1,27 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - uses: astral-sh/setup-uv@v6.6.0
+      - uses: oven-sh/setup-bun@v2.0.2
+      - uses: docker/setup-docker-action@v4
+
+      - name: Sync
+        run: uv sync --group lint --group test
+
+      - name: Lint
+        run: uv run ruff check --select F .
+
+      - name: Tests
+        run: uv run pytest -q
