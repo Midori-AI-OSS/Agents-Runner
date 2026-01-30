@@ -43,7 +43,10 @@ class _MainWindowTaskRecoveryMixin:
                 return
 
         if self._task_needs_finalization(task) and not task.is_interactive_run():
-            # Guard: Skip finalization if already pending or running (prevents duplicates)
+            # SYNCHRONIZATION GUARD 1: Check finalization_state
+            # _on_task_done() sets state to "pending" before queueing finalization.
+            # This prevents recovery_tick from creating duplicate work for tasks that
+            # are already being finalized via the task_done path.
             finalization_state_lower = (task.finalization_state or "").lower()
             if finalization_state_lower in {"pending", "running"}:
                 self.host_log.emit(
@@ -57,7 +60,9 @@ class _MainWindowTaskRecoveryMixin:
                 )
                 return
             
-            # Guard: Check if finalization thread already exists and is alive
+            # SYNCHRONIZATION GUARD 2: Check thread existence
+            # Even if state isn't updated yet, the thread dict provides an additional
+            # guard against duplicate finalization threads for the same task.
             task_id = str(task.task_id or "").strip()
             if task_id:
                 existing_thread = self._finalization_threads.get(task_id)
@@ -148,6 +153,17 @@ class _MainWindowTaskRecoveryMixin:
         threading.Thread(target=_worker, daemon=True).start()
 
     def _queue_task_finalization(self, task_id: str, *, reason: str) -> None:
+        """Queue task finalization work.
+        
+        SYNCHRONIZATION: This function provides thread-safe finalization queueing via
+        three defensive mechanisms:
+        1. State check: task.finalization_state must not be "done"
+        2. Thread existence check: Prevents creating duplicate threads
+        3. State reset: If somehow in "running" state without a live thread, resets to "pending"
+        
+        These guards coordinate finalization between task_done and recovery_tick paths,
+        ensuring exactly one finalization thread runs per task.
+        """
         task_id = str(task_id or "").strip()
         if not task_id:
             return
@@ -159,10 +175,12 @@ class _MainWindowTaskRecoveryMixin:
         if not self._task_needs_finalization(task):
             return
 
+        # SYNCHRONIZATION GUARD: Check if finalization thread already exists
         existing = self._finalization_threads.get(task_id)
         if existing is not None and existing.is_alive():
             return
 
+        # State cleanup: If state shows "running" but no live thread, reset to "pending"
         if (task.finalization_state or "").lower() == "running":
             task.finalization_state = "pending"
 

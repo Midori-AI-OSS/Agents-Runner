@@ -565,6 +565,11 @@ class _MainWindowTaskEventsMixin:
             if (task.finalization_state or "").lower() == "done":
                 return
 
+            # SYNCHRONIZATION: Set finalization_state to "pending" BEFORE calling _queue_task_finalization().
+            # This atomic state change prevents recovery_tick from queuing duplicate finalization work.
+            # The recovery_tick checks finalization_state and skips tasks that are "pending" or "running".
+            # Combined with thread existence checks in _queue_task_finalization(), this provides
+            # race-free coordination between task_done and recovery_tick finalization triggers.
             task.finalization_state = "pending"
             task.finalization_error = ""
             self._schedule_save()
