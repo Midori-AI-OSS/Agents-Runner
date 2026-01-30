@@ -35,6 +35,16 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         if task is None:
             return
 
+        self.host_log.emit(
+            task_id,
+            format_log(
+                "host",
+                "interactive",
+                "INFO",
+                f"Task {task_id}: interactive run finished (exit_code={exit_code}, state={task.status})",
+            ),
+        )
+
         try:
             task.exit_code = int(exit_code)
         except Exception:
@@ -42,6 +52,16 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         task.finished_at = datetime.now(tz=timezone.utc)
         task.status = "done" if (task.exit_code or 0) == 0 else "failed"
         task.git = derive_task_git_metadata(task)
+        
+        self.host_log.emit(
+            task_id,
+            format_log(
+                "host",
+                "interactive",
+                "INFO",
+                f"Task {task_id}: state transition (state=None→done, reason=interactive_finished)",
+            ),
+        )
         task.finalization_state = "done"
         task.finalization_error = ""
 
@@ -78,6 +98,15 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                 QMessageBox.question(self, "Create pull request?", message)
                 == QMessageBox.StandardButton.Yes
             ):
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "interactive",
+                        "INFO",
+                        f"Task {task_id}: creating PR after interactive run (branch={task.gh_branch}, base={base_display})",
+                    ),
+                )
                 threading.Thread(
                     target=self._finalize_gh_management_worker,
                     args=(
@@ -94,6 +123,16 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                     ),
                     daemon=True,
                 ).start()
+            else:
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "interactive",
+                        "INFO",
+                        f"Task {task_id}: PR creation declined by user",
+                    ),
+                )
 
     def _finalize_gh_management_worker(
         self,

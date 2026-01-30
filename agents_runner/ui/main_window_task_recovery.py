@@ -32,13 +32,40 @@ class _MainWindowTaskRecoveryMixin:
         if recovery_tick fires before this completes.
         """
         # STARTUP RECONCILIATION: Run once at app start to handle tasks from previous session
+        self.host_log.emit(
+            "",
+            format_log(
+                "host",
+                "startup",
+                "INFO",
+                f"Starting task reconciliation after restart ({len(self._tasks)} tasks to check)",
+            ),
+        )
         for task in list(self._tasks.values()):
             if task.is_active():
                 # Sync container state for tasks that were running when app closed
+                self.host_log.emit(
+                    str(task.task_id or ""),
+                    format_log(
+                        "host",
+                        "startup",
+                        "DEBUG",
+                        f"Task {task.task_id}: syncing active task (state={task.status})",
+                    ),
+                )
                 self._tick_recovery_task(task)
                 continue
             if self._task_needs_finalization(task) and not task.is_interactive_run():
                 # Queue finalization for tasks that completed before restart
+                self.host_log.emit(
+                    str(task.task_id or ""),
+                    format_log(
+                        "host",
+                        "startup",
+                        "INFO",
+                        f"Task {task.task_id}: queueing finalization (reason=startup_reconcile, state={task.status})",
+                    ),
+                )
                 self._queue_task_finalization(task.task_id, reason="startup_reconcile")
 
     def _tick_recovery(self) -> None:
@@ -61,6 +88,15 @@ class _MainWindowTaskRecoveryMixin:
         """
         # If finalization already completed, no work is needed.
         if (task.finalization_state or "").lower() == "done":
+            self.host_log.emit(
+                str(task.task_id or ""),
+                format_log(
+                    "host",
+                    "recovery_tick",
+                    "DEBUG",
+                    f"Task {task.task_id}: skipping finalization (reason=already done, state=done)",
+                ),
+            )
             return
 
         status_lower = (task.status or "").lower()
@@ -85,7 +121,7 @@ class _MainWindowTaskRecoveryMixin:
                         "host",
                         "recovery_tick",
                         "INFO",
-                        f"Skipping finalization for task {task.task_id}: already {finalization_state_lower}",
+                        f"Task {task.task_id}: skipping finalization (reason=already {finalization_state_lower}, state={finalization_state_lower})",
                     ),
                 )
                 return
@@ -103,11 +139,20 @@ class _MainWindowTaskRecoveryMixin:
                             "host",
                             "recovery_tick",
                             "INFO",
-                            f"Skipping finalization for task {task.task_id}: thread already running",
+                            f"Task {task.task_id}: skipping finalization (reason=thread already running, state={finalization_state_lower})",
                         ),
                     )
                     return
             
+            self.host_log.emit(
+                str(task.task_id or ""),
+                format_log(
+                    "host",
+                    "recovery_tick",
+                    "INFO",
+                    f"Task {task.task_id}: queueing finalization (reason=recovery_tick, state={task.status})",
+                ),
+            )
             self._queue_task_finalization(task.task_id, reason="recovery_tick")
 
     def _task_needs_finalization(self, task: Task) -> bool:
@@ -214,7 +259,7 @@ class _MainWindowTaskRecoveryMixin:
                     "host",
                     "finalize",
                     "INFO",
-                    f"Task {task_id}: finalization already pending, skipping queue (reason: duplicate request from {reason})",
+                    f"Task {task_id}: skipping finalization (reason=already pending, state=pending, trigger={reason})",
                 ),
             )
             return
@@ -225,7 +270,7 @@ class _MainWindowTaskRecoveryMixin:
                     "host",
                     "finalize",
                     "INFO",
-                    f"Task {task_id}: finalization already running, skipping queue (reason: duplicate request from {reason})",
+                    f"Task {task_id}: skipping finalization (reason=already running, state=running, trigger={reason})",
                 ),
             )
             return
@@ -243,7 +288,7 @@ class _MainWindowTaskRecoveryMixin:
                     "host",
                     "finalize",
                     "INFO",
-                    f"Task {task_id}: finalization thread already running, skipping queue (reason: duplicate request from {reason})",
+                    f"Task {task_id}: skipping finalization (reason=thread already alive, state={finalization_state_lower}, trigger={reason})",
                 ),
             )
             return
@@ -256,8 +301,8 @@ class _MainWindowTaskRecoveryMixin:
                 format_log(
                     "host",
                     "finalize",
-                    "INFO",
-                    f"Task {task_id}: finalization state was 'running' but no thread found, resetting to 'pending'",
+                    "WARN",
+                    f"Task {task_id}: state was running but no thread found, resetting (state=running→pending, trigger={reason})",
                 ),
             )
             task.finalization_state = "pending"
@@ -269,7 +314,7 @@ class _MainWindowTaskRecoveryMixin:
                 "host",
                 "finalize",
                 "INFO",
-                f"Task {task_id}: queueing finalization (reason: {reason})",
+                f"Task {task_id}: queueing finalization (reason={reason}, state={task.status})",
             ),
         )
 
@@ -279,13 +324,40 @@ class _MainWindowTaskRecoveryMixin:
             daemon=True,
         )
         self._finalization_threads[task_id] = thread
+        self.host_log.emit(
+            task_id,
+            format_log(
+                "host",
+                "finalize",
+                "DEBUG",
+                f"Task {task_id}: finalization thread created (reason={reason})",
+            ),
+        )
         thread.start()
+        self.host_log.emit(
+            task_id,
+            format_log(
+                "host",
+                "finalize",
+                "DEBUG",
+                f"Task {task_id}: finalization thread started (reason={reason})",
+            ),
+        )
 
     def _finalize_task_worker(self, task_id: str, reason: str) -> None:
         task = self._tasks.get(task_id)
         if task is None:
             return
 
+        self.host_log.emit(
+            task_id,
+            format_log(
+                "host",
+                "finalize",
+                "INFO",
+                f"Task {task_id}: state transition (state=None→running, reason={reason})",
+            ),
+        )
         task.finalization_state = "running"
         task.finalization_error = ""
         self._schedule_save()
@@ -342,16 +414,70 @@ class _MainWindowTaskRecoveryMixin:
             skip_reason: str | None = None
             if user_stop:
                 skip_reason = f"user stopped task ({task.status})"
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "finalize",
+                        "INFO",
+                        f"Task {task_id}: skipping PR creation (reason={skip_reason}, state={task.status})",
+                    ),
+                )
             elif task.workspace_type != WORKSPACE_CLONED:
                 skip_reason = f"not a cloned workspace (type={task.workspace_type})"
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "finalize",
+                        "INFO",
+                        f"Task {task_id}: skipping PR creation (reason={skip_reason}, state={task.status})",
+                    ),
+                )
             elif not task.gh_repo_root:
                 skip_reason = "missing repository root information"
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "finalize",
+                        "WARN",
+                        f"Task {task_id}: skipping PR creation (reason={skip_reason}, state={task.status})",
+                    ),
+                )
             elif not task.gh_branch:
                 skip_reason = "missing branch information"
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "finalize",
+                        "WARN",
+                        f"Task {task_id}: skipping PR creation (reason={skip_reason}, state={task.status})",
+                    ),
+                )
             elif task.gh_pr_url:
                 skip_reason = "PR already created"
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "finalize",
+                        "INFO",
+                        f"Task {task_id}: skipping PR creation (reason={skip_reason}, state={task.status})",
+                    ),
+                )
             else:
                 should_create_pr = True
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "finalize",
+                        "INFO",
+                        f"Task {task_id}: proceeding with PR creation (reason=all checks passed, state={task.status})",
+                    ),
+                )
 
             pr_worker_ran = False
             if should_create_pr:
@@ -391,12 +517,30 @@ class _MainWindowTaskRecoveryMixin:
             self._schedule_save()
             self.host_log.emit(
                 task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"Task {task_id}: state transition (state=running→done, reason={reason})",
+                ),
+            )
+            self.host_log.emit(
+                task_id,
                 format_log("host", "finalize", "INFO", "finalization complete"),
             )
         except Exception as exc:
             task.finalization_state = "error"
             task.finalization_error = str(exc)
             self._schedule_save()
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "ERROR",
+                    f"Task {task_id}: state transition (state=running→error, reason={reason})",
+                ),
+            )
             self.host_log.emit(
                 task_id,
                 format_log("host", "finalize", "ERROR", f"finalization failed: {exc}"),
