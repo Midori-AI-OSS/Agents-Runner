@@ -17,18 +17,48 @@ from agents_runner.ui.utils import _stain_color
 
 class _MainWindowTaskRecoveryMixin:
     def _reconcile_tasks_after_restart(self) -> None:
+        """Reconcile tasks after app restart.
+        
+        This runs once at startup to handle tasks that were interrupted or completed
+        before the app was closed. It serves a different purpose than recovery_tick:
+        
+        - startup_reconcile: Handles tasks that were done BEFORE restart but missed finalization
+        - recovery_tick: Safety net for tasks that complete DURING runtime but miss events
+        
+        For active tasks, delegates to _tick_recovery_task() to sync container state.
+        For done/failed tasks, queues finalization if needed and not already finalized.
+        
+        Note: Deduplication guards in _queue_task_finalization() prevent duplicate work
+        if recovery_tick fires before this completes.
+        """
+        # STARTUP RECONCILIATION: Run once at app start to handle tasks from previous session
         for task in list(self._tasks.values()):
             if task.is_active():
+                # Sync container state for tasks that were running when app closed
                 self._tick_recovery_task(task)
                 continue
             if self._task_needs_finalization(task) and not task.is_interactive_run():
+                # Queue finalization for tasks that completed before restart
                 self._queue_task_finalization(task.task_id, reason="startup_reconcile")
 
     def _tick_recovery(self) -> None:
+        """Recovery tick handler (runs every 5 seconds).
+        
+        Safety net for tasks that complete during runtime but miss event-driven finalization.
+        This is different from startup_reconcile which handles tasks from previous session.
+        """
         for task in list(self._tasks.values()):
             self._tick_recovery_task(task)
 
     def _tick_recovery_task(self, task: Task) -> None:
+        """Process a single task for recovery/finalization.
+        
+        RECOVERY TICK: Safety net for tasks that complete during runtime.
+        This is different from startup_reconcile which handles tasks from previous session.
+        
+        For active tasks: syncs container state and ensures log tailing
+        For done tasks: queues finalization if needed (with deduplication guards)
+        """
         # If finalization already completed, no work is needed.
         if (task.finalization_state or "").lower() == "done":
             return

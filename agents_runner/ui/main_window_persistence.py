@@ -254,7 +254,11 @@ class _MainWindowPersistenceMixin:
             spinner = _stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
+        # Run startup reconciliation once
+        # Guard prevents accidental re-runs if _load_state() is called multiple times
         try:
-            self._reconcile_tasks_after_restart()
+            if not getattr(self, '_reconcile_has_run', False):
+                self._reconcile_has_run = True
+                self._reconcile_tasks_after_restart()
         except Exception:
             pass
