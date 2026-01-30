@@ -47,10 +47,9 @@ class _MainWindowTaskRecoveryMixin:
             # The bridge will handle finalization via _on_bridge_done -> _on_task_done.
             # This prevents double finalization when both recovery_tick and task_done
             # attempt to finalize the same task.
-            task_id = str(task.task_id or "").strip()
-            if task_id and task_id in self._bridges:
+            if task.task_id in self._bridges:
                 return
-            self._queue_task_finalization(task_id, reason="recovery_tick")
+            self._queue_task_finalization(task.task_id, reason="recovery_tick")
 
     def _task_needs_finalization(self, task: Task) -> bool:
         if not (task.is_done() or task.is_failed()):
