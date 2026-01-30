@@ -128,6 +128,9 @@ class _MainWindowTaskEventsMixin:
             self._details.update_task(task)
             self._schedule_save()
 
+            # SYNCHRONIZATION: Set finalization_state to "pending" BEFORE calling _queue_task_finalization().
+            # This atomic state transition ensures recovery_tick sees the state change and avoids
+            # duplicate finalization work. Same pattern as task_done path for consistency.
             task.finalization_state = "pending"
             task.finalization_error = ""
             self._schedule_save()

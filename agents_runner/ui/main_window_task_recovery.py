@@ -293,8 +293,14 @@ class _MainWindowTaskRecoveryMixin:
             )
             return
 
-        # State cleanup: If state shows "running" but no live thread, reset to "pending"
-        # This handles edge cases from crashes or unexpected terminations
+        # ORPHANED STATE RECOVERY:
+        # If state shows "running" but no live thread exists, this indicates an orphaned
+        # state from an app crash or unexpected termination. We reset to "pending" to allow
+        # finalization to retry. This is safe because:
+        # 1. No thread is actually running (verified by guard check above)
+        # 2. finalization_state="running" means work was interrupted mid-flight
+        # 3. Finalization operations are idempotent (safe to retry)
+        # 4. This ensures tasks don't get stuck in "running" state forever
         if finalization_state_lower == "running":
             self.host_log.emit(
                 task_id,
@@ -367,6 +373,11 @@ class _MainWindowTaskRecoveryMixin:
         )
 
         try:
+            # ARTIFACT COLLECTION LOGIC:
+            # Skip artifact collection for user-stopped tasks because:
+            # 1. User explicitly canceled, so they don't want the incomplete work
+            # 2. Artifacts may be in inconsistent state (task didn't finish)
+            # 3. Saves time and resources for unwanted output
             user_stop = (task.status or "").lower() in {"cancelled", "killed"}
             if not user_stop:
                 runner_config = getattr(task, "_runner_config", None)
@@ -500,6 +511,17 @@ class _MainWindowTaskRecoveryMixin:
                     format_log("gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"),
                 )
 
+            # WORKSPACE CLEANUP LOGIC:
+            # Cleanup happens here ONLY if:
+            # 1. PR worker did NOT run (PR worker cleans in its finally block)
+            # 2. reason != "recovery_tick" (recovery_tick is monitoring, not modifying)
+            # 3. workspace is cloned (non-cloned workspaces don't need cleanup)
+            # 
+            # Why recovery_tick skips cleanup:
+            # - recovery_tick is a safety net that runs every 5 seconds
+            # - It should verify finalization state but not modify workspaces
+            # - Cleanup is handled by the primary paths (task_done, user_stop, startup_reconcile)
+            # - This prevents recovery_tick from accidentally removing resources still in use
             if (
                 not pr_worker_ran
                 and reason != "recovery_tick"  # Skip cleanup during recovery
