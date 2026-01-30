@@ -128,8 +128,6 @@ class _MainWindowTaskEventsMixin:
             self._details.update_task(task)
             self._schedule_save()
 
-            task.finalization_error = ""
-            self._schedule_save()
             self._queue_task_finalization(task_id, reason="user_stop")
 
             return
@@ -564,8 +562,6 @@ class _MainWindowTaskEventsMixin:
             if (task.finalization_state or "").lower() == "done":
                 return
 
-            task.finalization_error = ""
-            self._schedule_save()
             self._queue_task_finalization(task_id, reason="task_done")
         finally:
             pass
