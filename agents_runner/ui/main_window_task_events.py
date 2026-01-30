@@ -580,7 +580,7 @@ class _MainWindowTaskEventsMixin:
             )
             self._try_start_queued_tasks()
 
-            if (task.finalization_state or "").lower() == "done":
+            if (task.finalization_state or "").lower().strip() == "done":
                 self.host_log.emit(
                     task_id,
                     format_log(

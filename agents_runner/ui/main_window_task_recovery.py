@@ -76,7 +76,7 @@ class _MainWindowTaskRecoveryMixin:
         """
         for task in list(self._tasks.values()):
             # Skip tasks that have already completed finalization to avoid log spam
-            if (task.finalization_state or "").lower() == "done":
+            if (task.finalization_state or "").lower().strip() == "done":
                 continue
             self._tick_recovery_task(task)
 
@@ -106,8 +106,9 @@ class _MainWindowTaskRecoveryMixin:
             # _on_task_done() sets state to "pending" before queueing finalization.
             # This prevents recovery_tick from creating duplicate work for tasks that
             # are already being finalized via the task_done path.
-            finalization_state_lower = (task.finalization_state or "").lower()
-            if finalization_state_lower in {"pending", "running"}:
+            # Also defensively check for "done" state to prevent log spam.
+            finalization_state_lower = (task.finalization_state or "").lower().strip()
+            if finalization_state_lower in {"pending", "running", "done"}:
                 self.host_log.emit(
                     str(task.task_id or ""),
                     format_log(
@@ -151,7 +152,7 @@ class _MainWindowTaskRecoveryMixin:
     def _task_needs_finalization(self, task: Task) -> bool:
         if not (task.is_done() or task.is_failed()):
             return False
-        return (task.finalization_state or "").lower() != "done"
+        return (task.finalization_state or "").lower().strip() != "done"
 
     def _update_task_ui(self, task: Task) -> None:
         env = self._environments.get(task.environment_id)
@@ -244,7 +245,7 @@ class _MainWindowTaskRecoveryMixin:
         # DEDUPLICATION GUARD 1: Check finalization_state first for early return
         # This prevents duplicate finalization attempts when finalization is already
         # queued or running via any code path (task_done, recovery_tick, etc.)
-        finalization_state_lower = (task.finalization_state or "").lower()
+        finalization_state_lower = (task.finalization_state or "").lower().strip()
         if finalization_state_lower == "pending":
             self.host_log.emit(
                 task_id,
@@ -264,6 +265,19 @@ class _MainWindowTaskRecoveryMixin:
                     "finalize",
                     "INFO",
                     f"Task {task_id}: skipping finalization (reason=already running, state=running, trigger={reason})",
+                ),
+            )
+            return
+        # Also check for "done" state defensively (should be caught by _task_needs_finalization,
+        # but add explicit guard to prevent any edge cases)
+        if finalization_state_lower == "done":
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "DEBUG",
+                    f"Task {task_id}: skipping finalization (reason=already done, state=done, trigger={reason})",
                 ),
             )
             return
