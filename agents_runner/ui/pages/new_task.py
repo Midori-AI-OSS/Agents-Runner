@@ -858,11 +858,12 @@ class NewTaskPage(QWidget):
         self._run_interactive.setToolTip(tooltip)
         self._run_agent.setToolTip(tooltip)
 
-    def set_agent_chain(self, agents: list[str]) -> None:
+    def set_agent_chain(self, agents: list[str], selection_mode: str = "") -> None:
         """Set the agent chain display for the selected environment.
 
         Args:
             agents: List of agent names in priority order
+            selection_mode: Agent selection mode ("fallback", "round-robin", "least-used", or empty)
         """
         # Hide chain display when empty or single agent
         if not agents or len(agents) <= 1:
@@ -883,13 +884,17 @@ class NewTaskPage(QWidget):
         
         self._agent_chain.setText(chain_text)
 
-        # Full tooltip always shows all agents
+        # Build tooltip based on selection mode
+        is_fallback_mode = str(selection_mode or "").strip() == "fallback"
         tooltip = "Agents will be used in this order:\n"
         for i, agent in enumerate(agents, 1):
             if i == 1:
                 tooltip += f"{i}. {agent.title()} (Primary)\n"
             else:
-                tooltip += f"{i}. {agent.title()} (Fallback {i-1})\n"
+                if is_fallback_mode:
+                    tooltip += f"{i}. {agent.title()} (Fallback {i-1})\n"
+                else:
+                    tooltip += f"{i}. {agent.title()} (Priority {i})\n"
         self._agent_chain.setToolTip(tooltip.strip())
 
     def reset_for_new_run(self) -> None:

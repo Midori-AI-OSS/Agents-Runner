@@ -249,10 +249,12 @@ class _MainWindowEnvironmentMixin:
         from agents_runner.agent_cli import normalize_agent
 
         # Get agent chain from environment or settings
+        selection_mode = ""
         if env and env.agent_selection and env.agent_selection.agents:
             # Environment has custom agent configuration
             selection = env.agent_selection
             mode = str(selection.selection_mode or "round-robin")
+            selection_mode = mode
 
             if mode == "fallback":
                 # Build fallback chain
@@ -296,6 +298,7 @@ class _MainWindowEnvironmentMixin:
                     str(self._settings_data.get("agent_cli") or "codex")
                 )
                 agent_names = [default_agent]
+                selection_mode = ""  # Reset mode for default agent
         else:
             # No environment or no agents configured: use global default
             default_agent = normalize_agent(
@@ -303,7 +306,7 @@ class _MainWindowEnvironmentMixin:
             )
             agent_names = [default_agent]
 
-        self._new_task.set_agent_chain(agent_names)
+        self._new_task.set_agent_chain(agent_names, selection_mode)
 
     def _on_new_task_env_changed(self, env_id: str) -> None:
         if self._syncing_environment:
