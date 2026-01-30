@@ -88,16 +88,7 @@ class _MainWindowTaskRecoveryMixin:
         """
         # If finalization already completed, no work is needed.
         if (task.finalization_state or "").lower() == "done":
-            self.host_log.emit(
-                str(task.task_id or ""),
-                format_log(
-                    "host",
-                    "recovery_tick",
-                    "DEBUG",
-                    f"Task {task.task_id}: skipping finalization (reason=already done, state=done)",
-                ),
-            )
-            return
+            return  # Silent return - Task 03 will provide proper deduplication
 
         status_lower = (task.status or "").lower()
         if task.is_active() or status_lower == "unknown":
