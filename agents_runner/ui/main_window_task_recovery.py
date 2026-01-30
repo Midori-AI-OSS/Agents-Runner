@@ -50,7 +50,7 @@ class _MainWindowTaskRecoveryMixin:
             task_id = str(task.task_id or "").strip()
             if task_id and task_id in self._bridges:
                 return
-            self._queue_task_finalization(task.task_id, reason="recovery_tick")
+            self._queue_task_finalization(task_id, reason="recovery_tick")
 
     def _task_needs_finalization(self, task: Task) -> bool:
         if not (task.is_done() or task.is_failed()):
