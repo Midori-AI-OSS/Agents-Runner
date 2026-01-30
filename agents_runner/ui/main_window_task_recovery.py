@@ -43,6 +43,12 @@ class _MainWindowTaskRecoveryMixin:
                 return
 
         if self._task_needs_finalization(task) and not task.is_interactive_run():
+            # Don't queue recovery_tick finalization if task has an active bridge.
+            # The bridge will handle finalization via _on_bridge_done -> _on_task_done.
+            # This prevents double finalization when both recovery_tick and task_done
+            # attempt to finalize the same task.
+            if task.task_id in self._bridges:
+                return
             self._queue_task_finalization(task.task_id, reason="recovery_tick")
 
     def _task_needs_finalization(self, task: Task) -> bool:
