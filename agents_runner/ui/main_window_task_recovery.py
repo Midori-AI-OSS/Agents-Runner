@@ -156,10 +156,11 @@ class _MainWindowTaskRecoveryMixin:
         """Queue task finalization work.
         
         SYNCHRONIZATION: This function provides thread-safe finalization queueing via
-        three defensive mechanisms:
-        1. State check: task.finalization_state must not be "done"
-        2. Thread existence check: Prevents creating duplicate threads
-        3. State reset: If somehow in "running" state without a live thread, resets to "pending"
+        four defensive mechanisms:
+        1. Early state check: Returns immediately if finalization is "pending" or "running"
+        2. Needs-finalization check: task.finalization_state must not be "done"
+        3. Thread existence check: Prevents creating duplicate threads
+        4. State reset: If somehow in "running" state without a live thread, resets to "pending"
         
         These guards coordinate finalization between task_done and recovery_tick paths,
         ensuring exactly one finalization thread runs per task.
@@ -172,17 +173,75 @@ class _MainWindowTaskRecoveryMixin:
         if task is None:
             return
 
+        # DEDUPLICATION GUARD 1: Check finalization_state first for early return
+        # This prevents duplicate finalization attempts when finalization is already
+        # queued or running via any code path (task_done, recovery_tick, etc.)
+        finalization_state_lower = (task.finalization_state or "").lower()
+        if finalization_state_lower == "pending":
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"Task {task_id}: finalization already pending, skipping queue (reason: duplicate request from {reason})",
+                ),
+            )
+            return
+        if finalization_state_lower == "running":
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"Task {task_id}: finalization already running, skipping queue (reason: duplicate request from {reason})",
+                ),
+            )
+            return
+
         if not self._task_needs_finalization(task):
             return
 
-        # SYNCHRONIZATION GUARD: Check if finalization thread already exists
+        # DEDUPLICATION GUARD 2: Check if finalization thread already exists
+        # This handles edge cases where state might not be set yet but thread exists
         existing = self._finalization_threads.get(task_id)
         if existing is not None and existing.is_alive():
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"Task {task_id}: finalization thread already running, skipping queue (reason: duplicate request from {reason})",
+                ),
+            )
             return
 
         # State cleanup: If state shows "running" but no live thread, reset to "pending"
-        if (task.finalization_state or "").lower() == "running":
+        # This handles edge cases from crashes or unexpected terminations
+        if finalization_state_lower == "running":
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"Task {task_id}: finalization state was 'running' but no thread found, resetting to 'pending'",
+                ),
+            )
             task.finalization_state = "pending"
+
+        # Queue finalization: Log the successful queueing with reason
+        self.host_log.emit(
+            task_id,
+            format_log(
+                "host",
+                "finalize",
+                "INFO",
+                f"Task {task_id}: queueing finalization (reason: {reason})",
+            ),
+        )
 
         thread = threading.Thread(
             target=self._finalize_task_worker,
