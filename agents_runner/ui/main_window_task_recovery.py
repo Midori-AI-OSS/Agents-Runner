@@ -75,6 +75,9 @@ class _MainWindowTaskRecoveryMixin:
         This is different from startup_reconcile which handles tasks from previous session.
         """
         for task in list(self._tasks.values()):
+            # Skip tasks that have already completed finalization to avoid log spam
+            if (task.finalization_state or "").lower() == "done":
+                continue
             self._tick_recovery_task(task)
 
     def _tick_recovery_task(self, task: Task) -> None:
@@ -85,20 +88,10 @@ class _MainWindowTaskRecoveryMixin:
         
         For active tasks: syncs container state and ensures log tailing
         For done tasks: queues finalization if needed (with deduplication guards)
+        
+        Note: This method assumes the task has not yet been finalized (caller filters out
+        tasks with finalization_state=="done" before calling this).
         """
-        # If finalization already completed, no work is needed.
-        if (task.finalization_state or "").lower() == "done":
-            self.host_log.emit(
-                str(task.task_id or ""),
-                format_log(
-                    "host",
-                    "recovery_tick",
-                    "DEBUG",
-                    f"Task {task.task_id}: skipping finalization (reason=already done, state=done)",
-                ),
-            )
-            return
-
         status_lower = (task.status or "").lower()
         if task.is_active() or status_lower == "unknown":
             synced = self._try_sync_container_state(task)
