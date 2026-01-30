@@ -43,6 +43,36 @@ class _MainWindowTaskRecoveryMixin:
                 return
 
         if self._task_needs_finalization(task) and not task.is_interactive_run():
+            # Guard: Skip finalization if already pending or running (prevents duplicates)
+            finalization_state_lower = (task.finalization_state or "").lower()
+            if finalization_state_lower in {"pending", "running"}:
+                self.host_log.emit(
+                    str(task.task_id or ""),
+                    format_log(
+                        "host",
+                        "recovery_tick",
+                        "INFO",
+                        f"Skipping finalization for task {task.task_id}: already {finalization_state_lower}",
+                    ),
+                )
+                return
+            
+            # Guard: Check if finalization thread already exists and is alive
+            task_id = str(task.task_id or "").strip()
+            if task_id:
+                existing_thread = self._finalization_threads.get(task_id)
+                if existing_thread is not None and existing_thread.is_alive():
+                    self.host_log.emit(
+                        task_id,
+                        format_log(
+                            "host",
+                            "recovery_tick",
+                            "INFO",
+                            f"Skipping finalization for task {task.task_id}: thread already running",
+                        ),
+                    )
+                    return
+            
             self._queue_task_finalization(task.task_id, reason="recovery_tick")
 
     def _task_needs_finalization(self, task: Task) -> bool:
