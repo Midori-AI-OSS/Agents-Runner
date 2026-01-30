@@ -7,17 +7,101 @@ Invocation: python -m agents_runner.desktop_viewer --url <novnc_url> [--title <t
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QVBoxLayout, QWidget
 
-try:
-    from PySide6.QtWebEngineWidgets import QWebEngineView
-except ImportError:
-    QWebEngineView = None
+QWebEngineView = None
+
+
+def _is_truthy_env(name: str) -> bool:
+    value = str(os.environ.get(name, "")).strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
+def _debug_log(message: str) -> None:
+    if not _is_truthy_env("AGENTS_RUNNER_DESKTOP_VIEWER_DEBUG"):
+        return
+    print(f"[Desktop Viewer][debug] {message}", file=sys.stderr, flush=True)
+
+
+def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
+    tokens: list[str] = []
+    existing = (existing or "").strip()
+    if existing:
+        tokens.extend(existing.split())
+    existing_set = set(tokens)
+    for flag in extra_flags:
+        if flag not in existing_set:
+            tokens.append(flag)
+            existing_set.add(flag)
+    return " ".join(tokens).strip()
+
+
+_DESKTOP_VIEWER_FAULT_LOG_HANDLE = None
+
+
+def _maybe_enable_desktop_viewer_faulthandler() -> Path | None:
+    enabled = _is_truthy_env("AGENTS_RUNNER_FAULTHANDLER") or _is_truthy_env(
+        "AGENTS_RUNNER_DESKTOP_VIEWER_FAULTHANDLER"
+    )
+    if not enabled:
+        return None
+
+    try:
+        import faulthandler
+
+        log_dir = Path.home() / ".midoriai" / "agents-runner"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / "desktop-viewer-faulthandler.log"
+        handle = open(log_path, "a", encoding="utf-8")
+        faulthandler.enable(file=handle, all_threads=True)
+
+        global _DESKTOP_VIEWER_FAULT_LOG_HANDLE
+        _DESKTOP_VIEWER_FAULT_LOG_HANDLE = handle
+        return log_path
+    except Exception:
+        return None
+
+
+def _configure_webengine_runtime() -> None:
+    try:
+        from agents_runner.app import _configure_qtwebengine_runtime
+
+        _configure_qtwebengine_runtime()
+    except Exception:
+        pass
+
+    flags = os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "")
+    if _is_truthy_env("AGENTS_RUNNER_DESKTOP_VIEWER_DISABLE_GPU"):
+        flags = _append_chromium_flags(
+            flags,
+            [
+                "--disable-gpu",
+                "--disable-gpu-compositing",
+                "--disable-features=Vulkan",
+            ],
+        )
+
+    if _is_truthy_env("AGENTS_RUNNER_DESKTOP_VIEWER_DISABLE_VULKAN"):
+        flags = _append_chromium_flags(flags, ["--disable-features=Vulkan"])
+
+    if flags.strip():
+        os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = flags
+
+
+def _maybe_install_exception_hooks(argv: list[str]) -> None:
+    try:
+        from agents_runner.diagnostics.crash_reporting import install_exception_hooks
+
+        install_exception_hooks(argv=list(argv))
+    except Exception:
+        pass
 
 
 def run_desktop_viewer(args: list[str]) -> int:
@@ -45,10 +129,29 @@ def run_desktop_viewer(args: list[str]) -> int:
     )
     
     parsed = parser.parse_args(args[1:])  # Skip program name
+
+    _configure_webengine_runtime()
+    fault_log_path = _maybe_enable_desktop_viewer_faulthandler()
+    _maybe_install_exception_hooks(args)
+    _debug_log(f"XDG_SESSION_TYPE={os.environ.get('XDG_SESSION_TYPE')}")
+    _debug_log(f"QT_QPA_PLATFORM={os.environ.get('QT_QPA_PLATFORM')}")
+    _debug_log(f"QTWEBENGINE_CHROMIUM_FLAGS={os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS')}")
+
+    try:
+        from PySide6.QtWebEngineWidgets import QWebEngineView as _QWebEngineView
+    except Exception:
+        _QWebEngineView = None
+
+    global QWebEngineView
+    QWebEngineView = _QWebEngineView
     
     if QWebEngineView is None:
-        print("Error: QtWebEngine not available", file=sys.stderr)
-        return 1
+        print("QtWebEngine not available; opening URL in system browser", file=sys.stderr)
+        app = QApplication.instance()
+        if app is None:
+            app = QApplication(args)
+        QDesktopServices.openUrl(QUrl(parsed.url))
+        return 0
     
     app = QApplication.instance()
     if app is None:
@@ -58,6 +161,13 @@ def run_desktop_viewer(args: list[str]) -> int:
     icon_path = Path(__file__).parent.parent / "midoriai-logo.png"
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
+
+    if fault_log_path is not None:
+        print(
+            f"[Desktop Viewer] faulthandler enabled: {fault_log_path}",
+            file=sys.stderr,
+            flush=True,
+        )
     
     window = DesktopViewerWindow(url=parsed.url, title=parsed.title)
     window.show()

@@ -128,6 +128,21 @@ class _MainWindowTaskEventsMixin:
             self._details.update_task(task)
             self._schedule_save()
 
+            # SYNCHRONIZATION: Set finalization_state to "pending" BEFORE calling _queue_task_finalization().
+            # This atomic state transition ensures recovery_tick sees the state change and avoids
+            # duplicate finalization work. Same pattern as task_done path for consistency.
+            task.finalization_state = "pending"
+            task.finalization_error = ""
+            self._schedule_save()
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"Task {task_id}: queueing finalization (reason=user_stop, state={task.status})",
+                ),
+            )
             self._queue_task_finalization(task_id, reason="user_stop")
 
             return
@@ -499,8 +514,14 @@ class _MainWindowTaskEventsMixin:
         if task is None:
             return
         try:
-            self._on_task_log(
-                task_id, format_log("host", "finalize", "INFO", "finalization queued")
+            self.host_log.emit(
+                task_id, 
+                format_log(
+                    "host", 
+                    "finalize", 
+                    "INFO", 
+                    f"Task {task_id}: task completed, preparing finalization (state={task.status}, exit_code={exit_code})"
+                )
             )
 
             if task.started_at is None:
@@ -559,9 +580,35 @@ class _MainWindowTaskEventsMixin:
             )
             self._try_start_queued_tasks()
 
-            if (task.finalization_state or "").lower() == "done":
+            if (task.finalization_state or "").lower().strip() == "done":
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "finalize",
+                        "DEBUG",
+                        f"Task {task_id}: skipping finalization (reason=already done, state=done)",
+                    ),
+                )
                 return
 
+            # SYNCHRONIZATION: Set finalization_state to "pending" BEFORE calling _queue_task_finalization().
+            # This atomic state change prevents recovery_tick from queuing duplicate finalization work.
+            # The recovery_tick checks finalization_state and skips tasks that are "pending" or "running".
+            # Combined with thread existence checks in _queue_task_finalization(), this provides
+            # race-free coordination between task_done and recovery_tick finalization triggers.
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"Task {task_id}: state transition (state=None→pending, reason=task_done)",
+                ),
+            )
+            task.finalization_state = "pending"
+            task.finalization_error = ""
+            self._schedule_save()
             self._queue_task_finalization(task_id, reason="task_done")
         finally:
             pass

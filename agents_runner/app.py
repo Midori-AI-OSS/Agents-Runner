@@ -154,9 +154,13 @@ def run_app(argv: list[str]) -> None:
     _maybe_enable_faulthandler()
     _configure_qtwebengine_runtime()
 
+    from agents_runner.diagnostics.crash_reporting import install_exception_hooks
+    install_exception_hooks(argv=list(argv))
+
     from PySide6.QtWidgets import QApplication
 
     from agents_runner.environments import load_environments
+    from agents_runner.qt_diagnostics import install_qt_message_handler
     from agents_runner.setup.orchestrator import check_setup_complete
     from agents_runner.style import app_stylesheet
     from agents_runner.ui.constants import APP_TITLE
@@ -169,6 +173,10 @@ def run_app(argv: list[str]) -> None:
     _cleanup_stale_temp_files()
 
     app = QApplication(argv)
+    
+    # Install Qt diagnostics handler for Issue #141 (QTimer thread warnings)
+    # Enable via AGENTS_RUNNER_QT_DIAGNOSTICS=1 environment variable
+    install_qt_message_handler()
     app.setApplicationDisplayName(APP_TITLE)
     app.setApplicationName(APP_TITLE)
     icon = _app_icon()
@@ -176,8 +184,9 @@ def run_app(argv: list[str]) -> None:
         app.setWindowIcon(icon)
     app.setStyleSheet(app_stylesheet())
 
-    # Initialize QtWebEngine early to prevent lazy-load flash
-    _initialize_qtwebengine()
+    eager_qtwebengine = str(os.environ.get("AGENTS_RUNNER_EAGER_QTWEBENGINE_INIT", "")).strip().lower()
+    if eager_qtwebengine in {"1", "true", "yes", "on"}:
+        _initialize_qtwebengine()
 
     # Check if first-run setup is needed
     if not check_setup_complete():
