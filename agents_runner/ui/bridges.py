@@ -116,6 +116,7 @@ class TaskRunnerBridge(QObject):
             return
         self._worker.request_stop()
 
+    @Slot()
     def run(self) -> None:
         try:
             self._worker.run()

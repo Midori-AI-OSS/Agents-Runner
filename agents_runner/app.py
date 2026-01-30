@@ -154,6 +154,9 @@ def run_app(argv: list[str]) -> None:
     _maybe_enable_faulthandler()
     _configure_qtwebengine_runtime()
 
+    from agents_runner.diagnostics.crash_reporting import install_exception_hooks
+    install_exception_hooks(argv=list(argv))
+
     from PySide6.QtWidgets import QApplication
 
     from agents_runner.environments import load_environments
@@ -181,8 +184,9 @@ def run_app(argv: list[str]) -> None:
         app.setWindowIcon(icon)
     app.setStyleSheet(app_stylesheet())
 
-    # Initialize QtWebEngine early to prevent lazy-load flash
-    _initialize_qtwebengine()
+    eager_qtwebengine = str(os.environ.get("AGENTS_RUNNER_EAGER_QTWEBENGINE_INIT", "")).strip().lower()
+    if eager_qtwebengine in {"1", "true", "yes", "on"}:
+        _initialize_qtwebengine()
 
     # Check if first-run setup is needed
     if not check_setup_complete():
