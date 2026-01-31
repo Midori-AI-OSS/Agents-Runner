@@ -326,7 +326,26 @@ class _MainWindowTaskRecoveryMixin:
             )
             task.finalization_state = "pending"
 
-        # Queue finalization: Log the successful queueing with reason
+        # ATOMIC STATE TRANSITION: Set finalization_state to "pending" AFTER all deduplication
+        # checks pass but BEFORE thread creation. This ensures atomic state transition synchronized
+        # with thread creation. Previously, callers set this state BEFORE calling this function,
+        # which caused a deadlock: state was "pending" but the early return checks above would
+        # prevent thread creation, leaving finalization stuck in "pending" state forever.
+        # State flow: None -> pending (here) -> running (in worker) -> done (in worker)
+        self.host_log.emit(
+            task_id,
+            format_log(
+                "host",
+                "finalize",
+                "INFO",
+                f"Task {task_id}: state transition (state=None→pending, reason={reason})",
+            ),
+        )
+        task.finalization_state = "pending"
+        task.finalization_error = ""
+        self._schedule_save()
+
+        # Queue finalization: Create and start the worker thread
         self.host_log.emit(
             task_id,
             format_log(
