@@ -109,9 +109,9 @@ class _MainWindowTaskRecoveryMixin:
             if task.task_id in self._bridges:
                 return
             # SYNCHRONIZATION GUARD 1: Check finalization_state
-            # _on_task_done() sets state to "pending" before queueing finalization.
+            # The finalization worker thread sets state to "pending"→"running"→"done".
             # This prevents recovery_tick from creating duplicate work for tasks that
-            # are already being finalized via the task_done path.
+            # are already being finalized via the task_done or user_stop paths.
             # Also defensively check for "done" state to prevent log spam.
             finalization_state_lower = (task.finalization_state or "").lower().strip()
             if finalization_state_lower in {"pending", "running", "done"}:
