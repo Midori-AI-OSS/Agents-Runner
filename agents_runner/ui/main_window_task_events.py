@@ -128,12 +128,9 @@ class _MainWindowTaskEventsMixin:
             self._details.update_task(task)
             self._schedule_save()
 
-            # SYNCHRONIZATION: Set finalization_state to "pending" BEFORE calling _queue_task_finalization().
-            # This atomic state transition ensures recovery_tick sees the state change and avoids
-            # duplicate finalization work. Same pattern as task_done path for consistency.
-            task.finalization_state = "pending"
-            task.finalization_error = ""
-            self._schedule_save()
+            # SYNCHRONIZATION: The finalization worker thread is responsible for state transitions.
+            # _queue_task_finalization() checks thread existence and finalization_state to prevent duplicates.
+            # Same pattern as task_done path for consistency.
             self.host_log.emit(
                 task_id,
                 format_log(
@@ -592,23 +589,19 @@ class _MainWindowTaskEventsMixin:
                 )
                 return
 
-            # SYNCHRONIZATION: Set finalization_state to "pending" BEFORE calling _queue_task_finalization().
-            # This atomic state change prevents recovery_tick from queuing duplicate finalization work.
-            # The recovery_tick checks finalization_state and skips tasks that are "pending" or "running".
-            # Combined with thread existence checks in _queue_task_finalization(), this provides
-            # race-free coordination between task_done and recovery_tick finalization triggers.
+            # SYNCHRONIZATION: The finalization worker thread is responsible for state transitions.
+            # _queue_task_finalization() checks thread existence and finalization_state to prevent duplicates.
+            # The finalization worker sets state to "running" when it starts and "done" when complete.
+            # This provides race-free coordination between task_done and recovery_tick finalization triggers.
             self.host_log.emit(
                 task_id,
                 format_log(
                     "host",
                     "finalize",
                     "INFO",
-                    f"Task {task_id}: state transition (state=None→pending, reason=task_done)",
+                    f"Task {task_id}: queuing finalization (reason=task_done)",
                 ),
             )
-            task.finalization_state = "pending"
-            task.finalization_error = ""
-            self._schedule_save()
             self._queue_task_finalization(task_id, reason="task_done")
         finally:
             pass
