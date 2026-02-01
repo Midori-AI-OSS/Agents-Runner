@@ -100,3 +100,40 @@ codex exec --sandbox danger-full-access -o /tmp/agents-artifacts/ui-layout-migra
 Suggested prompt topics:
 - “List all Qt imports outside `agents_runner/ui/` and propose a minimal relocation plan.”
 - “Find UI code outside `agents_runner/ui/` and group it into widgets/style/runtime/viewer buckets.”
+
+---
+
+## Completion Note
+
+**Status:** ✓ COMPLETED
+
+**Date:** 2025-02-01
+
+**Actions taken:**
+1. Created new UI subdirectories: `ui/runtime/`, `ui/artifacts/`, `ui/stt/`
+2. Moved all UI-related modules to `agents_runner/ui/`:
+   - `app.py` → `ui/runtime/app.py`
+   - `qt_diagnostics.py` → `ui/qt_diagnostics.py`
+   - `desktop_viewer/` → `ui/desktop_viewer/`
+   - `widgets/` → `ui/widgets/`
+   - `style/` → `ui/style/`
+   - `docker/artifact_file_watcher.py` → `ui/artifacts/file_watcher.py`
+   - `stt/qt_worker.py` → `ui/stt/qt_worker.py`
+3. Updated all import statements across the codebase (main.py, UI files, dialogs, pages)
+4. Verified no Qt imports remain outside `agents_runner/ui/` (using ripgrep check)
+5. Ran ruff format and ruff check - all checks passed
+6. Verified build with `uv build` - successful
+7. Tested imports with `uv run python` - successful
+
+**Verification:**
+- ✓ `rg -n "^(from PySide6|import PySide6)" -S agents_runner --glob '!agents_runner/ui/**'` returns no matches
+- ✓ All imports updated to new paths
+- ✓ Ruff format and check pass
+- ✓ Build succeeds
+- ✓ Import tests pass
+
+**Commits:**
+- fd90668: [REFACTOR] Migrate UI code to agents_runner/ui/ per AGENTS.md standards
+- 7e65faa: [VERSION] Bump to 0.1.0.1 after completing ui-layout-standards-migration task
+
+**Note:** The migration preserves all "sharp/square" UI styling (border-radius: 0px) as required by AGENTS.md.
