@@ -1,6 +1,6 @@
 [project]
 name = "midori-ai-agents-runner"
-version = "0.1.0.2"
+version = "0.1.0.10"
 description = "A GUI for running AI agents in Docker containers with workspace and GitHub management."
 readme = "README.md"
 requires-python = "==3.13.11"
@@ -11,6 +11,8 @@ dependencies = [
     "pygments>=2.17.0",
     "pyside6>=6.10.1",
     "pyspellchecker>=0.8.1",
+    "tomli>=2.2.1",
+    "tomli-w>=1.1.0",
 ]
 
 [dependency-groups]
