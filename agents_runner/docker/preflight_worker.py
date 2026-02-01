@@ -30,8 +30,8 @@ from agents_runner.docker.process import _run_docker
 from agents_runner.docker.utils import _resolve_workspace_mount
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
-from agents_runner.ui.shell_templates import git_identity_clause
-from agents_runner.ui.shell_templates import shell_log_statement
+from agents_runner.core.shell_templates import git_identity_clause
+from agents_runner.core.shell_templates import shell_log_statement
 from agents_runner.docker.utils import _write_preflight_script
 from agents_runner.midoriai_template import MidoriAITemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
