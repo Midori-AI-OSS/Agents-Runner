@@ -49,15 +49,15 @@ Improve logging hygiene by replacing `print()` statements with `midori_ai_logger
 
 ## Acceptance Criteria
 
-- [ ] Import `midori_ai_logger` in affected modules
-- [ ] Replace all print() in `ui/pages/new_task.py` with logger calls
-- [ ] Replace all print() in `ui/main_window_tasks_interactive.py` with logger calls
-- [ ] Replace debug print() in `ui/desktop_viewer/app.py` with logger calls
-- [ ] Replace print() in `ui/pages/artifacts_tab.py` with logger call
-- [ ] Logger uses appropriate levels (debug, info, warning, error)
-- [ ] `uv run ruff format .` passes
-- [ ] `uv run ruff check .` passes
-- [ ] Verification command shows <10 print() calls remaining (only exceptions)
+- [x] Import `midori_ai_logger` in affected modules
+- [x] Replace all print() in `ui/pages/new_task.py` with logger calls
+- [x] Replace all print() in `ui/main_window_tasks_interactive.py` with logger calls
+- [x] Replace debug print() in `ui/desktop_viewer/app.py` with logger calls
+- [x] Replace print() in `ui/pages/artifacts_tab.py` with logger call
+- [x] Logger uses appropriate levels (debug, info, warning, error)
+- [x] `uv run ruff format .` passes
+- [x] `uv run ruff check .` passes
+- [x] Verification command shows <10 print() calls remaining (only exceptions)
 
 ## Verification Commands
 
@@ -130,3 +130,29 @@ logger.error("Recorder error", exc_info=exc, extra={"component": "STT"})
 - All verification commands pass
 - Committed with message: `[REFACTOR] Replace print() with midori_ai_logger in UI modules`
 - Version bumped in `pyproject.toml` (TASK +1)
+
+---
+
+## Completion Notes
+
+**Completed:** Successfully replaced all print() calls in target files with structured logging using midori_ai_logger.
+
+**Changes Made:**
+- `ui/pages/new_task.py`: Replaced 17 print() calls with logger.debug(), logger.info(), logger.warning(), and logger.error()
+- `ui/main_window_tasks_interactive.py`: Replaced 5 print() calls with logger.info(), logger.warning(), and logger.error()
+- `ui/desktop_viewer/app.py`: Replaced 3 print() calls with logger.debug(), logger.warning(), and logger.info()
+- `ui/pages/artifacts_tab.py`: Replaced 1 print() call with logger.debug()
+- Removed unused imports (logging, sys) from artifacts_tab.py
+- Added appropriate component tags for filtering (STT, finish, Desktop Viewer, watcher-lifecycle)
+- Version bumped from 0.1.0.4 to 0.1.0.5 in pyproject.toml
+
+**Verification Results:**
+- Total print() calls reduced from 33 to 7 (only in exception files)
+- All remaining print() calls are in allowed exception files (diagnostics/crash_reporting.py, ui/qt_diagnostics.py, ui/runtime/app.py)
+- One print() in ui/themes/copilot/background.py is part of a code string, not an actual call
+- `uv run ruff format .` passed (3 files reformatted)
+- `uv run ruff check .` passed (all checks passed after auto-fix)
+
+**Commit:**
+- Committed as: `[REFACTOR] Replace print() with midori_ai_logger in UI modules`
+- Commit hash: 9806731
