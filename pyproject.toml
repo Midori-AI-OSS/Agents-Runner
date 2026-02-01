@@ -11,6 +11,8 @@ dependencies = [
     "pygments>=2.17.0",
     "pyside6>=6.10.1",
     "pyspellchecker>=0.8.1",
+    "tomli>=2.2.1",
+    "tomli-w>=1.1.0",
 ]
 
 [dependency-groups]
