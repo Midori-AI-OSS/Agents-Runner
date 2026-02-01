@@ -1,5 +1,10 @@
 # Meta Task: AGENTS.md Compliance Scan (Read-Only) + Follow-up Task Generation
 
+> **AUDITOR FIX NOTE (2026-02-01):**  
+> Task returned from done/ for completion. Missing primary deliverable: `/tmp/agents-artifacts/agents-md-compliance-report.md`.  
+> Follow-up tasks (7) were created successfully. Must create the comprehensive scan report summarizing all 5 scan areas, evidence, and mapping to follow-up tasks before re-submitting.  
+> See audit report: `/tmp/agents-artifacts/304ffb52-audit-meta-task.audit.md`
+
 ## Goal
 
 Produce a concrete list of mismatches between the repo and the current contributor rules, and convert each mismatch into an actionable task file under `.agents/tasks/wip/`.
