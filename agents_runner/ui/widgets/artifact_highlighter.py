@@ -47,7 +47,9 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
             Literal,
         )
 
-        def fmt(color: QColor, bold: bool = False, italic: bool = False) -> QTextCharFormat:
+        def fmt(
+            color: QColor, bold: bool = False, italic: bool = False
+        ) -> QTextCharFormat:
             f = QTextCharFormat()
             f.setForeground(color)
             if bold:
@@ -117,6 +119,7 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
         # Try to create lexer
         try:
             from pygments import lexers
+
             lexer = lexers.get_lexer_by_name(normalized)
             self._lexer_cache[normalized] = lexer
             return lexer
@@ -128,11 +131,11 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
     def _encode_state(self, fence_type: int, lexer_index: int) -> int:
         """
         Encode fence type and lexer index into a block state.
-        
+
         Args:
             fence_type: 0 for backticks (```), 1 for tildes (~~~)
             lexer_index: Index into self._codeblock_lexers list
-            
+
         Returns:
             Encoded state integer (0 means normal markdown)
         """
@@ -143,10 +146,10 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
     def _decode_state(self, state: int) -> tuple[int, int]:
         """
         Decode block state into fence type and lexer index.
-        
+
         Args:
             state: Encoded state integer
-            
+
         Returns:
             Tuple of (fence_type, lexer_index)
         """
@@ -218,39 +221,40 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
     def _highlight_markdown_block(self, text: str) -> None:
         """Highlight a Markdown block, with special handling for fenced code blocks."""
         # Patterns for fence detection - use [^\s]* to support languages like c++, c#, f#
-        backtick_fence_pattern = re.compile(r'^```([^\s]*)\s*$')
-        tilde_fence_pattern = re.compile(r'^~~~([^\s]*)\s*$')
-        
+        backtick_fence_pattern = re.compile(r"^```([^\s]*)\s*$")
+        tilde_fence_pattern = re.compile(r"^~~~([^\s]*)\s*$")
+
         prev_state = self.previousBlockState()
-        
+
         # Qt returns -1 for uninitialized state, normalize to 0
         if prev_state < 0:
             prev_state = 0
-        
+
         # Check if we're inside a code block
         if prev_state > 0:
             fence_type, lexer_index = self._decode_state(prev_state)
-            
+
             # Check for closing fence
             if fence_type == 0:  # backticks
-                if re.match(r'^```\s*$', text):
+                if re.match(r"^```\s*$", text):
                     # Closing fence - style it and exit code block
                     self.setFormat(0, len(text), self._fence_format)
                     self.setCurrentBlockState(0)  # Back to normal markdown
                     return
             elif fence_type == 1:  # tildes
-                if re.match(r'^~~~\s*$', text):
+                if re.match(r"^~~~\s*$", text):
                     # Closing fence - style it and exit code block
                     self.setFormat(0, len(text), self._fence_format)
                     self.setCurrentBlockState(0)  # Back to normal markdown
                     return
-            
+
             # Still inside code block - apply language-specific highlighting
             if 0 <= lexer_index < len(self._codeblock_lexers):
                 code_lexer = self._codeblock_lexers[lexer_index]
                 if code_lexer:
                     try:
                         from pygments import lex
+
                         tokens = list(lex(text, code_lexer))
                         position = 0
                         for token_type, token_text in tokens:
@@ -265,27 +269,27 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
                             position += length
                     except Exception:
                         pass
-            
+
             # Maintain state
             self.setCurrentBlockState(prev_state)
             return
-        
+
         # Not in code block - check for opening fence
         backtick_match = backtick_fence_pattern.match(text)
         tilde_match = tilde_fence_pattern.match(text)
-        
+
         if backtick_match or tilde_match:
             # Opening fence detected
             match = backtick_match if backtick_match else tilde_match
             fence_type = 0 if backtick_match else 1
             lang = match.group(1) if match.group(1) else ""
-            
+
             # Style the fence line
             self.setFormat(0, len(text), self._fence_format)
-            
+
             # Get or create lexer for this language
             code_lexer = self._get_cached_lexer(lang) if lang else None
-            
+
             # Add to codeblock lexers if not already present
             try:
                 lexer_index = self._codeblock_lexers.index(code_lexer)
@@ -293,12 +297,12 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
                 # Not in list, add it
                 self._codeblock_lexers.append(code_lexer)
                 lexer_index = len(self._codeblock_lexers) - 1
-            
+
             # Set state to indicate we're in a code block
             new_state = self._encode_state(fence_type, lexer_index)
             self.setCurrentBlockState(new_state)
             return
-        
+
         # Normal markdown - use markdown lexer
         self._highlight_normal_block(text)
 

@@ -7,12 +7,14 @@ def main() -> None:
         # Check if running in desktop viewer mode
         if len(sys.argv) > 1 and sys.argv[1] == "--desktop-viewer":
             # Route to desktop viewer instead of main UI
-            from agents_runner.desktop_viewer import run_desktop_viewer
+            from agents_runner.ui.desktop_viewer import run_desktop_viewer
+
             # Remove --desktop-viewer from argv so argparse works correctly
             viewer_args = [sys.argv[0]] + sys.argv[2:]
             sys.exit(run_desktop_viewer(viewer_args))
 
-        from agents_runner.app import run_app
+        from agents_runner.ui.runtime.app import run_app
+
         run_app(sys.argv)
     except SystemExit:
         raise
@@ -36,7 +38,9 @@ def main() -> None:
                 file=sys.stderr,
                 flush=True,
             )
-        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
+        traceback.print_exception(
+            type(error), error, error.__traceback__, file=sys.stderr
+        )
         sys.exit(1)
 
 

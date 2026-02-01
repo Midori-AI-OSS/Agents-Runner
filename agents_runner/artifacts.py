@@ -39,7 +39,7 @@ class ArtifactMeta:
 @dataclass
 class StagingArtifactMeta:
     """Metadata for a staging (unencrypted) artifact."""
-    
+
     filename: str
     path: Path
     size_bytes: int
@@ -275,43 +275,43 @@ def collect_artifacts_from_container(
 ) -> list[str]:
     """
     Collect artifacts from task's staging directory (already mounted to container).
-    
+
     The staging directory is mounted as a volume to the container at /tmp/agents-artifacts,
     so files written by the agent are immediately available on the host. This function
     encrypts those files and moves them to permanent encrypted storage.
-    
+
     Args:
         container_id: Docker container ID (unused, kept for API compatibility)
         task_dict: Task configuration as dictionary (must contain task_id)
         env_name: Environment name
-    
+
     Returns:
         List of artifact UUIDs that were collected and encrypted
     """
     artifact_uuids: list[str] = []
-    
+
     # Get task_id
     task_id = str(task_dict.get("task_id") or task_dict.get("id") or "")
     if not task_id:
         logger.warning("No task_id in task_dict, cannot collect artifacts")
         return []
-    
+
     # Get staging directory (this was mounted to the container)
     artifacts_staging = get_staging_dir(task_id)
-    
+
     if not artifacts_staging.exists():
         logger.debug(f"No staging directory found: {artifacts_staging}")
         return []
-    
+
     try:
         files = [f for f in artifacts_staging.iterdir() if f.is_file()]
-        
+
         if not files:
             logger.debug(f"No artifacts found in staging: {artifacts_staging}")
             return []
-        
+
         logger.info(f"Found {len(files)} artifact(s) in staging directory")
-        
+
         # Encrypt each file
         for file_path in files:
             try:
@@ -320,16 +320,18 @@ def collect_artifacts_from_container(
                 )
                 if artifact_uuid:
                     artifact_uuids.append(artifact_uuid)
-                    logger.info(f"Collected artifact: {file_path.name} -> {artifact_uuid}")
+                    logger.info(
+                        f"Collected artifact: {file_path.name} -> {artifact_uuid}"
+                    )
                     # Remove from staging after successful encryption
                     file_path.unlink()
             except Exception as e:
                 logger.error(f"Failed to collect artifact {file_path.name}: {e}")
                 continue
-            
+
     except Exception as e:
         logger.error(f"Failed to collect artifacts from staging: {e}")
-    
+
     finally:
         # ALWAYS clean up staging directory, even if encryption failed.
         # This is best-effort: log warnings, do not raise.
@@ -390,7 +392,7 @@ def collect_artifacts_from_container(
                 logger.warning(
                     f"Staging cleanup failed while listing leftovers: {list_error}"
                 )
-    
+
     return artifact_uuids
 
 
@@ -401,7 +403,9 @@ def _collect_artifacts_child(
     env_name: str,
 ) -> None:
     try:
-        artifact_uuids = collect_artifacts_from_container(container_id, task_dict, env_name)
+        artifact_uuids = collect_artifacts_from_container(
+            container_id, task_dict, env_name
+        )
         result_q.put(("ok", artifact_uuids))
     except Exception as exc:
         result_q.put(("err", f"{type(exc).__name__}: {exc}"))
@@ -471,10 +475,10 @@ def collect_artifacts_from_container_with_timeout(
 def get_staging_dir(task_id: str) -> Path:
     """
     Get path to staging directory for a task.
-    
+
     Args:
         task_id: Task identifier
-    
+
     Returns:
         Path to staging directory
     """
@@ -485,30 +489,30 @@ def get_staging_dir(task_id: str) -> Path:
 def list_staging_artifacts(task_id: str) -> list[StagingArtifactMeta]:
     """
     List artifacts in staging directory (for running tasks).
-    
+
     Args:
         task_id: Task identifier
-    
+
     Returns:
         List of staging artifact metadata
     """
     staging_dir = get_staging_dir(task_id)
-    
+
     if not staging_dir.exists():
         return []
-    
+
     artifacts: list[StagingArtifactMeta] = []
-    
+
     try:
         for file_path in staging_dir.iterdir():
             if not file_path.is_file():
                 continue
-            
+
             stat = file_path.stat()
             mime_type, _ = mimetypes.guess_type(file_path.name)
             if mime_type is None:
                 mime_type = "application/octet-stream"
-            
+
             artifact = StagingArtifactMeta(
                 filename=file_path.name,
                 path=file_path,
@@ -517,30 +521,30 @@ def list_staging_artifacts(task_id: str) -> list[StagingArtifactMeta]:
                 mime_type=mime_type,
             )
             artifacts.append(artifact)
-        
+
         # Sort by modification time (newest first)
         artifacts.sort(key=lambda a: a.modified_at, reverse=True)
-        
+
     except Exception as e:
         logger.error(f"Failed to list staging artifacts for task {task_id}: {e}")
-    
+
     return artifacts
 
 
 def get_staging_artifact_path(task_id: str, filename: str) -> Path | None:
     """
     Get path to a staging artifact (for direct access).
-    
+
     Args:
         task_id: Task identifier
         filename: Artifact filename
-    
+
     Returns:
         Path to staging file, or None if not found
     """
     staging_dir = get_staging_dir(task_id)
     file_path = staging_dir / filename
-    
+
     if file_path.exists() and file_path.is_file():
         # Security: Verify file is within staging directory (prevent path traversal)
         try:
@@ -551,14 +555,14 @@ def get_staging_artifact_path(task_id: str, filename: str) -> Path | None:
             logger.error(f"Failed to resolve path {filename}: {e}")
             return None
         return file_path
-    
+
     return None
 
 
 @dataclass
 class ArtifactInfo:
     """Single source of truth for artifact locations and status."""
-    
+
     host_artifacts_dir: Path
     container_artifacts_dir: str
     file_count: int
@@ -568,31 +572,31 @@ class ArtifactInfo:
 def get_artifact_info(task_id: str) -> ArtifactInfo:
     """
     Get single source of truth for artifact status.
-    
+
     Returns information about artifact storage for a task, prioritizing
     the host staging directory as the truth during execution and encrypted
     storage after finalization.
-    
+
     Args:
         task_id: Task identifier
-    
+
     Returns:
         ArtifactInfo with paths, counts, and existence status
     """
     # Host staging directory is the truth during execution
     staging_dir = get_staging_dir(task_id)
-    
+
     # Count files in staging directory
     file_count = 0
     exists = staging_dir.exists()
-    
+
     if exists:
         try:
             file_count = sum(1 for f in staging_dir.iterdir() if f.is_file())
         except Exception as e:
             logger.debug(f"Failed to count files in {staging_dir}: {e}")
             file_count = 0
-    
+
     return ArtifactInfo(
         host_artifacts_dir=staging_dir,
         container_artifacts_dir="/tmp/agents-artifacts/",

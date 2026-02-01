@@ -147,4 +147,3 @@ def install_exception_hooks(*, argv: list[str] | None = None) -> None:
     except Exception:
         # Never block startup on diagnostics.
         return
-

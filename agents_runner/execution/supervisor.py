@@ -156,7 +156,9 @@ def classify_error(
     return ErrorType.RETRYABLE
 
 
-def calculate_backoff(retry_count: int, error_type: ErrorType) -> float:  # pragma: no cover
+def calculate_backoff(
+    retry_count: int, error_type: ErrorType
+) -> float:  # pragma: no cover
     """Calculate backoff delay in seconds for retry attempt.
 
     Args:
@@ -196,7 +198,8 @@ class TaskSupervisor:
         on_log: Callable[[str], None],
         on_retry: Callable[[int, str, float], None],
         on_agent_switch: Callable[[str, str], None],
-        on_done: Callable[[int, str | None, list[str], dict[str, Any]], None] | None = None,
+        on_done: Callable[[int, str | None, list[str], dict[str, Any]], None]
+        | None = None,
         watch_states: dict[str, Any] | None = None,
     ) -> None:
         """Initialize task supervisor.
@@ -281,7 +284,9 @@ class TaskSupervisor:
         """User requested graceful cancellation (terminal, no retry/fallback)."""
         if self._user_stop_reason is None:
             self._user_stop_reason = "cancel"
-            self._on_log(format_log("supervisor", "none", "INFO", "user_cancel requested"))
+            self._on_log(
+                format_log("supervisor", "none", "INFO", "user_cancel requested")
+            )
         if self._current_worker:
             self._current_worker.request_stop()
 
@@ -289,7 +294,9 @@ class TaskSupervisor:
         """User requested force kill (terminal, no retry/fallback)."""
         if self._user_stop_reason is None:
             self._user_stop_reason = "kill"
-            self._on_log(format_log("supervisor", "none", "INFO", "user_kill requested"))
+            self._on_log(
+                format_log("supervisor", "none", "INFO", "user_kill requested")
+            )
         if self._current_worker:
             request_kill = getattr(self._current_worker, "request_kill", None)
             if callable(request_kill):
@@ -310,7 +317,11 @@ class TaskSupervisor:
         while self._current_agent_index < len(self._agent_chain):
             if self._user_stop_reason is not None:
                 result = self._result_for_user_stop()
-                self._on_log(format_log("supervisor", "task", "INFO", "retry skipped due to user stop"))
+                self._on_log(
+                    format_log(
+                        "supervisor", "task", "INFO", "retry skipped due to user stop"
+                    )
+                )
                 if self._on_done:
                     self._on_done(
                         result.exit_code,
@@ -320,7 +331,9 @@ class TaskSupervisor:
                     )
                 return result
 
-            next_agent = self._next_available_agent(start_index=self._current_agent_index)
+            next_agent = self._next_available_agent(
+                start_index=self._current_agent_index
+            )
             if next_agent is None:
                 result = self._result_for_exhausted_agents()
                 if self._on_done:
@@ -347,7 +360,11 @@ class TaskSupervisor:
             result = self._try_agent(agent)
 
             if self._user_stop_reason is not None:
-                self._on_log(format_log("supervisor", "task", "INFO", "retry skipped due to user stop"))
+                self._on_log(
+                    format_log(
+                        "supervisor", "task", "INFO", "retry skipped due to user stop"
+                    )
+                )
                 if self._on_done:
                     self._on_done(
                         result.exit_code,
@@ -417,9 +434,13 @@ class TaskSupervisor:
 
             # Select the next distinct agent+config in the fallback chain.
             self._current_agent_index += 1
-            next_candidate = self._next_available_agent(start_index=self._current_agent_index)
+            next_candidate = self._next_available_agent(
+                start_index=self._current_agent_index
+            )
             if next_candidate is None:
-                exhausted = self._result_for_exhausted_agents(last_exit_code=result.exit_code)
+                exhausted = self._result_for_exhausted_agents(
+                    last_exit_code=result.exit_code
+                )
                 if self._on_done:
                     self._on_done(
                         exhausted.exit_code,
@@ -477,13 +498,27 @@ class TaskSupervisor:
             next_id = fallbacks[current_id]
             if next_id in visited:
                 # Circular fallback detected
-                self._on_log(format_log("supervisor", "task", "WARN", "circular fallback detected, stopping chain"))
+                self._on_log(
+                    format_log(
+                        "supervisor",
+                        "task",
+                        "WARN",
+                        "circular fallback detected, stopping chain",
+                    )
+                )
                 break
 
             next_agent = next((a for a in agents if a.agent_id == next_id), None)
             if not next_agent:
                 # Invalid fallback reference
-                self._on_log(format_log("supervisor", "task", "WARN", f"invalid fallback reference: {next_id}"))
+                self._on_log(
+                    format_log(
+                        "supervisor",
+                        "task",
+                        "WARN",
+                        f"invalid fallback reference: {next_id}",
+                    )
+                )
                 break
 
             chain.append(next_agent)
@@ -788,7 +823,10 @@ class TaskSupervisor:
             ("429", "contains: 429"),
             ("rate limit", "contains: rate limit"),
             ("quota", "contains: quota"),
-            ("exceeded your copilot token usage", "contains: exceeded your Copilot token usage"),
+            (
+                "exceeded your copilot token usage",
+                "contains: exceeded your Copilot token usage",
+            ),
             ("capierror: 429", "contains: CAPIError: 429"),
         ]
         matched_rate: list[str] = []
@@ -897,7 +935,9 @@ class TaskSupervisor:
             if watch_state and watch_state.is_on_cooldown() and ckey:
                 until = getattr(watch_state, "cooldown_until", None)
                 until_s = until.isoformat() if until else "unknown"
-                on_cooldown.append(f"{agent.agent_cli}[{agent.agent_id}] until {until_s}")
+                on_cooldown.append(
+                    f"{agent.agent_cli}[{agent.agent_id}] until {until_s}"
+                )
 
         parts = []
         if attempted:

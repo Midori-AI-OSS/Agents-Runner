@@ -38,29 +38,29 @@ def _maybe_enable_faulthandler() -> None:
 
 def _cleanup_stale_temp_files() -> None:
     """Clean up stale temporary files from previous runs.
-    
+
     Removes files older than 24 hours from ~/.midoriai/agents-runner/:
     - interactive-finish-*.txt
     - stt-*.wav (audio recordings)
     - Other stale temporary files
-    
+
     This handles edge cases where cleanup didn't run due to crashes or early exits.
     """
     try:
         base_dir = Path.home() / ".midoriai" / "agents-runner"
         if not base_dir.exists():
             return
-        
+
         # Current time for age check (24 hours = 86400 seconds)
         current_time = time.time()
         max_age_seconds = 24 * 60 * 60
-        
+
         # Patterns to clean up
         patterns = [
             "interactive-finish-*.txt",
             "stt-*.wav",
         ]
-        
+
         removed_count = 0
         for pattern in patterns:
             for file_path in base_dir.glob(pattern):
@@ -75,7 +75,7 @@ def _cleanup_stale_temp_files() -> None:
                 except Exception:
                     # Ignore errors for individual files
                     pass
-        
+
         # Also clean tmp subdirectory
         tmp_dir = base_dir / "tmp"
         if tmp_dir.exists():
@@ -89,7 +89,7 @@ def _cleanup_stale_temp_files() -> None:
                         removed_count += 1
                 except Exception:
                     pass
-        
+
         if removed_count > 0:
             print(f"[cleanup] Removed {removed_count} stale temporary file(s)")
     except Exception as exc:
@@ -134,18 +134,20 @@ def _initialize_qtwebengine() -> None:
     try:
         from PySide6.QtWebEngineWidgets import QWebEngineView
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         # Create a hidden dummy view to force Chromium initialization
         # This is garbage collected after initialization
         dummy = QWebEngineView()
         dummy.setParent(None)
         dummy.hide()
         dummy.deleteLater()
-        
+
         logger.info("QtWebEngine initialized successfully")
     except Exception as e:
         import logging
+
         logger = logging.getLogger(__name__)
         logger.debug(f"QtWebEngine not available: {e}")
 
@@ -155,14 +157,15 @@ def run_app(argv: list[str]) -> None:
     _configure_qtwebengine_runtime()
 
     from agents_runner.diagnostics.crash_reporting import install_exception_hooks
+
     install_exception_hooks(argv=list(argv))
 
     from PySide6.QtWidgets import QApplication
 
     from agents_runner.environments import load_environments
-    from agents_runner.qt_diagnostics import install_qt_message_handler
+    from agents_runner.ui.qt_diagnostics import install_qt_message_handler
     from agents_runner.setup.orchestrator import check_setup_complete
-    from agents_runner.style import app_stylesheet
+    from agents_runner.ui.style import app_stylesheet
     from agents_runner.ui.constants import APP_TITLE
     from agents_runner.ui.dialogs.first_run_setup import FirstRunSetupDialog
     from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
@@ -173,7 +176,7 @@ def run_app(argv: list[str]) -> None:
     _cleanup_stale_temp_files()
 
     app = QApplication(argv)
-    
+
     # Install Qt diagnostics handler for Issue #141 (QTimer thread warnings)
     # Enable via AGENTS_RUNNER_QT_DIAGNOSTICS=1 environment variable
     install_qt_message_handler()
@@ -184,7 +187,9 @@ def run_app(argv: list[str]) -> None:
         app.setWindowIcon(icon)
     app.setStyleSheet(app_stylesheet())
 
-    eager_qtwebengine = str(os.environ.get("AGENTS_RUNNER_EAGER_QTWEBENGINE_INIT", "")).strip().lower()
+    eager_qtwebengine = (
+        str(os.environ.get("AGENTS_RUNNER_EAGER_QTWEBENGINE_INIT", "")).strip().lower()
+    )
     if eager_qtwebengine in {"1", "true", "yes", "on"}:
         _initialize_qtwebengine()
 

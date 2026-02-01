@@ -18,16 +18,16 @@ from agents_runner.ui.utils import _stain_color
 class _MainWindowTaskRecoveryMixin:
     def _reconcile_tasks_after_restart(self) -> None:
         """Reconcile tasks after app restart.
-        
+
         This runs once at startup to handle tasks that were interrupted or completed
         before the app was closed. It serves a different purpose than recovery_tick:
-        
+
         - startup_reconcile: Handles tasks that were done BEFORE restart but missed finalization
         - recovery_tick: Safety net for tasks that complete DURING runtime but miss events
-        
+
         For active tasks, delegates to _tick_recovery_task() to sync container state.
         For done/failed tasks, queues finalization if needed and not already finalized.
-        
+
         Note: Deduplication guards in _queue_task_finalization() prevent duplicate work
         if recovery_tick fires before this completes.
         """
@@ -70,7 +70,7 @@ class _MainWindowTaskRecoveryMixin:
 
     def _tick_recovery(self) -> None:
         """Recovery tick handler (runs every 5 seconds).
-        
+
         Safety net for tasks that complete during runtime but miss event-driven finalization.
         This is different from startup_reconcile which handles tasks from previous session.
         """
@@ -82,13 +82,13 @@ class _MainWindowTaskRecoveryMixin:
 
     def _tick_recovery_task(self, task: Task) -> None:
         """Process a single task for recovery/finalization.
-        
+
         RECOVERY TICK: Safety net for tasks that complete during runtime.
         This is different from startup_reconcile which handles tasks from previous session.
-        
+
         For active tasks: syncs container state and ensures log tailing
         For done tasks: queues finalization if needed (with deduplication guards)
-        
+
         Note: This method assumes the task has not yet been finalized (caller filters out
         tasks with finalization_state=="done" before calling this).
         """
@@ -125,7 +125,7 @@ class _MainWindowTaskRecoveryMixin:
                     ),
                 )
                 return
-            
+
             # SYNCHRONIZATION GUARD 2: Check thread existence
             # Even if state isn't updated yet, the thread dict provides an additional
             # guard against duplicate finalization threads for the same task.
@@ -143,7 +143,7 @@ class _MainWindowTaskRecoveryMixin:
                         ),
                     )
                     return
-            
+
             self.host_log.emit(
                 str(task.task_id or ""),
                 format_log(
@@ -173,7 +173,13 @@ class _MainWindowTaskRecoveryMixin:
         container_id = str(task.container_id or "").strip()
         if not task_id or not container_id:
             return
-        if (task.status or "").lower() not in {"starting", "running", "created", "cloning", "pulling"}:
+        if (task.status or "").lower() not in {
+            "starting",
+            "running",
+            "created",
+            "cloning",
+            "pulling",
+        }:
             return
         if task_id in self._recovery_log_stop:
             return
@@ -229,14 +235,14 @@ class _MainWindowTaskRecoveryMixin:
 
     def _queue_task_finalization(self, task_id: str, *, reason: str) -> None:
         """Queue task finalization work.
-        
+
         SYNCHRONIZATION: This function provides thread-safe finalization queueing via
         four defensive mechanisms:
         1. Early state check: Returns immediately if finalization is "pending" or "running"
         2. Needs-finalization check: task.finalization_state must not be "done"
         3. Thread existence check: Prevents creating duplicate threads
         4. State reset: If somehow in "running" state without a live thread, resets to "pending"
-        
+
         These guards coordinate finalization between task_done and recovery_tick paths,
         ensuring exactly one finalization thread runs per task.
         """
@@ -382,7 +388,9 @@ class _MainWindowTaskRecoveryMixin:
         self._schedule_save()
         self.host_log.emit(
             task_id,
-            format_log("host", "finalize", "INFO", f"finalization running (reason={reason})"),
+            format_log(
+                "host", "finalize", "INFO", f"finalization running (reason={reason})"
+            ),
         )
 
         try:
@@ -397,7 +405,9 @@ class _MainWindowTaskRecoveryMixin:
                 timeout_s = 30.0
                 if runner_config is not None:
                     try:
-                        timeout_s = float(getattr(runner_config, "artifact_collection_timeout_s"))
+                        timeout_s = float(
+                            getattr(runner_config, "artifact_collection_timeout_s")
+                        )
                     except Exception:
                         timeout_s = 30.0
                 if timeout_s <= 0.0:
@@ -413,7 +423,12 @@ class _MainWindowTaskRecoveryMixin:
                 start_s = time.monotonic()
                 self.host_log.emit(
                     task_id,
-                    format_log("host", "artifacts", "INFO", "collecting artifacts from staging..."),
+                    format_log(
+                        "host",
+                        "artifacts",
+                        "INFO",
+                        "collecting artifacts from staging...",
+                    ),
                 )
                 artifact_uuids = collect_artifacts_from_container_with_timeout(
                     str(task.container_id or ""),
@@ -521,7 +536,9 @@ class _MainWindowTaskRecoveryMixin:
             else:
                 self.host_log.emit(
                     task_id,
-                    format_log("gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"),
+                    format_log(
+                        "gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"
+                    ),
                 )
 
             # WORKSPACE CLEANUP LOGIC:
@@ -529,7 +546,7 @@ class _MainWindowTaskRecoveryMixin:
             # 1. PR worker did NOT run (PR worker cleans in its finally block)
             # 2. reason != "recovery_tick" (recovery_tick is monitoring, not modifying)
             # 3. workspace is cloned (non-cloned workspaces don't need cleanup)
-            # 
+            #
             # Why recovery_tick skips cleanup:
             # - recovery_tick is a safety net that runs every 5 seconds
             # - It should verify finalization state but not modify workspaces
@@ -581,7 +598,9 @@ class _MainWindowTaskRecoveryMixin:
                 format_log("host", "finalize", "ERROR", f"finalization failed: {exc}"),
             )
 
-    def _cleanup_task_workspace_for_finalization(self, task_id: str, env_id: str) -> None:
+    def _cleanup_task_workspace_for_finalization(
+        self, task_id: str, env_id: str
+    ) -> None:
         env_id = str(env_id or "").strip()
         if not env_id:
             return
@@ -589,7 +608,9 @@ class _MainWindowTaskRecoveryMixin:
         if not state_path:
             self.host_log.emit(
                 task_id,
-                format_log("gh", "cleanup", "WARN", "cleanup skipped: state path not available"),
+                format_log(
+                    "gh", "cleanup", "WARN", "cleanup skipped: state path not available"
+                ),
             )
             return
         data_dir = os.path.dirname(state_path)

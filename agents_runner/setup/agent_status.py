@@ -152,7 +152,7 @@ def check_gemini_login() -> tuple[bool, str]:
     gemini_config_dir = Path.home() / ".gemini"
     google_accounts = gemini_config_dir / "google_accounts.json"
     oauth_creds = gemini_config_dir / "oauth_creds.json"
-    
+
     if google_accounts.exists() and google_accounts.is_file():
         return (True, "Logged in (google_accounts.json)")
     if oauth_creds.exists() and oauth_creds.is_file():

@@ -31,4 +31,3 @@ def refresh_environment_midoriai_template_detection(
     detection = apply_midoriai_template_detection(env, workspace_root=workspace_root)
     save_environment(env)
     return detection
-

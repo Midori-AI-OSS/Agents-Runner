@@ -25,7 +25,7 @@ from agents_runner.ui.pages import NewTaskPage
 from agents_runner.ui.pages import SettingsPage
 from agents_runner.ui.pages import TaskDetailsPage
 from agents_runner.ui.task_model import Task
-from agents_runner.widgets import GlassCard
+from agents_runner.ui.widgets import GlassCard
 
 from agents_runner.ui.main_window_capacity import _MainWindowCapacityMixin
 from agents_runner.ui.main_window_dashboard import _MainWindowDashboardMixin

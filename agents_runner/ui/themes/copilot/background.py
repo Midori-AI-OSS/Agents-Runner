@@ -267,7 +267,9 @@ def copilot_make_active_line(
             else:
                 mutated_chars.append(rng.choice(["_", ".", " "]))
         mutated = "".join(mutated_chars)
-        mutated_body = body[:mistake_at_body] + mutated + body[mistake_at_body + mistake_len :]
+        mutated_body = (
+            body[:mistake_at_body] + mutated + body[mistake_at_body + mistake_len :]
+        )
         draw_text = f"{prefix}{mutated_body}{suffix}"
         extra_after = int(rng.randint(1, 4))
         trigger = min(
@@ -366,7 +368,10 @@ def tick_copilot_typed_code(
                 continue
 
             active.typed_chars_f += float(active.cps) * float(dt_s)
-            if active.mistake_trigger_at >= 0 and active.typed_chars() >= active.mistake_trigger_at:
+            if (
+                active.mistake_trigger_at >= 0
+                and active.typed_chars() >= active.mistake_trigger_at
+            ):
                 active.state = "backspacing"
 
             if active.typed_chars() >= len(active.draw_text):
@@ -494,9 +499,15 @@ def paint_copilot_background(
 
             fade = 1.0
             if line.age_s >= line.hold_s:
-                fade = 1.0 - (float(line.age_s) - float(line.hold_s)) / float(line.fade_s)
+                fade = 1.0 - (float(line.age_s) - float(line.hold_s)) / float(
+                    line.fade_s
+                )
             fade = max(0.0, min(1.0, fade))
-            fade *= min(1.0, float(line.age_s) / float(fade_in_s)) if line.age_s < fade_in_s else 1.0
+            fade *= (
+                min(1.0, float(line.age_s) / float(fade_in_s))
+                if line.age_s < fade_in_s
+                else 1.0
+            )
 
             if fade <= 0.0:
                 continue

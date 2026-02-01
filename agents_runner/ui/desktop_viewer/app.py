@@ -14,7 +14,13 @@ from pathlib import Path
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QMainWindow, QMessageBox, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QMessageBox,
+    QVBoxLayout,
+    QWidget,
+)
 
 QWebEngineView = None
 
@@ -71,7 +77,7 @@ def _maybe_enable_desktop_viewer_faulthandler() -> Path | None:
 
 def _configure_webengine_runtime() -> None:
     try:
-        from agents_runner.app import _configure_qtwebengine_runtime
+        from agents_runner.ui.runtime.app import _configure_qtwebengine_runtime
 
         _configure_qtwebengine_runtime()
     except Exception:
@@ -106,10 +112,10 @@ def _maybe_install_exception_hooks(argv: list[str]) -> None:
 
 def run_desktop_viewer(args: list[str]) -> int:
     """Run the desktop viewer application.
-    
+
     Args:
         args: Command-line arguments (typically sys.argv)
-        
+
     Returns:
         Exit code (0 for success)
     """
@@ -127,7 +133,7 @@ def run_desktop_viewer(args: list[str]) -> int:
         default="Desktop",
         help="Window title (default: Desktop)",
     )
-    
+
     parsed = parser.parse_args(args[1:])  # Skip program name
 
     _configure_webengine_runtime()
@@ -135,7 +141,9 @@ def run_desktop_viewer(args: list[str]) -> int:
     _maybe_install_exception_hooks(args)
     _debug_log(f"XDG_SESSION_TYPE={os.environ.get('XDG_SESSION_TYPE')}")
     _debug_log(f"QT_QPA_PLATFORM={os.environ.get('QT_QPA_PLATFORM')}")
-    _debug_log(f"QTWEBENGINE_CHROMIUM_FLAGS={os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS')}")
+    _debug_log(
+        f"QTWEBENGINE_CHROMIUM_FLAGS={os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS')}"
+    )
 
     try:
         from PySide6.QtWebEngineWidgets import QWebEngineView as _QWebEngineView
@@ -144,19 +152,21 @@ def run_desktop_viewer(args: list[str]) -> int:
 
     global QWebEngineView
     QWebEngineView = _QWebEngineView
-    
+
     if QWebEngineView is None:
-        print("QtWebEngine not available; opening URL in system browser", file=sys.stderr)
+        print(
+            "QtWebEngine not available; opening URL in system browser", file=sys.stderr
+        )
         app = QApplication.instance()
         if app is None:
             app = QApplication(args)
         QDesktopServices.openUrl(QUrl(parsed.url))
         return 0
-    
+
     app = QApplication.instance()
     if app is None:
         app = QApplication(args)
-    
+
     # Set application icon if available
     icon_path = Path(__file__).parent.parent / "midoriai-logo.png"
     if icon_path.exists():
@@ -168,16 +178,16 @@ def run_desktop_viewer(args: list[str]) -> int:
             file=sys.stderr,
             flush=True,
         )
-    
+
     window = DesktopViewerWindow(url=parsed.url, title=parsed.title)
     window.show()
-    
+
     return app.exec()
 
 
 class DesktopViewerWindow(QMainWindow):
     """Main window for the desktop viewer."""
-    
+
     def __init__(
         self,
         url: str,
@@ -185,22 +195,22 @@ class DesktopViewerWindow(QMainWindow):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        
+
         self.setWindowTitle(title)
         self.resize(1280, 720)
-        
+
         # Central widget
         central = QWidget()
         self.setCentralWidget(central)
-        
+
         layout = QVBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
+
         # WebEngine view
         if QWebEngineView is None:
             from PySide6.QtWidgets import QLabel
-            
+
             error_label = QLabel(
                 "QtWebEngine not available.\n"
                 "Please install PySide6-WebEngine or open the URL in a browser."
@@ -208,10 +218,10 @@ class DesktopViewerWindow(QMainWindow):
             error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(error_label)
             return
-        
+
         self._web_view = QWebEngineView()
         layout.addWidget(self._web_view)
-        
+
         # Load the URL
         try:
             self._web_view.setUrl(QUrl(url))
