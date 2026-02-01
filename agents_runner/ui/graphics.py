@@ -199,8 +199,8 @@ class GlassRoot(QWidget):
         ):
             self._claude_next_reset_s = time.monotonic()
         if self._theme.name == "gemini" or (
-                self._theme_to is not None and self._theme_to.name == "gemini"
-            ):
+            self._theme_to is not None and self._theme_to.name == "gemini"
+        ):
             self._constrain_gemini_orbs()
         if self._theme.name == "copilot" or (
             self._theme_to is not None and self._theme_to.name == "copilot"
@@ -227,9 +227,8 @@ class GlassRoot(QWidget):
         if dt > 0.0:
             self._claude_last_tick_s = now_s
             dt = min(dt, 0.25)
-            if (
-                self._theme.name == "claude"
-                or (self._theme_to is not None and self._theme_to.name == "claude")
+            if self._theme.name == "claude" or (
+                self._theme_to is not None and self._theme_to.name == "claude"
             ):
                 self._claude_tick_accum_s += float(dt)
                 step_s = float(self._CLAUDE_STEP_S)
@@ -259,9 +258,8 @@ class GlassRoot(QWidget):
         if dt_gemini > 0.0:
             self._gemini_last_tick_s = now_s
             dt_gemini = min(dt_gemini, 0.25)
-            if (
-                self._theme.name == "gemini"
-                or (self._theme_to is not None and self._theme_to.name == "gemini")
+            if self._theme.name == "gemini" or (
+                self._theme_to is not None and self._theme_to.name == "gemini"
             ):
                 self._gemini_tick_accum_s += float(dt_gemini)
                 step_s = 0.05
@@ -276,9 +274,8 @@ class GlassRoot(QWidget):
         if dt_copilot > 0.0:
             self._copilot_last_tick_s = now_s
             dt_copilot = min(dt_copilot, 0.25)
-            if (
-                self._theme.name == "copilot"
-                or (self._theme_to is not None and self._theme_to.name == "copilot")
+            if self._theme.name == "copilot" or (
+                self._theme_to is not None and self._theme_to.name == "copilot"
             ):
                 self._copilot_tick_accum_s += float(dt_copilot)
                 step_s = 0.05
@@ -290,12 +287,9 @@ class GlassRoot(QWidget):
                     steps += 1
 
         # Trigger repaint if using Codex / Claude theme
-        if (
-            self._theme.name in {"codex", "claude", "gemini", "copilot"}
-            or (
-                self._theme_to is not None
-                and self._theme_to.name in {"codex", "claude", "gemini", "copilot"}
-            )
+        if self._theme.name in {"codex", "claude", "gemini", "copilot"} or (
+            self._theme_to is not None
+            and self._theme_to.name in {"codex", "claude", "gemini", "copilot"}
         ):
             self.update()
 
@@ -343,9 +337,11 @@ class GlassRoot(QWidget):
         return font, metrics, char_w, line_h
 
     def _ensure_copilot_sources(self) -> None:
-        self._copilot_source_files, self._copilot_repo_root = copilot_bg.ensure_copilot_sources(
-            self._copilot_source_files,
-            self._copilot_repo_root,
+        self._copilot_source_files, self._copilot_repo_root = (
+            copilot_bg.ensure_copilot_sources(
+                self._copilot_source_files,
+                self._copilot_repo_root,
+            )
         )
 
     def _ensure_copilot_panes(self) -> None:
@@ -377,13 +373,13 @@ class GlassRoot(QWidget):
     def _paint_copilot_background(self, painter: QPainter, rect: QRect) -> None:
         self._ensure_copilot_panes()
         font, _, char_w, line_h = self._copilot_font_metrics()
-        
+
         pane_rects = copilot_bg.copilot_pane_rects(rect, self._copilot_panes)
         if len(pane_rects) != len(self._copilot_panes):
             # Pane count can change across resizes; keep the visuals stable.
             self._copilot_panes = []
             self._ensure_copilot_panes()
-        
+
         copilot_bg.paint_copilot_background(
             painter,
             rect,
@@ -394,17 +390,19 @@ class GlassRoot(QWidget):
         )
 
     def _paint_claude_background(self, painter: QPainter, rect: QRect) -> None:
-        self._claude_tips, self._claude_next_reset_s = claude_bg.paint_claude_background(
-            painter,
-            rect,
-            self._claude_tips,
-            self._claude_segments,
-            self._claude_rng,
-            self._claude_palette_phase,
-            self.width(),
-            self.height(),
-            time.monotonic(),
-            codex_bg.blend_colors,
+        self._claude_tips, self._claude_next_reset_s = (
+            claude_bg.paint_claude_background(
+                painter,
+                rect,
+                self._claude_tips,
+                self._claude_segments,
+                self._claude_rng,
+                self._claude_palette_phase,
+                self.width(),
+                self.height(),
+                time.monotonic(),
+                codex_bg.blend_colors,
+            )
         )
 
     def _paint_codex_background(self, painter: QPainter, rect: QRect) -> None:

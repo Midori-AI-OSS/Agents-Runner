@@ -105,13 +105,13 @@ class Environment:
     def normalized_color(self) -> str:
         value = (self.color or "").strip().lower()
         return value if value in ALLOWED_STAINS else "slate"
-    
+
     def detect_git_if_mounted_folder(self) -> bool:
         """Detect if mounted folder environment is a git repository.
-        
+
         This method caches the result to avoid repeated git operations.
         Only applicable for mounted folder (local) environments.
-        
+
         Returns:
             True if folder is a git repo, False otherwise.
             False for non-mounted-folder environments.
@@ -119,19 +119,19 @@ class Environment:
         # Only applies to mounted folders
         if self.workspace_type != WORKSPACE_MOUNTED:
             return False
-        
+
         # Return cached result if available
         if self._cached_is_git_repo is not None:
             return self._cached_is_git_repo
-        
+
         # Detect git
         from agents_runner.environments.git_operations import get_git_info
-        
+
         folder_path = self.workspace_target
         if not folder_path:
             self._cached_is_git_repo = False
             return False
-        
+
         git_info = get_git_info(folder_path)
         self._cached_is_git_repo = git_info is not None
         return self._cached_is_git_repo

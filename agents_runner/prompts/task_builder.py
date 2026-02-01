@@ -51,4 +51,3 @@ def build_task_prompt(base_prompt: str, *, retry_context: RetryContext | None) -
     if not prompt:
         return preamble.rstrip()
     return f"{preamble}{prompt}"
-

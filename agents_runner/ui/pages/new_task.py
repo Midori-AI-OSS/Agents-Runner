@@ -32,13 +32,13 @@ from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
-from agents_runner.widgets import GlassCard
-from agents_runner.widgets import SpellTextEdit
-from agents_runner.widgets import StainedGlassButton
+from agents_runner.ui.widgets import GlassCard
+from agents_runner.ui.widgets import SpellTextEdit
+from agents_runner.ui.widgets import StainedGlassButton
 from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
 from agents_runner.stt.mic_recorder import MicRecorderError
 from agents_runner.stt.mic_recorder import MicRecording
-from agents_runner.stt.qt_worker import SttWorker
+from agents_runner.ui.stt.qt_worker import SttWorker
 
 
 class NewTaskPage(QWidget):
@@ -50,7 +50,9 @@ class NewTaskPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
-        self._env_workspace_types: dict[str, str] = {}  # Track workspace types for environments
+        self._env_workspace_types: dict[
+            str, str
+        ] = {}  # Track workspace types for environments
         self._env_template_injection: dict[str, bool] = {}
         self._env_desktop_enabled: dict[str, bool] = {}
         self._host_codex_dir = os.path.expanduser("~/.codex")
@@ -85,12 +87,12 @@ class NewTaskPage(QWidget):
         )
         self.set_repo_branches([])
         self._base_branch.setVisible(False)  # Initially hidden
-        
+
         # Separator label for title bar
         self._title_separator = QLabel("::")
         self._title_separator.setStyleSheet("color: rgba(237, 239, 245, 160);")
         self._title_separator.setVisible(False)  # Initially hidden
-        
+
         top_row = QHBoxLayout()
         top_row.setSpacing(10)
         title = QLabel("New task")
@@ -112,11 +114,13 @@ class NewTaskPage(QWidget):
 
         prompt_title = QLabel("Prompt")
         prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
-        
+
         # Separator between Prompt and agent chain
         self._prompt_separator = QLabel("::")
-        self._prompt_separator.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
-        
+        self._prompt_separator.setStyleSheet(
+            "color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;"
+        )
+
         # Agent chain display - inline with prompt label
         self._agent_chain = QLabel("—")
         self._agent_chain.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -124,7 +128,7 @@ class NewTaskPage(QWidget):
         self._agent_chain.setToolTip(
             "Agents will be used in this order for new tasks in this environment."
         )
-        
+
         # Prompt title row with agent chain
         prompt_title_row = QHBoxLayout()
         prompt_title_row.setSpacing(0)
@@ -132,7 +136,7 @@ class NewTaskPage(QWidget):
         prompt_title_row.addWidget(self._prompt_separator)
         prompt_title_row.addWidget(self._agent_chain)
         prompt_title_row.addStretch(1)
-        
+
         self._prompt = SpellTextEdit(spellcheck_enabled=self._spellcheck_enabled)
         self._prompt.setPlaceholderText("Describe what you want the agent to do…")
         self._prompt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -146,7 +150,7 @@ class NewTaskPage(QWidget):
         self._template_prompt_indicator.setStyleSheet(
             "color: rgba(237, 239, 245, 160); margin: 8px;"
         )
-        
+
         self._voice_btn = QToolButton()
         self._voice_btn.setIcon(mic_icon(size=18))
         self._voice_btn.setIconSize(QSize(18, 18))
@@ -195,7 +199,7 @@ class NewTaskPage(QWidget):
         interactive_grid.addWidget(QLabel("Terminal"), 0, 0)
         interactive_grid.addWidget(self._terminal, 0, 1)
         interactive_grid.addWidget(refresh_terminals, 0, 2)
-        
+
         # Workspace display for mounted folder environments (shown on terminal line)
         self._terminal_workspace_label = QLabel("Workspace")
         self._terminal_workspace = QLabel("—")
@@ -238,7 +242,9 @@ class NewTaskPage(QWidget):
         self._run_interactive_no_desktop = self._run_interactive_menu.addAction(
             "Without desktop"
         )
-        self._run_interactive_no_desktop.triggered.connect(self._on_launch_without_desktop)
+        self._run_interactive_no_desktop.triggered.connect(
+            self._on_launch_without_desktop
+        )
         self._run_interactive.set_menu(None)
 
         self._run_agent = StainedGlassButton("Run Agent")
@@ -268,21 +274,21 @@ class NewTaskPage(QWidget):
 
     def _confirm_auto_base_branch(self, env_id: str, base_branch: str) -> bool:
         """Show confirmation dialog for auto base branch in cloned repo environments.
-        
+
         Args:
             env_id: The environment ID to check
             base_branch: The selected base branch (empty string or "auto" for auto mode)
-            
+
         Returns:
             True if user confirmed or confirmation not needed, False if cancelled
         """
         # Only show confirmation for cloned environments with auto base branch
         workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
         is_auto_branch = not base_branch or base_branch.lower() == "auto"
-        
+
         if not (workspace_type == WORKSPACE_CLONED and is_auto_branch):
             return True
-        
+
         # Show confirmation dialog
         reply = QMessageBox.question(
             self,
@@ -293,9 +299,9 @@ class NewTaskPage(QWidget):
             "If you need a specific base branch, select it from the dropdown.\n\n"
             "Do you want to proceed?",
             QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No  # Default to No for safety
+            QMessageBox.No,  # Default to No for safety
         )
-        
+
         return reply == QMessageBox.Yes
 
     def _update_run_buttons(self) -> None:
@@ -351,11 +357,11 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
-        
+
         # Confirm auto base branch for cloned repo environments
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
-        
+
         self.requested_run.emit(prompt, host_codex, env_id, base_branch)
 
     def _on_get_agent_help(self) -> None:
@@ -425,7 +431,10 @@ class NewTaskPage(QWidget):
 
     def _reconnect_interactive_button(self, new_slot) -> None:
         """Safely reconnect the interactive button click handler."""
-        if hasattr(self, '_current_interactive_slot') and self._current_interactive_slot:
+        if (
+            hasattr(self, "_current_interactive_slot")
+            and self._current_interactive_slot
+        ):
             try:
                 self._run_interactive.clicked.disconnect(self._current_interactive_slot)
             except (RuntimeError, TypeError):
@@ -436,7 +445,7 @@ class NewTaskPage(QWidget):
     def _sync_interactive_options(self) -> None:
         env_id = str(self._environment.currentData() or "")
         desktop_enabled = self._env_desktop_enabled.get(env_id, False)
-        
+
         if env_id and desktop_enabled:
             # Desktop enabled: show dropdown with "Without desktop" option
             self._run_interactive.set_menu(self._run_interactive_menu)
@@ -474,11 +483,11 @@ class NewTaskPage(QWidget):
 
         env_id = str(self._environment.currentData() or "")
         base_branch = str(self._base_branch.currentData() or "")
-        
+
         # Confirm auto base branch for cloned repo environments
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
-        
+
         self.requested_launch.emit(
             prompt,
             command,
@@ -545,16 +554,20 @@ class NewTaskPage(QWidget):
 
     def set_environment_workspace_types(self, workspace_types: dict[str, str]) -> None:
         """Set the workspace types for environments.
-        
+
         Args:
             workspace_types: Dictionary mapping environment IDs to their workspace type
                            (WORKSPACE_CLONED, WORKSPACE_MOUNTED, or WORKSPACE_NONE)
         """
-        self._env_workspace_types = {str(k): str(v) for k, v in (workspace_types or {}).items()}
+        self._env_workspace_types = {
+            str(k): str(v) for k, v in (workspace_types or {}).items()
+        }
         self._update_workspace_visibility()
         self._sync_interactive_options()
 
-    def set_environment_template_injection_status(self, statuses: dict[str, bool]) -> None:
+    def set_environment_template_injection_status(
+        self, statuses: dict[str, bool]
+    ) -> None:
         self._env_template_injection = {
             str(k): bool(v) for k, v in (statuses or {}).items()
         }
@@ -562,7 +575,7 @@ class NewTaskPage(QWidget):
 
     def set_environment_desktop_enabled(self, desktop_enabled: dict[str, bool]) -> None:
         """Set desktop enablement status for environments.
-        
+
         Args:
             desktop_enabled: Dictionary mapping environment IDs to desktop enablement status
         """
@@ -580,7 +593,7 @@ class NewTaskPage(QWidget):
         """Update workspace line visibility based on workspace type."""
         env_id = str(self._environment.currentData() or "")
         workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
-        
+
         # Cloned environments: hide workspace line completely
         if workspace_type == WORKSPACE_CLONED:
             self._workspace_label.setVisible(False)
@@ -702,7 +715,9 @@ class NewTaskPage(QWidget):
                 self._voice_btn.blockSignals(False)
             return
         self._voice_btn.setIcon(lucide_icon("square"))
-        self._voice_btn.setToolTip("Stop recording and transcribe into the prompt editor.")
+        self._voice_btn.setToolTip(
+            "Stop recording and transcribe into the prompt editor."
+        )
 
     def _stop_voice_recording_and_transcribe(self) -> None:
         recording = self._mic_recording
@@ -736,20 +751,20 @@ class NewTaskPage(QWidget):
         worker = SttWorker(mode=self._stt_mode, audio_path=str(audio_path))
         thread = QThread(self)
         worker.moveToThread(thread)
-        
+
         # Connect signals first, before starting
         thread.started.connect(worker.run)
         worker.done.connect(self._on_stt_done)
         worker.error.connect(self._on_stt_error)
-        
+
         # Ensure thread.quit() is called on both done and error
         worker.done.connect(thread.quit)
         worker.error.connect(thread.quit)
-        
+
         # Clean up worker after signals fire
         worker.done.connect(worker.deleteLater)
         worker.error.connect(worker.deleteLater)
-        
+
         # Clean up thread when finished, ensure _on_stt_finished is called
         thread.finished.connect(self._on_stt_finished)
         thread.finished.connect(thread.deleteLater)
@@ -870,7 +885,7 @@ class NewTaskPage(QWidget):
             self._agent_chain.setVisible(False)
             self._prompt_separator.setVisible(False)
             return
-        
+
         # Show chain display for multiple agents
         self._agent_chain.setVisible(True)
         self._prompt_separator.setVisible(True)
@@ -881,7 +896,7 @@ class NewTaskPage(QWidget):
             chain_text = " → ".join(a.title() for a in display_agents) + " → ..."
         else:
             chain_text = " → ".join(a.title() for a in agents)
-        
+
         self._agent_chain.setText(chain_text)
 
         # Build tooltip based on selection mode
@@ -892,7 +907,7 @@ class NewTaskPage(QWidget):
                 tooltip += f"{i}. {agent.title()} (Primary)\n"
             else:
                 if is_fallback_mode:
-                    tooltip += f"{i}. {agent.title()} (Fallback {i-1})\n"
+                    tooltip += f"{i}. {agent.title()} (Fallback {i - 1})\n"
                 else:
                     tooltip += f"{i}. {agent.title()} (Priority {i})\n"
         self._agent_chain.setToolTip(tooltip.strip())

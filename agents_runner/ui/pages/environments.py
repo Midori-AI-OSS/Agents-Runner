@@ -28,7 +28,7 @@ from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.gh_management import is_gh_available
 from agents_runner.persistence import default_state_path
-from agents_runner.widgets import GlassCard
+from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.constants import (
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
@@ -79,9 +79,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             os.path.dirname(default_state_path()),
             "environments.json",
         )
-        title.setToolTip(
-            f"Environments are saved locally in:\n{envs_path}"
-        )
+        title.setToolTip(f"Environments are saved locally in:\n{envs_path}")
 
         back = QToolButton()
         back.setText("Back")
@@ -165,17 +163,13 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         grid.addWidget(QLabel("Color"), 1, 0)
         grid.addWidget(self._color, 1, 1, 1, 2)
 
-        self._headless_desktop_enabled = QCheckBox(
-            "Enable headless desktop"
-        )
+        self._headless_desktop_enabled = QCheckBox("Enable headless desktop")
         self._headless_desktop_enabled.setToolTip(
             "When enabled, agent runs for this environment will start a noVNC desktop.\n"
             "Settings → Force headless desktop overrides this setting."
         )
-        
-        self._cache_desktop_build = QCheckBox(
-            "Cache desktop build"
-        )
+
+        self._cache_desktop_build = QCheckBox("Cache desktop build")
         self._cache_desktop_build.setToolTip(
             "When enabled, desktop components are pre-installed in a cached Docker image.\n"
             "This reduces task startup time from 45-90s to 2-5s.\n"
@@ -183,15 +177,13 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             "Image is automatically rebuilt when scripts change."
         )
         self._cache_desktop_build.setEnabled(False)  # Disabled until desktop is enabled
-        
+
         # Connect desktop enabled checkbox to cache checkbox state
         self._headless_desktop_enabled.stateChanged.connect(
             self._on_headless_desktop_toggled
         )
 
-        self._container_caching_enabled = QCheckBox(
-            "Enable container caching"
-        )
+        self._container_caching_enabled = QCheckBox("Enable container caching")
         self._container_caching_enabled.setToolTip(
             "When enabled, environment preflight scripts are executed at Docker build time.\n"
             "This creates a cached image with pre-installed dependencies, speeding up task startup.\n\n"
@@ -202,20 +194,14 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._on_container_caching_toggled
         )
 
-        self._use_cross_agents = QCheckBox(
-            "Use cross agents"
-        )
+        self._use_cross_agents = QCheckBox("Use cross agents")
         self._use_cross_agents.setToolTip(
             "When enabled, allows agent instances from the Agents tab to be mounted\n"
             "as cross-agents in task containers. Configure the allowlist in the Agents tab."
         )
-        self._use_cross_agents.stateChanged.connect(
-            self._on_use_cross_agents_toggled
-        )
+        self._use_cross_agents.stateChanged.connect(self._on_use_cross_agents_toggled)
 
-        self._gh_context_enabled = QCheckBox(
-            "Provide GitHub context to agent"
-        )
+        self._gh_context_enabled = QCheckBox("Provide GitHub context to agent")
         self._gh_context_enabled.setToolTip(
             "When enabled, repository context (URL, branch, commit) is provided to the agent.\n"
             "For GitHub-managed environments: Always available.\n"
@@ -279,9 +265,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._workspace_type_combo = QComboBox(general_tab)
         self._workspace_type_combo.addItem("Use Settings workdir", WORKSPACE_NONE)
         self._workspace_type_combo.addItem("Mount local folder", WORKSPACE_MOUNTED)
-        self._workspace_type_combo.addItem(
-            "Clone GitHub repo", WORKSPACE_CLONED
-        )
+        self._workspace_type_combo.addItem("Clone GitHub repo", WORKSPACE_CLONED)
         self._workspace_type_combo.currentIndexChanged.connect(
             self._sync_workspace_controls
         )
@@ -290,17 +274,13 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._workspace_target.setPlaceholderText(
             "owner/repo, https://github.com/owner/repo, or /path/to/folder"
         )
-        self._workspace_target.textChanged.connect(
-            self._sync_workspace_controls
-        )
+        self._workspace_target.textChanged.connect(self._sync_workspace_controls)
 
         self._gh_management_browse = QPushButton("Browse…", general_tab)
         self._gh_management_browse.setFixedWidth(STANDARD_BUTTON_WIDTH)
         self._gh_management_browse.clicked.connect(self._pick_gh_management_folder)
 
-        self._gh_use_host_cli = QCheckBox(
-            "Use host `gh` CLI", general_tab
-        )
+        self._gh_use_host_cli = QCheckBox("Use host `gh` CLI", general_tab)
         self._gh_use_host_cli.setToolTip(
             "Use the host system's `gh` CLI for cloning and PR creation (if installed).\n"
             "When disabled or unavailable, cloning uses `git` and PR creation is skipped."
@@ -315,9 +295,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         general_layout.addStretch(1)
 
         # Single-editor mode widgets (caching OFF)
-        self._preflight_enabled = QCheckBox(
-            "Enable environment preflight"
-        )
+        self._preflight_enabled = QCheckBox("Enable environment preflight")
         self._preflight_enabled.setToolTip(
             "Runs after Settings preflight script.\n"
             "Use for environment-specific setup tasks."
@@ -335,9 +313,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._preflight_script.setEnabled(False)
 
         # Dual-editor mode widgets (caching ON)
-        self._cached_preflight_enabled = QCheckBox(
-            "Enable cached preflight"
-        )
+        self._cached_preflight_enabled = QCheckBox("Enable cached preflight")
         self._cached_preflight_enabled.setToolTip(
             "Runs at Docker build time to pre-install dependencies.\n"
             "Creates a cached image for faster task startup."
@@ -351,12 +327,12 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             "# Use for installing packages and dependencies.\n"
         )
         self._cached_preflight_script.setTabChangesFocus(True)
-        self._cached_preflight_enabled.toggled.connect(self._cached_preflight_script.setEnabled)
+        self._cached_preflight_enabled.toggled.connect(
+            self._cached_preflight_script.setEnabled
+        )
         self._cached_preflight_script.setEnabled(False)
 
-        self._run_preflight_enabled = QCheckBox(
-            "Enable run preflight"
-        )
+        self._run_preflight_enabled = QCheckBox("Enable run preflight")
         self._run_preflight_enabled.setToolTip(
             "Runs at task startup after cached preflight.\n"
             "Use for runtime setup and validation."
@@ -370,7 +346,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             "# Use for runtime-specific setup.\n"
         )
         self._run_preflight_script.setTabChangesFocus(True)
-        self._run_preflight_enabled.toggled.connect(self._run_preflight_script.setEnabled)
+        self._run_preflight_enabled.toggled.connect(
+            self._run_preflight_script.setEnabled
+        )
         self._run_preflight_script.setEnabled(False)
 
         # Build single-editor container (caching OFF)
@@ -426,8 +404,12 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         # Create stacked widget for layout switching
         self._preflight_stack = QStackedWidget()
-        self._preflight_stack.addWidget(self._preflight_single_container)  # Index 0: caching OFF
-        self._preflight_stack.addWidget(self._preflight_dual_container)    # Index 1: caching ON
+        self._preflight_stack.addWidget(
+            self._preflight_single_container
+        )  # Index 0: caching OFF
+        self._preflight_stack.addWidget(
+            self._preflight_dual_container
+        )  # Index 1: caching ON
 
         preflight_tab = QWidget()
         preflight_layout = QVBoxLayout(preflight_tab)
@@ -521,7 +503,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
         self._load_selected()
         self._apply_environment_tints()
-    
+
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
         """Set reference to main window settings data."""
         self._settings_data = settings_data
@@ -579,21 +561,19 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._container_caching_enabled.setChecked(
             bool(getattr(env, "container_caching_enabled", False))
         )
-        self._use_cross_agents.setChecked(
-            bool(getattr(env, "use_cross_agents", False))
-        )
+        self._use_cross_agents.setChecked(bool(getattr(env, "use_cross_agents", False)))
         workspace_type = env.workspace_type or WORKSPACE_NONE
         is_github_env = workspace_type == WORKSPACE_CLONED
         is_local_env = workspace_type == WORKSPACE_MOUNTED
-        
+
         # Check if mounted folder environment is a git repo
         is_git_repo = False
         if is_local_env:
             is_git_repo = env.detect_git_if_mounted_folder()
-        
+
         # Enable GitHub context for cloned repos or mounted folder git repos
         context_available = is_github_env or (is_local_env and is_git_repo)
-        
+
         self._gh_context_enabled.setChecked(
             bool(getattr(env, "gh_context_enabled", False))
         )
@@ -608,34 +588,34 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._workspace_target.setText(str(env.workspace_target or ""))
         self._gh_use_host_cli.setChecked(bool(getattr(env, "gh_use_host_cli", True)))
         self._sync_workspace_controls(env=env)
-        
+
         # Load preflight scripts based on container caching state
         container_caching = bool(getattr(env, "container_caching_enabled", False))
-        
+
         # Single-editor mode (caching OFF)
         self._preflight_enabled.setChecked(bool(env.preflight_enabled))
         self._preflight_script.setEnabled(bool(env.preflight_enabled))
         self._preflight_script.setPlainText(env.preflight_script or "")
-        
+
         # Dual-editor mode (caching ON)
         cached_script = str(getattr(env, "cached_preflight_script", "") or "")
         has_cached = bool(cached_script.strip())
         self._cached_preflight_enabled.setChecked(has_cached)
         self._cached_preflight_script.setEnabled(has_cached)
         self._cached_preflight_script.setPlainText(cached_script)
-        
+
         self._run_preflight_enabled.setChecked(bool(env.preflight_enabled))
         self._run_preflight_script.setEnabled(bool(env.preflight_enabled))
         self._run_preflight_script.setPlainText(env.preflight_script or "")
-        
+
         # Set layout state
         self._preflight_stack.setCurrentIndex(1 if container_caching else 0)
-        
+
         env_lines = "\n".join(f"{k}={v}" for k, v in sorted(env.env_vars.items()))
         self._env_vars.setPlainText(env_lines)
         self._mounts.setPlainText("\n".join(env.extra_mounts))
         self._prompts_tab.set_prompts(env.prompts or [], env.prompts_unlocked or False)
-        
+
         # Load agent selection and cross-agent allowlist
         use_cross_agents = bool(getattr(env, "use_cross_agents", False))
         cross_agent_allowlist = list(getattr(env, "cross_agent_allowlist", []))
@@ -648,10 +628,10 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
 
     def _on_agents_changed(self) -> None:
         pass
-    
+
     def _on_headless_desktop_toggled(self, state: int) -> None:
         """Handle headless desktop checkbox state change.
-        
+
         When desktop is disabled, also disable and uncheck cache checkbox.
         When desktop is enabled, enable cache checkbox (but leave unchecked by default).
         """

@@ -9,15 +9,15 @@ This module provides parsers for:
 def parse_env_vars_text(text: str) -> tuple[dict[str, str], list[str]]:
     """
     Parse environment variables from text format.
-    
+
     Supports KEY=VALUE format with comments (#) and empty lines.
-    
+
     Args:
         text: Multi-line string with KEY=VALUE format
-        
+
     Returns:
         Tuple of (parsed vars dict, list of error messages)
-        
+
     Example:
         >>> parse_env_vars_text("KEY=value\\n# comment\\nKEY2=value2")
         ({'KEY': 'value', 'KEY2': 'value2'}, [])
@@ -45,15 +45,15 @@ def parse_env_vars_text(text: str) -> tuple[dict[str, str], list[str]]:
 def parse_mounts_text(text: str) -> list[str]:
     """
     Parse mount paths from text format.
-    
+
     Filters out comments (#) and empty lines.
-    
+
     Args:
         text: Multi-line string with one mount path per line
-        
+
     Returns:
         List of mount paths (comments and empty lines filtered out)
-        
+
     Example:
         >>> parse_mounts_text("/host/path:/container/path\\n# comment\\n/another:/path")
         ['/host/path:/container/path', '/another:/path']

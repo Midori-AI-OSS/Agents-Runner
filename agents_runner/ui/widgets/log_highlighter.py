@@ -26,7 +26,9 @@ class LogHighlighter(QSyntaxHighlighter):
     # Aligned (from format_log_display): [ {scope}/{subscope}     ][{LEVEL} ] {message}
     # The regex allows optional spaces after opening bracket and before closing bracket
     # to match both the tight canonical format and the padded display format.
-    CANONICAL_LOG_RE = re.compile(r"^\[\s*([^/\]]+)/([^\]]+?)\s*\]\[\s*([A-Z]+)\s*\]\s(.*)$")
+    CANONICAL_LOG_RE = re.compile(
+        r"^\[\s*([^/\]]+)/([^\]]+?)\s*\]\[\s*([A-Z]+)\s*\]\s(.*)$"
+    )
 
     def __init__(self, document: QTextDocument) -> None:
         super().__init__(document)
@@ -67,12 +69,14 @@ class LogHighlighter(QSyntaxHighlighter):
 
         # Color mappings for canonical log format
         self._host_scope_color = slate  # Neutral color for host scopes
-        self._container_scope_color = QColor(56, 189, 248)  # Blue/cyan for container IDs
+        self._container_scope_color = QColor(
+            56, 189, 248
+        )  # Blue/cyan for container IDs
         self._level_colors = {
             "DEBUG": QColor(107, 114, 128),  # Gray/muted
-            "INFO": QColor(209, 213, 219),   # Neutral/normal
-            "WARN": QColor(245, 158, 11),    # Amber/yellow
-            "ERROR": QColor(239, 68, 68),    # Red
+            "INFO": QColor(209, 213, 219),  # Neutral/normal
+            "WARN": QColor(245, 158, 11),  # Amber/yellow
+            "ERROR": QColor(239, 68, 68),  # Red
         }
         self._default_text_color = QColor(209, 213, 219)  # Default for message body
 
@@ -137,19 +141,19 @@ class LogHighlighter(QSyntaxHighlighter):
             # The format could be either:
             # Raw:     [scope/subscope][LEVEL] message
             # Aligned: [ scope/subscope     ][LEVEL ] message
-            
+
             # Find the scope bracket (from start to first ']')
-            scope_bracket_end = text.find(']') + 1
-            
+            scope_bracket_end = text.find("]") + 1
+
             # Find the level bracket (from scope_bracket_end to next ']')
             level_bracket_start = scope_bracket_end
-            level_bracket_end = text.find(']', level_bracket_start) + 1
-            
+            level_bracket_end = text.find("]", level_bracket_start) + 1
+
             # Message starts after the level bracket and any whitespace
             # The regex captures message after '\s', so we need to find where it actually starts
             message_start = level_bracket_end
             # Skip the space(s) that separate level bracket from message
-            while message_start < len(text) and text[message_start] == ' ':
+            while message_start < len(text) and text[message_start] == " ":
                 message_start += 1
 
             # Color the scope bracket
@@ -166,7 +170,9 @@ class LogHighlighter(QSyntaxHighlighter):
             level_color = self._level_colors.get(level, self._default_text_color)
             level_format.setForeground(level_color)
             self.setFormat(
-                level_bracket_start, level_bracket_end - level_bracket_start, level_format
+                level_bracket_start,
+                level_bracket_end - level_bracket_start,
+                level_format,
             )
 
             # Message body uses default color (no explicit formatting needed)

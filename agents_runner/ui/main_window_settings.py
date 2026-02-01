@@ -18,9 +18,11 @@ logger = logging.getLogger(__name__)
 class _MainWindowSettingsMixin:
     def _apply_settings_to_pages(self) -> None:
         self._settings.set_settings(self._settings_data)
-        self._envs_page.set_settings_data(self._settings_data)  # Pass settings to environments page
+        self._envs_page.set_settings_data(
+            self._settings_data
+        )  # Pass settings to environments page
         self._apply_active_environment_to_new_task()
-        
+
         # Apply spellcheck setting to new task page
         spellcheck_enabled = bool(self._settings_data.get("spellcheck_enabled", True))
         self._new_task.set_spellcheck_enabled(spellcheck_enabled)
@@ -543,42 +545,42 @@ class _MainWindowSettingsMixin:
             List of mount strings in Docker -v format (host:container:rw)
         """
         settings = settings or self._settings_data
-        
+
         # Early return if cross-agents not enabled or no environment
         if not env or not getattr(env, "use_cross_agents", False):
             return []
-        
+
         allowlist = list(getattr(env, "cross_agent_allowlist", []) or [])
         if not allowlist:
             return []
-        
+
         # Get agent instances from environment
         agent_selection = getattr(env, "agent_selection", None)
         if not agent_selection or not getattr(agent_selection, "agents", None):
             return []
-        
+
         agents = list(agent_selection.agents or [])
         if not agents:
             return []
-        
+
         # Build map of agent_id -> AgentInstance
         agents_by_id = {
             str(getattr(inst, "agent_id", "") or "").strip(): inst
             for inst in agents
             if str(getattr(inst, "agent_id", "") or "").strip()
         }
-        
+
         # Track which CLIs we've already mounted (including primary)
         mounted_clis: set[str] = {normalize_agent(primary_agent_cli)}
         mounted_dirs: set[str] = {os.path.expanduser(primary_config_dir)}
-        
+
         mounts: list[str] = []
-        
+
         for agent_id in allowlist:
             agent_id = str(agent_id or "").strip()
             if not agent_id:
                 continue
-            
+
             # Look up agent instance
             inst = agents_by_id.get(agent_id)
             if inst is None:
@@ -586,10 +588,10 @@ class _MainWindowSettingsMixin:
                     f"Cross-agent allowlist references unknown agent_id: {agent_id}"
                 )
                 continue
-            
+
             # Get agent CLI and normalize
             inst_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or ""))
-            
+
             # Enforce one-per-CLI constraint
             if inst_cli in mounted_clis:
                 logger.debug(
@@ -597,7 +599,7 @@ class _MainWindowSettingsMixin:
                     f"already mounted config for this CLI"
                 )
                 continue
-            
+
             # Resolve config directory
             inst_dir = os.path.expanduser(
                 str(getattr(inst, "config_dir", "") or "").strip()
@@ -608,12 +610,12 @@ class _MainWindowSettingsMixin:
                     env=env,
                     settings=settings,
                 )
-            
+
             # Validate config directory exists
             if not self._ensure_agent_config_dir(inst_cli, inst_dir):
                 # Error already shown to user
                 continue
-            
+
             # Check for duplicate mount (same dir as primary or already mounted)
             inst_dir_expanded = os.path.expanduser(inst_dir)
             if inst_dir_expanded in mounted_dirs:
@@ -622,20 +624,20 @@ class _MainWindowSettingsMixin:
                     f"config dir already mounted"
                 )
                 continue
-            
+
             # Build mount string
             container_dir = container_config_dir(inst_cli)
             mount_str = f"{inst_dir_expanded}:{container_dir}:rw"
             mounts.append(mount_str)
-            
+
             # Track mounted CLI and dir
             mounted_clis.add(inst_cli)
             mounted_dirs.add(inst_dir_expanded)
-            
+
             # Add additional config mounts (e.g., ~/.claude.json)
             extra_mounts = additional_config_mounts(inst_cli, inst_dir_expanded)
             for extra in extra_mounts:
                 if extra and extra not in mounts:
                     mounts.append(extra)
-        
+
         return mounts

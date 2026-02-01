@@ -32,7 +32,7 @@ class _MainWindowPersistenceMixin:
             return True
         if not (task.is_done() or task.is_failed()):
             return False
-        return (str(getattr(task, "finalization_state", "") or "").lower() == "done")
+        return str(getattr(task, "finalization_state", "") or "").lower() == "done"
 
     @staticmethod
     def _try_sync_container_state(task: Task) -> bool:
@@ -50,7 +50,11 @@ class _MainWindowPersistenceMixin:
                 status = (task.status or "").lower()
                 # Interactive tasks can briefly lack a container during launch; avoid
                 # marking them failed while they are still starting/running.
-                if task.is_interactive_run() and status in {"starting", "running", "created"}:
+                if task.is_interactive_run() and status in {
+                    "starting",
+                    "running",
+                    "created",
+                }:
                     return True
                 if status not in {"cancelled", "killed"}:
                     task.status = "failed"
@@ -93,7 +97,9 @@ class _MainWindowPersistenceMixin:
             and task.exit_code is not None
             and (task.status or "").lower() not in {"cancelled", "killed"}
         ):
-            task.status = "done" if status == "exited" and task.exit_code == 0 else "failed"
+            task.status = (
+                "done" if status == "exited" and task.exit_code == 0 else "failed"
+            )
             if task.finished_at is None:
                 from datetime import datetime
                 from datetime import timezone
@@ -222,12 +228,13 @@ class _MainWindowPersistenceMixin:
                 task.status = "unknown"
             loaded.append(task)
         loaded.sort(key=lambda t: t.created_at_s)
-        
+
         # Repair missing git metadata for cloned repo tasks
         repair_count = 0
         for task in loaded:
             if task.requires_git_metadata() and not task.git:
                 from agents_runner.ui.task_repair import repair_task_git_metadata
+
                 success, msg = repair_task_git_metadata(
                     task,
                     state_path=self._state_path,
@@ -241,12 +248,13 @@ class _MainWindowPersistenceMixin:
                         serialize_task(task),
                         archived=self._should_archive_task(task),
                     )
-        
+
         if repair_count > 0:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.info(f"Repaired git metadata for {repair_count} tasks")
-        
+
         for task in loaded:
             self._tasks[task.task_id] = task
             env = self._environments.get(task.environment_id)
@@ -257,7 +265,7 @@ class _MainWindowPersistenceMixin:
         # Run startup reconciliation once
         # Guard prevents accidental re-runs if _load_state() is called multiple times
         try:
-            if not getattr(self, '_reconcile_has_run', False):
+            if not getattr(self, "_reconcile_has_run", False):
                 self._reconcile_has_run = True
                 self._reconcile_tasks_after_restart()
         except Exception:

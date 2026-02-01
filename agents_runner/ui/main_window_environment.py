@@ -97,11 +97,7 @@ class _MainWindowEnvironmentMixin:
             self._new_task.set_repo_branches([])
             return
 
-        workspace_type = (
-            env.workspace_type or WORKSPACE_NONE
-            if env
-            else WORKSPACE_NONE
-        )
+        workspace_type = env.workspace_type or WORKSPACE_NONE if env else WORKSPACE_NONE
         has_repo = bool(workspace_type == WORKSPACE_CLONED)
         if workspace_type == WORKSPACE_NONE or not has_repo:
             self._new_task.set_repo_controls_visible(False)
@@ -135,11 +131,7 @@ class _MainWindowEnvironmentMixin:
         if request_id != int(getattr(self, "_repo_branches_request_id", 0)):
             return
         env = self._environments.get(self._active_environment_id())
-        workspace_type = (
-            env.workspace_type or WORKSPACE_NONE
-            if env
-            else WORKSPACE_NONE
-        )
+        workspace_type = env.workspace_type or WORKSPACE_NONE if env else WORKSPACE_NONE
         if workspace_type != WORKSPACE_CLONED:
             return
         if not isinstance(branches, list):
@@ -165,7 +157,9 @@ class _MainWindowEnvironmentMixin:
         workspace_types = {e.env_id: e.workspace_type or WORKSPACE_NONE for e in envs}
         template_statuses = {
             e.env_id: bool(
-                getattr(disk_envs.get(e.env_id) or e, "midoriai_template_detected", False)
+                getattr(
+                    disk_envs.get(e.env_id) or e, "midoriai_template_detected", False
+                )
             )
             for e in envs
         }
@@ -206,12 +200,13 @@ class _MainWindowEnvironmentMixin:
         current_agent, next_agent = self._get_next_agent_info(env=env)
         workdir, ready, message = self._new_task_workspace(env)
 
-        workspace_type = (
-            env.workspace_type or WORKSPACE_NONE
-            if env
-            else WORKSPACE_NONE
-        )
-        if env and ready and workspace_type == WORKSPACE_MOUNTED and os.path.isdir(workdir):
+        workspace_type = env.workspace_type or WORKSPACE_NONE if env else WORKSPACE_NONE
+        if (
+            env
+            and ready
+            and workspace_type == WORKSPACE_MOUNTED
+            and os.path.isdir(workdir)
+        ):
             try:
                 from agents_runner.environments.midoriai_template import (
                     apply_midoriai_template_detection,
@@ -288,10 +283,8 @@ class _MainWindowEnvironmentMixin:
                     agent_names = []
             else:
                 # Round-robin or least-used: show all agents in priority order
-                agent_names = [
-                    normalize_agent(a.agent_cli) for a in selection.agents
-                ]
-            
+                agent_names = [normalize_agent(a.agent_cli) for a in selection.agents]
+
             # If environment config produced no agents, fall back to default
             if not agent_names:
                 default_agent = normalize_agent(

@@ -98,7 +98,5 @@ class AgentWatchState:
         """Get display string for all usage windows."""
         if not self.windows:
             return "Unknown"
-        parts = [
-            f"{w.name}: {w.remaining_percent:.0f}% left" for w in self.windows
-        ]
+        parts = [f"{w.name}: {w.remaining_percent:.0f}% left" for w in self.windows]
         return " • ".join(parts)

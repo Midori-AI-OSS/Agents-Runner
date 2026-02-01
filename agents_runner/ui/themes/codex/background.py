@@ -9,15 +9,19 @@ import math
 import time
 
 from PySide6.QtCore import QPointF, QRect, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QRadialGradient
+from PySide6.QtGui import (
+    QColor,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QRadialGradient,
+)
 
 # Codex theme constant: diagonal boundary angle in degrees
 _CODEX_BOUNDARY_ANGLE_DEG: float = 15.0
 
 
-def blend_colors(
-    color1: QColor | str, color2: QColor | str, t: float
-) -> QColor:
+def blend_colors(color1: QColor | str, color2: QColor | str, t: float) -> QColor:
     """
     Blend between two colors using linear RGB interpolation.
 
@@ -44,7 +48,9 @@ def blend_colors(
     return QColor(r, g, b)
 
 
-def get_top_band_color(phase: float, cached_color: QColor | None, cached_phase: float) -> tuple[QColor, float]:
+def get_top_band_color(
+    phase: float, cached_color: QColor | None, cached_phase: float
+) -> tuple[QColor, float]:
     """
     Get top band color by blending blue and green based on phase.
 
@@ -59,12 +65,14 @@ def get_top_band_color(phase: float, cached_color: QColor | None, cached_phase: 
     # Cache: skip recalculation if phase change < 0.01
     if cached_color is not None and abs(phase - cached_phase) < 0.01:
         return cached_color, cached_phase
-    
+
     color = blend_colors("#60A5FA", "#34D399", phase)
     return color, phase
 
 
-def get_bottom_band_color(phase: float, cached_color: QColor | None, cached_phase: float) -> tuple[QColor, float]:
+def get_bottom_band_color(
+    phase: float, cached_color: QColor | None, cached_phase: float
+) -> tuple[QColor, float]:
     """
     Get bottom band color by blending between violet and orange based on phase.
 
@@ -79,7 +87,7 @@ def get_bottom_band_color(phase: float, cached_color: QColor | None, cached_phas
     # Cache: skip recalculation if phase change < 0.01
     if cached_color is not None and abs(phase - cached_phase) < 0.01:
         return cached_color, cached_phase
-    
+
     color = blend_colors("#A78BFA", "#FDBA74", phase)
     return color, phase
 
@@ -158,8 +166,12 @@ def paint_codex_background(
         Tuple of (top_color, top_phase, bottom_color, bottom_phase) for caching
     """
     # Calculate colors based on phase (with caching)
-    top_color, new_top_phase = get_top_band_color(top_phase, cached_top_color, cached_top_phase)
-    bottom_color, new_bottom_phase = get_bottom_band_color(bottom_phase, cached_bottom_color, cached_bottom_phase)
+    top_color, new_top_phase = get_top_band_color(
+        top_phase, cached_top_color, cached_top_phase
+    )
+    bottom_color, new_bottom_phase = get_bottom_band_color(
+        bottom_phase, cached_bottom_color, cached_bottom_phase
+    )
 
     w = int(rect.width())
     h = int(rect.height())
@@ -415,8 +427,6 @@ def paint_band_boundary(
     gradient_start_y = boundary_y - gradient_extent
 
     # Apply gradient to the boundary region
-    painter.fillRect(
-        0, gradient_start_y, rect.width(), gradient_extent * 2, gradient
-    )
+    painter.fillRect(0, gradient_start_y, rect.width(), gradient_extent * 2, gradient)
 
     return gradient, boundary_y, cached_gradient_top_color, cached_gradient_bottom_color
