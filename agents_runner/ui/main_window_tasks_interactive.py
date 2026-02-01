@@ -32,6 +32,9 @@ from agents_runner.ui.main_window_tasks_interactive_docker import (
 )
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _stain_color
+from midori_ai_logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class _MainWindowTasksInteractiveMixin:
@@ -321,21 +324,36 @@ class _MainWindowTasksInteractiveMixin:
                 )
 
                 if artifact_uuid:
-                    print(
-                        f"[finish] Encrypted finish file as artifact: {artifact_uuid}"
+                    logger.info(
+                        "Encrypted finish file as artifact",
+                        extra={"component": "finish", "artifact_uuid": artifact_uuid},
                     )
                 else:
-                    print("[finish] Failed to encrypt finish file, but continuing")
+                    logger.warning(
+                        "Failed to encrypt finish file, but continuing",
+                        extra={"component": "finish"},
+                    )
             except Exception as exc:
-                print(f"[finish] Error encrypting finish file: {exc}")
+                logger.error(
+                    "Error encrypting finish file",
+                    exc_info=exc,
+                    extra={"component": "finish"},
+                )
 
             # Delete plaintext finish file
             try:
                 if os.path.exists(finish_path):
                     os.unlink(finish_path)
-                    print(f"[finish] Deleted plaintext finish file: {finish_path}")
+                    logger.info(
+                        "Deleted plaintext finish file",
+                        extra={"component": "finish", "finish_path": finish_path},
+                    )
             except Exception as exc:
-                print(f"[finish] Warning: failed to delete finish file: {exc}")
+                logger.warning(
+                    "Failed to delete finish file",
+                    exc_info=exc,
+                    extra={"component": "finish"},
+                )
 
             self.interactive_finished.emit(task_id, int(exit_code))
 

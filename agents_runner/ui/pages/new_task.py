@@ -39,6 +39,9 @@ from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
 from agents_runner.stt.mic_recorder import MicRecorderError
 from agents_runner.stt.mic_recorder import MicRecording
 from agents_runner.ui.stt.qt_worker import SttWorker
+from midori_ai_logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class NewTaskPage(QWidget):
@@ -670,7 +673,10 @@ class NewTaskPage(QWidget):
     def _on_voice_toggled(self, enabled: bool) -> None:
         # Check if STT is already running
         if self._stt_thread is not None:
-            print("[STT] Voice toggle rejected: thread still running")
+            logger.debug(
+                "Voice toggle rejected: thread still running",
+                extra={"component": "STT"},
+            )
             self._voice_btn.blockSignals(True)
             try:
                 self._voice_btn.setChecked(False)
@@ -679,10 +685,10 @@ class NewTaskPage(QWidget):
             return
 
         if enabled:
-            print("[STT] Starting voice recording")
+            logger.info("Starting voice recording", extra={"component": "STT"})
             self._start_voice_recording()
             return
-        print("[STT] Stopping voice recording")
+        logger.info("Stopping voice recording", extra={"component": "STT"})
         self._stop_voice_recording_and_transcribe()
 
     def _start_voice_recording(self) -> None:
@@ -731,11 +737,14 @@ class NewTaskPage(QWidget):
 
         recorder = FfmpegPulseRecorder(output_dir=recording.output_path.parent)
         try:
-            print("[STT] Stopping recorder...")
+            logger.debug("Stopping recorder", extra={"component": "STT"})
             audio_path = recorder.stop(recording)
-            print(f"[STT] Recorder stopped, audio at {audio_path}")
+            logger.debug(
+                "Recorder stopped",
+                extra={"component": "STT", "audio_path": str(audio_path)},
+            )
         except MicRecorderError as exc:
-            print(f"[STT] Recorder error: {exc}")
+            logger.error("Recorder error", exc_info=exc, extra={"component": "STT"})
             QMessageBox.warning(
                 self, "Microphone error", str(exc) or "Could not stop recording."
             )
@@ -747,7 +756,7 @@ class NewTaskPage(QWidget):
         self._voice_btn.setIcon(lucide_icon("refresh-cw"))
         self._voice_btn.setToolTip("Transcribing speech-to-text…")
 
-        print("[STT] Creating worker and thread...")
+        logger.debug("Creating worker and thread", extra={"component": "STT"})
         worker = SttWorker(mode=self._stt_mode, audio_path=str(audio_path))
         thread = QThread(self)
         worker.moveToThread(thread)
@@ -771,12 +780,17 @@ class NewTaskPage(QWidget):
 
         self._stt_worker = worker
         self._stt_thread = thread
-        print("[STT] Starting thread...")
+        logger.debug("Starting thread", extra={"component": "STT"})
         thread.start()
-        print(f"[STT] Thread started, isRunning={thread.isRunning()}")
+        logger.debug(
+            "Thread started",
+            extra={"component": "STT", "is_running": thread.isRunning()},
+        )
 
     def _on_stt_done(self, text: str, audio_path: str) -> None:
-        print(f"[STT] Done signal received, text length={len(text)}")
+        logger.debug(
+            "Done signal received", extra={"component": "STT", "text_length": len(text)}
+        )
         audio_path_p = Path(str(audio_path or ""))
         text = str(text or "").strip()
         if text:
@@ -795,29 +809,49 @@ class NewTaskPage(QWidget):
 
         try:
             audio_path_p.unlink(missing_ok=True)
-            print(f"[STT] Audio file deleted: {audio_path}")
+            logger.debug(
+                "Audio file deleted",
+                extra={"component": "STT", "audio_path": str(audio_path)},
+            )
         except Exception as exc:
-            print(f"[STT] Failed to delete audio: {exc}")
+            logger.warning(
+                "Failed to delete audio", exc_info=exc, extra={"component": "STT"}
+            )
 
     def _on_stt_error(self, message: str, audio_path: str) -> None:
-        print(f"[STT] Error signal received: {message}")
+        logger.error(
+            "Error signal received", extra={"component": "STT", "message": message}
+        )
         audio_path_p = Path(str(audio_path or ""))
         msg = str(message or "").strip() or "Speech-to-text failed."
         QMessageBox.warning(self, "Speech-to-text error", msg)
         try:
             audio_path_p.unlink(missing_ok=True)
-            print(f"[STT] Audio file deleted after error: {audio_path}")
+            logger.debug(
+                "Audio file deleted after error",
+                extra={"component": "STT", "audio_path": str(audio_path)},
+            )
         except Exception as exc:
-            print(f"[STT] Failed to delete audio after error: {exc}")
+            logger.warning(
+                "Failed to delete audio after error",
+                exc_info=exc,
+                extra={"component": "STT"},
+            )
 
     def _on_stt_finished(self) -> None:
-        print(f"[STT] Finished signal received, thread={self._stt_thread}")
+        logger.debug(
+            "Finished signal received",
+            extra={"component": "STT", "thread": str(self._stt_thread)},
+        )
         self._stt_thread = None
         self._stt_worker = None
         self._voice_btn.setEnabled(True)
         self._voice_btn.setIcon(mic_icon(size=18))
         self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
-        print("[STT] Thread cleanup complete, ready for next recording")
+        logger.debug(
+            "Thread cleanup complete, ready for next recording",
+            extra={"component": "STT"},
+        )
 
     def set_repo_controls_visible(self, visible: bool) -> None:
         visible = bool(visible)
