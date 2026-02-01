@@ -56,6 +56,10 @@ This project uses the Codex contributor coordination system. Follow these guidel
   - Use a top-level supervisor subsystem for orchestration (e.g. `agents_runner/supervisor/`), and let it depend on the task subsystem (e.g. `agents_runner/tasks/`) as needed.
   - Pass data between subsystems via Pydantic models (avoid ad-hoc dicts/tuples).
   - Each subsystem package exposes one clear entry function used by `main.py` for routing (for example `agents_runner/<subsystem>/cli.py`).
+  - Packaging (Hatchling):
+    - This repo ships as a single Python distribution (one wheel/sdist) built via Hatchling; internal subsystems are Python packages inside that one distribution (they do not get separate `pyproject.toml` files).
+    - Any new importable directory under `agents_runner/` must include an `__init__.py`.
+    - After adding/moving packages, verify packaging with `uv build`.
 
 - Configuration:
   - Source of truth is TOML parsed with `tomli` and written with `tomli-w` (no JSON config files, no env-driven config).
