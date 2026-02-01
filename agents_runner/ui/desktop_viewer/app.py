@@ -21,6 +21,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from midori_ai_logger import get_logger
+
+logger = get_logger(__name__)
 
 QWebEngineView = None
 
@@ -33,7 +36,7 @@ def _is_truthy_env(name: str) -> bool:
 def _debug_log(message: str) -> None:
     if not _is_truthy_env("AGENTS_RUNNER_DESKTOP_VIEWER_DEBUG"):
         return
-    print(f"[Desktop Viewer][debug] {message}", file=sys.stderr, flush=True)
+    logger.debug(message, extra={"component": "Desktop Viewer"})
 
 
 def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
@@ -154,8 +157,9 @@ def run_desktop_viewer(args: list[str]) -> int:
     QWebEngineView = _QWebEngineView
 
     if QWebEngineView is None:
-        print(
-            "QtWebEngine not available; opening URL in system browser", file=sys.stderr
+        logger.warning(
+            "QtWebEngine not available; opening URL in system browser",
+            extra={"component": "Desktop Viewer"},
         )
         app = QApplication.instance()
         if app is None:
@@ -173,10 +177,12 @@ def run_desktop_viewer(args: list[str]) -> int:
         app.setWindowIcon(QIcon(str(icon_path)))
 
     if fault_log_path is not None:
-        print(
-            f"[Desktop Viewer] faulthandler enabled: {fault_log_path}",
-            file=sys.stderr,
-            flush=True,
+        logger.info(
+            "faulthandler enabled",
+            extra={
+                "component": "Desktop Viewer",
+                "fault_log_path": str(fault_log_path),
+            },
         )
 
     window = DesktopViewerWindow(url=parsed.url, title=parsed.title)

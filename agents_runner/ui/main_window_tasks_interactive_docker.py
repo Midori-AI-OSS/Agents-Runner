@@ -24,9 +24,9 @@ from agents_runner.environments import Environment
 from agents_runner.github_token import resolve_github_token
 from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
-from agents_runner.ui.shell_templates import build_git_clone_or_update_snippet
-from agents_runner.ui.shell_templates import git_identity_clause
-from agents_runner.ui.shell_templates import shell_log_statement
+from agents_runner.core.shell_templates import build_git_clone_or_update_snippet
+from agents_runner.core.shell_templates import git_identity_clause
+from agents_runner.core.shell_templates import shell_log_statement
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _safe_str
 

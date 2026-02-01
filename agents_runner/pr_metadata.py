@@ -1,5 +1,7 @@
-import json
 import os
+
+import tomli
+import tomli_w
 
 from dataclasses import dataclass
 
@@ -47,27 +49,27 @@ class GitHubMetadataV2:
 def github_context_container_path(task_id: str) -> str:
     """V2 container path with new naming."""
     task_token = _safe_task_token(task_id)
-    return f"/tmp/github-context-{task_token}.json"
+    return f"/tmp/github-context-{task_token}.toml"
 
 
 def github_context_host_path(data_dir: str, task_id: str) -> str:
     """V2 host path with new naming."""
     task_token = _safe_task_token(task_id)
     root = os.path.abspath(os.path.expanduser(str(data_dir or "").strip() or "."))
-    return os.path.join(root, "github-context", f"github-context-{task_token}.json")
+    return os.path.join(root, "github-context", f"github-context-{task_token}.toml")
 
 
 def pr_metadata_container_path(task_id: str) -> str:
     """Container path for editable PR title/body only."""
     task_token = _safe_task_token(task_id)
-    return f"/tmp/codex-pr-metadata-{task_token}.json"
+    return f"/tmp/codex-pr-metadata-{task_token}.toml"
 
 
 def pr_metadata_host_path(data_dir: str, task_id: str) -> str:
     """Host path for editable PR title/body only."""
     task_token = _safe_task_token(task_id)
     root = os.path.abspath(os.path.expanduser(str(data_dir or "").strip() or "."))
-    return os.path.join(root, "pr-metadata", f"pr-metadata-{task_token}.json")
+    return os.path.join(root, "pr-metadata", f"pr-metadata-{task_token}.toml")
 
 
 def ensure_pr_metadata_file(path: str, *, task_id: str) -> None:
@@ -81,9 +83,8 @@ def ensure_pr_metadata_file(path: str, *, task_id: str) -> None:
         "title": "",
         "body": "",
     }
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
-        f.write("\n")
+    with open(path, "wb") as f:
+        tomli_w.dump(payload, f)
 
     # Container-compatible permissions: allow container user (different UID) to write.
     try:
@@ -133,9 +134,8 @@ def ensure_github_context_file(
     else:
         payload["github"] = None
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
-        f.write("\n")
+    with open(path, "wb") as f:
+        tomli_w.dump(payload, f)
 
     # Fix 1.3: Use container-compatible permissions
     # 0o666 allows container user (different UID) to write during Phase 2 update
@@ -165,8 +165,8 @@ def update_github_context_after_clone(
         raise ValueError(f"GitHub context file does not exist: {path}")
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+        with open(path, "rb") as f:
+            payload = tomli.load(f)
     except Exception as exc:
         raise ValueError(f"Failed to read GitHub context file: {exc}") from exc
 
@@ -183,9 +183,8 @@ def update_github_context_after_clone(
         "head_commit": github_context.head_commit,
     }
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
-        f.write("\n")
+    with open(path, "wb") as f:
+        tomli_w.dump(payload, f)
 
 
 def load_pr_metadata(path: str) -> PrMetadata:
@@ -197,8 +196,8 @@ def load_pr_metadata(path: str) -> PrMetadata:
     if not path or not os.path.exists(path):
         return PrMetadata()
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+        with open(path, "rb") as f:
+            payload = tomli.load(f)
     except Exception:
         return PrMetadata()
     if not isinstance(payload, dict):
@@ -224,8 +223,8 @@ def load_github_metadata(path: str) -> GitHubMetadataV2 | None:
         return None
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+        with open(path, "rb") as f:
+            payload = tomli.load(f)
     except Exception:
         return None
 
@@ -293,8 +292,8 @@ def github_context_prompt_instructions(
 
 
 def pr_metadata_prompt_instructions(container_path: str) -> str:
-    """Generate prompt instructions for editable PR title/body JSON."""
-    container_path = str(container_path or "").strip() or "/tmp/codex-pr-metadata.json"
+    """Generate prompt instructions for editable PR title/body TOML."""
+    container_path = str(container_path or "").strip() or "/tmp/codex-pr-metadata.toml"
     return load_prompt(
         "pr_metadata",
         PR_METADATA_FILE=container_path,

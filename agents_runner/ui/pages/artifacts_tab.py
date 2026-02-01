@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import logging
 import os
-import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QEvent, Qt, QTimer
@@ -42,15 +40,16 @@ from agents_runner.ui.pages.artifacts_utils import (
 )
 from agents_runner.ui.widgets.glass_card import GlassCard
 from agents_runner.ui.widgets.artifact_highlighter import ArtifactSyntaxHighlighter
+from midori_ai_logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _emit_watcher_lifecycle_debug(message: str) -> None:
     if not str(os.environ.get("AGENTS_RUNNER_WATCHER_LIFECYCLE_DEBUG") or "").strip():
         return
 
-    print(message, file=sys.stderr, flush=True)
+    logger.debug(message, extra={"component": "watcher-lifecycle"})
     try:
         Path("/tmp/agents-artifacts").mkdir(parents=True, exist_ok=True)
         with open(
