@@ -15,3 +15,4 @@
 15. IPC: CLI client talks to daemon (socket); daemon exposes event stream for live UI.
 16. Service: optional system service install (systemd-like) but can run user-scoped.
 17. Contract: daemon API stays stable so Agents Runner can be rebuilt around it later.
+18. Data layout: `~/.midoriai/agents-tasks/{planned,active,done,logs,run}/`.
