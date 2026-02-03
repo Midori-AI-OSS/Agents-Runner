@@ -28,6 +28,7 @@ from agents_runner.docker.process import _inspect_state
 from agents_runner.docker.process import _pull_image
 from agents_runner.docker.process import _run_docker
 from agents_runner.docker.utils import _resolve_workspace_mount
+from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause
@@ -390,17 +391,34 @@ class DockerPreflightWorker:
                     docker_env["GITHUB_TOKEN"] = token
                     env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
 
-            extra_mount_args: list[str] = []
+            # Build and deduplicate mount arguments
+            all_mounts: list[str] = []
+
+            # Add primary config mount
+            all_mounts.append(f"{self._config.host_codex_dir}:{config_container_dir}")
+
+            # Add workspace mount
+            all_mounts.append(f"{host_mount}:{self._config.container_workdir}")
+
+            # Add extra mounts from config
             for mount in self._config.extra_mounts or []:
                 m = str(mount).strip()
-                if not m:
-                    continue
-                extra_mount_args.extend(["-v", m])
+                if m:
+                    all_mounts.append(m)
+
+            # Add config extra mounts (cross-agent configs, etc.)
             for mount in config_extra_mounts:
                 m = str(mount).strip()
-                if not m:
-                    continue
-                extra_mount_args.extend(["-v", m])
+                if m:
+                    all_mounts.append(m)
+
+            # Deduplicate by container path, preserving order
+            deduplicated = deduplicate_mounts(all_mounts)
+
+            # Build mount arguments with -v flags
+            extra_mount_args: list[str] = []
+            for mount in deduplicated:
+                extra_mount_args.extend(["-v", mount])
 
             args = [
                 "run",
@@ -409,10 +427,6 @@ class DockerPreflightWorker:
                 "-t",
                 "--name",
                 container_name,
-                "-v",
-                f"{self._config.host_codex_dir}:{config_container_dir}",
-                "-v",
-                f"{host_mount}:{self._config.container_workdir}",
                 *extra_mount_args,
                 *preflight_mounts,
                 *env_args,
