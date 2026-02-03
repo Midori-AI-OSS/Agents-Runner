@@ -210,10 +210,11 @@ def test_task_lifecycle_completes_successfully(test_config):
     )
 
     # Modify config to use a more robust command that avoids Docker stream race conditions
+    # Add 20s sleep before echo to ensure container has time to start and report state
     config = replace(
         config,
         agent_cli="sh",
-        agent_cli_args=["-c", "echo 'test output' && exit 0"],
+        agent_cli_args=["-c", "sleep 20 && echo 'test output' && exit 0"],
     )
 
     # Task tracking
