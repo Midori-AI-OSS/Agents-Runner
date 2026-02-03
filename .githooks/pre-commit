@@ -190,7 +190,7 @@ import importlib
 
 modules = [
     "agents_runner",
-    "agents_runner.app",
+    "agents_runner.ui.runtime.app",
     "agents_runner.ui.main_window",
 ]
 
