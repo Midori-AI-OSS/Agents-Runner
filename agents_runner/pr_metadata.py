@@ -5,6 +5,7 @@ import tomli_w
 
 from dataclasses import dataclass
 
+from agents_runner.persistence import _strip_none_for_toml
 from agents_runner.prompts import load_prompt
 
 
@@ -131,11 +132,9 @@ def ensure_github_context_file(
             "task_branch": github_context.task_branch,
             "head_commit": github_context.head_commit,
         }
-    else:
-        payload["github"] = None
 
     with open(path, "wb") as f:
-        tomli_w.dump(payload, f)
+        tomli_w.dump(_strip_none_for_toml(payload), f)
 
     # Fix 1.3: Use container-compatible permissions
     # 0o666 allows container user (different UID) to write during Phase 2 update
@@ -184,7 +183,7 @@ def update_github_context_after_clone(
     }
 
     with open(path, "wb") as f:
-        tomli_w.dump(payload, f)
+        tomli_w.dump(_strip_none_for_toml(payload), f)
 
 
 def load_pr_metadata(path: str) -> PrMetadata:
