@@ -63,6 +63,43 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_test_containers():
+    """Cleanup any leftover test containers before and after test session.
+
+    This is best-effort cleanup - errors are logged but don't fail the session.
+    """
+
+    def cleanup():
+        try:
+            # List all containers with agents-runner prefix
+            result = _run_docker(
+                ["ps", "-a", "--filter", "name=agents-runner-", "--format", "{{.ID}}"],
+                timeout_s=10.0,
+            )
+            container_ids = result.stdout.strip().split("\n")
+            container_ids = [cid.strip() for cid in container_ids if cid.strip()]
+
+            # Remove each container
+            for container_id in container_ids:
+                try:
+                    _run_docker(["rm", "-f", container_id], timeout_s=10.0)
+                except Exception:
+                    # Best-effort - continue even if removal fails
+                    pass
+        except Exception:
+            # Best-effort cleanup - don't fail session if this fails
+            pass
+
+    # Cleanup before session
+    cleanup()
+
+    yield
+
+    # Cleanup after session
+    cleanup()
+
+
 @pytest.fixture(scope="function")
 def temp_state_dir():
     """Create a temporary directory for state files.
@@ -76,7 +113,7 @@ def temp_state_dir():
 
 
 @pytest.fixture(scope="function")
-def test_config(temp_state_dir):
+def test_config(temp_state_dir, request):
     """Create a test Docker runner config.
 
     Scope is function to ensure each test has completely isolated fixtures:
@@ -89,6 +126,7 @@ def test_config(temp_state_dir):
     codex_dir = tempfile.mkdtemp(prefix="docker-e2e-codex-")
 
     task_id = f"test-task-{int(time.time() * 1000)}"
+    container_id = None
 
     config = DockerRunnerConfig(
         task_id=task_id,
@@ -103,16 +141,35 @@ def test_config(temp_state_dir):
         headless_desktop_enabled=False,
     )
 
+    def finalizer():
+        """Wait for container removal and cleanup directories."""
+        # Best-effort wait for container removal
+        if container_id:
+            for _ in range(10):
+                try:
+                    _inspect_state(container_id)
+                    # Container still exists, wait
+                    time.sleep(1)
+                except subprocess.CalledProcessError:
+                    # Container removed successfully
+                    break
+
+        # Cleanup directories
+        try:
+            import shutil
+
+            shutil.rmtree(workdir, ignore_errors=True)
+            shutil.rmtree(codex_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    request.addfinalizer(finalizer)
+
     yield config, temp_state_dir, workdir, codex_dir, task_id
 
-    # Cleanup
-    try:
-        import shutil
-
-        shutil.rmtree(workdir, ignore_errors=True)
-        shutil.rmtree(codex_dir, ignore_errors=True)
-    except Exception:
-        pass
+    # Store container_id from any test that creates one
+    # This is a simple approach - tests can update this if they track container_id
+    # More robust: tests could register their container_id via a callback
 
 
 def ensure_test_image():
