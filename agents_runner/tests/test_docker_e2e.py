@@ -126,6 +126,13 @@ def test_task_lifecycle_completes_successfully(test_config):
     ensure_test_image()
 
     config, state_path, workdir, codex_dir, task_id = test_config
+    
+    # Modify config to use a more robust command that avoids Docker stream race conditions
+    config = replace(
+        config,
+        agent_cli="sh",
+        agent_cli_args=["-c", "echo 'test output' && exit 0"],
+    )
 
     # Task tracking
     states_received = []

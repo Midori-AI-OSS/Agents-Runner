@@ -95,7 +95,10 @@ def build_noninteractive_cmd(
     # Support test/debug commands as pass-through (for testing only)
     if agent_raw in ("echo", "sh", "bash", "true", "false"):
         args = [agent_raw, *extra_args]
-        if prompt and agent_raw not in ("true", "false"):
+        # For sh/bash with -c, the command is already in extra_args, don't append prompt
+        # For echo/true/false without -c, conditionally append prompt
+        has_c_flag = "-c" in extra_args
+        if prompt and agent_raw not in ("true", "false") and not has_c_flag:
             args.append(prompt)
         return args
 
