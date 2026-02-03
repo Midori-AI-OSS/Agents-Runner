@@ -53,18 +53,6 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         task.status = "done" if (task.exit_code or 0) == 0 else "failed"
         task.git = derive_task_git_metadata(task)
 
-        self.host_log.emit(
-            task_id,
-            format_log(
-                "host",
-                "interactive",
-                "INFO",
-                f"Task {task_id}: state transition (state=None→done, reason=interactive_finished)",
-            ),
-        )
-        task.finalization_state = "done"
-        task.finalization_error = ""
-
         # Validate git metadata for cloned repo tasks
         if task.requires_git_metadata():
             from agents_runner.ui.task_git_metadata import validate_git_metadata
@@ -93,6 +81,8 @@ class _MainWindowTasksInteractiveFinalizeMixin:
             format_log("host", "interactive", "INFO", f"exited with {task.exit_code}"),
         )
 
+        # Interactive tasks handle PR creation immediately via user dialog, then mark finalization done
+        # This is different from agent tasks which queue finalization work for background processing
         if (
             task.workspace_type == WORKSPACE_CLONED
             and task.gh_repo_root
@@ -141,6 +131,20 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                         f"Task {task_id}: PR creation declined by user",
                     ),
                 )
+
+        # Mark finalization done for interactive tasks (PR creation handled synchronously above)
+        self.host_log.emit(
+            task_id,
+            format_log(
+                "host",
+                "interactive",
+                "INFO",
+                f"Task {task_id}: state transition (state=None→done, reason=interactive_finished)",
+            ),
+        )
+        task.finalization_state = "done"
+        task.finalization_error = ""
+        self._schedule_save()
 
     def _finalize_gh_management_worker(
         self,
