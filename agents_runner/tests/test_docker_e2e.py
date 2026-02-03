@@ -281,13 +281,14 @@ def test_task_cancel_stops_container(test_config):
     # Wait for task to complete
     assert done_called.wait(timeout=30), "Task did not complete after stop"
     thread.join(timeout=5)
+    assert not thread.is_alive(), "Worker thread should have completed"
 
     # Verify container is stopped
     try:
         state = _inspect_state(container_id)
         assert state.get("Running") is False, "Container should be stopped"
-    except Exception:
-        # Container might be removed if auto_remove=True
+    except subprocess.CalledProcessError:
+        # Expected if auto_remove=True removed the container
         pass
 
     # Verify final state indicates cancellation
@@ -376,12 +377,13 @@ def test_task_kill_removes_container(test_config):
     # Wait for completion
     assert done_called.wait(timeout=30), "Task did not complete after kill"
     thread.join(timeout=5)
+    assert not thread.is_alive(), "Worker thread should have completed"
 
     # Verify container is gone or stopped
     try:
         state = _inspect_state(container_id)
         assert state.get("Running") is False, "Container should not be running"
-    except Exception:
+    except subprocess.CalledProcessError:
         # Expected if container is removed
         pass
 
