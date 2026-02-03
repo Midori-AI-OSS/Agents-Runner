@@ -6,6 +6,14 @@ is mocked (using echo).
 
 NOTE: These tests require Docker socket access. They will be skipped if Docker
 is not available or if the user doesn't have permission to access it.
+
+To run these tests with Docker access:
+    1. Add your user to the docker group: sudo usermod -aG docker $USER
+    2. Log out and back in for the group change to take effect
+    3. Run: uv run pytest agents_runner/tests/test_docker_e2e.py -v
+
+Alternatively, run with sudo (not recommended for regular use):
+    sudo uv run pytest agents_runner/tests/test_docker_e2e.py -v
 """
 
 from __future__ import annotations
