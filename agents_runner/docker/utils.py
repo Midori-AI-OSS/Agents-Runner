@@ -27,6 +27,43 @@ def _write_preflight_script(
     return tmp_path
 
 
+def deduplicate_mounts(mounts: list[str]) -> list[str]:
+    """
+    Deduplicate mount specifications while preserving order.
+
+    Compares mount points by their container path (the part before the first or
+    second colon). If multiple mounts target the same container path, keeps only
+    the first occurrence.
+
+    Args:
+        mounts: List of mount strings in format "host:container[:mode]"
+
+    Returns:
+        Deduplicated list of mounts preserving original order
+    """
+    seen_container_paths: set[str] = set()
+    result: list[str] = []
+
+    for mount in mounts:
+        mount_str = str(mount or "").strip()
+        if not mount_str:
+            continue
+
+        # Extract container path (second part of host:container[:mode])
+        parts = mount_str.split(":")
+        if len(parts) < 2:
+            # Malformed mount, skip
+            continue
+
+        container_path = parts[1]
+
+        if container_path not in seen_container_paths:
+            seen_container_paths.add(container_path)
+            result.append(mount_str)
+
+    return result
+
+
 def _resolve_workspace_mount(
     host_workdir: str,
     *,
