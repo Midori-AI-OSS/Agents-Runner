@@ -65,7 +65,18 @@ def additional_config_mounts(agent: str, host_config_dir: str) -> list[str]:
 def verify_cli_clause(agent: str) -> str:
     agent_raw = str(agent or "").strip().lower()
     # For test commands, verify the raw command name
-    if agent_raw in ("echo", "sh", "bash", "true", "false"):
+    # Handle both relative (sh, bash) and absolute paths (/bin/sh, /bin/bash)
+    if agent_raw in (
+        "echo",
+        "sh",
+        "bash",
+        "true",
+        "false",
+        "/bin/sh",
+        "/bin/bash",
+        "/usr/bin/sh",
+        "/usr/bin/bash",
+    ):
         agent = agent_raw
     else:
         agent = normalize_agent(agent_raw)
@@ -93,7 +104,18 @@ def build_noninteractive_cmd(
     prompt = str(prompt or "").strip()
 
     # Support test/debug commands as pass-through (for testing only)
-    if agent_raw in ("echo", "sh", "bash", "true", "false"):
+    # Handle both relative (sh, bash) and absolute paths (/bin/sh, /bin/bash)
+    if agent_raw in (
+        "echo",
+        "sh",
+        "bash",
+        "true",
+        "false",
+        "/bin/sh",
+        "/bin/bash",
+        "/usr/bin/sh",
+        "/usr/bin/bash",
+    ):
         args = [agent_raw, *extra_args]
         # For sh/bash with -c, the command is already in extra_args, don't append prompt
         # For echo/true/false without -c, conditionally append prompt

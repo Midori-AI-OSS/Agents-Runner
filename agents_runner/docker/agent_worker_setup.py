@@ -174,11 +174,28 @@ class WorkerSetup:
                     )
                 )
 
+        # Don't normalize test/debug commands - pass them through as-is
+        agent_cli_raw = str(self._config.agent_cli or "").strip().lower()
+        if agent_cli_raw in (
+            "echo",
+            "sh",
+            "bash",
+            "true",
+            "false",
+            "/bin/sh",
+            "/bin/bash",
+            "/usr/bin/sh",
+            "/usr/bin/bash",
+        ):
+            agent_cli = agent_cli_raw
+        else:
+            agent_cli = normalize_agent(self._config.agent_cli)
+
         return self._PlatformConfig(
             forced_platform=forced_platform,
             platform_args=platform_args,
             rosetta_available=rosetta_available,
-            agent_cli=normalize_agent(self._config.agent_cli),
+            agent_cli=agent_cli,
         )
 
     @dataclass(frozen=True)

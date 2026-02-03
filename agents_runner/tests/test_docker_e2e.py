@@ -211,9 +211,10 @@ def test_task_lifecycle_completes_successfully(test_config):
 
     # Modify config to use a more robust command that avoids Docker stream race conditions
     # Add 20s sleep before echo to ensure container has time to start and report state
+    # Use absolute path /bin/sh to avoid PATH resolution issues in PixelArch
     config = replace(
         config,
-        agent_cli="sh",
+        agent_cli="/bin/sh",
         agent_cli_args=["-c", "sleep 20 && echo 'test output' && exit 0"],
     )
 
@@ -231,13 +232,16 @@ def test_task_lifecycle_completes_successfully(test_config):
         payload = {
             "task_id": task_id,
             "status": state.get("Status", "queued"),
-            "container_id": state.get("ContainerId"),
             "prompt": "test prompt",
             "image": TEST_IMAGE,
             "host_workdir": workdir,
             "host_codex_dir": codex_dir,
             "created_at_s": time.time(),
         }
+        # Only include container_id if present (None values are stripped during TOML serialization)
+        container_id = state.get("ContainerId")
+        if container_id is not None:
+            payload["container_id"] = container_id
         save_task_payload(state_path, payload, archived=False)
 
     def on_log(log: str) -> None:
@@ -276,7 +280,9 @@ def test_task_lifecycle_completes_successfully(test_config):
     saved_payload = load_task_payload(state_path, task_id, archived=False)
     assert saved_payload is not None, "Task payload not persisted"
     assert saved_payload["task_id"] == task_id
-    assert saved_payload["container_id"] is not None
+
+    # Verify that worker created a container
+    assert worker.container_id is not None, "Worker did not create a container"
 
     # Mark as archived
     final_payload = dict(saved_payload)
