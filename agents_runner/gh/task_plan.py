@@ -184,6 +184,60 @@ def _sanitize_branch(value: str) -> str:
     return value or "midoriaiagents/task"
 
 
+def _find_next_available_branch(
+    repo_root: str, base_branch_name: str, *, max_attempts: int = 100
+) -> str:
+    """Find next available branch name by incrementing number suffix.
+
+    Checks if branch exists and has an associated PR. If so, increments
+    the number suffix until finding an unused branch name.
+
+    Args:
+        repo_root: Repository root path
+        base_branch_name: Base branch name (e.g., 'midoriaiagents/task-123')
+        max_attempts: Maximum number of attempts before giving up
+
+    Returns:
+        Available branch name (e.g., 'midoriaiagents/task-123-2')
+    """
+    from .pr_validation import check_existing_pr
+
+    existing_branches = git_list_branches(repo_root)
+
+    # Try base name first (without number suffix)
+    if base_branch_name not in existing_branches:
+        return base_branch_name
+
+    # Check if base branch has a PR - if not, we can reuse it
+    try:
+        existing_pr = check_existing_pr(repo_root, base_branch_name)
+        if existing_pr is None:
+            # Branch exists but no PR, safe to reuse
+            return base_branch_name
+    except Exception:
+        # If we can't check for PR, assume branch is available
+        return base_branch_name
+
+    # Branch exists with PR, need to find next available number
+    for attempt in range(2, max_attempts + 2):
+        candidate = f"{base_branch_name}-{attempt}"
+        if candidate not in existing_branches:
+            return candidate
+
+        # Check if this numbered branch has a PR
+        try:
+            existing_pr = check_existing_pr(repo_root, candidate)
+            if existing_pr is None:
+                # Branch exists but no PR, safe to reuse
+                return candidate
+        except Exception:
+            # If we can't check for PR, use this candidate
+            return candidate
+
+    # Fallback: return a high-numbered branch if we exceed max attempts
+    return f"{base_branch_name}-{max_attempts + 2}"
+
+
 def plan_repo_task(
     workdir: str,
     *,
@@ -194,7 +248,8 @@ def plan_repo_task(
     repo_root = git_repo_root(workdir)
     if repo_root is None:
         return None
-    branch = _sanitize_branch(f"midoriaiagents/{task_id}")
+    base_branch_name = _sanitize_branch(f"midoriaiagents/{task_id}")
+    branch = _find_next_available_branch(repo_root, base_branch_name)
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
     return RepoPlan(
