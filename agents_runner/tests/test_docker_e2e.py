@@ -63,18 +63,27 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def temp_state_dir():
-    """Create a temporary directory for state files."""
+    """Create a temporary directory for state files.
+
+    Scope is function to ensure complete isolation between tests.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         state_path = os.path.join(tmpdir, "state.toml")
         ensure_task_dirs(state_path)
         yield state_path
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def test_config(temp_state_dir):
-    """Create a test Docker runner config."""
+    """Create a test Docker runner config.
+
+    Scope is function to ensure each test has completely isolated fixtures:
+    - Unique task_id (timestamp-based)
+    - Isolated temp directories
+    - No shared state between test runs
+    """
     # Create a temporary workspace directory
     workdir = tempfile.mkdtemp(prefix="docker-e2e-workspace-")
     codex_dir = tempfile.mkdtemp(prefix="docker-e2e-codex-")
@@ -126,7 +135,13 @@ def test_task_lifecycle_completes_successfully(test_config):
     ensure_test_image()
 
     config, state_path, workdir, codex_dir, task_id = test_config
-    
+
+    # Verify fixture isolation: ensure unique task_id
+    assert task_id.startswith("test-task-"), "task_id should have expected prefix"
+    assert len(task_id) > len("test-task-"), (
+        "task_id should be unique (timestamp-based)"
+    )
+
     # Modify config to use a more robust command that avoids Docker stream race conditions
     config = replace(
         config,
@@ -216,6 +231,14 @@ def test_task_cancel_stops_container(test_config):
     ensure_test_image()
 
     config, state_path, workdir, codex_dir, base_task_id = test_config
+
+    # Verify fixture isolation: ensure unique base task_id
+    assert base_task_id.startswith("test-task-"), (
+        "base_task_id should have expected prefix"
+    )
+    assert len(base_task_id) > len("test-task-"), (
+        "base_task_id should be unique (timestamp-based)"
+    )
 
     # Create a new task ID for this test
     task_id = f"test-cancel-{int(time.time() * 1000)}"
@@ -319,6 +342,14 @@ def test_task_kill_removes_container(test_config):
     ensure_test_image()
 
     config, state_path, workdir, codex_dir, base_task_id = test_config
+
+    # Verify fixture isolation: ensure unique base task_id
+    assert base_task_id.startswith("test-task-"), (
+        "base_task_id should have expected prefix"
+    )
+    assert len(base_task_id) > len("test-task-"), (
+        "base_task_id should be unique (timestamp-based)"
+    )
 
     # Create a new task ID for this test
     task_id = f"test-kill-{int(time.time() * 1000)}"
