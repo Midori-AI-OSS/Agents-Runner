@@ -70,9 +70,9 @@ class SpellTextEdit(QPlainTextEdit):
                     for suggestion in suggestions:
                         action = menu.addAction(f"Replace with '{suggestion}'")
                         action.triggered.connect(
-                            lambda checked=False,
-                            s=suggestion,
-                            c=cursor: self._replace_word(c, s)
+                            lambda checked=False, s=suggestion, c=cursor: (
+                                self._replace_word(c, s)
+                            )
                         )
                         if first_action:
                             menu.insertAction(first_action, action)
