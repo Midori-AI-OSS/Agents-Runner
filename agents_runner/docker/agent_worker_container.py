@@ -36,6 +36,7 @@ from agents_runner.core.shell_templates import git_identity_clause, shell_log_st
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.process import _run_docker, _inspect_state
 from agents_runner.docker.agent_worker_setup import RuntimeEnvironment
+from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.environments import load_environments
 
 
@@ -397,14 +398,45 @@ class ContainerExecutor:
         return port_args
 
     def _build_extra_mounts(self) -> list[str]:
-        """Build extra mount arguments."""
-        extra_mount_args: list[str] = []
-        for mount in list(self._config.extra_mounts or []) + list(
-            self._runtime_env.config_extra_mounts
-        ):
+        """Build extra mount arguments with deduplication."""
+        # Collect all mount strings first (without -v flags)
+        all_mounts: list[str] = []
+
+        # Add primary config mount
+        all_mounts.append(
+            f"{self._config.host_codex_dir}:{self._runtime_env.config_container_dir}"
+        )
+
+        # Add workspace mount
+        all_mounts.append(
+            f"{self._runtime_env.host_mount}:{self._config.container_workdir}"
+        )
+
+        # Add artifacts mount
+        all_mounts.append(
+            f"{self._runtime_env.artifacts_staging_dir}:/tmp/agents-artifacts"
+        )
+
+        # Add extra mounts from config
+        for mount in self._config.extra_mounts or []:
             m = str(mount).strip()
             if m:
-                extra_mount_args.extend(["-v", m])
+                all_mounts.append(m)
+
+        # Add config extra mounts (cross-agent configs, etc.)
+        for mount in self._runtime_env.config_extra_mounts:
+            m = str(mount).strip()
+            if m:
+                all_mounts.append(m)
+
+        # Deduplicate by container path, preserving order
+        deduplicated = deduplicate_mounts(all_mounts)
+
+        # Build mount arguments with -v flags
+        extra_mount_args: list[str] = []
+        for mount in deduplicated:
+            extra_mount_args.extend(["-v", mount])
+
         return extra_mount_args
 
     def _build_docker_run_args(
@@ -425,12 +457,6 @@ class ContainerExecutor:
             "-t",
             "--name",
             self._runtime_env.container_name,
-            "-v",
-            f"{self._config.host_codex_dir}:{self._runtime_env.config_container_dir}",
-            "-v",
-            f"{self._runtime_env.host_mount}:{self._config.container_workdir}",
-            "-v",
-            f"{self._runtime_env.artifacts_staging_dir}:/tmp/agents-artifacts",
             *extra_mount_args,
             *preflight_mounts,
             *env_args,
