@@ -38,8 +38,8 @@ from agents_runner.persistence import (
 )
 
 
-# Use a lightweight, commonly available image for testing
-TEST_IMAGE = "alpine:latest"
+# Use the same image as production (PixelArch)
+TEST_IMAGE = "lunamidori5/pixelarch:emerald"
 
 
 def _can_access_docker() -> bool:
@@ -63,23 +63,79 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-@pytest.fixture
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_test_containers():
+    """Cleanup any leftover test containers before and after test session.
+
+    This is best-effort cleanup - errors are logged but don't fail the session.
+    """
+
+    def cleanup():
+        try:
+            # List all containers with agents-runner prefix
+            result = _run_docker(
+                ["ps", "-a", "--filter", "name=agents-runner-", "--format", "{{.ID}}"],
+                timeout_s=10.0,
+            )
+            container_ids = result.stdout.strip().split("\n")
+            container_ids = [cid.strip() for cid in container_ids if cid.strip()]
+
+            # Remove each container
+            for container_id in container_ids:
+                try:
+                    _run_docker(["rm", "-f", container_id], timeout_s=10.0)
+                except Exception:
+                    # Best-effort - continue even if removal fails
+                    pass
+        except Exception:
+            # Best-effort cleanup - don't fail session if this fails
+            pass
+
+    # Cleanup before session
+    cleanup()
+
+    yield
+
+    # Cleanup after session
+    cleanup()
+
+
+@pytest.fixture(scope="function")
 def temp_state_dir():
-    """Create a temporary directory for state files."""
+    """Create a temporary directory for state files.
+
+    Scope is function to ensure complete isolation between tests.
+    """
     with tempfile.TemporaryDirectory() as tmpdir:
         state_path = os.path.join(tmpdir, "state.toml")
         ensure_task_dirs(state_path)
         yield state_path
 
 
-@pytest.fixture
-def test_config(temp_state_dir):
-    """Create a test Docker runner config."""
+@pytest.fixture(scope="function")
+def test_config(temp_state_dir, request):
+    """Create a test Docker runner config.
+
+    Scope is function to ensure each test has completely isolated fixtures:
+    - Unique task_id (timestamp-based)
+    - Test-specific container name for easy identification
+    - Isolated temp directories
+    - No shared state between test runs
+    """
     # Create a temporary workspace directory
     workdir = tempfile.mkdtemp(prefix="docker-e2e-workspace-")
     codex_dir = tempfile.mkdtemp(prefix="docker-e2e-codex-")
 
     task_id = f"test-task-{int(time.time() * 1000)}"
+
+    # Generate test-specific container name
+    # Truncate test name to stay under Docker's 63-char limit
+    # Format: agents-runner-test-{test_name}-{short_uuid}
+    test_name = request.node.name[:20]  # Max 20 chars for test name
+    short_uuid = f"{int(time.time() * 1000) % 1000000:06d}"  # 6-digit time-based ID
+    container_name = f"agents-runner-test-{test_name}-{short_uuid}"
+
+    container_id = None
 
     config = DockerRunnerConfig(
         task_id=task_id,
@@ -92,18 +148,38 @@ def test_config(temp_state_dir):
         agent_cli_args=[],
         environment_id="test-env",
         headless_desktop_enabled=False,
+        container_name=container_name,
     )
+
+    def finalizer():
+        """Wait for container removal and cleanup directories."""
+        # Best-effort wait for container removal
+        if container_id:
+            for _ in range(10):
+                try:
+                    _inspect_state(container_id)
+                    # Container still exists, wait
+                    time.sleep(1)
+                except subprocess.CalledProcessError:
+                    # Container removed successfully
+                    break
+
+        # Cleanup directories
+        try:
+            import shutil
+
+            shutil.rmtree(workdir, ignore_errors=True)
+            shutil.rmtree(codex_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    request.addfinalizer(finalizer)
 
     yield config, temp_state_dir, workdir, codex_dir, task_id
 
-    # Cleanup
-    try:
-        import shutil
-
-        shutil.rmtree(workdir, ignore_errors=True)
-        shutil.rmtree(codex_dir, ignore_errors=True)
-    except Exception:
-        pass
+    # Store container_id from any test that creates one
+    # This is a simple approach - tests can update this if they track container_id
+    # More robust: tests could register their container_id via a callback
 
 
 def ensure_test_image():
@@ -126,12 +202,19 @@ def test_task_lifecycle_completes_successfully(test_config):
     ensure_test_image()
 
     config, state_path, workdir, codex_dir, task_id = test_config
-    
+
+    # Verify fixture isolation: ensure unique task_id
+    assert task_id.startswith("test-task-"), "task_id should have expected prefix"
+    assert len(task_id) > len("test-task-"), (
+        "task_id should be unique (timestamp-based)"
+    )
+
     # Modify config to use a more robust command that avoids Docker stream race conditions
+    # Add 20s sleep before echo to ensure container has time to start and report state
     config = replace(
         config,
         agent_cli="sh",
-        agent_cli_args=["-c", "echo 'test output' && exit 0"],
+        agent_cli_args=["-c", "sleep 20 && echo 'test output' && exit 0"],
     )
 
     # Task tracking

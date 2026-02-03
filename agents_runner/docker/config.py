@@ -39,3 +39,5 @@ class DockerRunnerConfig:
     gh_context_file_path: str | None = None  # Host path to GitHub context file
     # Hard timeout for post-run artifact collection/finalization (best-effort).
     artifact_collection_timeout_s: float = 30.0
+    # Optional override for container name (for testing or custom naming)
+    container_name: str | None = None

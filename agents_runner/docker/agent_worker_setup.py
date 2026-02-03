@@ -119,7 +119,11 @@ class WorkerSetup:
             config_container_dir=workspace_config.config_container_dir,
             config_extra_mounts=workspace_config.config_extra_mounts,
             template_detection=template_detection,
-            container_name=f"agents-runner-{uuid.uuid4().hex[:10]}",
+            container_name=(
+                self._config.container_name
+                if self._config.container_name
+                else f"agents-runner-{uuid.uuid4().hex[:10]}"
+            ),
             task_token=self._config.task_id or "task",
             artifacts_staging_dir=artifacts_staging_dir,
             settings_container_path=preflight_config.settings_container_path,
