@@ -573,6 +573,9 @@ class _MainWindowSettingsMixin:
         # Track which CLIs we've already mounted (including primary)
         mounted_clis: set[str] = {normalize_agent(primary_agent_cli)}
         mounted_dirs: set[str] = {os.path.expanduser(primary_config_dir)}
+        mounted_container_paths: set[str] = {
+            container_config_dir(normalize_agent(primary_agent_cli))
+        }
 
         mounts: list[str] = []
 
@@ -625,14 +628,22 @@ class _MainWindowSettingsMixin:
                 )
                 continue
 
-            # Build mount string
+            # Build mount string and check for duplicate container path
             container_dir = container_config_dir(inst_cli)
+            if container_dir in mounted_container_paths:
+                logger.debug(
+                    f"Skipping allowlisted agent {agent_id} ({inst_cli}): "
+                    f"container path {container_dir} already mounted"
+                )
+                continue
+
             mount_str = f"{inst_dir_expanded}:{container_dir}:rw"
             mounts.append(mount_str)
 
-            # Track mounted CLI and dir
+            # Track mounted CLI, dir, and container path
             mounted_clis.add(inst_cli)
             mounted_dirs.add(inst_dir_expanded)
+            mounted_container_paths.add(container_dir)
 
             # Add additional config mounts (e.g., ~/.claude.json)
             extra_mounts = additional_config_mounts(inst_cli, inst_dir_expanded)
