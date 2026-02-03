@@ -34,6 +34,7 @@ class DockerAgentWorker:
         self._on_done = on_done
         self._stop = Event()
         self._container_id: str | None = None
+        self._executor: ContainerExecutor | None = None
         self._gh_repo_root: str | None = None
         self._gh_base_branch: str | None = None
         self._gh_branch: str | None = None
@@ -42,6 +43,9 @@ class DockerAgentWorker:
     @property
     def container_id(self) -> str | None:
         """Get the current container ID."""
+        # Check executor first for live container ID during execution
+        if self._executor and self._executor.container_id:
+            return self._executor.container_id
         return self._container_id
 
     @property
@@ -126,6 +130,7 @@ class DockerAgentWorker:
                 self._on_log,
                 self._stop,
             )
+            self._executor = executor
             exit_code = executor.execute_container()
 
             # Update state
