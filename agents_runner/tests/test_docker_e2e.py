@@ -118,6 +118,7 @@ def test_config(temp_state_dir, request):
 
     Scope is function to ensure each test has completely isolated fixtures:
     - Unique task_id (timestamp-based)
+    - Test-specific container name for easy identification
     - Isolated temp directories
     - No shared state between test runs
     """
@@ -126,6 +127,14 @@ def test_config(temp_state_dir, request):
     codex_dir = tempfile.mkdtemp(prefix="docker-e2e-codex-")
 
     task_id = f"test-task-{int(time.time() * 1000)}"
+
+    # Generate test-specific container name
+    # Truncate test name to stay under Docker's 63-char limit
+    # Format: agents-runner-test-{test_name}-{short_uuid}
+    test_name = request.node.name[:20]  # Max 20 chars for test name
+    short_uuid = f"{int(time.time() * 1000) % 1000000:06d}"  # 6-digit time-based ID
+    container_name = f"agents-runner-test-{test_name}-{short_uuid}"
+
     container_id = None
 
     config = DockerRunnerConfig(
@@ -139,6 +148,7 @@ def test_config(temp_state_dir, request):
         agent_cli_args=[],
         environment_id="test-env",
         headless_desktop_enabled=False,
+        container_name=container_name,
     )
 
     def finalizer():
