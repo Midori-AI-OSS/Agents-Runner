@@ -38,8 +38,8 @@ from agents_runner.persistence import (
 )
 
 
-# Use a lightweight, commonly available image for testing
-TEST_IMAGE = "alpine:latest"
+# Use the same image as production (PixelArch)
+TEST_IMAGE = "lunamidori5/pixelarch:emerald"
 
 
 def _can_access_docker() -> bool:
