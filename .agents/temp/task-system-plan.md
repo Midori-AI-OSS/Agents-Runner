@@ -10,7 +10,7 @@
 10. Preflight: supported; settings + environment scripts run before agent starts (configurable).
 11. Postflight: not automatic in task CLI; GUI owns finalization/artifacts; CLI exposes callable actions (ex: cleanup/finalize entrypoints) for the GUI.
 12. Pause: Docker pause/unpause; if missing/fails -> `failed`.
-13. Product: standalone `agents-tasks` system (eventually Rust).
+13. Product: standalone `agents-tasks` system.
 14. Runtime: long-running daemon owns scheduling + state transitions; GUI/CLI are clients.
 15. IPC: CLI client talks to daemon (socket); daemon exposes event stream for live UI.
 16. Service: optional system service install (systemd-like) but can run user-scoped.
