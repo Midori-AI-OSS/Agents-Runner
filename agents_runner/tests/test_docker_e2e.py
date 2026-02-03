@@ -77,9 +77,9 @@ def test_config(temp_state_dir):
     # Create a temporary workspace directory
     workdir = tempfile.mkdtemp(prefix="docker-e2e-workspace-")
     codex_dir = tempfile.mkdtemp(prefix="docker-e2e-codex-")
-    
+
     task_id = f"test-task-{int(time.time() * 1000)}"
-    
+
     config = DockerRunnerConfig(
         task_id=task_id,
         image=TEST_IMAGE,
@@ -92,12 +92,13 @@ def test_config(temp_state_dir):
         environment_id="test-env",
         headless_desktop_enabled=False,
     )
-    
+
     yield config, temp_state_dir, workdir, codex_dir, task_id
-    
+
     # Cleanup
     try:
         import shutil
+
         shutil.rmtree(workdir, ignore_errors=True)
         shutil.rmtree(codex_dir, ignore_errors=True)
     except Exception:
@@ -115,16 +116,16 @@ def ensure_test_image():
 
 def test_task_lifecycle_completes_successfully(test_config):
     """Test creating a task that runs a container and completes successfully.
-    
+
     Verifies:
     - Task state transitions (queued -> running -> completed)
     - Container execution
     - State persistence
     """
     ensure_test_image()
-    
+
     config, state_path, workdir, codex_dir, task_id = test_config
-    
+
     # Task tracking
     states_received = []
     logs_received = []
@@ -132,7 +133,7 @@ def test_task_lifecycle_completes_successfully(test_config):
     final_exit_code = None
     final_error = None
     final_artifacts = None
-    
+
     def on_state(state: dict[str, Any]) -> None:
         states_received.append(dict(state))
         # Save state to persistence
@@ -147,17 +148,17 @@ def test_task_lifecycle_completes_successfully(test_config):
             "created_at_s": time.time(),
         }
         save_task_payload(state_path, payload, archived=False)
-    
+
     def on_log(log: str) -> None:
         logs_received.append(log)
-    
+
     def on_done(exit_code: int, error: str | None, artifacts: list[str]) -> None:
         nonlocal final_exit_code, final_error, final_artifacts
         final_exit_code = exit_code
         final_error = error
         final_artifacts = artifacts
         done_called.set()
-    
+
     # Create and run worker
     worker = DockerAgentWorker(
         config=config,
@@ -166,31 +167,31 @@ def test_task_lifecycle_completes_successfully(test_config):
         on_log=on_log,
         on_done=on_done,
     )
-    
+
     # Start worker execution
     worker.run()
-    
+
     # Wait for completion
     assert done_called.wait(timeout=30), "Task did not complete in time"
-    
+
     # Verify final state
     assert final_exit_code == 0, f"Expected exit code 0, got {final_exit_code}"
     assert final_error is None, f"Unexpected error: {final_error}"
-    
+
     # Verify state transitions were recorded
     assert len(states_received) > 0, "No state updates received"
-    
+
     # Verify persistence
     saved_payload = load_task_payload(state_path, task_id, archived=False)
     assert saved_payload is not None, "Task payload not persisted"
     assert saved_payload["task_id"] == task_id
     assert saved_payload["container_id"] is not None
-    
+
     # Mark as archived
     final_payload = dict(saved_payload)
     final_payload["status"] = "completed"
     save_task_payload(state_path, final_payload, archived=True)
-    
+
     archived_payload = load_task_payload(state_path, task_id, archived=True)
     assert archived_payload is not None, "Archived task payload not found"
     assert archived_payload["status"] == "completed"
@@ -198,31 +199,31 @@ def test_task_lifecycle_completes_successfully(test_config):
 
 def test_task_cancel_stops_container(test_config):
     """Test canceling a running task stops the container gracefully.
-    
+
     Verifies:
     - Task can be canceled mid-execution
     - Container is stopped (not killed)
     - State is persisted correctly
     """
     ensure_test_image()
-    
+
     config, state_path, workdir, codex_dir, base_task_id = test_config
-    
+
     # Create a new task ID for this test
     task_id = f"test-cancel-{int(time.time() * 1000)}"
-    
+
     # Modify config to run a long-running command
     config = config._replace(
         task_id=task_id,
         agent_cli="sh",
         agent_cli_args=["-c", "sleep 60; echo done"],
     )
-    
+
     states_received = []
     container_started = Event()
     done_called = Event()
     final_exit_code = None
-    
+
     def on_state(state: dict[str, Any]) -> None:
         states_received.append(dict(state))
         if state.get("ContainerId"):
@@ -238,15 +239,15 @@ def test_task_cancel_stops_container(test_config):
             "created_at_s": time.time(),
         }
         save_task_payload(state_path, payload, archived=False)
-    
+
     def on_log(log: str) -> None:
         pass
-    
+
     def on_done(exit_code: int, error: str | None, artifacts: list[str]) -> None:
         nonlocal final_exit_code
         final_exit_code = exit_code
         done_called.set()
-    
+
     worker = DockerAgentWorker(
         config=config,
         prompt="long running task",
@@ -254,32 +255,33 @@ def test_task_cancel_stops_container(test_config):
         on_log=on_log,
         on_done=on_done,
     )
-    
+
     # Start worker in a thread
     import threading
+
     thread = threading.Thread(target=worker.run)
     thread.start()
-    
+
     # Wait for container to start
     assert container_started.wait(timeout=30), "Container did not start"
-    
+
     # Get container ID
     saved_payload = load_task_payload(state_path, task_id, archived=False)
     assert saved_payload is not None
     container_id = saved_payload.get("container_id")
     assert container_id is not None
-    
+
     # Verify container is running
     state = _inspect_state(container_id)
     assert state.get("Running") is True, "Container should be running"
-    
+
     # Request stop (graceful cancel)
     worker.request_stop()
-    
+
     # Wait for task to complete
     assert done_called.wait(timeout=30), "Task did not complete after stop"
     thread.join(timeout=5)
-    
+
     # Verify container is stopped
     try:
         state = _inspect_state(container_id)
@@ -287,10 +289,10 @@ def test_task_cancel_stops_container(test_config):
     except Exception:
         # Container might be removed if auto_remove=True
         pass
-    
+
     # Verify final state indicates cancellation
     assert final_exit_code != 0, "Canceled task should have non-zero exit code"
-    
+
     # Verify persistence reflects cancellation
     saved_payload = load_task_payload(state_path, task_id, archived=False)
     assert saved_payload is not None
@@ -298,29 +300,29 @@ def test_task_cancel_stops_container(test_config):
 
 def test_task_kill_removes_container(test_config):
     """Test killing a running task forcefully removes the container.
-    
+
     Verifies:
     - Task can be killed mid-execution
     - Container is forcefully killed
     - State is persisted correctly
     """
     ensure_test_image()
-    
+
     config, state_path, workdir, codex_dir, base_task_id = test_config
-    
+
     # Create a new task ID for this test
     task_id = f"test-kill-{int(time.time() * 1000)}"
-    
+
     # Run a long command
     config = config._replace(
         task_id=task_id,
         agent_cli="sh",
         agent_cli_args=["-c", "sleep 60; echo done"],
     )
-    
+
     container_started = Event()
     done_called = Event()
-    
+
     def on_state(state: dict[str, Any]) -> None:
         if state.get("ContainerId"):
             container_started.set()
@@ -335,13 +337,13 @@ def test_task_kill_removes_container(test_config):
             "created_at_s": time.time(),
         }
         save_task_payload(state_path, payload, archived=False)
-    
+
     def on_log(log: str) -> None:
         pass
-    
+
     def on_done(exit_code: int, error: str | None, artifacts: list[str]) -> None:
         done_called.set()
-    
+
     worker = DockerAgentWorker(
         config=config,
         prompt="kill test task",
@@ -349,31 +351,32 @@ def test_task_kill_removes_container(test_config):
         on_log=on_log,
         on_done=on_done,
     )
-    
+
     # Start worker
     import threading
+
     thread = threading.Thread(target=worker.run)
     thread.start()
-    
+
     # Wait for container to start
     assert container_started.wait(timeout=30), "Container did not start"
-    
+
     # Get container ID
     saved_payload = load_task_payload(state_path, task_id, archived=False)
     container_id = saved_payload.get("container_id")
     assert container_id is not None
-    
+
     # Verify container is running
     state = _inspect_state(container_id)
     assert state.get("Running") is True
-    
+
     # Request kill
     worker.request_kill()
-    
+
     # Wait for completion
     assert done_called.wait(timeout=30), "Task did not complete after kill"
     thread.join(timeout=5)
-    
+
     # Verify container is gone or stopped
     try:
         state = _inspect_state(container_id)
@@ -381,7 +384,7 @@ def test_task_kill_removes_container(test_config):
     except Exception:
         # Expected if container is removed
         pass
-    
+
     # Verify persistence
     saved_payload = load_task_payload(state_path, task_id, archived=False)
     assert saved_payload is not None
