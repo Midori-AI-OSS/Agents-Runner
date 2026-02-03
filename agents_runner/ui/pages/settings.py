@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
-from agents_runner.widgets import GlassCard
+from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.constants import (
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
@@ -117,9 +117,7 @@ class SettingsPage(QWidget):
         browse_gemini.setFixedWidth(STANDARD_BUTTON_WIDTH)
         browse_gemini.clicked.connect(self._pick_gemini_dir)
 
-        self._preflight_enabled = QCheckBox(
-            "Enable settings preflight"
-        )
+        self._preflight_enabled = QCheckBox("Enable settings preflight")
         self._preflight_enabled.setToolTip(
             "Runs on all environments before environment-specific preflight.\n"
             "Useful for global setup tasks like installing system packages."
@@ -135,7 +133,7 @@ class SettingsPage(QWidget):
         self._headless_desktop_enabled.setToolTip(
             "When enabled, this overrides the per-environment headless desktop setting."
         )
-        
+
         self._gh_context_default = QCheckBox(
             "Enable GitHub context by default for new environments"
         )
@@ -144,24 +142,20 @@ class SettingsPage(QWidget):
             "This only affects newly created environments, not existing ones.\n"
             "Users can still disable it per-environment in the Environments editor."
         )
-        
-        self._spellcheck_enabled = QCheckBox(
-            "Enable spellcheck in prompt editor"
-        )
+
+        self._spellcheck_enabled = QCheckBox("Enable spellcheck in prompt editor")
         self._spellcheck_enabled.setToolTip(
             "When enabled, misspelled words in the prompt editor will be underlined in red.\n"
             "Right-click on a misspelled word to see suggestions or add it to your dictionary."
         )
-        
-        self._mount_host_cache = QCheckBox(
-            "Mount host cache into containers"
-        )
+
+        self._mount_host_cache = QCheckBox("Mount host cache into containers")
         self._mount_host_cache.setToolTip(
             "Mounts ~/.cache to /home/midori-ai/.cache for faster package installs.\n"
             "Speeds up uv, pip, npm, bun, yarn, cargo, and other package managers.\n"
             "Cache is shared across all environments."
         )
-        
+
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
@@ -196,11 +190,11 @@ class SettingsPage(QWidget):
         grid.addWidget(gemini_label, 4, 0)
         grid.addWidget(self._host_gemini_dir, 4, 1, 1, 2)
         grid.addWidget(browse_gemini, 4, 3)
-        
+
         # Create two-column layout for checkboxes and preflight editor
         preflight_splitter = QSplitter(Qt.Orientation.Horizontal)
         preflight_splitter.setChildrenCollapsible(False)
-        
+
         # Left column: checkboxes stacked vertically
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
@@ -213,7 +207,7 @@ class SettingsPage(QWidget):
         left_layout.addWidget(self._spellcheck_enabled)
         left_layout.addWidget(self._mount_host_cache)
         left_layout.addStretch(1)
-        
+
         # Right column: preflight script editor
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
@@ -221,7 +215,7 @@ class SettingsPage(QWidget):
         right_layout.setSpacing(GRID_VERTICAL_SPACING)
         right_layout.addWidget(QLabel("Preflight script"))
         right_layout.addWidget(self._preflight_script, 1)
-        
+
         preflight_splitter.addWidget(left_widget)
         preflight_splitter.addWidget(right_widget)
         preflight_splitter.setStretchFactor(0, 3)
@@ -302,9 +296,7 @@ class SettingsPage(QWidget):
         self._spellcheck_enabled.setChecked(
             bool(settings.get("spellcheck_enabled", True))
         )
-        self._mount_host_cache.setChecked(
-            bool(settings.get("mount_host_cache", False))
-        )
+        self._mount_host_cache.setChecked(bool(settings.get("mount_host_cache", False)))
 
     def get_settings(self) -> dict:
         return {
@@ -330,15 +322,9 @@ class SettingsPage(QWidget):
             "headless_desktop_enabled": bool(
                 self._headless_desktop_enabled.isChecked()
             ),
-            "gh_context_default_enabled": bool(
-                self._gh_context_default.isChecked()
-            ),
-            "spellcheck_enabled": bool(
-                self._spellcheck_enabled.isChecked()
-            ),
-            "mount_host_cache": bool(
-                self._mount_host_cache.isChecked()
-            ),
+            "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
+            "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),
+            "mount_host_cache": bool(self._mount_host_cache.isChecked()),
         }
 
     def _pick_codex_dir(self) -> None:

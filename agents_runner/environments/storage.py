@@ -115,11 +115,11 @@ def save_environment(env: Environment, data_dir: str | None = None) -> None:
 def delete_environment(env_id: str, data_dir: str | None = None) -> None:
     data_dir = data_dir or default_data_dir()
     envs_path = _environments_path_for_data_dir(data_dir)
-    
+
     raw = _load_environments_items(envs_path)
     if not raw:
         return
-    
+
     target = str(env_id or "").strip()
     if not target:
         return

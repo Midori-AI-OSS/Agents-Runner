@@ -86,34 +86,22 @@ class AgentStatusIndicator(QWidget):
 
         # Installed indicator
         if self._status.installed:
-            self._add_indicator(
-                "✓", "Installed", "rgba(95, 205, 143, 255)"
-            )
+            self._add_indicator("✓", "Installed", "rgba(95, 205, 143, 255)")
         else:
-            self._add_indicator(
-                "✕", "Not installed", "rgba(243, 139, 168, 255)"
-            )
+            self._add_indicator("✕", "Not installed", "rgba(243, 139, 168, 255)")
 
         # Logged in indicator
         if self._status.installed:
             if self._status.logged_in:
-                self._add_indicator(
-                    "✓", "Logged in", "rgba(95, 205, 143, 255)"
-                )
+                self._add_indicator("✓", "Logged in", "rgba(95, 205, 143, 255)")
             else:
-                self._add_indicator(
-                    "⚠", "Not logged in", "rgba(249, 226, 175, 255)"
-                )
+                self._add_indicator("⚠", "Not logged in", "rgba(249, 226, 175, 255)")
 
         # Cooldown indicator
         if self._on_cooldown:
-            self._add_indicator(
-                "❄", "On cooldown", "rgba(137, 180, 250, 255)"
-            )
+            self._add_indicator("❄", "On cooldown", "rgba(137, 180, 250, 255)")
         elif self._status.installed and self._status.logged_in:
-            self._add_indicator(
-                "✓", "Available", "rgba(95, 205, 143, 255)"
-            )
+            self._add_indicator("✓", "Available", "rgba(95, 205, 143, 255)")
 
     def _add_indicator(self, icon: str, tooltip: str, color: str) -> None:
         """Add a status indicator.
@@ -161,9 +149,7 @@ class AgentChainStatusWidget(QWidget):
         header_layout.setSpacing(10)
 
         header_label = QLabel("Agent Chain (Primary → Fallbacks):")
-        header_label.setStyleSheet(
-            "font-weight: 600; color: rgba(237, 239, 245, 200);"
-        )
+        header_label.setStyleSheet("font-weight: 600; color: rgba(237, 239, 245, 200);")
         header_layout.addWidget(header_label)
         header_layout.addStretch(1)
 

@@ -108,8 +108,12 @@ def launch_docker_terminal_task(
     if preflight_clause is None:
         # Error during preflight preparation
         _handle_launch_error(
-            main_window, task, tmp_paths, stain, spinner,
-            "Failed to prepare preflight scripts"
+            main_window,
+            task,
+            tmp_paths,
+            stain,
+            spinner,
+            "Failed to prepare preflight scripts",
         )
         return
 
@@ -130,7 +134,9 @@ def launch_docker_terminal_task(
         if forward_gh_token:
             gh_token = resolve_github_token()
             if gh_token:
-                env_args.extend(["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"])
+                env_args.extend(
+                    ["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"]
+                )
 
         # Check if desktop mode is enabled
         desktop_enabled = (
@@ -159,13 +165,13 @@ def launch_docker_terminal_task(
 
         # Prepare extra mounts
         extra_mount_args: list[str] = []
-        
+
         # Add host cache mount if enabled in settings
         if main_window._settings_data.get("mount_host_cache", False):
             host_cache = os.path.expanduser("~/.cache")
             container_cache = "/home/midori-ai/.cache"
             extra_mount_args.extend(["-v", f"{host_cache}:{container_cache}:rw"])
-        
+
         # Add environment-specific mounts
         for mount in (env.extra_mounts or []) if env else []:
             m = str(mount).strip()
@@ -185,7 +191,8 @@ def launch_docker_terminal_task(
             verify_clause = verify_cli_clause(cmd_parts[0])
 
         container_script = (
-            "set -euo pipefail; " f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
+            "set -euo pipefail; "
+            f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
         )
 
         # Build Docker command
@@ -218,7 +225,12 @@ def launch_docker_terminal_task(
         # Build Rosetta warning snippet
         rosetta_snippet = ""
         if has_rosetta() is False:
-            rosetta_snippet = shell_log_statement("host", "docker", "WARN", f"Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}")
+            rosetta_snippet = shell_log_statement(
+                "host",
+                "docker",
+                "WARN",
+                f"Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}",
+            )
 
         # Build git clone snippet if gh_repo is specified
         gh_clone_snippet = ""
@@ -261,12 +273,15 @@ def launch_docker_terminal_task(
         # Log base branch if specified
         if (desired_base or "").strip():
             main_window._on_task_log(
-                task_id, format_log("gh", "branch", "INFO", f"base branch: {desired_base}")
+                task_id,
+                format_log("gh", "branch", "INFO", f"base branch: {desired_base}"),
             )
 
         # Update settings
         main_window._settings_data["host_workdir"] = host_workdir
-        main_window._settings_data[main_window._host_config_dir_key(agent_cli)] = host_codex
+        main_window._settings_data[main_window._host_config_dir_key(agent_cli)] = (
+            host_codex
+        )
         main_window._settings_data["active_environment_id"] = env_id
         main_window._settings_data["interactive_terminal_id"] = str(
             getattr(terminal_opt, "terminal_id", "")
@@ -276,7 +291,9 @@ def launch_docker_terminal_task(
             prompt=prompt, command=command
         ):
             main_window._settings_data[interactive_key] = (
-                main_window._sanitize_interactive_command_value(interactive_key, command)
+                main_window._sanitize_interactive_command_value(
+                    interactive_key, command
+                )
             )
         main_window._apply_active_environment_to_new_task()
         main_window._schedule_save()
@@ -295,8 +312,10 @@ def launch_docker_terminal_task(
         main_window._on_task_log(
             task_id,
             format_log(
-                "ui", "launch", "INFO",
-                f"launched in {_safe_str(getattr(terminal_opt, 'label', 'Terminal'))}"
+                "ui",
+                "launch",
+                "INFO",
+                f"launched in {_safe_str(getattr(terminal_opt, 'label', 'Terminal'))}",
             ),
         )
 
@@ -306,9 +325,7 @@ def launch_docker_terminal_task(
         main_window._new_task.reset_for_new_run()
 
     except Exception as exc:
-        _handle_launch_error(
-            main_window, task, tmp_paths, stain, spinner, str(exc)
-        )
+        _handle_launch_error(main_window, task, tmp_paths, stain, spinner, str(exc))
 
 
 def _prepare_preflight_scripts(
@@ -342,10 +359,14 @@ def _prepare_preflight_scripts(
     }
 
     settings_container_path = f"/tmp/agents-runner-preflight-settings-{task_token}.sh"
-    environment_container_path = f"/tmp/agents-runner-preflight-environment-{task_token}.sh"
+    environment_container_path = (
+        f"/tmp/agents-runner-preflight-environment-{task_token}.sh"
+    )
     extra_container_path = f"/tmp/agents-runner-preflight-extra-{task_token}.sh"
 
-    preflights_host_dir = (Path(__file__).resolve().parent.parent / "preflights").resolve()
+    preflights_host_dir = (
+        Path(__file__).resolve().parent.parent / "preflights"
+    ).resolve()
     preflights_container_dir = "/tmp/agents-runner-preflights"
 
     def _write_preflight_script(script: str, label: str) -> str:
@@ -384,9 +405,9 @@ def _prepare_preflight_scripts(
             f"PREFLIGHTS_DIR={shlex.quote(preflights_container_dir)}; "
             'export AGENTS_RUNNER_PREFLIGHTS_DIR="${PREFLIGHTS_DIR}"; '
             'PREFLIGHT_SYSTEM="${PREFLIGHTS_DIR}/pixelarch_yay.sh"; '
-            f'{shell_log_statement("docker", "preflight", "INFO", "system: starting")}; '
+            f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: starting')}; "
             '/bin/bash "${PREFLIGHT_SYSTEM}"; '
-            f'{shell_log_statement("docker", "preflight", "INFO", "system: done")}; '
+            f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: done')}; "
         )
 
         # Settings preflight (optional)
@@ -394,7 +415,9 @@ def _prepare_preflight_scripts(
             preflights_scripts: dict[str, str] = {}
             try:
                 for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                    preflights_scripts[candidate.name] = candidate.read_text(encoding="utf-8").strip()
+                    preflights_scripts[candidate.name] = candidate.read_text(
+                        encoding="utf-8"
+                    ).strip()
             except Exception:
                 preflights_scripts = {}
 
@@ -410,9 +433,9 @@ def _prepare_preflight_scripts(
             if matched:
                 preflight_clause += (
                     f'PREFLIGHT_SETTINGS="${{PREFLIGHTS_DIR}}/{matched}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "settings: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: running')}; "
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "settings: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: done')}; "
                 )
             else:
                 tmp_paths["settings"] = _write_preflight_script(
@@ -423,9 +446,9 @@ def _prepare_preflight_scripts(
                 )
                 preflight_clause += (
                     f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                    f'{shell_log_statement("docker", "preflight", "INFO", "settings: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: running')}; "
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "settings: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: done')}; "
                 )
 
         # Environment preflight (optional)
@@ -433,7 +456,9 @@ def _prepare_preflight_scripts(
             preflights_scripts = {}
             try:
                 for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                    preflights_scripts[candidate.name] = candidate.read_text(encoding="utf-8").strip()
+                    preflights_scripts[candidate.name] = candidate.read_text(
+                        encoding="utf-8"
+                    ).strip()
             except Exception:
                 preflights_scripts = {}
 
@@ -449,22 +474,25 @@ def _prepare_preflight_scripts(
             if matched:
                 preflight_clause += (
                     f'PREFLIGHT_ENV="${{PREFLIGHTS_DIR}}/{matched}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "environment: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: running')}; "
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "environment: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: done')}; "
                 )
             else:
                 tmp_paths["environment"] = _write_preflight_script(
                     str(environment_preflight_script or ""), "environment"
                 )
                 preflight_mounts.extend(
-                    ["-v", f"{tmp_paths['environment']}:{environment_container_path}:ro"]
+                    [
+                        "-v",
+                        f"{tmp_paths['environment']}:{environment_container_path}:ro",
+                    ]
                 )
                 preflight_clause += (
                     f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                    f'{shell_log_statement("docker", "preflight", "INFO", "environment: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: running')}; "
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "environment: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: done')}; "
                 )
 
         # Extra preflight (optional, help mode, etc.)
@@ -472,7 +500,9 @@ def _prepare_preflight_scripts(
             preflights_scripts = {}
             try:
                 for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                    preflights_scripts[candidate.name] = candidate.read_text(encoding="utf-8").strip()
+                    preflights_scripts[candidate.name] = candidate.read_text(
+                        encoding="utf-8"
+                    ).strip()
             except Exception:
                 preflights_scripts = {}
 
@@ -488,9 +518,9 @@ def _prepare_preflight_scripts(
             if matched:
                 preflight_clause += (
                     f'PREFLIGHT_EXTRA="${{PREFLIGHTS_DIR}}/{matched}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "extra: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: running')}; "
                     '/bin/bash "${PREFLIGHT_EXTRA}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "extra: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: done')}; "
                 )
             else:
                 tmp_paths["helpme"] = _write_preflight_script(
@@ -501,9 +531,9 @@ def _prepare_preflight_scripts(
                 )
                 preflight_clause += (
                     f"PREFLIGHT_EXTRA={shlex.quote(extra_container_path)}; "
-                    f'{shell_log_statement("docker", "preflight", "INFO", "extra: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: running')}; "
                     '/bin/bash "${PREFLIGHT_EXTRA}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "extra: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: done')}; "
                 )
 
         return preflight_clause, preflight_mounts, tmp_paths

@@ -27,10 +27,10 @@ class PastTaskAnimator:
     """
 
     def __init__(
-        self, 
-        scroll_area: QScrollArea, 
+        self,
+        scroll_area: QScrollArea,
         get_rows_callback: Callable[[], dict[str, TaskRow]],
-        parent: QObject | None = None
+        parent: QObject | None = None,
     ) -> None:
         """Initialize the animator.
 

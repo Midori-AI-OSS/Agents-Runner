@@ -27,9 +27,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class GitInfo:
     """Git repository context information.
-    
+
     Contains all metadata needed to populate the GitHub context file.
     """
+
     repo_root: str
     repo_url: str
     repo_owner: str | None
@@ -40,23 +41,23 @@ class GitInfo:
 
 def get_git_info(path: str) -> Optional[GitInfo]:
     """Detect git repository context for a given path.
-    
+
     This is the main entry point for git detection. It performs all necessary
     checks and extracts repository metadata.
-    
+
     Args:
         path: File system path to check (can be anywhere in a git repo)
-        
+
     Returns:
         GitInfo object if path is in a git repository and all operations succeed,
         None otherwise.
-        
+
     Behavior:
         - All git operations have 8-second timeout
         - Never raises exceptions
         - Returns None on any error
         - Logs warnings for failures
-        
+
     Graceful Degradation:
         - Not a git repo → None
         - No remote configured → None
@@ -66,42 +67,76 @@ def get_git_info(path: str) -> Optional[GitInfo]:
     try:
         # Step 1: Check if git repo
         if not is_git_repo(path):
-            logger.debug(format_log("gh", "detect", "DEBUG", f"path is not a git repository: {path}"))
+            logger.debug(
+                format_log(
+                    "gh", "detect", "DEBUG", f"path is not a git repository: {path}"
+                )
+            )
             return None
-        
+
         # Step 2: Get repo root
         repo_root = git_repo_root(path)
         if not repo_root:
-            logger.warning(format_log("gh", "detect", "WARN", f"could not determine git repo root: {path}"))
+            logger.warning(
+                format_log(
+                    "gh", "detect", "WARN", f"could not determine git repo root: {path}"
+                )
+            )
             return None
-        
+
         # Step 3: Get current branch
         branch = git_current_branch(repo_root)
         if not branch:
             # Detached HEAD state or error
-            logger.warning(format_log("gh", "detect", "WARN", f"could not determine current branch: {repo_root}"))
+            logger.warning(
+                format_log(
+                    "gh",
+                    "detect",
+                    "WARN",
+                    f"could not determine current branch: {repo_root}",
+                )
+            )
             branch = "HEAD"
-        
+
         # Step 4: Get HEAD commit SHA
         commit_sha = git_head_commit(repo_root)
         if not commit_sha:
-            logger.warning(format_log("gh", "detect", "WARN", f"could not get HEAD commit SHA: {repo_root}"))
+            logger.warning(
+                format_log(
+                    "gh",
+                    "detect",
+                    "WARN",
+                    f"could not get HEAD commit SHA: {repo_root}",
+                )
+            )
             return None
-        
+
         # Step 5: Get remote URL (try origin first)
         repo_url = git_remote_url(repo_root, remote="origin")
         if not repo_url:
-            logger.warning(format_log("gh", "detect", "WARN", f"no remote 'origin' configured: {repo_root}"))
+            logger.warning(
+                format_log(
+                    "gh",
+                    "detect",
+                    "WARN",
+                    f"no remote 'origin' configured: {repo_root}",
+                )
+            )
             return None
-        
+
         # Step 6: Parse owner/repo from URL (best effort)
         repo_owner, repo_name = parse_github_url(repo_url)
         if not repo_owner or not repo_name:
             logger.debug(
-                format_log("gh", "detect", "DEBUG", f"could not parse owner/repo from URL (non-GitHub?): {repo_url}")
+                format_log(
+                    "gh",
+                    "detect",
+                    "DEBUG",
+                    f"could not parse owner/repo from URL (non-GitHub?): {repo_url}",
+                )
             )
             # Still return GitInfo with raw URL, just no parsed components
-        
+
         return GitInfo(
             repo_root=repo_root,
             repo_url=repo_url,
@@ -110,8 +145,13 @@ def get_git_info(path: str) -> Optional[GitInfo]:
             branch=branch,
             commit_sha=commit_sha,
         )
-        
+
     except Exception as exc:
         # Catch-all to ensure we never raise
-        logger.error(format_log("gh", "detect", "ERROR", f"unexpected error during git detection: {exc}"), exc_info=True)
+        logger.error(
+            format_log(
+                "gh", "detect", "ERROR", f"unexpected error during git detection: {exc}"
+            ),
+            exc_info=True,
+        )
         return None

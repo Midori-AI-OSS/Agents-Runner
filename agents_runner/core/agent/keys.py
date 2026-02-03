@@ -30,4 +30,3 @@ def cooldown_key(
     if host_config_dir or args_str:
         return f"{agent_cli}::{host_config_dir}::{args_str}"
     return agent_cli
-

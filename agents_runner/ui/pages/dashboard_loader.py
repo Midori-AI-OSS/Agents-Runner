@@ -13,7 +13,7 @@ from PySide6.QtCore import QTimer
 
 class PastTaskProgressiveLoader:
     """Manages progressive background loading of past tasks.
-    
+
     Loads tasks in the background with yielding to keep UI responsive.
     Initial burst of 10 tasks for fast paint, then 1 task at a time.
     """
@@ -36,7 +36,7 @@ class PastTaskProgressiveLoader:
             indicator_callback: Function(is_loading) -> None.
                 Called to show/hide loading indicator.
             parent: Optional parent QObject for proper Qt lifecycle.
-        
+
         Raises:
             TypeError: If callbacks are not callable.
         """
@@ -44,7 +44,7 @@ class PastTaskProgressiveLoader:
             raise TypeError("load_callback must be callable")
         if not callable(indicator_callback):
             raise TypeError("indicator_callback must be callable")
-        
+
         self._load_callback = load_callback
         self._indicator_callback = indicator_callback
 
@@ -58,7 +58,7 @@ class PastTaskProgressiveLoader:
 
     def start(self, initial_batch_size: int | None = None) -> None:
         """Start progressive loading.
-        
+
         Args:
             initial_batch_size: Size of initial burst load. Defaults to INITIAL_BATCH_SIZE.
         """
@@ -106,7 +106,9 @@ class PastTaskProgressiveLoader:
             return
 
         try:
-            loaded = self._load_callback(self._current_offset, self.PROGRESSIVE_BATCH_SIZE)
+            loaded = self._load_callback(
+                self._current_offset, self.PROGRESSIVE_BATCH_SIZE
+            )
             # Validate return value
             if not isinstance(loaded, int) or loaded < 0:
                 loaded = 0
@@ -138,7 +140,7 @@ class PastTaskProgressiveLoader:
 
     def is_active(self) -> bool:
         """Check if loader is currently active.
-        
+
         Returns:
             True if loader is running.
         """
@@ -146,7 +148,7 @@ class PastTaskProgressiveLoader:
 
     def has_more(self) -> bool:
         """Check if more tasks might be available.
-        
+
         Returns:
             True if not all tasks have been loaded yet.
         """

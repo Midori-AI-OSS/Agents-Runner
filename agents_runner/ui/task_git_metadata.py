@@ -24,22 +24,22 @@ def _parse_pull_request_number(pull_request_url: str) -> int | None:
 
 def validate_git_metadata(git: dict[str, object] | None) -> tuple[bool, str]:
     """Validate that git metadata contains required fields.
-    
+
     Args:
         git: Git metadata dictionary to validate
-        
+
     Returns:
         (is_valid, error_message) tuple
     """
     if not git or not isinstance(git, dict):
         return (False, "git metadata is None or not a dict")
-    
+
     required_fields = ["base_branch"]
     missing = [field for field in required_fields if not git.get(field)]
-    
+
     if missing:
         return (False, f"missing required fields: {', '.join(missing)}")
-    
+
     return (True, "ok")
 
 
@@ -73,7 +73,9 @@ def derive_task_git_metadata(task: Any) -> dict[str, object] | None:
         try:
             gh_metadata = load_github_metadata(context_path)
         except Exception as exc:
-            logger.warning("Failed to read GitHub context file %s: %s", context_path, exc)
+            logger.warning(
+                "Failed to read GitHub context file %s: %s", context_path, exc
+            )
             gh_metadata = None
 
         if gh_metadata is not None and gh_metadata.github is not None:

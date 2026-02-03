@@ -10,20 +10,32 @@ from uuid import uuid4
 from PySide6.QtCore import Signal, QTimer
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFileDialog, QHBoxLayout, QLabel,
-    QLineEdit, QPushButton, QStackedWidget, QVBoxLayout, QWidget,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFileDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from agents_runner.environments import (
     ALLOWED_STAINS,
-    Environment, save_environment,
-    load_environments, delete_environment,
-    WORKSPACE_CLONED, WORKSPACE_MOUNTED,
+    Environment,
+    save_environment,
+    load_environments,
+    delete_environment,
+    WORKSPACE_CLONED,
+    WORKSPACE_MOUNTED,
 )
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.utils import _apply_environment_combo_tint, _stain_color
-from agents_runner.widgets import GlassCard
+from agents_runner.ui.widgets import GlassCard
 
 
 class NewEnvironmentWizard(QDialog):
@@ -83,22 +95,30 @@ class NewEnvironmentWizard(QDialog):
 
         # Environment Name with tooltip
         name_label = QLabel("Environment Name:")
-        name_label.setToolTip("A label you'll recognize later (e.g., 'My Repo (Remote)')")
+        name_label.setToolTip(
+            "A label you'll recognize later (e.g., 'My Repo (Remote)')"
+        )
         card_layout.addWidget(name_label)
         self._name_input = QLineEdit()
         self._name_input.setPlaceholderText("e.g., 'My Repo (Remote)'")
-        self._name_input.setToolTip("A label you'll recognize later (e.g., 'My Repo (Remote)')")
+        self._name_input.setToolTip(
+            "A label you'll recognize later (e.g., 'My Repo (Remote)')"
+        )
         self._name_input.textChanged.connect(self._update_next_button)
         card_layout.addWidget(self._name_input)
 
         # Workspace Source Type with tooltip
         source_label = QLabel("Workspace Source Type:")
-        source_label.setToolTip("Both run in a container; this only changes the workspace source")
+        source_label.setToolTip(
+            "Both run in a container; this only changes the workspace source"
+        )
         card_layout.addWidget(source_label)
         self._source_combo = QComboBox()
         self._source_combo.addItem("Use a folder workspace")
         self._source_combo.addItem("Clone a repo workspace")
-        self._source_combo.setToolTip("Folder: uses existing folder (edits apply there). Repo: clones fresh workspace each run")
+        self._source_combo.setToolTip(
+            "Folder: uses existing folder (edits apply there). Repo: clones fresh workspace each run"
+        )
         self._source_combo.currentIndexChanged.connect(self._on_source_changed)
         card_layout.addWidget(self._source_combo)
 
@@ -114,12 +134,16 @@ class NewEnvironmentWizard(QDialog):
         f_layout.setContentsMargins(0, 0, 0, 0)
         f_layout.setSpacing(4)
         folder_label = QLabel("Folder Path:")
-        folder_label.setToolTip("Path to an existing folder that will be used as the workspace")
+        folder_label.setToolTip(
+            "Path to an existing folder that will be used as the workspace"
+        )
         f_layout.addWidget(folder_label)
         f_row = QHBoxLayout()
         f_row.setSpacing(4)
         self._folder_input = QLineEdit()
-        self._folder_input.setToolTip("Path to an existing folder that will be used as the workspace")
+        self._folder_input.setToolTip(
+            "Path to an existing folder that will be used as the workspace"
+        )
         self._folder_input.textChanged.connect(self._validate_folder)
         f_row.addWidget(self._folder_input, 1)
         browse_btn = QPushButton("Browse...")
@@ -136,11 +160,15 @@ class NewEnvironmentWizard(QDialog):
         c_layout.setContentsMargins(0, 0, 0, 0)
         c_layout.setSpacing(4)
         repo_label = QLabel("Repository URL:")
-        repo_label.setToolTip("GitHub shorthand (owner/repo) or full URL (https://github.com/owner/repo.git)")
+        repo_label.setToolTip(
+            "GitHub shorthand (owner/repo) or full URL (https://github.com/owner/repo.git)"
+        )
         c_layout.addWidget(repo_label)
         self._clone_input = QLineEdit()
         self._clone_input.setPlaceholderText("owner/repo or full URL")
-        self._clone_input.setToolTip("GitHub shorthand (owner/repo) or full URL (https://github.com/owner/repo.git)")
+        self._clone_input.setToolTip(
+            "GitHub shorthand (owner/repo) or full URL (https://github.com/owner/repo.git)"
+        )
         self._clone_input.textChanged.connect(self._validate_clone)
         c_layout.addWidget(self._clone_input)
         self._clone_validation = QLabel()
@@ -151,9 +179,13 @@ class NewEnvironmentWizard(QDialog):
         self._input_layout.addWidget(self._clone_widget)
 
         card_layout.addStretch()
-        warning = QLabel("⚠ Step 1 choices (workspace source + path/URL) cannot be edited later. To change them, create a new environment.")
+        warning = QLabel(
+            "⚠ Step 1 choices (workspace source + path/URL) cannot be edited later. To change them, create a new environment."
+        )
         warning.setWordWrap(True)
-        warning.setStyleSheet("color: #ff9800; font-weight: bold; margin-top: 10px; padding: 8px; background: rgba(255,152,0,0.1);")
+        warning.setStyleSheet(
+            "color: #ff9800; font-weight: bold; margin-top: 10px; padding: 8px; background: rgba(255,152,0,0.1);"
+        )
         card_layout.addWidget(warning)
         layout.addWidget(card)
 
@@ -237,7 +269,9 @@ class NewEnvironmentWizard(QDialog):
 
     def _current_stain(self) -> str:
         combo = getattr(self, "_color_combo", None)
-        stain = str(combo.currentData() or "").strip().lower() if combo is not None else ""
+        stain = (
+            str(combo.currentData() or "").strip().lower() if combo is not None else ""
+        )
         return stain or str(self._suggested_color or "").strip().lower()
 
     def _apply_environment_tint(self) -> None:
@@ -296,10 +330,10 @@ class NewEnvironmentWizard(QDialog):
         """Convert GitHub shorthand (owner/repo) to full URL."""
         url = url.strip()
         # Check if it's already a full URL
-        if url.startswith(('https://', 'http://', 'git@', 'ssh://')):
+        if url.startswith(("https://", "http://", "git@", "ssh://")):
             return url
         # Check if it matches GitHub shorthand pattern (owner/repo)
-        if re.match(r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$', url):
+        if re.match(r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$", url):
             return f"https://github.com/{url}.git"
         return url
 
@@ -310,19 +344,21 @@ class NewEnvironmentWizard(QDialog):
             self._update_next_button()
             return
         # Check for spaces (invalid)
-        if ' ' in url:
+        if " " in url:
             self._clone_validation.setText("✗ URL cannot contain spaces")
             self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
             self._update_next_button()
             return
         # Accept GitHub shorthand (owner/repo) or full URLs
-        shorthand_pattern = r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$'
-        url_pattern = r'^(https?://|git@|ssh://)'
+        shorthand_pattern = r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$"
+        url_pattern = r"^(https?://|git@|ssh://)"
         if re.match(shorthand_pattern, url) or re.match(url_pattern, url):
             self._clone_validation.setText("✓ Valid format")
             self._clone_validation.setStyleSheet("color: #4caf50; font-size: 11px;")
         else:
-            self._clone_validation.setText("✗ Use owner/repo or valid URL (https://, git@, ssh://)")
+            self._clone_validation.setText(
+                "✗ Use owner/repo or valid URL (https://, git@, ssh://)"
+            )
             self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
         self._update_next_button()
 
@@ -336,7 +372,10 @@ class NewEnvironmentWizard(QDialog):
                 self._next_btn.setEnabled(True)
             else:
                 name_valid = bool(self._name_input.text().strip())
-                clone_valid = bool(self._clone_input.text().strip() and "✓" in self._clone_validation.text())
+                clone_valid = bool(
+                    self._clone_input.text().strip()
+                    and "✓" in self._clone_validation.text()
+                )
                 self._next_btn.setText("Test")
                 self._next_btn.setEnabled(name_valid and clone_valid)
 
@@ -352,11 +391,11 @@ class NewEnvironmentWizard(QDialog):
             return True
         else:
             url = self._clone_input.text().strip()
-            if not url or ' ' in url:
+            if not url or " " in url:
                 return False
             # Accept GitHub shorthand (owner/repo) or full URLs
-            shorthand_pattern = r'^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$'
-            url_pattern = r'^(https?://|git@|ssh://)'
+            shorthand_pattern = r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$"
+            url_pattern = r"^(https?://|git@|ssh://)"
             return bool(re.match(shorthand_pattern, url) or re.match(url_pattern, url))
 
     def _on_next(self) -> None:
@@ -370,7 +409,7 @@ class NewEnvironmentWizard(QDialog):
     def _run_clone_test(self) -> None:
         url = self._expand_repo_url(self._clone_input.text().strip())
         name = self._name_input.text().strip() or "test"
-        sanitized = re.sub(r'[^a-zA-Z0-9_-]', '_', name)[:50]
+        sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", name)[:50]
         test_id = hashlib.md5(url.encode()).hexdigest()[:8]
         self._test_folder = os.path.join(self.TEST_DIR_BASE, f"{sanitized}-{test_id}")
         if os.path.exists(self._test_folder):
@@ -409,7 +448,9 @@ read
 
     def _check_clone_result(self) -> None:
         self._clone_check_count += 1
-        if os.path.isdir(self._test_folder) and os.path.isdir(os.path.join(self._test_folder, ".git")):
+        if os.path.isdir(self._test_folder) and os.path.isdir(
+            os.path.join(self._test_folder, ".git")
+        ):
             self._clone_test_passed = True
             self._clone_validation.setText("✓ Clone test passed")
             self._clone_validation.setStyleSheet("color: #4caf50; font-size: 11px;")
@@ -438,12 +479,12 @@ read
     def _on_finish(self) -> None:
         env = self._create_environment()
         save_environment(env)
-        
+
         # Delete the "default" environment after creating a new one
         environments = load_environments()
         if "default" in environments and env.env_id != "default":
             delete_environment("default")
-        
+
         self.environment_created.emit(env)
         self.accept()
 
@@ -456,7 +497,9 @@ read
         else:
             gh_target = self._expand_repo_url(self._clone_input.text().strip())
             workspace_type = WORKSPACE_CLONED
-        color = str(getattr(self, "_color_combo", None).currentData() or self._suggested_color)
+        color = str(
+            getattr(self, "_color_combo", None).currentData() or self._suggested_color
+        )
         env = Environment(
             env_id=env_id,
             name=name,

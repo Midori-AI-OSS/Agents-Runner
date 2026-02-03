@@ -93,7 +93,7 @@ class ArtifactFileWatcher(QObject):
             QMetaObject.invokeMethod(self, "_init_qt_objects", Qt.QueuedConnection)
         else:
             self._init_qt_objects()
-    
+
     @Slot()
     def _attach_parent(self) -> None:
         requested = getattr(self, "_requested_parent", None)
@@ -113,7 +113,9 @@ class ArtifactFileWatcher(QObject):
         self._debounce_timer.timeout.connect(self._emit_change)
 
         # Ensure callbacks that manipulate the debounce timer run on our owning thread.
-        self._watcher.directoryChanged.connect(self._on_directory_changed, Qt.QueuedConnection)
+        self._watcher.directoryChanged.connect(
+            self._on_directory_changed, Qt.QueuedConnection
+        )
         self._watcher.fileChanged.connect(self._on_file_changed, Qt.QueuedConnection)
 
     def start(self) -> None:
@@ -173,18 +175,18 @@ class ArtifactFileWatcher(QObject):
             self._watcher.removePaths(paths)
 
         logger.debug(f"Stopped watching: {self._staging_dir}")
-    
+
     def _on_directory_changed(self, path: str) -> None:
         """Directory contents changed (file added/removed)."""
         logger.debug(f"Directory changed: {path}")
         self._refresh_watched_files()
         self._schedule_emit()
-    
+
     def _on_file_changed(self, path: str) -> None:
         """File contents modified."""
         logger.debug(f"File changed: {path}")
         self._schedule_emit()
-    
+
     @Slot()
     def _schedule_emit(self) -> None:
         """Schedule debounced signal emission."""
@@ -207,17 +209,17 @@ class ArtifactFileWatcher(QObject):
                 return
 
         self._debounce_timer.start(self._debounce_ms)
-    
+
     def _emit_change(self) -> None:
         """Emit files_changed signal."""
         logger.debug("Emitting files_changed signal")
         self.files_changed.emit()
-    
+
     def _refresh_watched_files(self) -> None:
         """Update list of watched files."""
         if not self._staging_dir.exists():
             return
-        
+
         try:
             watcher = self._watcher
             if watcher is None:
@@ -225,7 +227,7 @@ class ArtifactFileWatcher(QObject):
 
             current_files = {str(f) for f in self._staging_dir.iterdir() if f.is_file()}
             watched_files = set(watcher.files())
-            
+
             # Add new files
             new_files = current_files - watched_files
             if new_files:
@@ -237,6 +239,6 @@ class ArtifactFileWatcher(QObject):
             if deleted_files:
                 watcher.removePaths(list(deleted_files))
                 logger.debug(f"Removed {len(deleted_files)} deleted files from watcher")
-        
+
         except Exception as e:
             logger.error(f"Failed to refresh watched files: {e}")

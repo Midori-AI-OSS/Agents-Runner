@@ -31,3 +31,4 @@ This section is appended because Gemini CLI is selected and available for this r
 **Prompt contract**
 - Keep scope tight; avoid long-running orchestration in this runtime
 - If you need online docs/browser actions without naming tool/server names: tell Gemini to prefer its documentation lookup and browser automation tools, and to avoid generic web fetch/scraping (blanket “no web/network” constraints can block docs lookups)
+- For large-scope / long-running work, prefer delegating to Copilot (as Router/Orchestrator) when available, rather than orchestrating across multiple agent CLIs yourself.

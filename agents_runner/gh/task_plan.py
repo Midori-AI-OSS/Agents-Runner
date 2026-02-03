@@ -50,7 +50,7 @@ def _append_pr_attribution_footer(
         midori_ai_url=_MIDORI_AI_URL,
         marker=_PR_ATTRIBUTION_MARKER,
     )
-    
+
     footer = f"\n\n{footer_content}\n"
     return (body + footer) if body else footer.lstrip("\n")
 
@@ -135,7 +135,7 @@ def prepare_branch_for_task(
     def _fetch_with_retry() -> None:
         proc = _run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0)
         _require_ok(proc, args=["git", "fetch"])
-    
+
     with_retry(
         _fetch_with_retry,
         operation_name="git fetch",
@@ -260,7 +260,14 @@ def commit_push_and_pr(
         # switch branches without overwriting local changes.
         if current == base_branch:
             ahead_proc = _run(
-                ["git", "-C", repo_root, "rev-list", "--count", f"{base_branch}..{branch}"],
+                [
+                    "git",
+                    "-C",
+                    repo_root,
+                    "rev-list",
+                    "--count",
+                    f"{base_branch}..{branch}",
+                ],
                 timeout_s=10.0,
             )
             ahead = None
@@ -283,7 +290,9 @@ def commit_push_and_pr(
             ["git", "-C", repo_root, "checkout", "--merge", branch], timeout_s=20.0
         )
         if merge_proc.returncode != 0:
-            combined = ((merge_proc.stdout or "") + "\n" + (merge_proc.stderr or "")).strip()
+            combined = (
+                (merge_proc.stdout or "") + "\n" + (merge_proc.stderr or "")
+            ).strip()
             raise GhManagementError(
                 "failed to switch to PR branch while preserving local changes; "
                 "commit/stash your work (or switch back to the base branch) and rerun PR creation.\n"
@@ -335,7 +344,7 @@ def commit_push_and_pr(
             ["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0
         )
         _require_ok(proc, args=["git", "push"])
-    
+
     with_retry(
         _push_with_retry,
         operation_name="git push",
@@ -351,7 +360,7 @@ def commit_push_and_pr(
 
     # Create PR with retry for transient network issues
     pr_url: str | None = None
-    
+
     def _create_pr_with_retry() -> None:
         nonlocal pr_url
         proc = _run(
@@ -389,11 +398,11 @@ def commit_push_and_pr(
                     if line.startswith("http"):
                         pr_url = line
                         break
-    
+
     with_retry(
         _create_pr_with_retry,
         operation_name="gh pr create",
         retry_on=(OSError, TimeoutError, GhManagementError),
     )
-    
+
     return pr_url

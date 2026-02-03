@@ -197,9 +197,7 @@ def paint_gemini_background(
             # Codex-style soft blob, but locked to Google colors.
             grad = QRadialGradient(QPointF(0.0, 0.0), 1.0)
             grad.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), 220))
-            grad.setColorAt(
-                0.45, QColor(c.red(), c.green(), c.blue(), int(220 * 0.28))
-            )
+            grad.setColorAt(0.45, QColor(c.red(), c.green(), c.blue(), int(220 * 0.28)))
             grad.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
             painter.setBrush(grad)
             painter.drawEllipse(QPointF(0.0, 0.0), 1.0, 1.0)

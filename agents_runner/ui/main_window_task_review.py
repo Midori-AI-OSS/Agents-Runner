@@ -20,7 +20,7 @@ class _MainWindowTaskReviewMixin:
             return
 
         env = self._environments.get(task.environment_id)
-        
+
         if not task.requires_git_metadata():
             QMessageBox.information(
                 self,
@@ -45,7 +45,7 @@ class _MainWindowTaskReviewMixin:
         # Get repo root and branch, setting defaults for non-GitHub modes
         repo_root = str(task.gh_repo_root or "").strip()
         branch = str(task.gh_branch or "").strip()
-        
+
         if not repo_root and env:
             from agents_runner.environments.paths import managed_repo_checkout_path
 
@@ -57,16 +57,17 @@ class _MainWindowTaskReviewMixin:
             # Persist the repo_root to the task for future use
             if repo_root:
                 task.gh_repo_root = repo_root
-        
+
         # If still missing, try to get from task's host_workdir
         if not repo_root:
             repo_root = str(task.host_workdir or "").strip()
             if repo_root:
                 task.gh_repo_root = repo_root
-        
+
         # If still missing, try to repair git metadata
         if not repo_root and task.requires_git_metadata():
             from agents_runner.ui.task_repair import repair_task_git_metadata
+
             success, msg = repair_task_git_metadata(
                 task,
                 state_path=self._state_path,
@@ -80,21 +81,24 @@ class _MainWindowTaskReviewMixin:
                     fallback_path = str(task.host_workdir or "").strip()
                     if fallback_path:
                         task.gh_repo_root = fallback_path
-                        repo_root = fallback_path  # Update local variable for consistency
+                        repo_root = (
+                            fallback_path  # Update local variable for consistency
+                        )
                 self._schedule_save()
-        
+
         if not branch:
             branch = f"midoriaiagents/{task_id}"
-        
+
         if not repo_root:
             QMessageBox.warning(
-                self, "PR not available",
+                self,
+                "PR not available",
                 "Cannot locate the repository path for this task.\n\n"
                 "This may occur if:\n"
                 "• The repository clone hasn't completed yet\n"
                 "• The clone operation failed\n"
                 "• The task was reloaded before the clone finished\n\n"
-                "Wait for the task to complete, then try again."
+                "Wait for the task to complete, then try again.",
             )
             return
 
@@ -119,8 +123,13 @@ class _MainWindowTaskReviewMixin:
         task_token = str(task.task_id or task_id)
         pr_metadata_path = str(task.gh_pr_metadata_path or "").strip() or None
         is_override = not is_github_mode  # Override if not originally github-managed
-        
-        self._on_task_log(task_id, format_log("gh", "pr", "INFO", f"PR requested ({branch} -> {base_display})"))
+
+        self._on_task_log(
+            task_id,
+            format_log(
+                "gh", "pr", "INFO", f"PR requested ({branch} -> {base_display})"
+            ),
+        )
         threading.Thread(
             target=self._finalize_gh_management_worker,
             args=(

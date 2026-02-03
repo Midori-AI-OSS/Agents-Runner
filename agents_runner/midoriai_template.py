@@ -76,7 +76,9 @@ def scan_midoriai_agents_template(workspace_root: str) -> MidoriAITemplateDetect
         found_candidate_dir = True
 
         try:
-            actual_names = {p.name.casefold() for p in candidate.iterdir() if p.is_file()}
+            actual_names = {
+                p.name.casefold() for p in candidate.iterdir() if p.is_file()
+            }
         except Exception:
             actual_names = set()
 

@@ -47,57 +47,56 @@ from agents_runner.midoriai_template import scan_midoriai_agents_template
 
 def _is_gh_context_enabled(environment_id: str | None) -> bool:
     """Check if GitHub Context is enabled in environment settings.
-    
+
     Returns True if gh_context_enabled is True in the environment.
     """
     if not environment_id:
         return False
-    
+
     try:
         environments = load_environments()
         env = environments.get(str(environment_id))
     except Exception:
         return False
-    
+
     if env is None:
         return False
-    
+
     return bool(getattr(env, "gh_context_enabled", False))
 
 
 def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
     """Check if copilot is in the cross-agent allowlist.
-    
+
     Returns True if any agent in cross_agent_allowlist uses copilot CLI.
     """
     if not environment_id:
         return False
-    
+
     # Load environment and validate structure
     try:
         environments = load_environments()
         env = environments.get(str(environment_id))
     except Exception:
         return False
-    
+
     if env is None or not env.cross_agent_allowlist:
         return False
-    
+
     if env.agent_selection is None or not env.agent_selection.agents:
         return False
-    
+
     # Build agent_id → agent_cli mapping for quick lookup
     agent_cli_by_id: dict[str, str] = {
-        agent.agent_id: agent.agent_cli
-        for agent in env.agent_selection.agents
+        agent.agent_id: agent.agent_cli for agent in env.agent_selection.agents
     }
-    
+
     # Check each allowlisted agent_id for copilot
     for agent_id in env.cross_agent_allowlist:
         agent_cli = agent_cli_by_id.get(agent_id)
         if agent_cli and normalize_agent(agent_cli) == "copilot":
             return True
-    
+
     return False
 
 
@@ -185,15 +184,26 @@ class DockerAgentWorker:
                     self._gh_base_branch = str(result.get("base_branch") or "") or None
                     self._gh_branch = str(result.get("branch") or "") or None
                     if self._gh_branch:
-                        self._on_log(format_log("gh", "repo", "INFO", f"ready on branch {self._gh_branch}"))
-                    
+                        self._on_log(
+                            format_log(
+                                "gh",
+                                "repo",
+                                "INFO",
+                                f"ready on branch {self._gh_branch}",
+                            )
+                        )
+
                     # Update GitHub context file after clone (if context file exists)
                     if self._config.gh_context_file_path and self._gh_repo_root:
                         try:
-                            from agents_runner.pr_metadata import update_github_context_after_clone
+                            from agents_runner.pr_metadata import (
+                                update_github_context_after_clone,
+                            )
                             from agents_runner.pr_metadata import GitHubContext
-                            from agents_runner.environments.git_operations import get_git_info
-                            
+                            from agents_runner.environments.git_operations import (
+                                get_git_info,
+                            )
+
                             git_info = get_git_info(self._gh_repo_root)
                             if git_info:
                                 github_context = GitHubContext(
@@ -208,25 +218,109 @@ class DockerAgentWorker:
                                     self._config.gh_context_file_path,
                                     github_context=github_context,
                                 )
-                                self._on_log(format_log("gh", "repo", "INFO", "updated GitHub context file"))
+                                self._on_log(
+                                    format_log(
+                                        "gh",
+                                        "repo",
+                                        "INFO",
+                                        "updated GitHub context file",
+                                    )
+                                )
                             else:
                                 # Fix 1.1: Log when git_info is None (missing else clause)
-                                self._on_log(format_log("gh", "repo", "WARN", "Could not detect git repository information"))
-                                self._on_log(format_log("gh", "repo", "WARN", f"Checked path: {self._gh_repo_root}"))
-                                self._on_log(format_log("gh", "repo", "WARN", "Agent will execute without repository context"))
-                                self._on_log(format_log("gh", "repo", "INFO", "This may affect code quality but PR creation should still work"))
-                                self._on_log(format_log("gh", "repo", "INFO", "TIP: Check repository clone logs above for errors"))
+                                self._on_log(
+                                    format_log(
+                                        "gh",
+                                        "repo",
+                                        "WARN",
+                                        "Could not detect git repository information",
+                                    )
+                                )
+                                self._on_log(
+                                    format_log(
+                                        "gh",
+                                        "repo",
+                                        "WARN",
+                                        f"Checked path: {self._gh_repo_root}",
+                                    )
+                                )
+                                self._on_log(
+                                    format_log(
+                                        "gh",
+                                        "repo",
+                                        "WARN",
+                                        "Agent will execute without repository context",
+                                    )
+                                )
+                                self._on_log(
+                                    format_log(
+                                        "gh",
+                                        "repo",
+                                        "INFO",
+                                        "This may affect code quality but PR creation should still work",
+                                    )
+                                )
+                                self._on_log(
+                                    format_log(
+                                        "gh",
+                                        "repo",
+                                        "INFO",
+                                        "TIP: Check repository clone logs above for errors",
+                                    )
+                                )
                         except Exception as exc:
                             # Fix 1.2: Improve exception logging with details and impact
-                            self._on_log(format_log("gh", "repo", "ERROR", f"Failed to update GitHub context: {exc}"))
-                            self._on_log(format_log("gh", "repo", "ERROR", f"Context file path: {self._config.gh_context_file_path}"))
-                            self._on_log(format_log("gh", "repo", "ERROR", f"Repository root: {self._gh_repo_root}"))
-                            self._on_log(format_log("gh", "repo", "WARN", "Agent will execute without repository context"))
-                            self._on_log(format_log("gh", "repo", "INFO", "This may affect code quality but PR creation should still work"))
+                            self._on_log(
+                                format_log(
+                                    "gh",
+                                    "repo",
+                                    "ERROR",
+                                    f"Failed to update GitHub context: {exc}",
+                                )
+                            )
+                            self._on_log(
+                                format_log(
+                                    "gh",
+                                    "repo",
+                                    "ERROR",
+                                    f"Context file path: {self._config.gh_context_file_path}",
+                                )
+                            )
+                            self._on_log(
+                                format_log(
+                                    "gh",
+                                    "repo",
+                                    "ERROR",
+                                    f"Repository root: {self._gh_repo_root}",
+                                )
+                            )
+                            self._on_log(
+                                format_log(
+                                    "gh",
+                                    "repo",
+                                    "WARN",
+                                    "Agent will execute without repository context",
+                                )
+                            )
+                            self._on_log(
+                                format_log(
+                                    "gh",
+                                    "repo",
+                                    "INFO",
+                                    "This may affect code quality but PR creation should still work",
+                                )
+                            )
                             # Don't fail the task if context update fails
                 except (GhManagementError, Exception) as exc:
                     self._on_log(format_log("gh", "repo", "ERROR", str(exc)))
-                    self._on_log(format_log("gh", "repo", "ERROR", "GitHub setup failed; PR creation will be unavailable for this task"))
+                    self._on_log(
+                        format_log(
+                            "gh",
+                            "repo",
+                            "ERROR",
+                            "GitHub setup failed; PR creation will be unavailable for this task",
+                        )
+                    )
                     self._on_done(1, str(exc), [])
                     return
 
@@ -234,7 +328,14 @@ class DockerAgentWorker:
             forced_platform = docker_platform_for_pixelarch()
             platform_args = docker_platform_args_for_pixelarch()
             if forced_platform:
-                self._on_log(format_log("host", "none", "INFO", f"forcing Docker platform: {forced_platform}"))
+                self._on_log(
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"forcing Docker platform: {forced_platform}",
+                    )
+                )
                 rosetta = has_rosetta()
                 if rosetta is False:
                     self._on_log(
@@ -251,7 +352,8 @@ class DockerAgentWorker:
                 agent_cli, self._config.host_codex_dir
             )
             host_mount, container_cwd = _resolve_workspace_mount(
-                self._config.host_workdir, container_mount=self._config.container_workdir
+                self._config.host_workdir,
+                container_mount=self._config.container_workdir,
             )
             if host_mount != self._config.host_workdir:
                 self._on_log(
@@ -263,7 +365,11 @@ class DockerAgentWorker:
                     )
                 )
             if container_cwd != self._config.container_workdir:
-                self._on_log(format_log("host", "none", "INFO", f"container workdir: {container_cwd}"))
+                self._on_log(
+                    format_log(
+                        "host", "none", "INFO", f"container workdir: {container_cwd}"
+                    )
+                )
 
             template_detection = scan_midoriai_agents_template(host_mount)
             if self._config.environment_id:
@@ -312,15 +418,26 @@ class DockerAgentWorker:
                 )
             container_name = f"agents-runner-{uuid.uuid4().hex[:10]}"
             task_token = self._config.task_id or "task"
-            
+
             # Create artifacts staging directory
             artifacts_staging_dir = (
-                Path.home() / ".midoriai" / "agents-runner" / "artifacts" 
-                / task_token / "staging"
+                Path.home()
+                / ".midoriai"
+                / "agents-runner"
+                / "artifacts"
+                / task_token
+                / "staging"
             )
             artifacts_staging_dir.mkdir(parents=True, exist_ok=True)
-            self._on_log(format_log("host", "none", "INFO", f"artifacts staging: {artifacts_staging_dir}"))
-            
+            self._on_log(
+                format_log(
+                    "host",
+                    "none",
+                    "INFO",
+                    f"artifacts staging: {artifacts_staging_dir}",
+                )
+            )
+
             settings_container_path = (
                 self._config.container_settings_preflight_path.replace(
                     "{task_id}", task_token
@@ -352,53 +469,110 @@ class DockerAgentWorker:
 
             if self._config.pull_before_run:
                 self._on_state({"Status": "pulling"})
-                self._on_log(format_log("host", "none", "INFO", f"docker pull {self._config.image}"))
+                self._on_log(
+                    format_log(
+                        "host", "none", "INFO", f"docker pull {self._config.image}"
+                    )
+                )
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log(format_log("host", "none", "INFO", "pull complete"))
             elif forced_platform and not _has_platform_image(
                 self._config.image, forced_platform
             ):
                 self._on_state({"Status": "pulling"})
-                self._on_log(format_log("host", "none", "INFO", f"image missing; docker pull {self._config.image}"))
+                self._on_log(
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"image missing; docker pull {self._config.image}",
+                    )
+                )
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log(format_log("host", "none", "INFO", "pull complete"))
             elif not forced_platform and not _has_image(self._config.image):
                 self._on_state({"Status": "pulling"})
-                self._on_log(format_log("host", "none", "INFO", f"image missing; docker pull {self._config.image}"))
+                self._on_log(
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"image missing; docker pull {self._config.image}",
+                    )
+                )
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log(format_log("host", "none", "INFO", "pull complete"))
-            
+
             # Determine which image to use based on desktop cache setting
             runtime_image = self._config.image
             desktop_enabled = bool(self._config.headless_desktop_enabled)
             desktop_cached = bool(self._config.desktop_cache_enabled)
             desktop_cache_key: str | None = None
-            
+
             if desktop_enabled and desktop_cached:
                 # Try to use/build cached desktop image
-                self._on_log(format_log("desktop", "setup", "INFO", "cache enabled; checking for cached image"))
+                self._on_log(
+                    format_log(
+                        "desktop",
+                        "setup",
+                        "INFO",
+                        "cache enabled; checking for cached image",
+                    )
+                )
                 try:
                     runtime_image = ensure_desktop_image(
                         self._config.image,
                         on_log=self._on_log,
                     )
                     if runtime_image != self._config.image:
-                        self._on_log(format_log("desktop", "setup", "INFO", f"using cached image: {runtime_image}"))
+                        self._on_log(
+                            format_log(
+                                "desktop",
+                                "setup",
+                                "INFO",
+                                f"using cached image: {runtime_image}",
+                            )
+                        )
                         # Extract cache key from tag for env caching
-                        desktop_cache_key = compute_desktop_cache_key(self._config.image)
+                        desktop_cache_key = compute_desktop_cache_key(
+                            self._config.image
+                        )
                     else:
-                        self._on_log(format_log("desktop", "setup", "WARN", "cache build failed; falling back to runtime install"))
+                        self._on_log(
+                            format_log(
+                                "desktop",
+                                "setup",
+                                "WARN",
+                                "cache build failed; falling back to runtime install",
+                            )
+                        )
                 except Exception as exc:
-                    self._on_log(format_log("desktop", "setup", "ERROR", f"cache error: {exc}; falling back to runtime install"))
+                    self._on_log(
+                        format_log(
+                            "desktop",
+                            "setup",
+                            "ERROR",
+                            f"cache error: {exc}; falling back to runtime install",
+                        )
+                    )
                     runtime_image = self._config.image
 
             # Apply environment-level caching if enabled
             container_caching_enabled = bool(self._config.container_caching_enabled)
-            cached_preflight_script = (self._config.cached_preflight_script or "").strip()
-            
+            cached_preflight_script = (
+                self._config.cached_preflight_script or ""
+            ).strip()
+
             if container_caching_enabled and cached_preflight_script:
                 # Try to use/build cached environment image
-                self._on_log(format_log("env", "cache", "INFO", "container caching enabled; checking for cached image"))
+                self._on_log(
+                    format_log(
+                        "env",
+                        "cache",
+                        "INFO",
+                        "container caching enabled; checking for cached image",
+                    )
+                )
                 try:
                     runtime_image = ensure_env_image(
                         self._config.image,
@@ -407,14 +581,42 @@ class DockerAgentWorker:
                         on_log=self._on_log,
                     )
                     if runtime_image.startswith("agent-runner-env:"):
-                        self._on_log(format_log("env", "cache", "INFO", f"using cached environment image: {runtime_image}"))
+                        self._on_log(
+                            format_log(
+                                "env",
+                                "cache",
+                                "INFO",
+                                f"using cached environment image: {runtime_image}",
+                            )
+                        )
                     else:
-                        self._on_log(format_log("env", "cache", "WARN", "cache build failed; falling back to runtime preflight"))
+                        self._on_log(
+                            format_log(
+                                "env",
+                                "cache",
+                                "WARN",
+                                "cache build failed; falling back to runtime preflight",
+                            )
+                        )
                 except Exception as exc:
-                    self._on_log(format_log("env", "cache", "ERROR", f"error: {exc}; falling back to runtime preflight"))
+                    self._on_log(
+                        format_log(
+                            "env",
+                            "cache",
+                            "ERROR",
+                            f"error: {exc}; falling back to runtime preflight",
+                        )
+                    )
                     # runtime_image stays as-is (desktop or base image)
             elif container_caching_enabled and not cached_preflight_script:
-                self._on_log(format_log("env", "cache", "WARN", "container caching enabled but no cached preflight script configured"))
+                self._on_log(
+                    format_log(
+                        "env",
+                        "cache",
+                        "WARN",
+                        "container caching enabled but no cached preflight script configured",
+                    )
+                )
 
             desktop_enabled = bool(self._config.headless_desktop_enabled)
             desktop_display = ":1"
@@ -425,12 +627,17 @@ class DockerAgentWorker:
                     f"{prompt_for_agent.rstrip()}{_headless_desktop_prompt_instructions(display=desktop_display)}"
                 )
                 self._on_log(
-                    format_log("desktop", "setup", "INFO", "added desktop context to prompt (non-interactive)")
+                    format_log(
+                        "desktop",
+                        "setup",
+                        "INFO",
+                        "added desktop context to prompt (non-interactive)",
+                    )
                 )
 
             if template_detection.midoriai_template_detected:
                 template_parts = []
-                
+
                 # 1. Always append base template
                 try:
                     base_prompt = load_prompt("templates/midoriaibasetemplate").strip()
@@ -445,10 +652,12 @@ class DockerAgentWorker:
                             f"failed to load templates/midoriaibasetemplate: {exc}",
                         )
                     )
-                
+
                 # 2. Always append subagents template
                 try:
-                    subagents_prompt = load_prompt("templates/subagentstemplate").strip()
+                    subagents_prompt = load_prompt(
+                        "templates/subagentstemplate"
+                    ).strip()
                     if subagents_prompt:
                         template_parts.append(subagents_prompt)
                 except Exception as exc:
@@ -460,7 +669,7 @@ class DockerAgentWorker:
                             f"failed to load templates/subagentstemplate: {exc}",
                         )
                     )
-                
+
                 # 3. Conditionally append cross-agents template
                 cross_agents_enabled = False
                 env = None
@@ -483,10 +692,12 @@ class DockerAgentWorker:
                                 f"failed to check cross-agents config: {exc}",
                             )
                         )
-                
+
                 if cross_agents_enabled:
                     try:
-                        cross_agents_prompt = load_prompt("templates/crossagentstemplate").strip()
+                        cross_agents_prompt = load_prompt(
+                            "templates/crossagentstemplate"
+                        ).strip()
                         if cross_agents_prompt:
                             template_parts.append(cross_agents_prompt)
                     except Exception as exc:
@@ -498,7 +709,7 @@ class DockerAgentWorker:
                                 f"failed to load templates/crossagentstemplate: {exc}",
                             )
                         )
-                
+
                 # 3.5. Append CLI templates for all cross-agents in allowlist
                 if cross_agents_enabled and env is not None:
                     agent_cli_by_id: dict[str, str] = {}
@@ -507,21 +718,23 @@ class DockerAgentWorker:
                             agent.agent_id: agent.agent_cli
                             for agent in env.agent_selection.agents
                         }
-                    
+
                     loaded_allowlist_clis: set[str] = set()
                     for agent_id in env.cross_agent_allowlist:
                         allowlist_agent_cli = agent_cli_by_id.get(agent_id)
                         if not allowlist_agent_cli:
                             continue
-                        
+
                         normalized_cli = normalize_agent(allowlist_agent_cli)
                         if normalized_cli == agent_cli:
                             continue
                         if normalized_cli in loaded_allowlist_clis:
                             continue
-                        
+
                         try:
-                            allowlist_cli_prompt = load_prompt(f"templates/agentcli/{normalized_cli}").strip()
+                            allowlist_cli_prompt = load_prompt(
+                                f"templates/agentcli/{normalized_cli}"
+                            ).strip()
                             if allowlist_cli_prompt:
                                 template_parts.append(allowlist_cli_prompt)
                                 loaded_allowlist_clis.add(normalized_cli)
@@ -534,7 +747,7 @@ class DockerAgentWorker:
                                     f"failed to load templates/agentcli/{normalized_cli} for allowlist: {exc}",
                                 )
                             )
-                    
+
                     if loaded_allowlist_clis:
                         self._on_log(
                             format_log(
@@ -544,7 +757,7 @@ class DockerAgentWorker:
                                 f"cross-agent CLI context: {', '.join(sorted(loaded_allowlist_clis))}",
                             )
                         )
-                
+
                 # 4. Always append CLI-specific template (LAST)
                 try:
                     cli_prompt = load_prompt(f"templates/agentcli/{agent_cli}").strip()
@@ -559,7 +772,7 @@ class DockerAgentWorker:
                             f"failed to load templates/agentcli/{agent_cli}: {exc}",
                         )
                     )
-                
+
                 # Combine all template parts and inject
                 if template_parts:
                     combined_template = "\n\n".join(template_parts)
@@ -591,16 +804,23 @@ class DockerAgentWorker:
             preflight_mounts: list[str] = []
             if desktop_enabled:
                 port_args.extend(["-p", "127.0.0.1::6080"])
-                
+
                 # If using cached image, desktop is already installed - just run it
                 # If not cached, install then run (original behavior)
                 using_cached_image = runtime_image != self._config.image
-                
+
                 if using_cached_image:
                     # Desktop already installed in cached image - just start services
-                    self._on_log(format_log("desktop", "setup", "INFO", "using pre-installed desktop from cached image"))
+                    self._on_log(
+                        format_log(
+                            "desktop",
+                            "setup",
+                            "INFO",
+                            "using pre-installed desktop from cached image",
+                        )
+                    )
                     preflight_clause += (
-                        f'{shell_log_statement("desktop", "vnc", "INFO", "starting headless desktop (noVNC)")}; '
+                        f"{shell_log_statement('desktop', 'vnc', 'INFO', 'starting headless desktop (noVNC)')}; "
                         f"export DISPLAY={desktop_display}; "
                         'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
                         'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
@@ -608,35 +828,35 @@ class DockerAgentWorker:
                         'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
                         'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
                         # Load noVNC path from cached setup
-                        'if [ -f /etc/default/novnc-path ]; then '
-                        '  source /etc/default/novnc-path; '
-                        'else '
+                        "if [ -f /etc/default/novnc-path ]; then "
+                        "  source /etc/default/novnc-path; "
+                        "else "
                         '  NOVNC_WEB=""; '
                         '  for candidate in "/usr/share/webapps/novnc" "/usr/share/novnc" "/usr/share/noVNC"; do '
                         '    if [ -d "${candidate}" ]; then NOVNC_WEB="${candidate}"; break; fi; '
-                        '  done; '
-                        'fi; '
+                        "  done; "
+                        "fi; "
                         # Load environment defaults
-                        'if [ -f /etc/profile.d/desktop-env.sh ]; then '
-                        '  source /etc/profile.d/desktop-env.sh; '
-                        'fi; '
+                        "if [ -f /etc/profile.d/desktop-env.sh ]; then "
+                        "  source /etc/profile.d/desktop-env.sh; "
+                        "fi; "
                         'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & '
                         "sleep 0.25; "
                         '(fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true; '
                         '(xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true; '
                         'if [ -n "${NOVNC_WEB}" ]; then '
                         '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
-                        'else '
-                        f'  {shell_log_statement("desktop", "vnc", "ERROR", "noVNC web root not found")} >&2; '
-                        'fi; '
-                        f'{shell_log_statement("desktop", "vnc", "INFO", "ready")}; '
-                        f'{shell_log_statement("desktop", "vnc", "INFO", "DISPLAY=${DISPLAY}")}; '
-                        f'{shell_log_statement("desktop", "vnc", "INFO", "screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png")}; '
+                        "else "
+                        f"  {shell_log_statement('desktop', 'vnc', 'ERROR', 'noVNC web root not found')} >&2; "
+                        "fi; "
+                        f"{shell_log_statement('desktop', 'vnc', 'INFO', 'ready')}; "
+                        f"{shell_log_statement('desktop', 'vnc', 'INFO', 'DISPLAY=${DISPLAY}')}; "
+                        f"{shell_log_statement('desktop', 'vnc', 'INFO', 'screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png')}; "
                     )
                 else:
                     # Original behavior: install packages at runtime
                     preflight_clause += (
-                        f'{shell_log_statement("desktop", "vnc", "INFO", "starting headless desktop (noVNC)")}; '
+                        f"{shell_log_statement('desktop', 'vnc', 'INFO', 'starting headless desktop (noVNC)')}; "
                         f"export DISPLAY={desktop_display}; "
                         'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
                         'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
@@ -655,15 +875,15 @@ class DockerAgentWorker:
                         '  if [ -d "${candidate}" ]; then NOVNC_WEB="${candidate}"; break; fi; '
                         "done; "
                         'if [ -z "${NOVNC_WEB}" ]; then '
-                        f'  {shell_log_statement("desktop", "vnc", "ERROR", "noVNC web root not found")} >&2; '
+                        f"  {shell_log_statement('desktop', 'vnc', 'ERROR', 'noVNC web root not found')} >&2; "
                         "else "
                         '  websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
                         "fi; "
-                        f'{shell_log_statement("desktop", "vnc", "INFO", "ready")}; '
-                        f'{shell_log_statement("desktop", "vnc", "INFO", "DISPLAY=${DISPLAY}")}; '
-                        f'{shell_log_statement("desktop", "vnc", "INFO", "screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png")}; '
+                        f"{shell_log_statement('desktop', 'vnc', 'INFO', 'ready')}; "
+                        f"{shell_log_statement('desktop', 'vnc', 'INFO', 'DISPLAY=${DISPLAY}')}; "
+                        f"{shell_log_statement('desktop', 'vnc', 'INFO', 'screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png')}; "
                     )
-            
+
             if settings_preflight_tmp_path is not None:
                 self._on_log(
                     format_log(
@@ -681,9 +901,9 @@ class DockerAgentWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                    f'{shell_log_statement("env", "setup", "INFO", "settings: running")}; '
+                    f"{shell_log_statement('env', 'setup', 'INFO', 'settings: running')}; "
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    f'{shell_log_statement("env", "setup", "INFO", "settings: done")}; '
+                    f"{shell_log_statement('env', 'setup', 'INFO', 'settings: done')}; "
                 )
 
             if environment_preflight_tmp_path is not None:
@@ -703,9 +923,9 @@ class DockerAgentWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                    f'{shell_log_statement("env", "setup", "INFO", "environment: running")}; '
+                    f"{shell_log_statement('env', 'setup', 'INFO', 'environment: running')}; "
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    f'{shell_log_statement("env", "setup", "INFO", "environment: done")}; '
+                    f"{shell_log_statement('env', 'setup', 'INFO', 'environment: done')}; "
                 )
 
             env_args: list[str] = []
@@ -725,7 +945,7 @@ class DockerAgentWorker:
                 or agent_cli == "copilot"
                 or _needs_cross_agent_gh_token(self._config.environment_id)
             )
-            
+
             if needs_token:
                 token = resolve_github_token()
                 if (
@@ -816,7 +1036,12 @@ class DockerAgentWorker:
                             f"http://127.0.0.1:{host_port}/vnc.html"
                         )
                         self._on_log(
-                            format_log("desktop", "vnc", "INFO", f"noVNC URL: {desktop_state['NoVncUrl']}")
+                            format_log(
+                                "desktop",
+                                "vnc",
+                                "INFO",
+                                f"noVNC URL: {desktop_state['NoVncUrl']}",
+                            )
                         )
                 except Exception as exc:
                     self._on_log(format_log("desktop", "vnc", "ERROR", str(exc)))
@@ -870,8 +1095,16 @@ class DockerAgentWorker:
                         except Exception:
                             chunk = ""
                         if chunk:
-                            stream = "stdout" if key.fileobj == logs_proc.stdout else "stderr"
-                            self._on_log(wrap_container_log(self._container_id, stream, chunk.rstrip("\n")))
+                            stream = (
+                                "stdout"
+                                if key.fileobj == logs_proc.stdout
+                                else "stderr"
+                            )
+                            self._on_log(
+                                wrap_container_log(
+                                    self._container_id, stream, chunk.rstrip("\n")
+                                )
+                            )
             finally:
                 if logs_proc.poll() is None:
                     logs_proc.terminate()

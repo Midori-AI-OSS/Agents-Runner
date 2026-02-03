@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.core.agent.watch_state import AgentWatchState
-from agents_runner.widgets import GlassCard
+from agents_runner.ui.widgets import GlassCard
 
 
 class CooldownAction:
@@ -76,9 +76,7 @@ class CooldownModal(QDialog):
 
         # Reason
         if watch_state.cooldown_reason:
-            reason_label = QLabel(
-                f"Reason: {watch_state.cooldown_reason[:150]}"
-            )
+            reason_label = QLabel(f"Reason: {watch_state.cooldown_reason[:150]}")
             reason_label.setStyleSheet(
                 "font-size: 12px; color: rgba(237, 239, 245, 160);"
             )
@@ -106,12 +104,9 @@ class CooldownModal(QDialog):
             )
         else:
             fallback_text = QLabel(
-                "• Use Fallback Agent (None Available)\n"
-                "  No fallback agent configured."
+                "• Use Fallback Agent (None Available)\n  No fallback agent configured."
             )
-        fallback_text.setStyleSheet(
-            "font-size: 12px; color: rgba(237, 239, 245, 200);"
-        )
+        fallback_text.setStyleSheet("font-size: 12px; color: rgba(237, 239, 245, 200);")
         options_layout.addWidget(fallback_text)
 
         # Bypass option text
@@ -120,18 +115,12 @@ class CooldownModal(QDialog):
             "  Attempt to run anyway. The agent may still\n"
             "  fail if rate-limited."
         )
-        bypass_text.setStyleSheet(
-            "font-size: 12px; color: rgba(237, 239, 245, 200);"
-        )
+        bypass_text.setStyleSheet("font-size: 12px; color: rgba(237, 239, 245, 200);")
         options_layout.addWidget(bypass_text)
 
         # Cancel option text
-        cancel_text = QLabel(
-            "• Cancel\n" "  Don't start this task now."
-        )
-        cancel_text.setStyleSheet(
-            "font-size: 12px; color: rgba(237, 239, 245, 200);"
-        )
+        cancel_text = QLabel("• Cancel\n  Don't start this task now.")
+        cancel_text.setStyleSheet("font-size: 12px; color: rgba(237, 239, 245, 200);")
         options_layout.addWidget(cancel_text)
 
         layout.addWidget(options_card)
@@ -179,9 +168,7 @@ class CooldownModal(QDialog):
                     f"Cooldown Time Remaining: {minutes}m {seconds}s"
                 )
             else:
-                self._time_label.setText(
-                    f"Cooldown Time Remaining: {seconds} seconds"
-                )
+                self._time_label.setText(f"Cooldown Time Remaining: {seconds} seconds")
 
     def _on_use_fallback(self) -> None:
         """Handle Use Fallback button."""

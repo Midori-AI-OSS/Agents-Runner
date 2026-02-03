@@ -129,7 +129,9 @@ def save_setup_state(state: dict) -> None:
 
 
 def mark_setup_complete(
-    agents_setup: dict[str, bool], agents_enabled: dict[str, bool], cancelled: bool = False
+    agents_setup: dict[str, bool],
+    agents_enabled: dict[str, bool],
+    cancelled: bool = False,
 ) -> None:
     """Mark first-run setup as complete and save setup state.
 
@@ -189,9 +191,7 @@ def launch_terminal_and_wait(
         # This is a limitation - we can't easily wait for Terminal.app to close
         # For now, just launch it and return
         # TODO: Research better macOS terminal waiting mechanism
-        raise NotImplementedError(
-            "Blocking terminal launch not yet supported on macOS"
-        )
+        raise NotImplementedError("Blocking terminal launch not yet supported on macOS")
 
     raise RuntimeError(f"Unsupported terminal kind: {option.kind}")
 
@@ -269,9 +269,7 @@ class SetupOrchestrator:
 
             # Update progress: launching
             if progress_callback:
-                progress_callback(
-                    agent, current, total, f"Launching {agent} setup..."
-                )
+                progress_callback(agent, current, total, f"Launching {agent} setup...")
 
             # Launch terminal and wait (blocking)
             # We need to run this in a thread to keep UI responsive

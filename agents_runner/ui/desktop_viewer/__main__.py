@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import sys
 
-from agents_runner.desktop_viewer.app import run_desktop_viewer
+from agents_runner.ui.desktop_viewer.app import run_desktop_viewer
 
 if __name__ == "__main__":
     sys.exit(run_desktop_viewer(sys.argv))

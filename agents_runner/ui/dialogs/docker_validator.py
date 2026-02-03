@@ -27,18 +27,18 @@ logger = logging.getLogger(__name__)
 
 class DockerValidator:
     """Handles Docker validation smoke tests for first-run setup.
-    
+
     This validator checks if Docker is available and working by:
     1. Verifying docker CLI is in PATH
     2. Pulling the PixelArch image
     3. Running a test container with a simple command
-    
+
     The test runs asynchronously in a terminal window and polls for results.
     """
 
     def __init__(self, parent: QWidget):
         """Initialize Docker validator.
-        
+
         Args:
             parent: Parent widget for dialogs
         """
@@ -54,17 +54,17 @@ class DockerValidator:
         completion_callback: Callable[[bool], None],
     ) -> bool:
         """Start Docker validation process.
-        
+
         Args:
             status_callback: Callback for status updates (message, color)
             completion_callback: Callback when validation completes (success)
-            
+
         Returns:
             True if validation was started, False if preconditions failed
         """
         self._status_callback = status_callback
         self._completion_callback = completion_callback
-        
+
         # Check if docker is available
         if shutil.which("docker") is None:
             status_callback("✗ Docker CLI not found in PATH", "#f44336")
@@ -81,7 +81,7 @@ class DockerValidator:
             self._show_setup_help()
             completion_callback(False)
             return False
-        
+
         # Launch terminal with docker commands
         terminals = detect_terminal_options()
         if not terminals:
@@ -93,7 +93,7 @@ class DockerValidator:
 
         marker_file = os.path.join(self._test_folder, TEST_RESULT_FILE)
         script = self._generate_test_script(marker_file)
-        
+
         # Try to launch terminal
         terminal_launched = False
         for terminal in terminals:
@@ -107,22 +107,22 @@ class DockerValidator:
             except Exception as e:
                 logger.warning(f"Failed to launch terminal {terminal}: {e}")
                 continue
-        
+
         if not terminal_launched:
             status_callback("✗ Failed to launch terminal", "#f44336")
             self._show_setup_help()
             self._cleanup_test_folder()
             completion_callback(False)
             return False
-            
+
         return True
 
     def _generate_test_script(self, marker_file: str) -> str:
         """Generate bash script for Docker smoke test.
-        
+
         Args:
             marker_file: Path to result marker file
-            
+
         Returns:
             Bash script as string
         """
@@ -154,16 +154,20 @@ read
 
     def _poll_result(self) -> None:
         """Poll for Docker test result.
-        
+
         Checks the result marker file periodically until the test completes
         or timeout is reached. Timeout is POLL_MAX_COUNT * POLL_INTERVAL_MS.
         """
-        if not self._test_folder or not self._status_callback or not self._completion_callback:
+        if (
+            not self._test_folder
+            or not self._status_callback
+            or not self._completion_callback
+        ):
             return
-            
+
         marker_file = os.path.join(self._test_folder, TEST_RESULT_FILE)
         self._poll_count += 1
-        
+
         if os.path.exists(marker_file):
             # Test completed - read result
             try:
@@ -176,29 +180,28 @@ read
                 self._completion_callback(False)
                 self._cleanup_test_folder()
                 return
-                
+
             if result == "success":
                 self._status_callback(
                     "✓ Docker test passed! PixelArch image pulled and container executed successfully.",
-                    "#4caf50"
+                    "#4caf50",
                 )
                 self._completion_callback(True)
             else:
                 self._status_callback(
                     "✗ Docker test failed. Check terminal output for details.",
-                    "#f44336"
+                    "#f44336",
                 )
                 self._show_setup_help()
                 self._completion_callback(False)
-            
+
             self._cleanup_test_folder()
-            
+
         elif self._poll_count >= POLL_MAX_COUNT:
             # Timeout reached
             timeout_seconds = (POLL_MAX_COUNT * POLL_INTERVAL_MS) // 1000
             self._status_callback(
-                f"✗ Docker test timeout ({timeout_seconds}s)",
-                "#f44336"
+                f"✗ Docker test timeout ({timeout_seconds}s)", "#f44336"
             )
             self._show_setup_help()
             self._completion_callback(False)
@@ -217,12 +220,12 @@ read
             "Common issues:\n"
             "• Docker daemon not running\n"
             "• Docker socket permissions\n"
-            "• Docker CLI not installed"
+            "• Docker CLI not installed",
         )
 
     def _cleanup_test_folder(self) -> None:
         """Clean up the Docker test folder.
-        
+
         Attempts to remove the temporary test folder. Logs errors but does not
         raise exceptions to avoid disrupting the UI flow.
         """
@@ -231,7 +234,9 @@ read
                 shutil.rmtree(self._test_folder)
                 logger.debug(f"Cleaned up Docker test folder: {self._test_folder}")
             except (OSError, PermissionError) as e:
-                logger.warning(f"Failed to clean up Docker test folder {self._test_folder}: {e}")
+                logger.warning(
+                    f"Failed to clean up Docker test folder {self._test_folder}: {e}"
+                )
             finally:
                 self._test_folder = None
 

@@ -246,9 +246,7 @@ class DashboardPage(QWidget):
 
         # Initialize animator after widgets are created
         self._past_animator = PastTaskAnimator(
-            self._scroll_past,
-            lambda: self._rows_past,
-            parent=self
+            self._scroll_past, lambda: self._rows_past, parent=self
         )
 
         # Initialize progressive loader
@@ -429,14 +427,14 @@ class DashboardPage(QWidget):
 
     def _request_load_batch(self, offset: int, limit: int) -> int:
         """Request loading a batch of past tasks.
-        
+
         This is called by the progressive loader. It calls the callback
         that the main window provides.
-        
+
         Args:
             offset: Starting offset for loading.
             limit: Maximum number of tasks to load.
-            
+
         Returns:
             Number of tasks actually loaded.
         """
@@ -446,7 +444,7 @@ class DashboardPage(QWidget):
 
     def _set_loading_indicator_visible(self, visible: bool) -> None:
         """Show or hide the loading indicator.
-        
+
         Args:
             visible: True to show indicator, False to hide.
         """
@@ -455,19 +453,19 @@ class DashboardPage(QWidget):
     def _on_tab_changed(self, index: int) -> None:
         if index >= 0:
             self._stack.setCurrentIndex(index)
-        
+
         # Always cancel any active loader when switching tabs
         if index != 1:
             self._past_animator.cancel_entrances()
             self._past_loader.cancel()
             return
-        
+
         # Cancel any existing loader before starting new one
         self._past_loader.cancel()
-        
+
         # Start progressive loading
         # Check if we need to load OR if loading was interrupted
         if not self._rows_past or self._past_loader.has_more():
             self._past_loader.start()
-        
+
         self._past_animator.on_tab_shown()

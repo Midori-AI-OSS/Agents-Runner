@@ -11,10 +11,11 @@ from pathlib import Path
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QPlainTextEdit
 
-from agents_runner.artifacts import (
-    decrypt_artifact, ArtifactMeta, StagingArtifactMeta
+from agents_runner.artifacts import decrypt_artifact, ArtifactMeta, StagingArtifactMeta
+from agents_runner.ui.widgets.artifact_highlighter import (
+    ArtifactSyntaxHighlighter,
+    detect_language,
 )
-from agents_runner.widgets.artifact_highlighter import ArtifactSyntaxHighlighter, detect_language
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +40,13 @@ def format_timestamp(iso_timestamp: str) -> str:
 
 class PreviewLoader:
     """Helper class for loading artifact previews."""
-    
+
     def __init__(
         self,
         preview_label: QLabel,
         thumbnail_widget: QLabel,
         text_preview: QPlainTextEdit,
-        syntax_highlighter: ArtifactSyntaxHighlighter | None = None
+        syntax_highlighter: ArtifactSyntaxHighlighter | None = None,
     ):
         self.preview_label = preview_label
         self.thumbnail_widget = thumbnail_widget
@@ -53,7 +54,7 @@ class PreviewLoader:
         self.syntax_highlighter = syntax_highlighter
         self.thumbnail_original: QPixmap | None = None
         self.temp_files: list[Path] = []
-    
+
     def cleanup_temp_files(self) -> None:
         """Clean up temporary files."""
         for tmp_path in self.temp_files:
@@ -63,7 +64,7 @@ class PreviewLoader:
             except Exception as e:
                 logger.debug(f"Failed to cleanup temp file {tmp_path}: {e}")
         self.temp_files.clear()
-    
+
     def update_thumbnail_scale(self) -> None:
         """Update thumbnail to fit current widget size."""
         if self.thumbnail_original is None:
@@ -72,11 +73,12 @@ class PreviewLoader:
         if target_size.isEmpty():
             return
         from PySide6.QtCore import Qt
+
         scaled = self.thumbnail_original.scaled(
             target_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
         )
         self.thumbnail_widget.setPixmap(scaled)
-    
+
     def load_staging_thumbnail(self, artifact: StagingArtifactMeta) -> None:
         """Load thumbnail from staging artifact."""
         try:
@@ -89,12 +91,9 @@ class PreviewLoader:
                 logger.warning(f"Failed to load image: {artifact.filename}")
         except Exception as e:
             logger.error(f"Failed to load staging thumbnail: {e}")
-    
+
     def load_encrypted_thumbnail(
-        self,
-        artifact: ArtifactMeta,
-        task_id: str,
-        environment_id: str | None
+        self, artifact: ArtifactMeta, task_id: str, environment_id: str | None
     ) -> None:
         """Load thumbnail from encrypted artifact."""
         try:
@@ -113,16 +112,20 @@ class PreviewLoader:
                         self.update_thumbnail_scale()
                         self.thumbnail_widget.show()
                     else:
-                        logger.warning(f"Failed to load image: {artifact.original_filename}")
+                        logger.warning(
+                            f"Failed to load image: {artifact.original_filename}"
+                        )
                 else:
                     msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nFailed to decrypt"
                     self.preview_label.setText(msg)
 
         except Exception as e:
             logger.error(f"Failed to load thumbnail: {e}")
-            msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
+            msg = (
+                f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
+            )
             self.preview_label.setText(msg)
-    
+
     def load_staging_text(self, artifact: StagingArtifactMeta) -> None:
         """Load text content from staging artifact."""
         try:
@@ -135,12 +138,12 @@ class PreviewLoader:
                 )
                 self.preview_label.show()
                 return
-            
+
             # Check for binary content
             sample_size = min(8192, artifact.size_bytes)
             with open(artifact.path, "rb") as f:
                 sample = f.read(sample_size)
-            
+
             if b"\x00" in sample:
                 # Binary file detected
                 self.preview_label.setText(
@@ -150,11 +153,11 @@ class PreviewLoader:
                 )
                 self.preview_label.show()
                 return
-            
+
             # Load text content
-            text = artifact.path.read_text(encoding='utf-8', errors='replace')
+            text = artifact.path.read_text(encoding="utf-8", errors="replace")
             self.text_preview.setPlainText(text)
-            
+
             # Apply syntax highlighting if file is small enough
             highlight_threshold = 100 * 1024  # 100KB
             if artifact.size_bytes <= highlight_threshold:
@@ -171,19 +174,18 @@ class PreviewLoader:
             elif self.syntax_highlighter:
                 # Disable highlighting for large files
                 self.syntax_highlighter.set_language("text")
-            
+
             self.text_preview.show()
             self.preview_label.hide()
         except Exception as e:
             logger.error(f"Failed to load text: {e}")
-            self.preview_label.setText(f"{artifact.filename}\n\nError loading text: {str(e)}")
+            self.preview_label.setText(
+                f"{artifact.filename}\n\nError loading text: {str(e)}"
+            )
             self.preview_label.show()
-    
+
     def load_encrypted_text(
-        self,
-        artifact: ArtifactMeta,
-        task_id: str,
-        environment_id: str | None
+        self, artifact: ArtifactMeta, task_id: str, environment_id: str | None
     ) -> None:
         """Load text content from encrypted artifact."""
         try:
@@ -196,7 +198,7 @@ class PreviewLoader:
                 )
                 self.preview_label.show()
                 return
-            
+
             suffix = Path(artifact.original_filename).suffix
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 tmp_path = Path(tmp.name)
@@ -210,7 +212,7 @@ class PreviewLoader:
                     sample_size = min(8192, artifact.size_bytes)
                     with open(tmp_path, "rb") as f:
                         sample = f.read(sample_size)
-                    
+
                     if b"\x00" in sample:
                         # Binary file detected
                         self.preview_label.setText(
@@ -220,15 +222,17 @@ class PreviewLoader:
                         )
                         self.preview_label.show()
                         return
-                    
+
                     # Load text content
-                    text = tmp_path.read_text(encoding='utf-8', errors='replace')
+                    text = tmp_path.read_text(encoding="utf-8", errors="replace")
                     self.text_preview.setPlainText(text)
-                    
+
                     # Apply syntax highlighting if file is small enough
                     highlight_threshold = 100 * 1024  # 100KB
                     if artifact.size_bytes <= highlight_threshold:
-                        language = detect_language(artifact.original_filename, text[:1024])
+                        language = detect_language(
+                            artifact.original_filename, text[:1024]
+                        )
                         if language != "text":
                             if not self.syntax_highlighter:
                                 self.syntax_highlighter = ArtifactSyntaxHighlighter(
@@ -241,7 +245,7 @@ class PreviewLoader:
                     elif self.syntax_highlighter:
                         # Disable highlighting for large files
                         self.syntax_highlighter.set_language("text")
-                    
+
                     self.text_preview.show()
                     self.preview_label.hide()
                 else:
@@ -251,7 +255,9 @@ class PreviewLoader:
 
         except Exception as e:
             logger.error(f"Failed to load encrypted text: {e}")
-            msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
+            msg = (
+                f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
+            )
             self.preview_label.setText(msg)
             self.preview_label.show()
 
@@ -260,16 +266,16 @@ def open_staging_artifact(artifact: StagingArtifactMeta) -> None:
     """Open a staging artifact directly."""
     try:
         file_path = str(artifact.path)
-        
+
         if sys.platform == "darwin":
             subprocess.Popen(["open", file_path])
         elif sys.platform == "win32":
             os.startfile(file_path)
         else:
             subprocess.Popen(["xdg-open", file_path])
-        
+
         logger.info(f"Opened staging artifact: {artifact.filename}")
-    
+
     except Exception as e:
         logger.error(f"Failed to open staging artifact: {e}")
 
@@ -278,7 +284,7 @@ def open_encrypted_artifact(
     artifact: ArtifactMeta,
     task_id: str,
     environment_id: str | None,
-    temp_files: list[Path]
+    temp_files: list[Path],
 ) -> None:
     """Open an encrypted artifact."""
     try:
@@ -310,7 +316,7 @@ def edit_staging_artifact(artifact: StagingArtifactMeta) -> None:
     """Launch external editor for a staging artifact."""
     try:
         file_path = str(artifact.path)
-        
+
         # Determine editor command
         if sys.platform == "darwin":
             editor = ["open", "-e"]  # TextEdit on macOS
@@ -323,21 +329,18 @@ def edit_staging_artifact(artifact: StagingArtifactMeta) -> None:
                 editor = [editor_env]
             else:
                 editor = ["xdg-open"]
-        
+
         # Launch editor (non-blocking)
         subprocess.Popen(editor + [file_path])
-        
+
         logger.info(f"Launched editor for: {artifact.filename}")
-    
+
     except Exception as e:
         logger.error(f"Failed to launch editor: {e}")
 
 
 def download_artifact(
-    artifact: ArtifactMeta,
-    task_id: str,
-    environment_id: str | None,
-    dest_path: str
+    artifact: ArtifactMeta, task_id: str, environment_id: str | None, dest_path: str
 ) -> bool:
     """Download and decrypt an artifact to the specified path."""
     try:

@@ -32,11 +32,11 @@ class _MainWindowDashboardMixin:
 
     def _load_past_tasks_batch(self, offset: int, limit: int) -> int:
         """Load a batch of past tasks.
-        
+
         Args:
             offset: Starting offset for loading.
             limit: Maximum number of tasks to load.
-            
+
         Returns:
             Number of tasks successfully loaded.
         """
@@ -44,15 +44,13 @@ class _MainWindowDashboardMixin:
             offset = max(0, int(offset))
         except Exception:
             offset = 0
-        
+
         try:
             limit = max(1, int(limit))
         except Exception:
             limit = PAST_TASK_PAGE_SIZE
 
-        payloads = load_done_task_payloads(
-            self._state_path, offset=offset, limit=limit
-        )
+        payloads = load_done_task_payloads(self._state_path, offset=offset, limit=limit)
         loaded = 0
         for item in payloads:
             if not isinstance(item, dict):

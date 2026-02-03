@@ -321,7 +321,9 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "desktop_display": getattr(task, "desktop_display", ""),
         "artifacts": list(getattr(task, "artifacts", [])),
         "attempt_history": list(getattr(task, "attempt_history", [])),
-        "finalization_state": str(getattr(task, "finalization_state", "pending") or "pending"),
+        "finalization_state": str(
+            getattr(task, "finalization_state", "pending") or "pending"
+        ),
         "finalization_error": str(getattr(task, "finalization_error", "") or ""),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
@@ -333,7 +335,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
     git_payload = data.get("git")
     if not isinstance(git_payload, dict) or not git_payload:
         git_payload = None
-    
+
     # Migration: workspace_type from gh_management_mode
     # Prefer new key, fallback to old key
     workspace_type = data.get("workspace_type")
@@ -347,7 +349,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
             workspace_type = "none"
 
     workspace_type = workspace_type or "none"
-    
+
     task = task_cls(
         task_id=str(data.get("task_id") or ""),
         prompt=sanitize_prompt(str(data.get("prompt") or "")),
@@ -405,9 +407,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
     return task
 
 
-def _deserialize_runner_config(
-    payload: dict[str, Any], *, task_id: str
-) -> Any:
+def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
     try:
         from agents_runner.docker_runner import DockerRunnerConfig
     except Exception:
@@ -547,9 +547,7 @@ def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
 
         result[provider_name] = AgentWatchState(
             provider_name=provider_name,
-            support_level=SupportLevel(
-                data.get("support_level", "unknown")
-            ),
+            support_level=SupportLevel(data.get("support_level", "unknown")),
             status=AgentStatus(data.get("status", "ready")),
             windows=windows,
             last_rate_limited_at=last_rate_limited_at,
@@ -563,9 +561,7 @@ def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def save_watch_state(
-    state: dict[str, Any], watch_states: dict[str, Any]
-) -> None:
+def save_watch_state(state: dict[str, Any], watch_states: dict[str, Any]) -> None:
     """Save agent watch state to persistence.
 
     Args:

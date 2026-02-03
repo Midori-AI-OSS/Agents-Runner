@@ -50,9 +50,7 @@ def build_agent_command_parts(
 
     # Route to agent-specific builder
     if cmd_parts[0] == "codex":
-        return _build_codex_command(
-            cmd_parts, agent_cli_args, prompt, is_help_launch
-        )
+        return _build_codex_command(cmd_parts, agent_cli_args, prompt, is_help_launch)
     elif cmd_parts[0] == "claude":
         return _build_claude_command(
             cmd_parts, agent_cli_args, prompt, is_help_launch, help_repos_dir

@@ -178,14 +178,14 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 uv_project_env="${UV_PROJECT_ENVIRONMENT:-/tmp/agents-runner-precommit-uv-env}"
-log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run --no-sync python -m compileall -q agents_runner main.py"
-if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run --no-sync python -m compileall -q agents_runner main.py; then
+log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run python -m compileall -q agents_runner main.py"
+if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run python -m compileall -q agents_runner main.py; then
   die "Compile check failed. Fix by running the command above and addressing the reported issues."
 fi
 
 log "Running import smoke test"
-log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run --no-sync python -"
-if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run --no-sync python - <<'PY'
+log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run python -"
+if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run python - <<'PY'
 import importlib
 
 modules = [

@@ -124,7 +124,7 @@ class _MainWindowPreflightMixin:
             gh_recreate_if_needed=gh_recreate_if_needed,
             gh_base_branch=gh_base_branch,
         )
-        
+
         # Clean up any existing bridge/thread for this task to prevent duplicate log emissions
         old_bridge = self._bridges.pop(task_id, None)
         old_thread = self._threads.pop(task_id, None)
@@ -135,9 +135,9 @@ class _MainWindowPreflightMixin:
                 old_bridge.state.disconnect()
                 old_bridge.done.disconnect()
                 # Preflight bridges don't have these signals, but disconnect them for consistency
-                if hasattr(old_bridge, 'retry_attempt'):
+                if hasattr(old_bridge, "retry_attempt"):
                     old_bridge.retry_attempt.disconnect()
-                if hasattr(old_bridge, 'agent_switched'):
+                if hasattr(old_bridge, "agent_switched"):
                     old_bridge.agent_switched.disconnect()
             except Exception:
                 pass
@@ -284,15 +284,15 @@ class _MainWindowPreflightMixin:
             settings_preflight_script=settings_preflight_script,
             environment_preflight_script=environment_preflight_script,
         )
-    
+
     def _get_extra_mounts_with_cache(self, env: Environment | None) -> list[str]:
         """Get extra mounts list with optional host cache mount if enabled."""
         extra_mounts = list(env.extra_mounts) if env else []
-        
+
         # Add host cache mount if enabled in settings
         if self._settings_data.get("mount_host_cache", False):
             host_cache = os.path.expanduser("~/.cache")
             container_cache = "/home/midori-ai/.cache"
             extra_mounts.append(f"{host_cache}:{container_cache}:rw")
-        
+
         return extra_mounts

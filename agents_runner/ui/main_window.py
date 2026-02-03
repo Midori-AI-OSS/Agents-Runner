@@ -25,7 +25,7 @@ from agents_runner.ui.pages import NewTaskPage
 from agents_runner.ui.pages import SettingsPage
 from agents_runner.ui.pages import TaskDetailsPage
 from agents_runner.ui.task_model import Task
-from agents_runner.widgets import GlassCard
+from agents_runner.ui.widgets import GlassCard
 
 from agents_runner.ui.main_window_capacity import _MainWindowCapacityMixin
 from agents_runner.ui.main_window_dashboard import _MainWindowDashboardMixin
@@ -136,7 +136,12 @@ class MainWindow(
         self._recovery_log_stop: dict[str, threading.Event] = {}
         self._finalization_threads: dict[str, threading.Thread] = {}
         self._recovery_ticker = QTimer(self)
-        self._recovery_ticker.setInterval(1000)
+        # Recovery tick interval: 5 seconds (reduced from 1 second)
+        # Rationale: Event-driven paths handle normal operation immediately.
+        # Recovery tick is a safety net for edge cases (app restart, missed events,
+        # container state sync). 5 seconds provides fast recovery while reducing
+        # check frequency by 80%. See .agents/implementation/recovery-tick-timing-analysis.md
+        self._recovery_ticker.setInterval(5000)
         self._recovery_ticker.timeout.connect(self._tick_recovery)
         self._recovery_ticker.start()
 

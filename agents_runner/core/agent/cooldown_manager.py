@@ -87,9 +87,7 @@ class CooldownManager:
             self._watch_states[agent_key] = watch_state
 
         # Record rate-limit event
-        RateLimitDetector.record_rate_limit(
-            watch_state, duration_seconds, reason
-        )
+        RateLimitDetector.record_rate_limit(watch_state, duration_seconds, reason)
 
         return watch_state
 

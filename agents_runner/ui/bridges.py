@@ -15,8 +15,12 @@ from agents_runner.execution.supervisor import TaskSupervisor
 class TaskRunnerBridge(QObject):
     state = Signal(str, dict)  # task_id, state
     log = Signal(str, str)  # task_id, log line
-    done = Signal(str, int, object, list, dict)  # task_id, exit_code, error, artifacts, metadata
-    retry_attempt = Signal(str, int, str, float)  # task_id, attempt_number, agent, delay_seconds
+    done = Signal(
+        str, int, object, list, dict
+    )  # task_id, exit_code, error, artifacts, metadata
+    retry_attempt = Signal(
+        str, int, str, float
+    )  # task_id, attempt_number, agent, delay_seconds
     agent_switched = Signal(str, str, str)  # task_id, from_agent, to_agent
 
     def __init__(
@@ -32,13 +36,15 @@ class TaskRunnerBridge(QObject):
         super().__init__()
         self.task_id = task_id
         self._use_supervisor = use_supervisor
-        
+
         if mode == "preflight":
             self._worker = DockerPreflightWorker(
                 config=config,
                 on_state=lambda state: self.state.emit(self.task_id, state),
                 on_log=lambda line: self.log.emit(self.task_id, line),
-                on_done=lambda code, err: self.done.emit(self.task_id, code, err, [], {}),
+                on_done=lambda code, err: self.done.emit(
+                    self.task_id, code, err, [], {}
+                ),
             )
         elif use_supervisor and mode != "preflight":
             # Use supervisor for agent runs
@@ -116,6 +122,7 @@ class TaskRunnerBridge(QObject):
             return
         self._worker.request_stop()
 
+    @Slot()
     def run(self) -> None:
         try:
             self._worker.run()
@@ -123,5 +130,6 @@ class TaskRunnerBridge(QObject):
             # Ensure done signal is always emitted, even on unhandled exceptions
             # This guarantees finalization (including cleanup) always runs
             import traceback
+
             error_msg = f"Worker exception: {exc}\n{traceback.format_exc()}"
             self.done.emit(self.task_id, 1, error_msg, [], {})

@@ -18,7 +18,7 @@ _TOKEN_PATTERNS = [
     re.compile(r"\bghu_[A-Za-z0-9]{20,}\b"),
     # GitHub Refresh tokens
     re.compile(r"\bghr_[A-Za-z0-9]{20,}\b"),
-    # GitHub Server-to-Server tokens  
+    # GitHub Server-to-Server tokens
     re.compile(r"\bghs_[A-Za-z0-9]{20,}\b"),
 ]
 

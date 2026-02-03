@@ -7,7 +7,7 @@ from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
-from agents_runner.style.palette import TEXT_PRIMARY
+from agents_runner.ui.style.palette import TEXT_PRIMARY
 
 
 def lucide_icon(
@@ -65,7 +65,9 @@ def _render_lucide_icon(
         HiDPI-aware QPixmap
     """
     # Load SVG file
-    icon_path = Path(__file__).parent.parent / "assets" / "icons" / "lucide" / f"{name}.svg"
+    icon_path = (
+        Path(__file__).parent.parent / "assets" / "icons" / "lucide" / f"{name}.svg"
+    )
 
     if not icon_path.exists():
         # Return empty pixmap if icon not found

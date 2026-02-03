@@ -31,8 +31,8 @@ from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import _task_display_status
 from agents_runner.ui.utils import _rgba
 from agents_runner.ui.utils import _status_color
-from agents_runner.widgets import BouncingLoadingBar
-from agents_runner.widgets import StatusGlyph
+from agents_runner.ui.widgets import BouncingLoadingBar
+from agents_runner.ui.widgets import StatusGlyph
 
 
 class ElidedLabel(QLabel):

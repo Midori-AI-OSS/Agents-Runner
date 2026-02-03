@@ -19,3 +19,4 @@ This section is appended because Claude CLI is selected and available for this r
 
 **Prompt contract**
 - Treat `<PROMPT>` as the full task input (non-interactive); return results directly and keep meta commentary minimal
+- For large-scope / long-running work, prefer delegating to Copilot (as Router/Orchestrator) when available, rather than orchestrating across multiple agent CLIs yourself.

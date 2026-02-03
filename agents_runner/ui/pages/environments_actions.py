@@ -28,11 +28,11 @@ class _EnvironmentsPageActionsMixin:
         gh_available = bool(is_gh_available())
         workspace_type = str(self._workspace_type_combo.currentData() or WORKSPACE_NONE)
         locked = env is not None
-        
+
         if locked and env is not None:
             # Sync UI to match environment's workspace_type
             desired_workspace_type = env.workspace_type or WORKSPACE_NONE
-            
+
             if desired_workspace_type != workspace_type:
                 idx = self._workspace_type_combo.findData(desired_workspace_type)
                 if idx >= 0:
@@ -42,7 +42,7 @@ class _EnvironmentsPageActionsMixin:
                     finally:
                         self._workspace_type_combo.blockSignals(False)
                 workspace_type = desired_workspace_type
-            
+
             desired_target = str(env.workspace_target or "")
             if (self._workspace_target.text() or "") != desired_target:
                 self._workspace_target.blockSignals(True)
@@ -50,7 +50,7 @@ class _EnvironmentsPageActionsMixin:
                     self._workspace_target.setText(desired_target)
                 finally:
                     self._workspace_target.blockSignals(False)
-            
+
             desired_gh = bool(getattr(env, "gh_use_host_cli", True))
             if bool(self._gh_use_host_cli.isChecked()) != desired_gh:
                 self._gh_use_host_cli.blockSignals(True)
@@ -72,9 +72,7 @@ class _EnvironmentsPageActionsMixin:
 
     def _on_new(self) -> None:
         wizard = NewEnvironmentWizard(self)
-        wizard.environment_created.connect(
-            lambda env: self.updated.emit(env.env_id)
-        )
+        wizard.environment_created.connect(lambda env: self.updated.emit(env.env_id))
         wizard.exec()
 
     def _on_delete(self) -> None:
@@ -118,16 +116,18 @@ class _EnvironmentsPageActionsMixin:
             max_agents_running = -1
 
         # Get workspace type and target from existing environment
-        workspace_type = existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
-        workspace_target = str(existing.workspace_target or "").strip() if existing else ""
+        workspace_type = (
+            existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
+        )
+        workspace_target = (
+            str(existing.workspace_target or "").strip() if existing else ""
+        )
         gh_locked = True
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
         )
         gh_context_enabled = (
-            bool(getattr(existing, "gh_context_enabled", False))
-            if existing
-            else False
+            bool(getattr(existing, "gh_context_enabled", False)) if existing else False
         )
 
         if existing and workspace_type == WORKSPACE_CLONED:
@@ -152,14 +152,14 @@ class _EnvironmentsPageActionsMixin:
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
-        
+
         # Read cross-agents configuration
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
         # Read preflight scripts based on container caching state
         container_caching_enabled = bool(self._container_caching_enabled.isChecked())
-        
+
         if container_caching_enabled:
             # Dual-editor mode: read from both editors
             cached_preflight_script = (
@@ -254,16 +254,18 @@ class _EnvironmentsPageActionsMixin:
             max_agents_running = -1
 
         # Get workspace type and target from existing environment
-        workspace_type = existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
-        workspace_target = str(existing.workspace_target or "").strip() if existing else ""
+        workspace_type = (
+            existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
+        )
+        workspace_target = (
+            str(existing.workspace_target or "").strip() if existing else ""
+        )
         gh_locked = True
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
         )
         gh_context_enabled = (
-            bool(getattr(existing, "gh_context_enabled", False))
-            if existing
-            else False
+            bool(getattr(existing, "gh_context_enabled", False)) if existing else False
         )
 
         if existing and workspace_type == WORKSPACE_CLONED:
@@ -289,14 +291,14 @@ class _EnvironmentsPageActionsMixin:
         name = (self._name.text() or "").strip() or env_id
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
-        
+
         # Read cross-agents configuration
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
         # Read preflight scripts based on container caching state
         container_caching_enabled = bool(self._container_caching_enabled.isChecked())
-        
+
         if container_caching_enabled:
             # Dual-editor mode: read from both editors
             cached_preflight_script = (
@@ -348,9 +350,7 @@ class _EnvironmentsPageActionsMixin:
             name=name,
             color=str(self._color.currentData() or "slate"),
             max_agents_running=max_agents_running,
-            headless_desktop_enabled=bool(
-                self._headless_desktop_enabled.isChecked()
-            ),
+            headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
             cached_preflight_script=cached_preflight_script,

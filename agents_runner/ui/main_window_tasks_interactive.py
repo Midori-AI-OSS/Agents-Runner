@@ -75,11 +75,7 @@ class _MainWindowTasksInteractiveMixin:
         task_id = uuid4().hex[:10]
         task_token = f"interactive-{task_id}"
 
-        workspace_type = (
-            env.workspace_type
-            if env
-            else "none"
-        )
+        workspace_type = env.workspace_type if env else "none"
         host_workdir, ready, message = self._new_task_workspace(env, task_id=task_id)
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
@@ -91,15 +87,23 @@ class _MainWindowTasksInteractiveMixin:
 
         if env and os.path.isdir(host_workdir):
             try:
-                from agents_runner.midoriai_template import scan_midoriai_agents_template
+                from agents_runner.midoriai_template import (
+                    scan_midoriai_agents_template,
+                )
 
                 # Only update template detection if not already set
                 # For cloned workspaces, we scan once and persist the result
                 if env.midoriai_template_likelihood == 0.0:
                     detection = scan_midoriai_agents_template(host_workdir)
-                    env.midoriai_template_likelihood = detection.midoriai_template_likelihood
-                    env.midoriai_template_detected = detection.midoriai_template_detected
-                    env.midoriai_template_detected_path = detection.midoriai_template_detected_path
+                    env.midoriai_template_likelihood = (
+                        detection.midoriai_template_likelihood
+                    )
+                    env.midoriai_template_detected = (
+                        detection.midoriai_template_detected
+                    )
+                    env.midoriai_template_detected_path = (
+                        detection.midoriai_template_detected_path
+                    )
                     save_environment(env)
                     self._environments[env.env_id] = env
             except Exception:
@@ -108,11 +112,7 @@ class _MainWindowTasksInteractiveMixin:
         desired_base = str(base_branch or "").strip()
 
         # Save the selected branch for cloned environments
-        if (
-            env
-            and env.workspace_type == WORKSPACE_CLONED
-            and desired_base
-        ):
+        if env and env.workspace_type == WORKSPACE_CLONED and desired_base:
             env.gh_last_base_branch = desired_base
             save_environment(env)
             # Update in-memory copy to persist across tab changes and reloads
@@ -198,7 +198,7 @@ class _MainWindowTasksInteractiveMixin:
         container_name = f"agents-runner-tui-it-{task_id}"
         container_agent_dir = container_config_dir(agent_cli)
         config_extra_mounts = additional_config_mounts(agent_cli, host_codex)
-        
+
         # Add cross-agent config mounts if enabled
         cross_agent_mounts = self._compute_cross_agent_config_mounts(
             env=env,
@@ -207,7 +207,7 @@ class _MainWindowTasksInteractiveMixin:
             settings=self._settings_data,
         )
         config_extra_mounts.extend(cross_agent_mounts)
-        
+
         container_workdir = "/home/midori-ai/workspace"
 
         task = Task(
@@ -305,28 +305,30 @@ class _MainWindowTasksInteractiveMixin:
                     break
                 except Exception:
                     time.sleep(0.2)
-            
+
             # Encrypt finish file as artifact before deleting
             try:
                 from agents_runner.artifacts import encrypt_artifact
-                
+
                 task_dict = {"id": task_id, "task_id": task_id}
                 env_name = getattr(self, "_current_env_name", "unknown")
-                
+
                 artifact_uuid = encrypt_artifact(
                     task_dict=task_dict,
                     env_name=env_name,
                     source_path=finish_path,
                     original_filename=os.path.basename(finish_path),
                 )
-                
+
                 if artifact_uuid:
-                    print(f"[finish] Encrypted finish file as artifact: {artifact_uuid}")
+                    print(
+                        f"[finish] Encrypted finish file as artifact: {artifact_uuid}"
+                    )
                 else:
                     print("[finish] Failed to encrypt finish file, but continuing")
             except Exception as exc:
                 print(f"[finish] Error encrypting finish file: {exc}")
-            
+
             # Delete plaintext finish file
             try:
                 if os.path.exists(finish_path):
@@ -334,7 +336,7 @@ class _MainWindowTasksInteractiveMixin:
                     print(f"[finish] Deleted plaintext finish file: {finish_path}")
             except Exception as exc:
                 print(f"[finish] Warning: failed to delete finish file: {exc}")
-            
+
             self.interactive_finished.emit(task_id, int(exit_code))
 
         threading.Thread(target=_worker, daemon=True).start()
