@@ -22,6 +22,7 @@ import os
 import subprocess
 import tempfile
 import time
+from dataclasses import replace
 from threading import Event
 from typing import Any
 
@@ -213,7 +214,8 @@ def test_task_cancel_stops_container(test_config):
     task_id = f"test-cancel-{int(time.time() * 1000)}"
 
     # Modify config to run a long-running command
-    config = config._replace(
+    config = replace(
+        config,
         task_id=task_id,
         agent_cli="sh",
         agent_cli_args=["-c", "sleep 60; echo done"],
@@ -315,7 +317,8 @@ def test_task_kill_removes_container(test_config):
     task_id = f"test-kill-{int(time.time() * 1000)}"
 
     # Run a long command
-    config = config._replace(
+    config = replace(
+        config,
         task_id=task_id,
         agent_cli="sh",
         agent_cli_args=["-c", "sleep 60; echo done"],
