@@ -16,5 +16,5 @@ VERSION CONTROL
   - `git commit -m 'Your descriptive message'` to commit
 - Commit frequently - after each logical change or completed feature.
 - Commits are preserved even if the task is interrupted.
-- You do NOT need to create a PR manually; just push the branch.
+- Do not push changes to the remote repository.
 - A pull request will be created automatically after task completion.
