@@ -42,7 +42,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - No backward compatibility shims by default: do not preserve old code paths “just in case”; only add compatibility layers when the task explicitly requires it.
 - Minimal documentation, minimal logging: prefer reading code and docstrings; do not add docs/logs unless required to diagnose a specific issue or prevent a crash.
 - Do not update `README.md`.
-- Avoid monolith files: **soft max 300 lines per file**, **hard max 600 lines per file** (split modules/classes when approaching the soft limit).
+- Avoid monolith files: **soft max 500 lines per file**, **hard max 1000 lines per file** (split modules/classes when approaching the soft limit).
 - Use structured commit messages: `[TYPE] Concise summary`
 - Break large changes into reviewable commits.
 - Versioning: use 4-part `MAJOR.MINOR.BUILD.TASK` in `pyproject.toml` `project.version` (example `0.1.12.345`). When you move task files from `.agents/tasks/wip/` to `.agents/tasks/done/`, bump `TASK` by `+1` per file moved (if multiple are completed at once, bump by that count). If no task file is moved, do not bump the version unless explicitly instructed. When `TASK` would reach `100000`, reset it to `0` and bump `BUILD` by `+1`. Only bump `MINOR`/`MAJOR` intentionally and reset lower fields to `0`.
@@ -72,6 +72,9 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - Keep boundaries explicit:
   - Put core logic in pure functions/classes.
   - Keep side effects (filesystem, subprocess, network, Docker) in narrow adapter modules so they are easy to test.
+  - Prefer small, named helpers over long methods; extract repeated logic into functions or classes.
+  - Keep reusable logic separate from wiring; compute data first, then apply it in UI/widgets/themes.
+  - For new features, add or reuse at least one shared helper instead of duplicating logic.
 
 - Format with Ruff (before every commit): `uv run ruff format .`
 - Lint with Ruff (treat failures as blockers): `uv run ruff check .`
