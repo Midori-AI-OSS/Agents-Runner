@@ -61,6 +61,7 @@ class _MainWindowTasksAgentMixin:
             return
 
         # Archive tasks and clean up workspaces
+        archived_tasks: list[Task] = []
         data_dir = os.path.dirname(self._state_path)
         for task_id in sorted(to_remove):
             task = self._tasks.get(task_id)
@@ -68,6 +69,7 @@ class _MainWindowTasksAgentMixin:
                 continue
             status = (task.status or "").lower()
             save_task_payload(self._state_path, serialize_task(task), archived=True)
+            archived_tasks.append(task)
 
             # Clean up task workspace (if using cloned GitHub repo)
             if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
@@ -88,6 +90,10 @@ class _MainWindowTasksAgentMixin:
             self._bridges.pop(task_id, None)
             self._run_started_s.pop(task_id, None)
             self._dashboard_log_refresh_s.pop(task_id, None)
+        for task in archived_tasks:
+            env = self._environments.get(task.environment_id)
+            stain = env.color if env else None
+            self._dashboard.upsert_past_task(task, stain=stain)
         self._schedule_save()
 
     def _start_task_from_ui(
