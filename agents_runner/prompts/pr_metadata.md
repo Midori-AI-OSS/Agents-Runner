@@ -19,5 +19,5 @@ PR METADATA (non-interactive only)
 GIT WORKFLOW (cloned repo environments)
 - A task/work branch is already created and checked out for you.
 - You do NOT need to create or submit a pull request yourself.
-- Just commit your changes and push the branch to the remote repository.
+- Commit your changes. Do not push changes to the remote repository.
 - The pull request will be created automatically at the end of the run.
