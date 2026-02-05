@@ -1,7 +1,7 @@
 """Standalone Qt application for displaying noVNC in QWebEngineView.
 
 This runs as a separate process to isolate QtWebEngine crashes from the main UI.
-Invocation: python -m agents_runner.desktop_viewer --url <novnc_url> [--title <title>]
+Invocation: python -m agents_runner.ui.desktop_viewer --url <novnc_url> [--title <title>]
 """
 
 from __future__ import annotations
@@ -124,7 +124,7 @@ def run_desktop_viewer(args: list[str]) -> int:
     """
     parser = argparse.ArgumentParser(
         description="Desktop viewer for noVNC (out-of-process)",
-        prog="python -m agents_runner.desktop_viewer",
+        prog="python -m agents_runner.ui.desktop_viewer",
     )
     parser.add_argument(
         "--url",
