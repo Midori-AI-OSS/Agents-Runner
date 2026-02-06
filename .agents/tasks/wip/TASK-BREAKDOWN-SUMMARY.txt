@@ -1,0 +1,63 @@
+TASK BREAKDOWN SUMMARY
+======================
+
+User Request: "Do both of the tasks fully, deeply audit them after the coders are done."
+
+Parent Tasks:
+- 025-unify-runplan-pydantic.md
+- 026-agent-system-plugins.md
+
+CREATED SUBTASKS (17 total):
+=============================
+
+Task 025: Unified Run Planning (7 impl + 1 audit)
+--------------------------------------------------
+025-01-add-pydantic-models.md          - Add Pydantic models for run planning
+025-02-implement-planner.md            - Implement plan_run conversion function
+025-03-docker-runner-adapter.md        - Docker runner with testable adapter interface
+025-04-add-unit-tests.md               - Unit tests for planner and runner
+025-05-migrate-noninteractive.md       - Switch non-interactive execution to unified flow
+025-06-migrate-interactive-ui.md       - Switch interactive UI to unified flow
+025-07-cleanup-duplicates.md           - Remove legacy planning codepaths
+025-99-deep-audit.md                   - AUDIT: Comprehensive post-implementation review
+
+Task 026: Agent System Plugins (8 impl + 1 audit)
+--------------------------------------------------
+026-01-plugin-models-registry.md       - Plugin infrastructure and registry
+026-02-codex-plugin.md                 - Codex agent plugin implementation
+026-03-claude-plugin.md                - Claude agent plugin implementation
+026-04-copilot-plugin.md               - Copilot agent plugin (interactive disabled)
+026-05-gemini-plugin.md                - Gemini agent plugin implementation
+026-06-ui-theme-integration.md         - UI theme selection via plugin system
+026-07-planner-plugin-integration.md   - Integrate planner with plugin queries
+026-08-cleanup-branching.md            - Remove hardcoded agent branching logic
+026-99-deep-audit.md                   - AUDIT: Comprehensive post-implementation review
+
+EXECUTION ORDER:
+================
+1. Complete tasks 025-01 through 025-07 (sequential, task 026 depends on 025)
+2. Complete tasks 026-01 through 026-08 (sequential)
+3. Execute 025-99-deep-audit.md (auditor reviews task 025)
+4. Execute 026-99-deep-audit.md (auditor reviews task 026)
+
+TASK PRINCIPLES:
+================
+- Each task scoped to single execution-agent run
+- Minimal diffs per task
+- One focused commit per task
+- Clear acceptance criteria
+- Dependencies explicitly noted
+
+AUDIT TASKS:
+============
+Both audit tasks include comprehensive checklists covering:
+- Code quality and type safety
+- Architecture boundaries and isolation
+- Functionality verification
+- Testing coverage
+- Integration with existing systems
+- Migration completeness
+
+Auditors must either:
+- Delete audit task if all checks pass
+- Move parent task back to wip with detailed notes if issues found
