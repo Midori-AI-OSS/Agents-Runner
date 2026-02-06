@@ -142,17 +142,8 @@ def _build_docker_spec(request: RunRequest, agent_plan) -> DockerSpec:  # type: 
         )
     ]
 
-    # Add config directory mount
-    config_dst = Path(CONTAINER_WORKDIR).parent / ".config"
-    mounts.append(
-        MountSpec(
-            src=request.host_config_dir,
-            dst=config_dst,
-            mode="rw",
-        )
-    )
-
     # Add plugin-specific mounts (convert from agent_systems.models.MountSpec to planner.models.MountSpec)
+    # Note: Plugins handle their own config mounts to align with established container_config_dir() convention
     for plugin_mount in agent_plan.mounts:
         mounts.append(
             MountSpec(

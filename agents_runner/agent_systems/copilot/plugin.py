@@ -68,9 +68,11 @@ class CopilotPlugin(AgentSystemPlugin):
         # Add prompt with -i flag for non-interactive mode
         argv.extend(["-i", req.prompt])
 
-        # Define config mount: ~/.copilot from host to container
-        copilot_config_host = Path.home() / ".copilot"
-        copilot_config_container = req.context.config_container / ".copilot"
+        # Define config mount using the configured host config directory
+        # Host: <config_host> (respects user-selected config directory)
+        # Container: /home/midori-ai/.copilot (aligns with container_config_dir("copilot"))
+        copilot_config_host = req.context.config_host
+        copilot_config_container = Path("/home/midori-ai") / ".copilot"
 
         mounts = [
             MountSpec(

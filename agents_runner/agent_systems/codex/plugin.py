@@ -89,9 +89,11 @@ class CodexPlugin(AgentSystemPlugin):
         # Append prompt as positional argument
         argv.append(req.prompt)
 
-        # Define config mount: ~/.codex from host to container
-        codex_config_host = Path.home() / ".codex"
-        codex_config_container = req.context.config_container / ".codex"
+        # Define config mount using the configured host config directory
+        # Host: <config_host> (respects user-selected config directory)
+        # Container: /home/midori-ai/.codex (aligns with container_config_dir("codex"))
+        codex_config_host = req.context.config_host
+        codex_config_container = Path("/home/midori-ai") / ".codex"
 
         mounts = [
             MountSpec(

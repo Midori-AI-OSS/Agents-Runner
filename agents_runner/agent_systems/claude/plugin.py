@@ -57,9 +57,11 @@ class ClaudePlugin(AgentSystemPlugin):
         # Append prompt as positional argument
         argv.append(req.prompt)
 
-        # Define config mount: ~/.claude from host to container
-        claude_config_host = Path.home() / ".claude"
-        claude_config_container = req.context.config_container / ".claude"
+        # Define config mount using the configured host config directory
+        # Host: <config_host> (respects user-selected config directory)
+        # Container: /home/midori-ai/.claude (aligns with container_config_dir("claude"))
+        claude_config_host = req.context.config_host
+        claude_config_container = Path("/home/midori-ai") / ".claude"
 
         mounts = [
             MountSpec(
@@ -71,9 +73,9 @@ class ClaudePlugin(AgentSystemPlugin):
 
         # Claude Code stores user-level settings in ~/.claude.json alongside
         # ~/.claude directory. Mount the sibling file if present.
-        claude_json_host = Path.home() / ".claude.json"
+        claude_json_host = claude_config_host.parent / ".claude.json"
         if claude_json_host.is_file():
-            claude_json_container = req.context.config_container / ".claude.json"
+            claude_json_container = Path("/home/midori-ai") / ".claude.json"
             mounts.append(
                 MountSpec(
                     src=claude_json_host,

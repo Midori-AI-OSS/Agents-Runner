@@ -65,9 +65,11 @@ class GeminiPlugin(AgentSystemPlugin):
         # Add prompt with -i flag for interactive prompt delivery
         argv.extend(["-i", req.prompt])
 
-        # Define config mount: ~/.gemini from host to container
-        gemini_config_host = Path.home() / ".gemini"
-        gemini_config_container = req.context.config_container / ".gemini"
+        # Define config mount using the configured host config directory
+        # Host: <config_host> (respects user-selected config directory)
+        # Container: /home/midori-ai/.gemini (aligns with container_config_dir("gemini"))
+        gemini_config_host = req.context.config_host
+        gemini_config_container = Path("/home/midori-ai") / ".gemini"
 
         mounts = [
             MountSpec(
