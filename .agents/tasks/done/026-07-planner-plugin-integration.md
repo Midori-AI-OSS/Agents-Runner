@@ -23,3 +23,13 @@ Update run planner from task 025 to call agent system plugins instead of string 
 - Tests pass
 - Passes linting
 - One focused commit: `[REFACTOR] Migrate planner to use agent system plugins`
+
+## Completion Notes
+✅ Task completed successfully. The planner now uses the agent system plugin registry:
+- Removed dependency on `build_noninteractive_cmd` and `container_config_dir`
+- Planner queries plugins via `get_plugin(system_name)` and calls `plugin.plan()`
+- Converts plugin outputs (ExecSpec, MountSpec) to planner models
+- Interactive support is enforced via plugin capabilities
+- All 11 tests pass after updating to account for plugin-specific mounts
+- Linting passes (ruff format + ruff check)
+- Committed as: `[REFACTOR] Migrate planner to use agent system plugins`
