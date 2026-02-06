@@ -31,6 +31,12 @@ class GeminiPlugin(AgentSystemPlugin):
     )
     ui_theme: UiThemeSpec | None = UiThemeSpec(theme_name="gemini")
     install_command: str = 'echo "Gemini CLI installation required"'
+    display_name: str | None = "Google Gemini"
+    github_url: str | None = "https://github.com/google-gemini/gemini-cli"
+    config_dir_name: str | None = ".gemini"
+    default_interactive_command: str | None = (
+        "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace"
+    )
 
     def plan(self, req: AgentSystemRequest) -> AgentSystemPlan:
         """Generate an execution plan for Gemini agent.

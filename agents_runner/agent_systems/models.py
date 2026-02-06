@@ -93,6 +93,10 @@ class AgentSystemPlugin(BaseModel):
     capabilities: CapabilitySpec = Field(default_factory=CapabilitySpec)
     ui_theme: UiThemeSpec | None = None
     install_command: str = 'echo "planned"'
+    display_name: str | None = None
+    github_url: str | None = None
+    config_dir_name: str | None = None
+    default_interactive_command: str | None = None
 
     @abstractmethod
     def plan(self, req: AgentSystemRequest) -> AgentSystemPlan:

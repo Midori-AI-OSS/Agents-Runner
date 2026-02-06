@@ -11,6 +11,7 @@ from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.ui.utils import _looks_like_agent_help_command
 from agents_runner.environments import Environment
+from agents_runner.agent_systems.registry import get_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ class _MainWindowSettingsMixin:
         self._new_task.set_stt_mode("offline")
 
     def _apply_settings(self, settings: dict) -> None:
+        from agents_runner.agent_systems.registry import list_plugins
+
         merged = dict(self._settings_data)
         merged.update(settings or {})
         merged.pop("stt_mode", None)
@@ -39,55 +42,44 @@ class _MainWindowSettingsMixin:
             shell_value = "bash"
         merged["shell"] = shell_value
 
-        host_codex_dir = os.path.expanduser(
-            str(merged.get("host_codex_dir") or "").strip()
-        )
-        if not host_codex_dir:
-            host_codex_dir = os.path.expanduser("~/.codex")
-        merged["host_codex_dir"] = host_codex_dir
+        # Set config directories for all registered plugins
+        for plugin_name in list_plugins():
+            plugin = get_plugin(plugin_name)
+            if not plugin or not plugin.config_dir_name:
+                continue
 
-        host_claude_dir = os.path.expanduser(
-            str(merged.get("host_claude_dir") or "").strip()
-        )
-        if not host_claude_dir:
-            host_claude_dir = os.path.expanduser("~/.claude")
-        merged["host_claude_dir"] = host_claude_dir
-
-        host_copilot_dir = os.path.expanduser(
-            str(merged.get("host_copilot_dir") or "").strip()
-        )
-        if not host_copilot_dir:
-            host_copilot_dir = os.path.expanduser("~/.copilot")
-        merged["host_copilot_dir"] = host_copilot_dir
-
-        host_gemini_dir = os.path.expanduser(
-            str(merged.get("host_gemini_dir") or "").strip()
-        )
-        if not host_gemini_dir:
-            host_gemini_dir = os.path.expanduser("~/.gemini")
-        merged["host_gemini_dir"] = host_gemini_dir
+            config_dir_key = f"host_{plugin.name}_dir"
+            config_dir = os.path.expanduser(
+                str(merged.get(config_dir_key) or "").strip()
+            )
+            if not config_dir:
+                config_dir = os.path.expanduser(f"~/{plugin.config_dir_name}")
+            merged[config_dir_key] = config_dir
 
         merged["preflight_enabled"] = bool(merged.get("preflight_enabled") or False)
         merged["preflight_script"] = str(merged.get("preflight_script") or "")
-        merged["interactive_command"] = str(
-            merged.get("interactive_command") or "--sandbox danger-full-access"
-        )
-        merged["interactive_command_claude"] = str(
-            merged.get("interactive_command_claude") or ""
-        )
-        merged["interactive_command_copilot"] = str(
-            merged.get("interactive_command_copilot") or ""
-        )
-        merged["interactive_command_gemini"] = str(
-            merged.get("interactive_command_gemini") or ""
-        )
-        for key in (
-            "interactive_command",
-            "interactive_command_claude",
-            "interactive_command_copilot",
-            "interactive_command_gemini",
-        ):
+
+        # Set interactive commands for all registered plugins
+        interactive_keys = []
+        for plugin_name in list_plugins():
+            plugin = get_plugin(plugin_name)
+            if not plugin:
+                continue
+
+            if plugin.name == "codex":
+                key = "interactive_command"
+            else:
+                key = f"interactive_command_{plugin.name}"
+            interactive_keys.append(key)
+
+            if key not in merged:
+                merged[key] = ""
+            merged[key] = str(merged.get(key) or "")
+
+        # Sanitize all interactive command values
+        for key in interactive_keys:
             merged[key] = self._sanitize_interactive_command_value(key, merged.get(key))
+
         merged["append_pixelarch_context"] = bool(
             merged.get("append_pixelarch_context") or False
         )
@@ -107,35 +99,28 @@ class _MainWindowSettingsMixin:
 
     def _interactive_command_key(self, agent_cli: str) -> str:
         agent_cli = normalize_agent(agent_cli)
-        if agent_cli == "claude":
-            return "interactive_command_claude"
-        if agent_cli == "copilot":
-            return "interactive_command_copilot"
-        if agent_cli == "gemini":
-            return "interactive_command_gemini"
+        plugin = get_plugin(agent_cli)
+        if plugin and plugin.name != "codex":
+            return f"interactive_command_{plugin.name}"
         return "interactive_command"
 
     def _host_config_dir_key(self, agent_cli: str) -> str:
         agent_cli = normalize_agent(agent_cli)
-        if agent_cli == "claude":
-            return "host_claude_dir"
-        if agent_cli == "copilot":
-            return "host_copilot_dir"
-        if agent_cli == "gemini":
-            return "host_gemini_dir"
+        plugin = get_plugin(agent_cli)
+        if plugin and plugin.name != "codex":
+            return f"host_{plugin.name}_dir"
         return "host_codex_dir"
 
     def _default_interactive_command(self, agent_cli: str) -> str:
         agent_cli = normalize_agent(agent_cli)
-        if agent_cli == "claude":
-            return "--add-dir /home/midori-ai/workspace"
-        if agent_cli == "copilot":
-            return "--add-dir /home/midori-ai/workspace"
-        if agent_cli == "gemini":
-            return "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace"
+        plugin = get_plugin(agent_cli)
+        if plugin and plugin.default_interactive_command:
+            return plugin.default_interactive_command
         return "--sandbox danger-full-access"
 
     def _sanitize_interactive_command_value(self, key: str, raw: object) -> str:
+        from agents_runner.agent_systems.registry import list_plugins
+
         value = str(raw or "").strip()
         if not value:
             return ""
@@ -144,20 +129,22 @@ class _MainWindowSettingsMixin:
             cmd_parts = shlex.split(value)
         except ValueError:
             cmd_parts = []
-        if cmd_parts and cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
+
+        # Remove agent CLI name prefix if present
+        plugin_names = list_plugins()
+        if cmd_parts and cmd_parts[0] in plugin_names:
             head = cmd_parts.pop(0)
             if head == "codex" and cmd_parts and cmd_parts[0] == "exec":
                 cmd_parts.pop(0)
             value = " ".join(shlex.quote(part) for part in cmd_parts)
 
         if _looks_like_agent_help_command(value):
+            # Extract agent name from key
             agent_cli = "codex"
-            if str(key or "").endswith("_claude"):
-                agent_cli = "claude"
-            elif str(key or "").endswith("_copilot"):
-                agent_cli = "copilot"
-            elif str(key or "").endswith("_gemini"):
-                agent_cli = "gemini"
+            for plugin_name in plugin_names:
+                if str(key or "").endswith(f"_{plugin_name}"):
+                    agent_cli = plugin_name
+                    break
             return self._default_interactive_command(agent_cli)
 
         return value
@@ -197,13 +184,14 @@ class _MainWindowSettingsMixin:
 
         # Fall back to global settings-based config dir
         config_dir = ""
-        if agent_cli == "claude":
-            config_dir = str(settings.get("host_claude_dir") or "")
-        elif agent_cli == "copilot":
-            config_dir = str(settings.get("host_copilot_dir") or "")
-        elif agent_cli == "gemini":
-            config_dir = str(settings.get("host_gemini_dir") or "")
+        plugin = get_plugin(agent_cli)
+
+        if plugin and plugin.name != "codex":
+            # Use plugin-specific config dir key
+            config_dir_key = f"host_{plugin.name}_dir"
+            config_dir = str(settings.get(config_dir_key) or "")
         else:
+            # For codex, also check environment variable
             config_dir = str(
                 settings.get("host_codex_dir")
                 or os.environ.get(

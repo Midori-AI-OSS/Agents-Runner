@@ -2,35 +2,50 @@
 
 from __future__ import annotations
 
-AGENT_DISPLAY_NAMES = {
-    "codex": "OpenAI Codex",
-    "claude": "Claude Code",
-    "copilot": "Github Copilot",
-    "gemini": "Google Gemini",
-}
-
-AGENT_GITHUB_URLS = {
-    "codex": "https://github.com/openai/codex",
-    "claude": "https://github.com/anthropics/claude-code",
-    "copilot": "https://github.com/github/copilot-cli",
-    "gemini": "https://github.com/google-gemini/gemini-cli",
-}
+from agents_runner.agent_systems.registry import get_plugin
 
 
 def get_agent_display_name(agent_cli: str) -> str:
-    """Get the display name for an agent CLI."""
+    """Get the display name for an agent CLI.
+
+    Args:
+        agent_cli: The agent CLI name.
+
+    Returns:
+        The display name from the plugin, or the agent_cli as fallback.
+    """
     normalized = str(agent_cli or "").strip().lower()
-    return AGENT_DISPLAY_NAMES.get(normalized, agent_cli)
+    plugin = get_plugin(normalized)
+    if plugin and plugin.display_name:
+        return plugin.display_name
+    return agent_cli
 
 
 def get_agent_github_url(agent_cli: str) -> str:
-    """Get the GitHub URL for an agent CLI."""
+    """Get the GitHub URL for an agent CLI.
+
+    Args:
+        agent_cli: The agent CLI name.
+
+    Returns:
+        The GitHub URL from the plugin, or empty string as fallback.
+    """
     normalized = str(agent_cli or "").strip().lower()
-    return AGENT_GITHUB_URLS.get(normalized, "")
+    plugin = get_plugin(normalized)
+    if plugin and plugin.github_url:
+        return plugin.github_url
+    return ""
 
 
 def format_agent_markdown_link(agent_cli: str) -> str:
-    """Format agent as a markdown link."""
+    """Format agent as a markdown link.
+
+    Args:
+        agent_cli: The agent CLI name.
+
+    Returns:
+        A markdown link if GitHub URL is available, otherwise just the display name.
+    """
     display_name = get_agent_display_name(agent_cli)
     github_url = get_agent_github_url(agent_cli)
     if github_url:

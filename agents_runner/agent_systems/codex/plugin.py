@@ -57,6 +57,10 @@ class CodexPlugin(AgentSystemPlugin):
     )
     ui_theme: UiThemeSpec | None = UiThemeSpec(theme_name="codex")
     install_command: str = 'echo "Codex CLI installation required"'
+    display_name: str | None = "OpenAI Codex"
+    github_url: str | None = "https://github.com/openai/codex"
+    config_dir_name: str | None = ".codex"
+    default_interactive_command: str | None = "--sandbox danger-full-access"
 
     def plan(self, req: AgentSystemRequest) -> AgentSystemPlan:
         """Generate an execution plan for Codex agent.

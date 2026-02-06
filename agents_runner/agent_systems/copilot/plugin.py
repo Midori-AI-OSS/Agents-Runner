@@ -33,6 +33,10 @@ class CopilotPlugin(AgentSystemPlugin):
     )
     ui_theme: UiThemeSpec | None = UiThemeSpec(theme_name="copilot")
     install_command: str = 'echo "GitHub Copilot CLI installation required"'
+    display_name: str | None = "Github Copilot"
+    github_url: str | None = "https://github.com/github/copilot-cli"
+    config_dir_name: str | None = ".copilot"
+    default_interactive_command: str | None = "--add-dir /home/midori-ai/workspace"
 
     def plan(self, req: AgentSystemRequest) -> AgentSystemPlan:
         """Generate an execution plan for GitHub Copilot agent.

@@ -31,6 +31,10 @@ class ClaudePlugin(AgentSystemPlugin):
     )
     ui_theme: UiThemeSpec | None = UiThemeSpec(theme_name="claude")
     install_command: str = 'echo "Claude CLI installation required"'
+    display_name: str | None = "Claude Code"
+    github_url: str | None = "https://github.com/anthropics/claude-code"
+    config_dir_name: str | None = ".claude"
+    default_interactive_command: str | None = "--add-dir /home/midori-ai/workspace"
 
     def plan(self, req: AgentSystemRequest) -> AgentSystemPlan:
         """Generate an execution plan for Claude agent.
