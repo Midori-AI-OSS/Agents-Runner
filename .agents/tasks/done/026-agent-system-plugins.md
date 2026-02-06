@@ -128,3 +128,44 @@ Verify
 - `uv run --group lint ruff check .`
 - `uv run --group lint ruff format .`
 - Manual: run each supported agent system (non-interactive) and confirm behavior matches current.
+
+---
+
+## Completion Note
+
+**Date:** 2025-02-06
+**Status:** ✅ Complete
+
+### Summary
+All subtasks completed successfully:
+
+1. ✅ **Models and Registry**: `agents_runner/agent_systems/models.py` and `registry.py` implemented with Pydantic contract and auto-discovery
+2. ✅ **Agent Plugins**: All 4 built-in plugins implemented (codex, claude, copilot, gemini) under `agents_runner/agent_systems/<name>/plugin.py`
+3. ✅ **UI Theme Integration**: UI background system queries plugin `ui_theme.theme_name` via `_theme_for_agent()` in `graphics.py`
+4. ✅ **Planner Integration**: `planner.py` calls `plugin.plan()` to generate execution plans instead of hardcoded branching
+5. ✅ **Cleanup**: Core agent system branching logic migrated to plugin capabilities queries
+
+### Plugin System Features
+- Auto-discovery from `agents_runner/agent_systems/*/plugin.py`
+- Safe loading with error handling (import failures logged, don't crash app)
+- Pydantic models for type safety and validation
+- Capability-based checks (interactive support, GitHub token requirements, etc.)
+- Plugin-specific mounts and exec configuration
+- UI theme integration via plugin metadata
+
+### Verification
+- ✅ All plugins load and register correctly
+- ✅ Planner generates correct execution plans for all agent systems
+- ✅ `uv run --group lint ruff check .` passes
+- ✅ `uv run --group lint ruff format .` passes
+- ✅ Manual testing confirms behavior matches pre-plugin implementation
+
+### Out of Scope (Correctly Preserved)
+- UI command routing in `main_window_tasks_interactive_command.py` (UI-specific logic)
+- Settings key mapping in `main_window_settings.py` (configuration layer)
+- Legacy Docker config fields (backward compatibility)
+- Display names and URLs in `agent_display.py` (metadata, not plugin logic)
+
+### Related Issues
+- Addresses #161 Agent Systems Plugins
+- Enables #54 Implement Qwen-Code Agent (plugin infrastructure ready)
