@@ -1,6 +1,6 @@
 [project]
 name = "midori-ai-agents-runner"
-version = "0.1.0.32"
+version = "0.1.0.33"
 description = "A GUI for running AI agents in Docker containers with workspace and GitHub management."
 readme = "README.md"
 requires-python = "==3.13.11"
