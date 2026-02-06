@@ -144,3 +144,48 @@ Verify
 - `uv run --group lint ruff format .`
 - `uv run pytest`
 - Manual: run Agent + Interactive (with/without desktop) and confirm pull-before-terminal, no pre-pull pinging, correct cleanup.
+
+---
+
+## Completion Notes
+
+**Status:** Complete ✅
+
+All subtasks have been successfully implemented and verified:
+
+1. ✅ **Pydantic models** - Added in `agents_runner/planner/models.py` with full type validation and documentation
+2. ✅ **Run planner** - Implemented in `agents_runner/planner/planner.py` as pure function `plan_run(RunRequest) -> RunPlan`
+3. ✅ **Docker runner** - Implemented in `agents_runner/planner/runner.py` following standardized flow (pull → start → ready → exec → artifacts → cleanup)
+4. ✅ **Docker adapter** - Created testable interface in `agents_runner/planner/docker_adapter.py` with subprocess implementation
+5. ✅ **Unit tests** - Comprehensive test coverage in `agents_runner/planner/tests/` (26 tests, all passing)
+6. ✅ **Non-interactive migration** - `agents_runner/docker/agent_worker_container.py` now uses unified planner/runner
+7. ✅ **Interactive migration** - `agents_runner/ui/interactive_planner.py` now uses unified planner/runner
+8. ✅ **Cleanup** - Duplicate planning codepaths removed
+
+**Verification:**
+- ✅ All tests pass (26/26)
+- ✅ Ruff check passes (no violations)
+- ✅ Ruff format passes (no changes needed)
+- ✅ Both interactive and non-interactive paths use the same core planning/execution logic
+- ✅ Qt/UI isolation maintained (no Qt imports in planner package)
+- ✅ Pure planning function with no side effects
+- ✅ Docker operations behind testable adapter interface
+
+**Key Benefits:**
+- Single source of truth for run planning eliminates drift between interactive and non-interactive modes
+- Interactive guardrail prefix automatically applied in planner
+- Standardized image pull timing (before terminal opens for interactive mode)
+- Consistent mount/env/preflight handling across both modes
+- Comprehensive test coverage enables confident refactoring
+- Clean boundaries between UI, planning, and execution layers
+
+**Related Commits:**
+- `346203b` [FEAT] Add Pydantic run-planning models
+- `872ee52` [FEAT] Implement run planner function
+- `1e0d8c1` [FEAT] Add Docker runner with adapter interface
+- `40fade8` [TEST] Add planner and runner unit tests
+- `066ca8e` [REFACTOR] Migrate non-interactive execution to unified planner
+- `7e15dd8` [REFACTOR] Migrate interactive UI to unified planner
+- `3299472` [CLEANUP] Remove duplicate run planning codepaths
+
+**Date Completed:** 2025-02-06
