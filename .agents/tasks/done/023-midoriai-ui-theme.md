@@ -53,3 +53,22 @@ Verify
 - `uv run --group lint ruff check .`
 - `uv run --group lint ruff format .`
 - Manual: `uv run main.py` and confirm the startup background is `midoriai`.
+
+---
+## Completion Note
+
+Task completed successfully:
+- Created `agents_runner/ui/themes/midoriai/` package with `__init__.py` and `background.py`
+- Implemented `paint_midoriai_background()` with darker palette based on Codex algorithm
+- Updated `agents_runner/ui/graphics.py`:
+  - Imported midoriai background module
+  - Changed default/fallback theme from "codex" to "midoriai"
+  - Added midoriai phase parameters and animation update logic
+  - Added `_paint_midoriai_background()` method
+  - Updated `_paint_theme()` to handle midoriai theme
+  - Updated `_darken_overlay_alpha()` to support midoriai (alpha=32)
+  - Updated animation repaint trigger to include midoriai
+- Verified with `uv run --group lint ruff check .` and `uv run --group lint ruff format .`
+- Manual test: `uv run main.py` starts successfully with midoriai theme
+
+The midoriai theme is now the default fallback theme with a darker, more neutral appearance than Codex.
