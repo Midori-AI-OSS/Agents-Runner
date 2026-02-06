@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import time
@@ -7,6 +8,7 @@ from pathlib import Path
 
 
 _FAULT_LOG_HANDLE = None
+logger = logging.getLogger(__name__)
 
 
 def _maybe_enable_faulthandler() -> None:
@@ -91,10 +93,10 @@ def _cleanup_stale_temp_files() -> None:
                     pass
 
         if removed_count > 0:
-            print(f"[cleanup] Removed {removed_count} stale temporary file(s)")
+            logger.info(f"Removed {removed_count} stale temporary file(s)")
     except Exception as exc:
         # Don't fail app startup if cleanup fails
-        print(f"[cleanup] Warning: failed to clean stale temp files: {exc}")
+        logger.warning(f"Failed to clean stale temp files: {exc}")
 
 
 def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
