@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import logging
 import os
 import sys
 import time
 from pathlib import Path
 
+from midori_ai_logger import MidoriAiLogger
 
 _FAULT_LOG_HANDLE = None
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 def _maybe_enable_faulthandler() -> None:
@@ -93,10 +93,10 @@ def _cleanup_stale_temp_files() -> None:
                     pass
 
         if removed_count > 0:
-            logger.info(f"Removed {removed_count} stale temporary file(s)")
+            logger.rprint(f"Removed {removed_count} stale temporary file(s)", mode="info")
     except Exception as exc:
         # Don't fail app startup if cleanup fails
-        logger.warning(f"Failed to clean stale temp files: {exc}")
+        logger.rprint(f"Failed to clean stale temp files: {exc}", mode="warn")
 
 
 def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
@@ -135,9 +135,6 @@ def _initialize_qtwebengine() -> None:
     """Initialize QtWebEngine at startup to prevent lazy-load flash."""
     try:
         from PySide6.QtWebEngineWidgets import QWebEngineView
-        import logging
-
-        logger = logging.getLogger(__name__)
 
         # Create a hidden dummy view to force Chromium initialization
         # This is garbage collected after initialization
@@ -146,12 +143,9 @@ def _initialize_qtwebengine() -> None:
         dummy.hide()
         dummy.deleteLater()
 
-        logger.info("QtWebEngine initialized successfully")
+        logger.rprint("QtWebEngine initialized successfully", mode="info")
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.debug(f"QtWebEngine not available: {e}")
+        logger.rprint(f"QtWebEngine not available: {e}", mode="debug")
 
 
 def run_app(argv: list[str]) -> None:
