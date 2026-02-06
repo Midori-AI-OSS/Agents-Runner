@@ -560,12 +560,12 @@ class _MainWindowTasksAgentMixin:
                     task.gh_context_path = host_context_path
                     task.gh_pr_metadata_path = pr_host_path
 
-                    # Only mount the PR title/body JSON into the container (agents edit this).
+                    # Only mount the PR title/body TOML into the container (agents edit this).
                     extra_mounts_for_task.append(
                         f"{pr_host_path}:{pr_container_path}:rw"
                     )
 
-                    # Provide read-only repo context inline; do not mount the repo metadata JSON.
+                    # Provide read-only repo context inline; do not mount the repo metadata file.
                     repo_url = ""
                     repo_owner = ""
                     repo_name = ""
