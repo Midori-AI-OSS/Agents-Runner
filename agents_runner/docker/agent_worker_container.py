@@ -21,17 +21,13 @@ Usage Example:
     exit_code = executor.execute_container()
 """
 
-import os
-import selectors
 import shlex
-import subprocess
-import time
 from pathlib import Path
 from typing import Any, Callable
 
 from agents_runner.agent_cli import verify_cli_clause
 from agents_runner.github_token import resolve_github_token
-from agents_runner.log_format import format_log, wrap_container_log
+from agents_runner.log_format import format_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
 from agents_runner.planner import (
     EnvironmentSpec,
@@ -42,9 +38,8 @@ from agents_runner.planner import (
 )
 
 from agents_runner.docker.config import DockerRunnerConfig
-from agents_runner.docker.process import _run_docker, _inspect_state
+from agents_runner.docker.process import _inspect_state
 from agents_runner.docker.agent_worker_setup import RuntimeEnvironment
-from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.environments import load_environments
 
 
@@ -279,7 +274,6 @@ class ContainerExecutor:
         Returns:
             Modified RunPlan with preflight logic injected
         """
-        from agents_runner.core.shell_templates import git_identity_clause
 
         # Extract the agent command from the exec spec
         agent_cmd = " ".join(shlex.quote(part) for part in plan.exec_spec.argv)
@@ -511,160 +505,6 @@ class ContainerExecutor:
             ["-v", f"{tmp_path}:{container_path}:ro"],
         )
 
-    def _build_env_args(self) -> tuple[list[str], dict[str, str] | None]:
-        """Build environment variable arguments. Returns (env_args, docker_env)."""
-        env_args: list[str] = []
-        docker_env: dict[str, str] | None = None
-
-        # Add configured env vars
-        for key, value in sorted((self._config.env_vars or {}).items()):
-            k = str(key).strip()
-            if k:
-                env_args.extend(["-e", f"{k}={value}"])
-
-        # Forward GitHub tokens if needed
-        needs_token = (
-            _is_gh_context_enabled(self._config.environment_id)
-            or self._runtime_env.agent_cli == "copilot"
-            or _needs_cross_agent_gh_token(self._config.environment_id)
-        )
-
-        if needs_token:
-            token = resolve_github_token()
-            if (
-                token
-                and "GH_TOKEN" not in (self._config.env_vars or {})
-                and "GITHUB_TOKEN" not in (self._config.env_vars or {})
-            ):
-                self._on_log("[auth] forwarding GitHub token from host -> container")
-                docker_env = dict(os.environ)
-                docker_env["GH_TOKEN"] = token
-                docker_env["GITHUB_TOKEN"] = token
-                env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
-
-        # Add desktop env vars if enabled
-        if self._runtime_env.desktop_enabled:
-            env_args.extend(
-                [
-                    "-e",
-                    f"AGENTS_RUNNER_TASK_ID={self._runtime_env.task_token}",
-                    "-e",
-                    f"DISPLAY={self._runtime_env.desktop_display}",
-                ]
-            )
-
-        return env_args, docker_env
-
-    def _build_port_args(self) -> list[str]:
-        """Build port mapping arguments."""
-        port_args: list[str] = []
-        if self._runtime_env.desktop_enabled:
-            port_args.extend(["-p", "127.0.0.1::6080"])
-        return port_args
-
-    def _build_extra_mounts(self) -> list[str]:
-        """Build extra mount arguments with deduplication."""
-        # Collect all mount strings first (without -v flags)
-        all_mounts: list[str] = []
-
-        # Add primary config mount
-        all_mounts.append(
-            f"{self._config.host_codex_dir}:{self._runtime_env.config_container_dir}"
-        )
-
-        # Add workspace mount
-        all_mounts.append(
-            f"{self._runtime_env.host_mount}:{self._config.container_workdir}"
-        )
-
-        # Add artifacts mount
-        all_mounts.append(
-            f"{self._runtime_env.artifacts_staging_dir}:/tmp/agents-artifacts"
-        )
-
-        # Add extra mounts from config
-        for mount in self._config.extra_mounts or []:
-            m = str(mount).strip()
-            if m:
-                all_mounts.append(m)
-
-        # Add config extra mounts (cross-agent configs, etc.)
-        for mount in self._runtime_env.config_extra_mounts:
-            m = str(mount).strip()
-            if m:
-                all_mounts.append(m)
-
-        # Deduplicate by container path, preserving order
-        deduplicated = deduplicate_mounts(all_mounts)
-
-        # Build mount arguments with -v flags
-        extra_mount_args: list[str] = []
-        for mount in deduplicated:
-            extra_mount_args.extend(["-v", mount])
-
-        return extra_mount_args
-
-    def _build_docker_run_args(
-        self,
-        platform_args: list[str],
-        port_args: list[str],
-        extra_mount_args: list[str],
-        preflight_mounts: list[str],
-        env_args: list[str],
-        preflight_clause: str,
-        agent_cmd: str,
-    ) -> list[str]:
-        """Build complete Docker run command arguments."""
-        return [
-            "run",
-            *platform_args,
-            "-d",
-            "-t",
-            "--name",
-            self._runtime_env.container_name,
-            *extra_mount_args,
-            *preflight_mounts,
-            *env_args,
-            *port_args,
-            "-w",
-            self._runtime_env.container_cwd,
-            self._runtime_env.runtime_image,
-            "/bin/bash",
-            "-lc",
-            "set -euo pipefail; "
-            f"{git_identity_clause()}"
-            f"{preflight_clause}"
-            f"{verify_cli_clause(self._runtime_env.agent_cli)}"
-            f"exec {agent_cmd}",
-        ]
-
-    def _setup_desktop_port_mapping(
-        self, desktop_state: dict[str, Any], docker_env: dict[str, str] | None
-    ) -> None:
-        """Setup desktop port mapping and noVNC URL."""
-        try:
-            mapping = _run_docker(
-                ["port", self._container_id, "6080/tcp"], timeout_s=10.0, env=docker_env
-            )
-            first = (
-                (mapping or "").strip().splitlines()[0]
-                if (mapping or "").strip()
-                else ""
-            )
-            host_port = first.rsplit(":", 1)[-1].strip() if ":" in first else ""
-            if host_port.isdigit():
-                desktop_state["NoVncUrl"] = f"http://127.0.0.1:{host_port}/vnc.html"
-                self._on_log(
-                    format_log(
-                        "desktop",
-                        "vnc",
-                        "INFO",
-                        f"noVNC URL: {desktop_state['NoVncUrl']}",
-                    )
-                )
-        except Exception as exc:
-            self._on_log(format_log("desktop", "vnc", "ERROR", str(exc)))
-
     def _report_state(self, desktop_state: dict[str, Any]) -> None:
         """Report current container state.
 
@@ -683,87 +523,4 @@ class ContainerExecutor:
             self._on_state(state)
         except Exception:
             # Container may already be removed by unified runner
-            pass
-
-    def _monitor_container(self, desktop_state: dict[str, Any]) -> int:
-        """Monitor container execution and stream logs. Returns exit code."""
-        logs_proc = subprocess.Popen(
-            ["docker", "logs", "-f", self._container_id],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-        )
-        selector = selectors.DefaultSelector()
-        if logs_proc.stdout:
-            selector.register(logs_proc.stdout, selectors.EVENT_READ)
-
-        last_poll = 0.0
-        try:
-            while not self._stop.is_set():
-                now = time.time()
-                # Poll container state every 0.75 seconds
-                if now - last_poll >= 0.75:
-                    last_poll = now
-                    try:
-                        state = _inspect_state(self._container_id)
-                        if state:
-                            if desktop_state:
-                                state = dict(state)
-                                state.update(desktop_state)
-                            self._on_state(state)
-                            if (state.get("Status") or "").lower() in {
-                                "exited",
-                                "dead",
-                            }:
-                                break
-                    except Exception:
-                        pass
-
-                # Check if logs process is still running
-                if logs_proc.poll() is not None:
-                    time.sleep(0.05)
-                    continue
-
-                # Read log output
-                for key, _ in selector.select(timeout=0.05):
-                    try:
-                        chunk = key.fileobj.readline()
-                        if chunk:
-                            stream = (
-                                "stdout"
-                                if key.fileobj == logs_proc.stdout
-                                else "stderr"
-                            )
-                            self._on_log(
-                                wrap_container_log(
-                                    self._container_id, stream, chunk.rstrip("\n")
-                                )
-                            )
-                    except Exception:
-                        pass
-        finally:
-            if logs_proc.poll() is None:
-                logs_proc.terminate()
-                try:
-                    logs_proc.wait(timeout=2.0)
-                except subprocess.TimeoutExpired:
-                    logs_proc.kill()
-
-        # Get final state and exit code
-        try:
-            final_state = _inspect_state(self._container_id)
-            if desktop_state and final_state:
-                final_state = dict(final_state)
-                final_state.update(desktop_state)
-            self._on_state(final_state)
-            return int(final_state.get("ExitCode") or 0)
-        except Exception:
-            return 1
-
-    def _cleanup_container(self) -> None:
-        """Cleanup container if auto-remove is enabled."""
-        try:
-            _run_docker(["rm", "-f", self._container_id], timeout_s=30.0)
-        except Exception:
             pass
