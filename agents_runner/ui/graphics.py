@@ -306,7 +306,8 @@ class GlassRoot(QWidget):
         # Trigger repaint if using Codex / Midori AI / Claude / Gemini / Copilot theme
         if self._theme.name in {"codex", "midoriai", "claude", "gemini", "copilot"} or (
             self._theme_to is not None
-            and self._theme_to.name in {"codex", "midoriai", "claude", "gemini", "copilot"}
+            and self._theme_to.name
+            in {"codex", "midoriai", "claude", "gemini", "copilot"}
         ):
             self.update()
 
