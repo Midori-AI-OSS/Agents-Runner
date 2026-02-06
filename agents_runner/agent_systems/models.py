@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Literal
 
@@ -82,7 +82,7 @@ class AgentSystemPlan(BaseModel):
     prompt_delivery: PromptDeliverySpec = Field(default_factory=PromptDeliverySpec)
 
 
-class AgentSystemPlugin(BaseModel):
+class AgentSystemPlugin(BaseModel, ABC):
     """Base class for agent system plugins.
 
     Plugins must implement the `plan` method to produce an execution plan
