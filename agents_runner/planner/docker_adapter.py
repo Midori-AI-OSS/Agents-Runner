@@ -20,12 +20,20 @@ class ExecutionResult:
         exit_code: Process exit code.
         stdout: Standard output as bytes.
         stderr: Standard error as bytes.
+        container_id: Container ID used for execution (optional for backward compat).
     """
 
-    def __init__(self, exit_code: int, stdout: bytes, stderr: bytes) -> None:
+    def __init__(
+        self,
+        exit_code: int,
+        stdout: bytes,
+        stderr: bytes,
+        container_id: str | None = None,
+    ) -> None:
         self.exit_code = exit_code
         self.stdout = stdout
         self.stderr = stderr
+        self.container_id = container_id
 
 
 class DockerAdapter(ABC):

@@ -60,6 +60,9 @@ def execute_plan(plan: RunPlan, adapter: DockerAdapter) -> ExecutionResult:
         # Phase 5: Collect artifacts
         _collect_artifacts(adapter, container_id, plan)
 
+        # Attach container_id to result for caller tracking
+        result.container_id = container_id
+
         return result
 
     finally:

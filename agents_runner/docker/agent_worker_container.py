@@ -157,8 +157,8 @@ class ContainerExecutor:
             adapter = SubprocessDockerAdapter()
             result = execute_plan(plan, adapter)
 
-            # Store container ID from plan
-            self._container_id = plan.docker.container_name
+            # Store container ID from execution result
+            self._container_id = result.container_id or plan.docker.container_name
 
             # Report final state
             self._report_state(desktop_state)
