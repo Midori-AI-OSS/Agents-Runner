@@ -5,6 +5,7 @@ from typing import Any, Callable
 from threading import Event
 
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.agent_systems.registry import discover_plugins
 
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.agent_worker_github import GitHubOperations
@@ -96,6 +97,9 @@ class DockerAgentWorker:
         2. Runtime environment setup
         3. Container execution and monitoring
         """
+        # Initialize agent system plugins for capability checks (e.g., requires_github_token)
+        discover_plugins()
+
         preflight_tmp_paths: list[str] = []
 
         try:

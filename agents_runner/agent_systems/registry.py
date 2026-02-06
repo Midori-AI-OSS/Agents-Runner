@@ -54,10 +54,10 @@ def discover_plugins() -> None:
                 )
                 continue
 
-            # Validate unique name
+            # Skip already-registered plugins (idempotent discovery)
             if plugin.name in _plugins:
-                logger.error(
-                    "Duplicate plugin name '%s' found in %s, skipping",
+                logger.debug(
+                    "Plugin '%s' already registered, skipping duplicate from %s",
                     plugin.name,
                     plugin_module_name,
                 )
