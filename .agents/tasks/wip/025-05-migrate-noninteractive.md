@@ -54,3 +54,28 @@ Switch non-interactive task execution to use the shared planner/runner.
 - ⚠️ Manual integration tests needed (see checklist above)
 
 **Commit:** `066ca8e [REFACTOR] Migrate non-interactive execution to unified planner`
+
+---
+
+## Audit Note (2024-02-06, Auditor 8b51d180)
+
+**Status:** NEEDS REVIEW - Returned to WIP
+
+**Issues Found:**
+1. **MAJOR:** Implementation does NOT use `plan_run()` function from planner module as required
+   - Task specifies: "Call `plan_run(request)` to get `RunPlan`"
+   - Actual: Directly creates RunPlan via local `_create_run_plan()` helper method
+   - This bypasses planner module logic and violates task specification
+   - **Action Required:** Refactor to call `planner.plan_run()` instead of creating RunPlan directly
+
+2. **MAJOR:** Manual test checklist incomplete (all 5 tests unchecked)
+   - Cannot verify if implementation actually works in practice
+   - **Action Required:** Complete manual tests or document why they cannot be run
+
+**Other Notes:**
+- Desktop mode limitation is acceptable for this task (should track in separate task)
+- Old method cleanup can be deferred to future task
+- Code quality is good, linting passes
+- Commit message format correct
+
+**Recommendation:** Fix the two major issues above before resubmitting for audit.

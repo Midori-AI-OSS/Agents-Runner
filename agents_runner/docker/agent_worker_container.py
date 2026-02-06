@@ -29,17 +29,16 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
+from agents_runner.agent_cli import verify_cli_clause
 from agents_runner.github_token import resolve_github_token
 from agents_runner.log_format import format_log, wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
 from agents_runner.planner import (
-    DockerSpec,
-    ExecSpec,
-    MountSpec,
-    RunPlan,
+    EnvironmentSpec,
+    RunRequest,
     SubprocessDockerAdapter,
     execute_plan,
+    plan_run,
 )
 
 from agents_runner.docker.config import DockerRunnerConfig
@@ -141,29 +140,23 @@ class ContainerExecutor:
                 )
                 return 1
 
-            # Build agent command
-            agent_args = self._build_agent_command()
-            agent_cmd = " ".join(shlex.quote(part) for part in agent_args)
-
             # Setup desktop state tracking
             desktop_state: dict[str, Any] = {}
 
-            # Build preflight clause and mounts
+            # Build preflight clause for injection into plan
             preflight_clause, preflight_mounts = self._build_preflight_clause(
                 desktop_state
             )
 
-            # Build environment variables dict
-            env_dict = self._build_env_dict()
+            # Build RunRequest for planner
+            request = self._build_run_request(preflight_mounts)
 
-            # Build complete bash command (preflight + agent)
-            bash_cmd = self._build_bash_command(preflight_clause, agent_cmd)
+            # Call planner to get RunPlan
+            plan = plan_run(request)
 
-            # Build mounts list
-            mounts = self._build_mounts(preflight_mounts)
-
-            # Create run plan using planner models
-            plan = self._create_run_plan(bash_cmd, mounts, env_dict)
+            # Inject preflight logic into exec command if needed
+            if preflight_clause:
+                plan = self._inject_preflight_into_plan(plan, preflight_clause)
 
             # Execute plan using unified runner
             self._on_log(format_log("docker", "runner", "INFO", "starting container"))
@@ -205,14 +198,121 @@ class ContainerExecutor:
             self._on_log(format_log("docker", "container", "ERROR", str(exc)))
             return 1
 
-    def _build_agent_command(self) -> list[str]:
-        """Build the agent CLI command."""
-        return build_noninteractive_cmd(
-            agent=self._runtime_env.agent_cli,
+    def _build_run_request(self, preflight_mounts: list[str]) -> RunRequest:
+        """Build a RunRequest for the planner.
+
+        Args:
+            preflight_mounts: Additional mount strings for preflight scripts
+
+        Returns:
+            RunRequest ready for planning
+        """
+        # Build EnvironmentSpec from runtime environment
+        env_spec = EnvironmentSpec(
+            env_id=self._config.environment_id or "default",
+            image=self._runtime_env.runtime_image,
+            env_vars=self._build_env_dict(),
+            extra_mounts=self._build_extra_mount_strings(preflight_mounts),
+        )
+
+        # Build RunRequest
+        return RunRequest(
+            interactive=False,
+            system_name=self._runtime_env.agent_cli,
             prompt=self._runtime_env.prompt_for_agent,
-            host_workdir=self._runtime_env.host_mount,
-            container_workdir=self._config.container_workdir,
-            agent_cli_args=list(self._config.agent_cli_args or []),
+            environment=env_spec,
+            host_workdir=Path(self._runtime_env.host_mount),
+            host_config_dir=Path(self._config.host_codex_dir),
+            extra_cli_args=list(self._config.agent_cli_args or []),
+        )
+
+    def _build_extra_mount_strings(self, preflight_mounts: list[str]) -> list[str]:
+        """Build list of extra mount strings for EnvironmentSpec.
+
+        Args:
+            preflight_mounts: Additional mount strings for preflight scripts
+
+        Returns:
+            List of mount strings in "src:dst:mode" format
+        """
+        mount_strings: list[str] = []
+
+        # Add artifacts mount
+        mount_strings.append(
+            f"{self._runtime_env.artifacts_staging_dir}:/tmp/agents-artifacts:rw"
+        )
+
+        # Add extra mounts from config
+        for mount in self._config.extra_mounts or []:
+            m = str(mount).strip()
+            if m:
+                mount_strings.append(m)
+
+        # Add config extra mounts (cross-agent configs, etc.)
+        for mount in self._runtime_env.config_extra_mounts:
+            m = str(mount).strip()
+            if m:
+                mount_strings.append(m)
+
+        # Add preflight mounts (convert from -v flag format)
+        i = 0
+        while i < len(preflight_mounts):
+            if preflight_mounts[i] == "-v" and i + 1 < len(preflight_mounts):
+                mount_strings.append(preflight_mounts[i + 1])
+                i += 2
+            else:
+                i += 1
+
+        return mount_strings
+
+    def _inject_preflight_into_plan(self, plan, preflight_clause: str):
+        """Inject preflight logic into the plan's exec command.
+
+        The planner builds a command using build_noninteractive_cmd, but we need
+        to wrap it with bash and inject preflight setup. This modifies the plan
+        to include the preflight logic.
+
+        Args:
+            plan: The RunPlan from the planner
+            preflight_clause: Bash commands for preflight setup
+
+        Returns:
+            Modified RunPlan with preflight logic injected
+        """
+        from agents_runner.core.shell_templates import git_identity_clause
+
+        # Extract the agent command from the exec spec
+        agent_cmd = " ".join(shlex.quote(part) for part in plan.exec_spec.argv)
+
+        # Build complete bash command with preflight
+        bash_cmd = (
+            "set -euo pipefail; "
+            f"{git_identity_clause()}"
+            f"{preflight_clause}"
+            f"{verify_cli_clause(self._runtime_env.agent_cli)}"
+            f"exec {agent_cmd}"
+        )
+
+        # Create a new exec spec with the wrapped command
+        from agents_runner.planner.models import ExecSpec
+
+        new_exec_spec = ExecSpec(
+            argv=["/bin/bash", "-lc", bash_cmd],
+            cwd=plan.exec_spec.cwd,
+            env=plan.exec_spec.env,
+            tty=plan.exec_spec.tty,
+            stdin=plan.exec_spec.stdin,
+        )
+
+        # Create a new plan with the modified exec spec
+        from agents_runner.planner.models import RunPlan
+
+        return RunPlan(
+            interactive=plan.interactive,
+            docker=plan.docker,
+            prompt_text=plan.prompt_text,
+            exec_spec=new_exec_spec,
+            artifacts=plan.artifacts,
         )
 
     def _build_preflight_clause(
@@ -252,24 +352,6 @@ class ContainerExecutor:
 
         return preflight_clause, preflight_mounts
 
-    def _build_bash_command(self, preflight_clause: str, agent_cmd: str) -> str:
-        """Build complete bash command with preflight and agent execution.
-
-        Args:
-            preflight_clause: Bash commands for preflight setup
-            agent_cmd: Agent CLI command to execute
-
-        Returns:
-            Complete bash command string
-        """
-        return (
-            "set -euo pipefail; "
-            f"{git_identity_clause()}"
-            f"{preflight_clause}"
-            f"{verify_cli_clause(self._runtime_env.agent_cli)}"
-            f"exec {agent_cmd}"
-        )
-
     def _build_env_dict(self) -> dict[str, str]:
         """Build environment variables dictionary.
 
@@ -304,115 +386,6 @@ class ContainerExecutor:
             env_dict["DISPLAY"] = str(self._runtime_env.desktop_display)
 
         return env_dict
-
-    def _build_mounts(self, preflight_mounts: list[str]) -> list[MountSpec]:
-        """Build list of mount specifications.
-
-        Args:
-            preflight_mounts: Additional mount strings for preflight scripts
-
-        Returns:
-            List of MountSpec objects for the container
-        """
-        # Collect all mount strings first
-        all_mounts: list[str] = []
-
-        # Add primary config mount
-        all_mounts.append(
-            f"{self._config.host_codex_dir}:{self._runtime_env.config_container_dir}"
-        )
-
-        # Add workspace mount
-        all_mounts.append(
-            f"{self._runtime_env.host_mount}:{self._config.container_workdir}"
-        )
-
-        # Add artifacts mount
-        all_mounts.append(
-            f"{self._runtime_env.artifacts_staging_dir}:/tmp/agents-artifacts"
-        )
-
-        # Add extra mounts from config
-        for mount in self._config.extra_mounts or []:
-            m = str(mount).strip()
-            if m:
-                all_mounts.append(m)
-
-        # Add config extra mounts (cross-agent configs, etc.)
-        for mount in self._runtime_env.config_extra_mounts:
-            m = str(mount).strip()
-            if m:
-                all_mounts.append(m)
-
-        # Add preflight mounts
-        for mount in preflight_mounts:
-            m = str(mount).strip()
-            if m:
-                all_mounts.append(m)
-
-        # Deduplicate by container path, preserving order
-        deduplicated = deduplicate_mounts(all_mounts)
-
-        # Parse mount strings into MountSpec objects
-        mount_specs: list[MountSpec] = []
-        for mount_str in deduplicated:
-            parts = mount_str.split(":")
-            if len(parts) >= 2:
-                src = Path(parts[0])
-                dst = Path(parts[1])
-                mode = parts[2] if len(parts) > 2 and parts[2] in ("ro", "rw") else "rw"
-                # Only add if paths are absolute
-                if src.is_absolute() and dst.is_absolute():
-                    mount_specs.append(MountSpec(src=src, dst=dst, mode=mode))  # type: ignore
-
-        return mount_specs
-
-    def _create_run_plan(
-        self, bash_cmd: str, mounts: list[MountSpec], env_dict: dict[str, str]
-    ) -> RunPlan:
-        """Create a RunPlan for execution.
-
-        Args:
-            bash_cmd: Complete bash command to execute
-            mounts: List of mount specifications
-            env_dict: Environment variables dictionary
-
-        Returns:
-            RunPlan ready for execution
-        """
-        # Create docker spec
-        docker_spec = DockerSpec(
-            image=self._runtime_env.runtime_image,
-            container_name=self._runtime_env.container_name,
-            workdir=Path(self._runtime_env.container_cwd),
-            mounts=mounts,
-            env=env_dict,
-        )
-
-        # Create exec spec for bash command
-        exec_spec = ExecSpec(
-            argv=["/bin/bash", "-lc", bash_cmd],
-            cwd=Path(self._runtime_env.container_cwd),
-            tty=False,
-            stdin=False,
-        )
-
-        # Create artifact spec (artifacts already mounted to /tmp/agents-artifacts)
-        from agents_runner.planner.models import ArtifactSpec
-
-        artifacts = ArtifactSpec(
-            finish_file=Path("/tmp/agents-artifacts/FINISH"),
-            output_file=Path("/tmp/agents-artifacts/agent-output.md"),
-        )
-
-        # Create run plan
-        return RunPlan(
-            interactive=False,
-            docker=docker_spec,
-            prompt_text="",  # Prompt already embedded in bash command
-            exec_spec=exec_spec,
-            artifacts=artifacts,
-        )
 
     def _build_desktop_preflight_clause(self) -> str:
         """Build desktop preflight clause based on cached vs runtime setup."""
