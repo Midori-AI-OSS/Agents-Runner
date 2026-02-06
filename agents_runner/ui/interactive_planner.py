@@ -627,7 +627,8 @@ def _cleanup_temp_files(tmp_paths: dict[str, str]) -> None:
                 os.unlink(path)
             except Exception as e:
                 logger.rprint(
-                    f"[interactive] Failed to remove temp file {path}: {e}", mode="debug"
+                    f"[interactive] Failed to remove temp file {path}: {e}",
+                    mode="debug",
                 )
 
 
