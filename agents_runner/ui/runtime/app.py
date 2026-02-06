@@ -154,6 +154,11 @@ def run_app(argv: list[str]) -> None:
     _maybe_enable_faulthandler()
     _configure_qtwebengine_runtime()
 
+    # Discover agent system plugins before UI initialization
+    from agents_runner.agent_systems import registry as agent_registry
+
+    agent_registry.discover_plugins()
+
     from agents_runner.diagnostics.crash_reporting import install_exception_hooks
 
     install_exception_hooks(argv=list(argv))

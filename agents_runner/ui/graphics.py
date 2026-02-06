@@ -22,6 +22,7 @@ from PySide6.QtGui import QPaintEvent
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QWidget
 
+from agents_runner.agent_systems import registry as agent_registry
 from agents_runner.ui.themes.claude import background as claude_bg
 from agents_runner.ui.themes.codex import background as codex_bg
 from agents_runner.ui.themes.copilot import background as copilot_bg
@@ -60,33 +61,33 @@ class _AgentTheme:
 
 
 def _theme_for_agent(agent_cli: str) -> _AgentTheme:
-    agent_cli = str(agent_cli or "midoriai").strip().lower()
-    if agent_cli == "copilot":
-        return _AgentTheme(
-            name="copilot",
-            base=QColor(13, 17, 23),  # #0D1117
-        )
-    if agent_cli == "claude":
-        return _AgentTheme(
-            name="claude",
-            base=QColor(245, 245, 240),  # #F5F5F0
-        )
-    if agent_cli == "gemini":
-        return _AgentTheme(
-            name="gemini",
-            base=QColor(18, 20, 28),  # #12141C (avoid white flash)
-        )
-    if agent_cli == "codex":
-        return _AgentTheme(
-            name="codex",
-            base=QColor(12, 13, 15),
-        )
+    """Query plugin system for agent theme name.
 
-    # midoriai neutral / default fallback
-    return _AgentTheme(
-        name="midoriai",
-        base=QColor(10, 11, 13),
+    Args:
+        agent_cli: Agent system name (e.g., "codex", "claude").
+
+    Returns:
+        Theme information with name and base color.
+    """
+    agent_cli = str(agent_cli or "midoriai").strip().lower()
+
+    # Query plugin for theme name
+    plugin = agent_registry.get_plugin(agent_cli)
+    theme_name = (
+        plugin.ui_theme.theme_name if plugin and plugin.ui_theme else "midoriai"
     )
+
+    # Map theme name to base colors (for background initialization)
+    _THEME_BASE_COLORS: dict[str, QColor] = {
+        "copilot": QColor(13, 17, 23),  # #0D1117
+        "claude": QColor(245, 245, 240),  # #F5F5F0
+        "gemini": QColor(18, 20, 28),  # #12141C (avoid white flash)
+        "codex": QColor(12, 13, 15),
+        "midoriai": QColor(10, 11, 13),
+    }
+
+    base_color = _THEME_BASE_COLORS.get(theme_name, QColor(10, 11, 13))
+    return _AgentTheme(name=theme_name, base=base_color)
 
 
 class GlassRoot(QWidget):
