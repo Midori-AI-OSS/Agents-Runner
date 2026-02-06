@@ -452,7 +452,11 @@ def _prepare_preflight_scripts(
             try:
                 os.close(fd)
             except Exception:
-                pass
+                # Cleanup attempt failed, but we're already handling an exception
+                logger.rprint(
+                    f"[interactive] Failed to close temp file descriptor {fd}",
+                    mode="debug",
+                )
             raise
         return tmp_path
 
@@ -621,8 +625,10 @@ def _cleanup_temp_files(tmp_paths: dict[str, str]) -> None:
         if path and os.path.exists(path):
             try:
                 os.unlink(path)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.rprint(
+                    f"[interactive] Failed to remove temp file {path}: {e}", mode="debug"
+                )
 
 
 def _build_host_shell_script(

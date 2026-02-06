@@ -318,8 +318,11 @@ class _MainWindowTasksInteractiveMixin:
         try:
             if os.path.exists(finish_path):
                 os.unlink(finish_path)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.rprint(
+                f"Failed to remove existing finish file {finish_path}: {_safe_str(exc)}",
+                mode="debug",
+            )
 
         # Launch interactive task using unified planner/runner
         container_name_result, host_port = launch_interactive_task(
