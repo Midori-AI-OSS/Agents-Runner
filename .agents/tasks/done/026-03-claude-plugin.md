@@ -27,3 +27,18 @@ Create plugin for Claude agent system.
 - Behavior matches current Claude agent behavior
 - Passes linting
 - One focused commit: `[FEAT] Add Claude agent system plugin`
+
+## Completion Notes
+- Created `agents_runner/agent_systems/claude/` package with `__init__.py`
+- Implemented `ClaudePlugin` class extending `AgentSystemPlugin`
+- Set name to "claude" with appropriate capabilities
+- Implemented `plan()` method that:
+  - Builds exec argv: `['claude', '--add-dir', <workspace>, ...]`
+  - Defines config mount: `~/.claude` to container path
+  - Sets prompt delivery mode to positional
+  - Handles interactive vs non-interactive (tty/stdin)
+- Added UI theme spec referencing "claude"
+- No Qt imports used
+- Passes ruff format and check
+- Plugin successfully registered and tested
+- Committed as: [FEAT] Add Claude agent system plugin
