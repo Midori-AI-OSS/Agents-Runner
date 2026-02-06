@@ -5,8 +5,8 @@ Handles Docker container orchestration including:
 - Desktop/VNC setup (cached and runtime variants)
 - Preflight script execution
 - Environment variable forwarding
-- Container lifecycle management
-- Log streaming and state monitoring
+- Container lifecycle management via unified planner/runner
+- Artifact collection
 
 Usage Example:
     from agents_runner.docker.agent_worker_setup import WorkerSetup
@@ -22,16 +22,25 @@ Usage Example:
 """
 
 import os
-import shlex
-import time
 import selectors
+import shlex
 import subprocess
+import time
+from pathlib import Path
 from typing import Any, Callable
 
 from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
 from agents_runner.github_token import resolve_github_token
 from agents_runner.log_format import format_log, wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
+from agents_runner.planner import (
+    DockerSpec,
+    ExecSpec,
+    MountSpec,
+    RunPlan,
+    SubprocessDockerAdapter,
+    execute_plan,
+)
 
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.process import _run_docker, _inspect_state
@@ -114,12 +123,24 @@ class ContainerExecutor:
         return self._container_id
 
     def execute_container(self) -> int:
-        """Execute the agent container and return exit code.
+        """Execute the agent container using unified planner/runner.
 
         Returns:
             Container exit code (0 for success, non-zero for failure)
         """
         try:
+            # Check for unsupported features
+            if self._runtime_env.desktop_enabled:
+                self._on_log(
+                    format_log(
+                        "docker",
+                        "runner",
+                        "ERROR",
+                        "Desktop mode not yet supported in unified runner",
+                    )
+                )
+                return 1
+
             # Build agent command
             agent_args = self._build_agent_command()
             agent_cmd = " ".join(shlex.quote(part) for part in agent_args)
@@ -132,44 +153,53 @@ class ContainerExecutor:
                 desktop_state
             )
 
-            # Build environment variables
-            env_args, docker_env = self._build_env_args()
+            # Build environment variables dict
+            env_dict = self._build_env_dict()
 
-            # Build port args
-            port_args = self._build_port_args()
+            # Build complete bash command (preflight + agent)
+            bash_cmd = self._build_bash_command(preflight_clause, agent_cmd)
 
-            # Build extra mounts
-            extra_mount_args = self._build_extra_mounts()
+            # Build mounts list
+            mounts = self._build_mounts(preflight_mounts)
 
-            # Build Docker run args
-            args = self._build_docker_run_args(
-                platform_args=self._runtime_env.platform_args,
-                port_args=port_args,
-                extra_mount_args=extra_mount_args,
-                preflight_mounts=preflight_mounts,
-                env_args=env_args,
-                preflight_clause=preflight_clause,
-                agent_cmd=agent_cmd,
-            )
+            # Create run plan using planner models
+            plan = self._create_run_plan(bash_cmd, mounts, env_dict)
 
-            # Start container
-            self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
+            # Execute plan using unified runner
+            self._on_log(format_log("docker", "runner", "INFO", "starting container"))
+            adapter = SubprocessDockerAdapter()
+            result = execute_plan(plan, adapter)
 
-            # Setup desktop port mapping if enabled
-            if self._runtime_env.desktop_enabled and self._container_id:
-                self._setup_desktop_port_mapping(desktop_state, docker_env)
+            # Store container ID from plan
+            self._container_id = plan.docker.container_name
 
-            # Report initial state
+            # Report final state
             self._report_state(desktop_state)
 
-            # Stream logs and monitor state
-            exit_code = self._monitor_container(desktop_state)
+            # Log execution result
+            if result.exit_code == 0:
+                self._on_log(
+                    format_log(
+                        "docker", "runner", "INFO", "task completed successfully"
+                    )
+                )
+            else:
+                self._on_log(
+                    format_log(
+                        "docker",
+                        "runner",
+                        "ERROR",
+                        f"task failed with exit code {result.exit_code}",
+                    )
+                )
 
-            # Cleanup container if auto-remove enabled
-            if self._config.auto_remove:
-                self._cleanup_container()
+            # Log stdout/stderr if present
+            if result.stdout:
+                self._on_log(result.stdout.decode("utf-8", errors="replace"))
+            if result.stderr:
+                self._on_log(result.stderr.decode("utf-8", errors="replace"))
 
-            return exit_code
+            return result.exit_code
 
         except Exception as exc:
             self._on_log(format_log("docker", "container", "ERROR", str(exc)))
@@ -221,6 +251,168 @@ class ContainerExecutor:
             preflight_mounts.extend(mounts)
 
         return preflight_clause, preflight_mounts
+
+    def _build_bash_command(self, preflight_clause: str, agent_cmd: str) -> str:
+        """Build complete bash command with preflight and agent execution.
+
+        Args:
+            preflight_clause: Bash commands for preflight setup
+            agent_cmd: Agent CLI command to execute
+
+        Returns:
+            Complete bash command string
+        """
+        return (
+            "set -euo pipefail; "
+            f"{git_identity_clause()}"
+            f"{preflight_clause}"
+            f"{verify_cli_clause(self._runtime_env.agent_cli)}"
+            f"exec {agent_cmd}"
+        )
+
+    def _build_env_dict(self) -> dict[str, str]:
+        """Build environment variables dictionary.
+
+        Returns:
+            Dictionary of environment variables for the container
+        """
+        env_dict: dict[str, str] = {}
+
+        # Add configured env vars
+        for key, value in sorted((self._config.env_vars or {}).items()):
+            k = str(key).strip()
+            if k:
+                env_dict[k] = str(value)
+
+        # Forward GitHub tokens if needed
+        needs_token = (
+            _is_gh_context_enabled(self._config.environment_id)
+            or self._runtime_env.agent_cli == "copilot"
+            or _needs_cross_agent_gh_token(self._config.environment_id)
+        )
+
+        if needs_token:
+            token = resolve_github_token()
+            if token and "GH_TOKEN" not in env_dict and "GITHUB_TOKEN" not in env_dict:
+                self._on_log("[auth] forwarding GitHub token from host -> container")
+                env_dict["GH_TOKEN"] = token
+                env_dict["GITHUB_TOKEN"] = token
+
+        # Add desktop env vars if enabled
+        if self._runtime_env.desktop_enabled:
+            env_dict["AGENTS_RUNNER_TASK_ID"] = str(self._runtime_env.task_token)
+            env_dict["DISPLAY"] = str(self._runtime_env.desktop_display)
+
+        return env_dict
+
+    def _build_mounts(self, preflight_mounts: list[str]) -> list[MountSpec]:
+        """Build list of mount specifications.
+
+        Args:
+            preflight_mounts: Additional mount strings for preflight scripts
+
+        Returns:
+            List of MountSpec objects for the container
+        """
+        # Collect all mount strings first
+        all_mounts: list[str] = []
+
+        # Add primary config mount
+        all_mounts.append(
+            f"{self._config.host_codex_dir}:{self._runtime_env.config_container_dir}"
+        )
+
+        # Add workspace mount
+        all_mounts.append(
+            f"{self._runtime_env.host_mount}:{self._config.container_workdir}"
+        )
+
+        # Add artifacts mount
+        all_mounts.append(
+            f"{self._runtime_env.artifacts_staging_dir}:/tmp/agents-artifacts"
+        )
+
+        # Add extra mounts from config
+        for mount in self._config.extra_mounts or []:
+            m = str(mount).strip()
+            if m:
+                all_mounts.append(m)
+
+        # Add config extra mounts (cross-agent configs, etc.)
+        for mount in self._runtime_env.config_extra_mounts:
+            m = str(mount).strip()
+            if m:
+                all_mounts.append(m)
+
+        # Add preflight mounts
+        for mount in preflight_mounts:
+            m = str(mount).strip()
+            if m:
+                all_mounts.append(m)
+
+        # Deduplicate by container path, preserving order
+        deduplicated = deduplicate_mounts(all_mounts)
+
+        # Parse mount strings into MountSpec objects
+        mount_specs: list[MountSpec] = []
+        for mount_str in deduplicated:
+            parts = mount_str.split(":")
+            if len(parts) >= 2:
+                src = Path(parts[0])
+                dst = Path(parts[1])
+                mode = parts[2] if len(parts) > 2 and parts[2] in ("ro", "rw") else "rw"
+                # Only add if paths are absolute
+                if src.is_absolute() and dst.is_absolute():
+                    mount_specs.append(MountSpec(src=src, dst=dst, mode=mode))  # type: ignore
+
+        return mount_specs
+
+    def _create_run_plan(
+        self, bash_cmd: str, mounts: list[MountSpec], env_dict: dict[str, str]
+    ) -> RunPlan:
+        """Create a RunPlan for execution.
+
+        Args:
+            bash_cmd: Complete bash command to execute
+            mounts: List of mount specifications
+            env_dict: Environment variables dictionary
+
+        Returns:
+            RunPlan ready for execution
+        """
+        # Create docker spec
+        docker_spec = DockerSpec(
+            image=self._runtime_env.runtime_image,
+            container_name=self._runtime_env.container_name,
+            workdir=Path(self._runtime_env.container_cwd),
+            mounts=mounts,
+            env=env_dict,
+        )
+
+        # Create exec spec for bash command
+        exec_spec = ExecSpec(
+            argv=["/bin/bash", "-lc", bash_cmd],
+            cwd=Path(self._runtime_env.container_cwd),
+            tty=False,
+            stdin=False,
+        )
+
+        # Create artifact spec (artifacts already mounted to /tmp/agents-artifacts)
+        from agents_runner.planner.models import ArtifactSpec
+
+        artifacts = ArtifactSpec(
+            finish_file=Path("/tmp/agents-artifacts/FINISH"),
+            output_file=Path("/tmp/agents-artifacts/agent-output.md"),
+        )
+
+        # Create run plan
+        return RunPlan(
+            interactive=False,
+            docker=docker_spec,
+            prompt_text="",  # Prompt already embedded in bash command
+            exec_spec=exec_spec,
+            artifacts=artifacts,
+        )
 
     def _build_desktop_preflight_clause(self) -> str:
         """Build desktop preflight clause based on cached vs runtime setup."""
@@ -501,7 +693,15 @@ class ContainerExecutor:
             self._on_log(format_log("desktop", "vnc", "ERROR", str(exc)))
 
     def _report_state(self, desktop_state: dict[str, Any]) -> None:
-        """Report current container state."""
+        """Report current container state.
+
+        Note: In unified runner flow, container is stopped/removed after execution,
+        so state inspection may not be available. This method is kept for
+        compatibility but may not provide meaningful state data.
+        """
+        if not self._container_id:
+            return
+
         try:
             state = _inspect_state(self._container_id)
             if desktop_state:
@@ -509,6 +709,7 @@ class ContainerExecutor:
                 state.update(desktop_state)
             self._on_state(state)
         except Exception:
+            # Container may already be removed by unified runner
             pass
 
     def _monitor_container(self, desktop_state: dict[str, Any]) -> int:
