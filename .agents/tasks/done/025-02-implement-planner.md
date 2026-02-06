@@ -22,3 +22,6 @@ Implement the `plan_run` function that converts `RunRequest` to `RunPlan`.
 - Interactive runs get guardrail prefix: `do not take action, just review the needed files and check your preflight if the repo has those and then standby`
 - Passes linting
 - One focused commit: `[FEAT] Implement run planner function`
+
+## Completion Note
+Completed successfully. Created `agents_runner/planner/planner.py` with pure `plan_run()` function that converts `RunRequest` to `RunPlan`. Function handles both interactive and non-interactive modes, builds Docker specs with mounts and environment variables, and composes prompts with guardrail prefix for interactive runs. All acceptance criteria met.
