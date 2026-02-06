@@ -9,6 +9,10 @@ Goal
 - Centralize agent capabilities/policy (supports interactive, prompt policy, mounts/env, setup/verify commands) behind the plugin contract.
 - Move UI background/theme selection behind the same plugin name so removing a plugin removes its UI background too (UI code stays under `agents_runner/ui/`).
 
+Notes
+- Plugins do not own Docker image selection or caching. Image + caching stays environment-driven (PixelArch + existing preflight/desktop caching).
+- Env vars + extra mounts are environment-driven (`EnvironmentSpec` in task 025).
+
 Scope (tie-in)
 - Integrate with the unified flow work in `025-unify-runplan-pydantic.md` so the planner/runner calls the agent-system plugin instead of branching on strings.
 
@@ -22,6 +26,10 @@ Folder layout (proposed)
     - `plugin.py` (implements the contract; no Qt imports)
 - `agents_runner/ui/themes/<system_name>/` (plugin-owned UI background implementation)
 
+Plugin loading (safety)
+- Auto-load built-in plugins from `agents_runner/agent_systems/*/plugin.py`.
+- Safety checks: unique `name`, valid `capabilities`, import failures do not crash the app (skip + log).
+
 Model prototype (Pydantic sketch)
 ```py
 from __future__ import annotations
@@ -32,16 +40,10 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class ArtifactPolicy(BaseModel):
-    add_workdir_to_allowlist: bool = True
-    add_tmp_to_allowlist: bool = False
-
-
-class PromptPolicy(BaseModel):
-    interactive_guardrail_prefix: str = (
-        "do not take action, just review the needed files and check your preflight "
-        "if the repo has those and then standby"
-    )
+class PromptDeliverySpec(BaseModel):
+    # how the agent CLI accepts the initial prompt
+    mode: Literal["positional", "flag", "stdin"] = "positional"
+    flag: str | None = None  # ex: "-p" (when mode="flag")
 
 
 class CapabilitySpec(BaseModel):
@@ -54,8 +56,7 @@ class CapabilitySpec(BaseModel):
 
 
 class UiThemeSpec(BaseModel):
-    name: str
-    base_color_hex: str
+    theme_name: str  # fallback is "midoriai"
 
 
 class MountSpec(BaseModel):
@@ -91,17 +92,16 @@ class AgentSystemPlan(BaseModel):
     system_name: str
     interactive: bool
     capabilities: CapabilitySpec
-    prompt_text: str
     mounts: list[MountSpec] = Field(default_factory=list)
     exec_spec: ExecSpec
-    artifact_policy: ArtifactPolicy = Field(default_factory=ArtifactPolicy)
+    prompt_delivery: PromptDeliverySpec = Field(default_factory=PromptDeliverySpec)
 
 
 class AgentSystemPlugin(BaseModel):
     name: str
     capabilities: CapabilitySpec = Field(default_factory=CapabilitySpec)
-    prompt_policy: PromptPolicy = Field(default_factory=PromptPolicy)
     ui_theme: UiThemeSpec | None = None
+    install_command: str = 'echo "planned"'
 
     def plan(self, req: AgentSystemRequest) -> AgentSystemPlan: ...
 ```

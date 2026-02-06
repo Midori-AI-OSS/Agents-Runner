@@ -14,23 +14,30 @@ Prompting (both task types)
   - Prefix the user prompt with: `do not take action, just review the needed files and check your preflight if the repo has those and then standby`
 - Copilot: interactive runs are not supported.
 - Keep prompt composition in the planner so the UI path and CLI path cannot drift.
+- Prompt delivery is per agent system (arg vs flag vs stdin) via the agent-system plugin contract (`026-agent-system-plugins.md`).
+
+Environment (runtime spec)
+- Introduce a Pydantic `EnvironmentSpec` used by the planner (derived from the existing stored environment model).
+- `EnvironmentSpec` owns env-forwarding into the container (env vars, extra mounts, preflight scripts, caching/desktop toggles).
+- Planner may emit “needs GitHub token forwarded” based on environment settings; runner resolves/injects the actual token at runtime.
 
 Proposed standardized flow (both task types)
-1) Build `RunRequest` from UI/CLI inputs (agent, prompt, workspace, image, env, timeouts, `interactive`).
-2) Convert to `RunPlan` (fully-resolved image ref, mounts, working dir, env, command, artifact paths, state transitions).
+1) Build `RunRequest` from UI/CLI inputs (agent system name, prompt, `interactive`, environment selection + raw settings).
+2) Convert to `RunPlan` (fully-resolved image ref, mounts, working dir, env, command, artifact paths, state transitions) using `EnvironmentSpec` + agent-system plugin.
 3) Ensure image is present (pull happens here, before any terminal window opens).
 4) Start container in the background with a keepalive command (ex: `sleep infinity`), then run everything via `docker exec`.
-5) Wait for readiness (after pull + after container start; no pinging before pull).
+5) Readiness: container is `running` (docker inspect `State.Status`).
 6) Run:
    - Non-interactive: `docker exec` the agent command and capture exit code/output.
-   - Interactive: open terminal and attach via `docker exec -it ...` (UI concern).
+   - Interactive: `prepare_interactive(plan) -> handle` (pull/start/ready), UI opens terminal and attaches via `docker exec -it ...`, then `finalize(handle)`.
 7) Finalize (last step): copy/collect artifacts, stop container, remove container, update UI state.
 
 Model sketch
-- `RunRequest`: user intent + knobs (includes `interactive: bool`).
+- `RunRequest`: user intent (intent-only; no derived mounts/env/argv).
 - `RunPlan`: resolved executable plan (image ref, container name, mounts/env, exec specs, artifact specs).
 - `ExecSpec`: argv, cwd, env overlay, tty/stdin policy.
 - `ArtifactSpec`: finish file path(s), output capture, optional docker cp rules.
+- `EnvironmentSpec`: normalized environment settings used by the planner (env vars, mounts, preflight, desktop/caching).
 
 Model prototype (Pydantic sketch)
 ```py
@@ -76,11 +83,28 @@ class ArtifactSpec(BaseModel):
     output_file: Path | None = None
 
 
+class EnvironmentSpec(BaseModel):
+    env_id: str
+    image: str
+    env_vars: dict[str, str] = Field(default_factory=dict)
+    extra_mounts: list[str] = Field(default_factory=list)
+    settings_preflight_script: str | None = None
+    environment_preflight_script: str | None = None
+    headless_desktop_enabled: bool = False
+    desktop_cache_enabled: bool = False
+    container_caching_enabled: bool = False
+    gh_context_enabled: bool = False
+    use_cross_agents: bool = False
+
+
 class RunRequest(BaseModel):
     interactive: bool = False
+    system_name: str
     prompt: str
-    docker: DockerSpec
-    exec_spec: ExecSpec
+    environment: EnvironmentSpec
+    host_workdir: Path
+    host_config_dir: Path
+    extra_cli_args: list[str] = Field(default_factory=list)
     timeouts: TimeoutSpec = Field(default_factory=TimeoutSpec)
 
     # policy: interactive Copilot runs are not supported
