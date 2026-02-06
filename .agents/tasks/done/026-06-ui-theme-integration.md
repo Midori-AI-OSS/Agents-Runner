@@ -35,3 +35,15 @@ theme = plugin.ui_theme.theme_name if plugin.ui_theme else "midoriai"
 - Fallback theme works
 - Passes linting
 - One focused commit: `[REFACTOR] Integrate UI theme selection with plugin system`
+
+## Completion
+**Status:** Complete  
+**Commit:** af0431a - [REFACTOR] Integrate UI theme selection with plugin system
+
+### Changes Made:
+1. Refactored `_theme_for_agent()` in `agents_runner/ui/graphics.py` to query plugin registry instead of hardcoded if/else chain
+2. Added plugin registry discovery in `agents_runner/ui/runtime/app.py` before UI initialization
+3. Implemented fallback to "midoriai" theme when plugin has no `ui_theme` spec
+4. All existing theme names (codex, claude, copilot, gemini, midoriai) work correctly
+5. Tested unknown agent names correctly fallback to "midoriai"
+6. All linters passed (ruff format + ruff check)
