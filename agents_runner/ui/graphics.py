@@ -26,6 +26,7 @@ from agents_runner.ui.themes.claude import background as claude_bg
 from agents_runner.ui.themes.codex import background as codex_bg
 from agents_runner.ui.themes.copilot import background as copilot_bg
 from agents_runner.ui.themes.gemini import background as gemini_bg
+from agents_runner.ui.themes.midoriai import background as midoriai_bg
 
 
 class _EnvironmentTintOverlay(QWidget):
@@ -59,7 +60,7 @@ class _AgentTheme:
 
 
 def _theme_for_agent(agent_cli: str) -> _AgentTheme:
-    agent_cli = str(agent_cli or "codex").strip().lower()
+    agent_cli = str(agent_cli or "midoriai").strip().lower()
     if agent_cli == "copilot":
         return _AgentTheme(
             name="copilot",
@@ -75,11 +76,16 @@ def _theme_for_agent(agent_cli: str) -> _AgentTheme:
             name="gemini",
             base=QColor(18, 20, 28),  # #12141C (avoid white flash)
         )
+    if agent_cli == "codex":
+        return _AgentTheme(
+            name="codex",
+            base=QColor(12, 13, 15),
+        )
 
-    # codex / ChatGPT neutral
+    # midoriai neutral / default fallback
     return _AgentTheme(
-        name="codex",
-        base=QColor(12, 13, 15),
+        name="midoriai",
+        base=QColor(10, 11, 13),
     )
 
 
@@ -89,10 +95,15 @@ class GlassRoot(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self._theme = _theme_for_agent("codex")
+        self._theme = _theme_for_agent("midoriai")
         self._theme_to: _AgentTheme | None = None
         self._theme_blend = 0.0
         self._theme_anim: QPropertyAnimation | None = None
+
+        # Midori AI background animation phase parameters (reuses Codex logic)
+        self._midoriai_split_ratio: float = 0.45
+        self._midoriai_color_blend_phase_top: float = 0.0
+        self._midoriai_color_blend_phase_bottom: float = 0.0
 
         # Codex background animation phase parameters
         self._codex_split_ratio: float = 0.45
@@ -143,6 +154,8 @@ class GlassRoot(QWidget):
 
     @staticmethod
     def _darken_overlay_alpha(theme: _AgentTheme) -> int:
+        if theme.name == "midoriai":
+            return 32
         if theme.name == "codex":
             return 28
         if theme.name == "claude":
@@ -217,10 +230,14 @@ class GlassRoot(QWidget):
     themeBlend = Property(float, _get_theme_blend, _set_theme_blend)
 
     def _update_background_animation(self) -> None:
-        """Update Codex background animation phase parameters."""
+        """Update Codex and Midori AI background animation phase parameters."""
         self._codex_split_ratio = codex_bg.calc_split_ratio()
         self._codex_color_blend_phase_top = codex_bg.calc_top_phase()
         self._codex_color_blend_phase_bottom = codex_bg.calc_bottom_phase()
+
+        self._midoriai_split_ratio = midoriai_bg.calc_split_ratio()
+        self._midoriai_color_blend_phase_top = midoriai_bg.calc_top_phase()
+        self._midoriai_color_blend_phase_bottom = midoriai_bg.calc_bottom_phase()
 
         now_s = time.monotonic()
         dt = now_s - self._claude_last_tick_s
@@ -286,10 +303,10 @@ class GlassRoot(QWidget):
                     self._tick_copilot_typed_code(dt_s=step_s)
                     steps += 1
 
-        # Trigger repaint if using Codex / Claude theme
-        if self._theme.name in {"codex", "claude", "gemini", "copilot"} or (
+        # Trigger repaint if using Codex / Midori AI / Claude / Gemini / Copilot theme
+        if self._theme.name in {"codex", "midoriai", "claude", "gemini", "copilot"} or (
             self._theme_to is not None
-            and self._theme_to.name in {"codex", "claude", "gemini", "copilot"}
+            and self._theme_to.name in {"codex", "midoriai", "claude", "gemini", "copilot"}
         ):
             self.update()
 
@@ -437,7 +454,43 @@ class GlassRoot(QWidget):
             self._cached_bottom_phase,
         )
 
+    def _paint_midoriai_background(self, painter: QPainter, rect: QRect) -> None:
+        """
+        Paint the two-band background composition for Midori AI theme.
+
+        Renders animated background with:
+        - Top band: Darker blue to teal gradient
+        - Bottom band: Darker accent gradient
+        - Soft feathered diagonal boundary between bands
+        - Large soft color blobs overlay
+        - Extra dark overlay for deeper appearance
+
+        Args:
+            painter: QPainter instance to draw with
+            rect: Rectangle defining the paint area
+        """
+        # Use cached phase values (updated by timer)
+        (
+            self._cached_top_color,
+            self._cached_top_phase,
+            self._cached_bottom_color,
+            self._cached_bottom_phase,
+        ) = midoriai_bg.paint_midoriai_background(
+            painter,
+            rect,
+            self._midoriai_split_ratio,
+            self._midoriai_color_blend_phase_top,
+            self._midoriai_color_blend_phase_bottom,
+            self._cached_top_color,
+            self._cached_top_phase,
+            self._cached_bottom_color,
+            self._cached_bottom_phase,
+        )
+
     def _paint_theme(self, painter: QPainter, theme: _AgentTheme) -> None:
+        if theme.name == "midoriai":
+            self._paint_midoriai_background(painter, self.rect())
+            return
         if theme.name == "codex":
             self._paint_codex_background(painter, self.rect())
             return
