@@ -65,6 +65,19 @@ class ClaudePlugin(AgentSystemPlugin):
             )
         ]
 
+        # Claude Code stores user-level settings in ~/.claude.json alongside
+        # ~/.claude directory. Mount the sibling file if present.
+        claude_json_host = Path.home() / ".claude.json"
+        if claude_json_host.is_file():
+            claude_json_container = req.context.config_container / ".claude.json"
+            mounts.append(
+                MountSpec(
+                    src=claude_json_host,
+                    dst=claude_json_container,
+                    mode="rw",
+                )
+            )
+
         # Build exec spec
         exec_spec = ExecSpec(
             argv=argv,

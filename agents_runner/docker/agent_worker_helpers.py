@@ -1,6 +1,7 @@
 """Helper functions for agent worker operations."""
 
 from agents_runner.agent_cli import normalize_agent
+from agents_runner.agent_systems import requires_github_token
 from agents_runner.environments import load_environments
 from agents_runner.prompts import load_prompt
 
@@ -26,9 +27,9 @@ def is_gh_context_enabled(environment_id: str | None) -> bool:
 
 
 def needs_cross_agent_gh_token(environment_id: str | None) -> bool:
-    """Check if copilot is in the cross-agent allowlist.
+    """Check if any cross-agent requires GitHub token.
 
-    Returns True if any agent in cross_agent_allowlist uses copilot CLI.
+    Returns True if any agent in cross_agent_allowlist requires GitHub token.
     """
     if not environment_id:
         return False
@@ -51,10 +52,10 @@ def needs_cross_agent_gh_token(environment_id: str | None) -> bool:
         agent.agent_id: agent.agent_cli for agent in env.agent_selection.agents
     }
 
-    # Check each allowlisted agent_id for copilot
+    # Check each allowlisted agent_id for GitHub token requirement
     for agent_id in env.cross_agent_allowlist:
         agent_cli = agent_cli_by_id.get(agent_id)
-        if agent_cli and normalize_agent(agent_cli) == "copilot":
+        if agent_cli and requires_github_token(normalize_agent(agent_cli)):
             return True
 
     return False

@@ -13,6 +13,7 @@ from threading import Event
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import normalize_agent
+from agents_runner.agent_systems import requires_github_token
 from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import docker_platform_for_pixelarch
@@ -39,9 +40,9 @@ from agents_runner.midoriai_template import scan_midoriai_agents_template
 
 
 def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
-    """Check if copilot is in the cross-agent allowlist.
+    """Check if any cross-agent requires GitHub token.
 
-    Returns True if any agent in cross_agent_allowlist uses copilot CLI.
+    Returns True if any agent in cross_agent_allowlist requires GitHub token.
     """
     if not environment_id:
         return False
@@ -66,10 +67,10 @@ def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
         agent.agent_id: agent.agent_cli for agent in env.agent_selection.agents
     }
 
-    # Check each allowlisted agent_id for copilot
+    # Check each allowlisted agent_id for GitHub token requirement
     for agent_id in env.cross_agent_allowlist:
         agent_cli = agent_cli_by_id.get(agent_id)
-        if agent_cli and normalize_agent(agent_cli) == "copilot":
+        if agent_cli and requires_github_token(normalize_agent(agent_cli)):
             return True
 
     return False
@@ -356,7 +357,7 @@ class DockerPreflightWorker:
                     continue
                 env_args.extend(["-e", f"{k}={value}"])
 
-            if agent_cli == "copilot":
+            if requires_github_token(agent_cli):
                 token = resolve_github_token()
                 if (
                     token
@@ -367,10 +368,9 @@ class DockerPreflightWorker:
                     docker_env["GH_TOKEN"] = token
                     docker_env["GITHUB_TOKEN"] = token
                     env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
-            elif (
-                _needs_cross_agent_gh_token(self._config.environment_id)
-                and agent_cli != "copilot"
-            ):
+            elif _needs_cross_agent_gh_token(
+                self._config.environment_id
+            ) and not requires_github_token(agent_cli):
                 token = resolve_github_token()
                 if (
                     token

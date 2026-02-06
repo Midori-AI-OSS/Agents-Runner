@@ -25,7 +25,8 @@ import shlex
 from pathlib import Path
 from typing import Any, Callable
 
-from agents_runner.agent_cli import verify_cli_clause
+from agents_runner.agent_cli import normalize_agent, verify_cli_clause
+from agents_runner.agent_systems import requires_github_token
 from agents_runner.github_token import resolve_github_token
 from agents_runner.log_format import format_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
@@ -58,7 +59,7 @@ def _is_gh_context_enabled(environment_id: str | None) -> bool:
 
 
 def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
-    """Check if copilot is in the cross-agent allowlist."""
+    """Check if any cross-agent requires GitHub token."""
     if not environment_id:
         return False
     try:
@@ -71,15 +72,13 @@ def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
     if env.agent_selection is None or not env.agent_selection.agents:
         return False
 
-    from agents_runner.agent_cli import normalize_agent
-
     agent_cli_by_id: dict[str, str] = {
         agent.agent_id: agent.agent_cli for agent in env.agent_selection.agents
     }
 
     for agent_id in env.cross_agent_allowlist:
         agent_cli = agent_cli_by_id.get(agent_id)
-        if agent_cli and normalize_agent(agent_cli) == "copilot":
+        if agent_cli and requires_github_token(normalize_agent(agent_cli)):
             return True
     return False
 
@@ -363,7 +362,7 @@ class ContainerExecutor:
         # Forward GitHub tokens if needed
         needs_token = (
             _is_gh_context_enabled(self._config.environment_id)
-            or self._runtime_env.agent_cli == "copilot"
+            or requires_github_token(self._runtime_env.agent_cli)
             or _needs_cross_agent_gh_token(self._config.environment_id)
         )
 

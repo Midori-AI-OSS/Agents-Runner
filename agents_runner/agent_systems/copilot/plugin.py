@@ -29,6 +29,7 @@ class CopilotPlugin(AgentSystemPlugin):
         supports_interactive=False,
         supports_cross_agents=False,
         supports_sub_agents=False,
+        requires_github_token=True,
     )
     ui_theme: UiThemeSpec | None = UiThemeSpec(theme_name="copilot")
     install_command: str = 'echo "GitHub Copilot CLI installation required"'

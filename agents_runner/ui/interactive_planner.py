@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 
 from agents_runner.agent_cli import verify_cli_clause
+from agents_runner.agent_systems import requires_github_token
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
 from agents_runner.docker_platform import (
     ROSETTA_INSTALL_COMMAND,
@@ -234,7 +235,7 @@ def _build_run_request(
     env_vars = dict(config.env_vars)
 
     # Add GitHub token if needed
-    if config.agent_cli == "copilot":
+    if requires_github_token(config.agent_cli):
         gh_token = resolve_github_token()
         if gh_token:
             env_vars["GH_TOKEN"] = gh_token

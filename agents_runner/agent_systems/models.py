@@ -25,6 +25,7 @@ class CapabilitySpec(BaseModel):
     cross_agents_level: int = Field(default=1, ge=1, le=5)
     supports_sub_agents: bool = False
     sub_agents_level: int = Field(default=1, ge=1, le=5)
+    requires_github_token: bool = False
 
 
 class UiThemeSpec(BaseModel):

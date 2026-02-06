@@ -405,11 +405,13 @@ class _MainWindowSettingsMixin:
         agent_cli = normalize_agent(agent_cli)
         host_config_dir = os.path.expanduser(str(host_config_dir or "").strip())
         if agent_cli in {"claude", "copilot", "gemini"} and not host_config_dir:
-            agent_label = (
-                "Claude"
-                if agent_cli == "claude"
-                else ("Copilot" if agent_cli == "copilot" else "Gemini")
-            )
+            # Agent label mapping for error messages
+            agent_labels = {
+                "claude": "Claude",
+                "copilot": "Copilot",
+                "gemini": "Gemini",
+            }
+            agent_label = agent_labels.get(agent_cli, agent_cli.capitalize())
             QMessageBox.warning(
                 self,
                 "Missing config folder",
