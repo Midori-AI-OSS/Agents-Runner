@@ -29,3 +29,18 @@ Create docker runner following standardized flow with testable adapter interface
 - No Qt imports
 - Passes linting
 - One focused commit: `[FEAT] Add Docker runner with adapter interface`
+
+## Completion Notes
+✓ Created `agents_runner/planner/docker_adapter.py` with abstract `DockerAdapter` interface and `ExecutionResult` class
+✓ Created `agents_runner/planner/runner.py` with `execute_plan()` function following the standardized flow:
+  - Pull image
+  - Start container with keepalive
+  - Wait for ready state
+  - Execute via docker exec
+  - Collect artifacts (with host path resolution)
+  - Stop and remove container (always in finally block)
+✓ Created `agents_runner/planner/subprocess_adapter.py` with concrete `SubprocessDockerAdapter` implementation
+✓ Updated `agents_runner/planner/__init__.py` to export new components
+✓ No Qt imports (headless)
+✓ Passed ruff format and ruff check
+✓ Committed with [FEAT] Add Docker runner with adapter interface (1e0d8c1)
