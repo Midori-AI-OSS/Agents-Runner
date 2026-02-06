@@ -2,18 +2,16 @@
 
 This module provides the core planning logic for converting user intent
 (RunRequest) into a fully-resolved executable plan (RunPlan). The planner
-is a pure function with no side effects.
+queries the agent system plugin registry to generate execution plans.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from agents_runner.agent_cli import (
-    CONTAINER_WORKDIR,
-    build_noninteractive_cmd,
-    container_config_dir,
-)
+from agents_runner.agent_cli import CONTAINER_WORKDIR
+from agents_runner.agent_systems.models import AgentSystemContext, AgentSystemRequest
+from agents_runner.agent_systems.registry import get_plugin
 from agents_runner.planner.models import (
     ArtifactSpec,
     DockerSpec,
@@ -39,28 +37,68 @@ def plan_run(request: RunRequest) -> RunPlan:
 
     This function transforms user intent (RunRequest) into a concrete execution
     plan (RunPlan) by:
-    1. Converting EnvironmentSpec to DockerSpec (image, mounts, env vars)
-    2. Building ExecSpec for the agent command
-    3. Composing the prompt text (with interactive prefix if needed)
-    4. Setting up artifact collection paths
-
-    The function is pure and has no side effects (no subprocess, filesystem,
-    or network calls).
+    1. Retrieving the agent system plugin by name
+    2. Building AgentSystemContext from the request
+    3. Calling plugin.plan() to get the AgentSystemPlan
+    4. Converting AgentSystemPlan to RunPlan with full Docker configuration
 
     Args:
         request: User intent for an agent run.
 
     Returns:
         A fully-resolved RunPlan ready for execution.
-    """
-    # Build Docker configuration
-    docker = _build_docker_spec(request)
 
-    # Compose prompt text
+    Raises:
+        ValueError: If the requested agent system is not registered.
+    """
+    # Get plugin from registry
+    plugin = get_plugin(request.system_name)
+    if plugin is None:
+        raise ValueError(
+            f"Agent system '{request.system_name}' is not registered. "
+            f"Available systems can be listed via the registry."
+        )
+
+    # Check if interactive mode is supported
+    if request.interactive and not plugin.capabilities.supports_interactive:
+        raise ValueError(
+            f"Agent system '{request.system_name}' does not support interactive mode"
+        )
+
+    # Compose prompt text (with interactive prefix if needed)
     prompt_text = _compose_prompt(request)
 
-    # Build execution specification
-    exec_spec = _build_exec_spec(request, prompt_text)
+    # Build agent system context
+    context = AgentSystemContext(
+        workspace_host=request.host_workdir,
+        workspace_container=Path(CONTAINER_WORKDIR),
+        config_host=request.host_config_dir,
+        config_container=Path(CONTAINER_WORKDIR).parent / ".config",
+        extra_cli_args=request.extra_cli_args,
+    )
+
+    # Build agent system request
+    agent_request = AgentSystemRequest(
+        system_name=request.system_name,
+        interactive=request.interactive,
+        prompt=prompt_text,
+        context=context,
+    )
+
+    # Get execution plan from plugin
+    agent_plan = plugin.plan(agent_request)
+
+    # Build Docker configuration
+    docker = _build_docker_spec(request, agent_plan)
+
+    # Convert agent_systems.models.ExecSpec to planner.models.ExecSpec
+    exec_spec = ExecSpec(
+        argv=agent_plan.exec_spec.argv,
+        cwd=agent_plan.exec_spec.cwd,
+        env=agent_plan.exec_spec.env,
+        tty=agent_plan.exec_spec.tty,
+        stdin=agent_plan.exec_spec.stdin,
+    )
 
     # Set up artifact collection
     artifacts = ArtifactSpec(
@@ -77,11 +115,18 @@ def plan_run(request: RunRequest) -> RunPlan:
     )
 
 
-def _build_docker_spec(request: RunRequest) -> DockerSpec:
-    """Build Docker configuration from RunRequest.
+def _build_docker_spec(request: RunRequest, agent_plan) -> DockerSpec:  # type: ignore
+    """Build Docker configuration from RunRequest and AgentSystemPlan.
+
+    Combines:
+    - Base environment settings (image, env vars)
+    - Workspace and config mounts from the request
+    - Extra mounts from the environment spec
+    - Plugin-specific mounts from the agent plan
 
     Args:
         request: User intent for an agent run.
+        agent_plan: AgentSystemPlan from the plugin.
 
     Returns:
         DockerSpec with image, mounts, env vars, and workdir.
@@ -98,7 +143,7 @@ def _build_docker_spec(request: RunRequest) -> DockerSpec:
     ]
 
     # Add config directory mount
-    config_dst = Path(container_config_dir(request.system_name))
+    config_dst = Path(CONTAINER_WORKDIR).parent / ".config"
     mounts.append(
         MountSpec(
             src=request.host_config_dir,
@@ -106,6 +151,16 @@ def _build_docker_spec(request: RunRequest) -> DockerSpec:
             mode="rw",
         )
     )
+
+    # Add plugin-specific mounts (convert from agent_systems.models.MountSpec to planner.models.MountSpec)
+    for plugin_mount in agent_plan.mounts:
+        mounts.append(
+            MountSpec(
+                src=plugin_mount.src,
+                dst=plugin_mount.dst,
+                mode=plugin_mount.mode,  # type: ignore
+            )
+        )
 
     # Parse and add extra mounts from environment
     for mount_str in env.extra_mounts:
@@ -162,30 +217,3 @@ def _compose_prompt(request: RunRequest) -> str:
         return f"{INTERACTIVE_PREFIX}\n\n{prompt}"
 
     return prompt
-
-
-def _build_exec_spec(request: RunRequest, prompt_text: str) -> ExecSpec:
-    """Build execution specification for the agent command.
-
-    Args:
-        request: User intent for an agent run.
-        prompt_text: Composed prompt text (may include interactive prefix).
-
-    Returns:
-        ExecSpec with command, args, and execution settings.
-    """
-    # Build command arguments using existing agent_cli logic
-    argv = build_noninteractive_cmd(
-        agent=request.system_name,
-        prompt=prompt_text,
-        host_workdir=str(request.host_workdir),
-        container_workdir=CONTAINER_WORKDIR,
-        agent_cli_args=request.extra_cli_args,
-    )
-
-    return ExecSpec(
-        argv=argv,
-        cwd=Path(CONTAINER_WORKDIR),
-        tty=request.interactive,
-        stdin=request.interactive,
-    )

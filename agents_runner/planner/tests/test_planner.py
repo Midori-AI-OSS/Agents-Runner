@@ -2,12 +2,20 @@
 
 from pathlib import Path
 
+import pytest
 
+from agents_runner.agent_systems.registry import discover_plugins
 from agents_runner.planner.models import EnvironmentSpec, RunRequest
 from agents_runner.planner.planner import (
     INTERACTIVE_PREFIX,
     plan_run,
 )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def setup_plugins() -> None:
+    """Discover and register plugins before running tests."""
+    discover_plugins()
 
 
 def test_plan_run_basic() -> None:
@@ -104,12 +112,11 @@ def test_plan_run_with_extra_mounts() -> None:
 
     plan = plan_run(request)
 
-    # Should have workspace mount + config mount + 3 extra mounts
-    assert len(plan.docker.mounts) >= 5
+    # Should have workspace mount + config mount + plugin mounts + 3 extra mounts
+    assert len(plan.docker.mounts) >= 6
 
-    # Find the extra mounts (skip first two which are workspace and config)
-    extra_mounts = plan.docker.mounts[2:]
-    mount_paths = [(str(m.src), str(m.dst), m.mode) for m in extra_mounts]
+    # Find the extra mounts (look for the specific paths we added)
+    mount_paths = [(str(m.src), str(m.dst), m.mode) for m in plan.docker.mounts]
 
     assert ("/host/path1", "/container/path1", "ro") in mount_paths
     assert ("/host/path2", "/container/path2", "rw") in mount_paths
@@ -155,7 +162,7 @@ def test_plan_run_mounts_include_workspace_and_config() -> None:
 
     plan = plan_run(request)
 
-    # Should have at least workspace and config mounts
+    # Should have workspace, config, and plugin-specific mounts
     assert len(plan.docker.mounts) >= 2
 
     # Check workspace mount exists
@@ -215,8 +222,12 @@ def test_plan_run_invalid_mount_format_ignored() -> None:
 
     plan = plan_run(request)
 
-    # Should only have workspace and config mounts (invalid ones ignored)
-    assert len(plan.docker.mounts) == 2
+    # Should have workspace + config + plugin mounts (invalid ones ignored)
+    # We just verify the invalid ones are not present
+    mount_paths = [str(m.src) for m in plan.docker.mounts]
+    assert "invalid_mount_no_colon" not in mount_paths
+    assert "only_one_part:" not in mount_paths
+    assert "" not in mount_paths
 
 
 def test_plan_run_relative_mount_paths_ignored() -> None:
@@ -239,8 +250,12 @@ def test_plan_run_relative_mount_paths_ignored() -> None:
 
     plan = plan_run(request)
 
-    # Should only have workspace and config mounts (relative paths ignored)
-    assert len(plan.docker.mounts) == 2
+    # Should have workspace + config + plugin mounts (relative paths ignored)
+    # Verify the relative paths are not present
+    mount_paths = [(str(m.src), str(m.dst)) for m in plan.docker.mounts]
+    # These should not be in the mounts because they have relative paths
+    assert ("relative/src", "/absolute/dst") not in mount_paths
+    assert ("/absolute/src", "relative/dst") not in mount_paths
 
 
 def test_plan_run_invalid_mount_mode_defaults_to_rw() -> None:
