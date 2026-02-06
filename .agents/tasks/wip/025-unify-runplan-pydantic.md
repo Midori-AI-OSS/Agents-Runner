@@ -8,6 +8,9 @@ Goal
 - Make interactive vs non-interactive a boolean (`interactive=True`) and keep the rest of the run logic identical.
 - Keep Qt/UI isolated under `agents_runner/ui/` (UI builds a request + renders state; core planning/running is headless).
 
+Completion
+- When completing this task, reference the related GitHub issue(s) in commit messages and in the PR body.
+
 Prompting (both task types)
 - Always feed the composed prompt into the run (interactive and non-interactive).
 - Interactive guardrail:

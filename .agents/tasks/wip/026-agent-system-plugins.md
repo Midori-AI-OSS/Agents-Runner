@@ -9,6 +9,13 @@ Goal
 - Centralize agent capabilities/policy (supports interactive, prompt policy, mounts/env, setup/verify commands) behind the plugin contract.
 - Move UI background/theme selection behind the same plugin name so removing a plugin removes its UI background too (UI code stays under `agents_runner/ui/`).
 
+Related issues
+- #161 Agent Systems Plugins
+- #54 Implement Qwen-Code Agent
+
+Completion
+- When completing this task, reference the related issue(s) above in commit messages and in the PR body.
+
 Notes
 - Plugins do not own Docker image selection or caching. Image + caching stays environment-driven (PixelArch + existing preflight/desktop caching).
 - Env vars + extra mounts are environment-driven (`EnvironmentSpec` in task 025).
