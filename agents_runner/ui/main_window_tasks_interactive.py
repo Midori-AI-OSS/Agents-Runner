@@ -12,25 +12,31 @@ import shlex
 import shutil
 import threading
 import time
+from datetime import datetime
+from datetime import timezone
 from uuid import uuid4
 
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
+from agents_runner.core.shell_templates import build_git_clone_or_update_snippet
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
+from agents_runner.log_format import format_log
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.main_window_tasks_interactive_command import (
     build_agent_command_parts,
 )
-from agents_runner.ui.main_window_tasks_interactive_docker import (
-    launch_docker_terminal_task,
+from agents_runner.ui.interactive_planner import (
+    InteractiveLaunchConfig,
+    launch_interactive_task,
 )
 from agents_runner.ui.task_model import Task
+from agents_runner.ui.utils import _safe_str
 from agents_runner.ui.utils import _stain_color
 from midori_ai_logger import MidoriAiLogger
 
@@ -246,35 +252,139 @@ class _MainWindowTasksInteractiveMixin:
         if workspace_type == WORKSPACE_CLONED and env:
             gh_repo = str(env.workspace_target or "").strip()
 
-        # Launch interactive terminal - delegated to Docker launcher module
-        launch_docker_terminal_task(
-            main_window=self,
-            task=task,
-            env=env,
-            env_id=env_id,
-            task_id=task_id,
-            task_token=task_token,
-            terminal_opt=opt,
-            cmd_parts=cmd_parts,
-            prompt=prompt,
-            command=command,
+        # Build git clone snippet if gh_repo is specified
+        gh_clone_snippet = ""
+        if gh_repo:
+            quoted_dest = shlex.quote(host_workdir)
+            gh_clone_snippet = build_git_clone_or_update_snippet(
+                gh_repo=gh_repo,
+                host_workdir=host_workdir,
+                quoted_dest=quoted_dest,
+                prefer_gh_cli=bool(task.gh_use_host_cli),
+                task_id=task_id,
+                desired_base=desired_base,
+                is_locked_env=False,
+            )
+            # Update task with branch info
+            branch_name = f"agents-runner-{task_id}"
+            task.gh_repo_root = host_workdir
+            task.gh_branch = branch_name
+            task.gh_base_branch = desired_base
+            self._schedule_save()
+
+        # Log base branch if specified
+        if (desired_base or "").strip():
+            self._on_task_log(
+                task_id,
+                format_log("gh", "branch", "INFO", f"base branch: {desired_base}"),
+            )
+
+        # Check if desktop mode is enabled
+        desktop_enabled = (
+            "websockify" in extra_preflight_script
+            or "noVNC" in extra_preflight_script
+            or "[desktop]" in extra_preflight_script
+        )
+
+        # Build launch configuration
+        launch_config = InteractiveLaunchConfig(
             agent_cli=agent_cli,
-            host_codex=host_codex,
-            host_workdir=host_workdir,
-            config_extra_mounts=config_extra_mounts,
+            prompt=prompt,
+            command_parts=cmd_parts,
+            env_id=env_id,
             image=image,
-            container_name=container_name,
-            container_agent_dir=container_agent_dir,
+            host_workdir=host_workdir,
+            host_codex=host_codex,
             container_workdir=container_workdir,
+            container_agent_dir=container_agent_dir,
+            container_name=container_name,
+            task_token=task_token,
+            agent_cli_args=agent_cli_args,
+            env_vars=(env.env_vars or {}) if env else {},
+            extra_mounts=[
+                *((env.extra_mounts or []) if env else []),
+                *config_extra_mounts,
+            ],
             settings_preflight_script=settings_preflight_script,
             environment_preflight_script=environment_preflight_script,
             extra_preflight_script=extra_preflight_script,
-            stain=stain,
-            spinner=spinner,
-            desired_base=desired_base,
-            gh_repo=gh_repo,
-            gh_prefer_gh_cli=bool(task.gh_use_host_cli),
+            desktop_enabled=desktop_enabled,
         )
+
+        # Prepare finish file for exit code tracking
+        finish_dir = os.path.dirname(self._state_path)
+        os.makedirs(finish_dir, exist_ok=True)
+        finish_path = os.path.join(finish_dir, f"interactive-finish-{task_id}.txt")
+        try:
+            if os.path.exists(finish_path):
+                os.unlink(finish_path)
+        except Exception:
+            pass
+
+        # Launch interactive task using unified planner/runner
+        container_name_result, host_port = launch_interactive_task(
+            config=launch_config,
+            terminal_opt=opt,
+            finish_path=finish_path,
+            gh_clone_snippet=gh_clone_snippet,
+        )
+
+        if container_name_result is None:
+            QMessageBox.warning(
+                self,
+                "Launch Failed",
+                "Failed to launch interactive task. Check logs for details.",
+            )
+            return
+
+        # Update task with desktop info if enabled
+        if desktop_enabled and host_port is not None:
+            task.headless_desktop_enabled = True
+            task.desktop_display = ":1"
+            task.novnc_url = f"http://127.0.0.1:{host_port}/vnc.html"
+            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+            self._details.update_task(task)
+            self._schedule_save()
+
+        # Update settings
+        self._settings_data["host_workdir"] = host_workdir
+        self._settings_data[self._host_config_dir_key(agent_cli)] = host_codex
+        self._settings_data["active_environment_id"] = env_id
+        self._settings_data["interactive_terminal_id"] = str(
+            getattr(opt, "terminal_id", "")
+        )
+        interactive_key = self._interactive_command_key(agent_cli)
+        if not self._is_agent_help_interactive_launch(prompt=prompt, command=command):
+            self._settings_data[interactive_key] = (
+                self._sanitize_interactive_command_value(interactive_key, command)
+            )
+        self._apply_active_environment_to_new_task()
+        self._schedule_save()
+
+        # Update task status to running
+        task.status = "running"
+        task.started_at = datetime.now(tz=timezone.utc)
+        self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+        self._details.update_task(task)
+        self._schedule_save()
+
+        # Start finish file watcher
+        self._start_interactive_finish_watch(task_id, finish_path)
+
+        # Log launch
+        self._on_task_log(
+            task_id,
+            format_log(
+                "ui",
+                "launch",
+                "INFO",
+                f"launched in {_safe_str(getattr(opt, 'label', 'Terminal'))}",
+            ),
+        )
+
+        # Show dashboard and reset form
+        self._show_dashboard()
+        self._new_task.reset_for_new_run()
 
     def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
         task_id = str(task_id or "").strip()
