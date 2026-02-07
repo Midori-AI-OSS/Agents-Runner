@@ -45,6 +45,18 @@ class DockerAdapter(ABC):
     """
 
     @abstractmethod
+    def has_image(self, image: str) -> bool:
+        """Check if a Docker image exists locally.
+
+        Args:
+            image: Image reference to check (e.g., "python:3.13").
+
+        Returns:
+            True if image exists locally, False otherwise.
+        """
+        ...
+
+    @abstractmethod
     def pull_image(self, image: str, timeout: int) -> None:
         """Pull a Docker image.
 

@@ -21,6 +21,25 @@ class SubprocessDockerAdapter(DockerAdapter):
     This is the production implementation used for actual container runs.
     """
 
+    def has_image(self, image: str) -> bool:
+        """Check if a Docker image exists locally.
+
+        Args:
+            image: Image reference to check.
+
+        Returns:
+            True if image exists locally, False otherwise.
+        """
+        cmd = ["docker", "image", "inspect", image]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=10.0,
+            check=False,
+        )
+        return result.returncode == 0
+
     def pull_image(self, image: str, timeout: int) -> None:
         """Pull a Docker image using docker pull.
 

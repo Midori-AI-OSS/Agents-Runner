@@ -17,7 +17,7 @@ def execute_plan(plan: RunPlan, adapter: DockerAdapter) -> ExecutionResult:
     """Execute a run plan using the provided Docker adapter.
 
     This function follows the standardized flow:
-    1. Pull image
+    1. Pull image (only if not available locally)
     2. Start container with keepalive command
     3. Wait for ready state
     4. Execute command via docker exec
@@ -41,10 +41,11 @@ def execute_plan(plan: RunPlan, adapter: DockerAdapter) -> ExecutionResult:
     container_id: str | None = None
 
     try:
-        # Phase 1: Pull image
-        # Use pull timeout from plan's docker spec if available, else default
-        pull_timeout = getattr(plan.docker, "pull_timeout", 60 * 15)
-        adapter.pull_image(plan.docker.image, timeout=pull_timeout)
+        # Phase 1: Pull image (only if not available locally)
+        # Check if image exists before pulling to avoid pulling cached/local images
+        if not adapter.has_image(plan.docker.image):
+            pull_timeout = getattr(plan.docker, "pull_timeout", 60 * 15)
+            adapter.pull_image(plan.docker.image, timeout=pull_timeout)
 
         # Phase 2: Start container with keepalive command
         container_id = adapter.start_container(plan.docker)

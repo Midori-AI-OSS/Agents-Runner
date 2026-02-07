@@ -32,6 +32,12 @@ class FakeDockerAdapter(DockerAdapter):
         self.exec_exit_code = 0
         self.exec_stdout = b"test output"
         self.exec_stderr = b""
+        self.image_exists = True  # Default to image existing
+
+    def has_image(self, image: str) -> bool:
+        """Record has_image call."""
+        self.calls.append(("has_image", (image,)))
+        return self.image_exists
 
     def pull_image(self, image: str, timeout: int) -> None:
         """Record pull_image call."""
