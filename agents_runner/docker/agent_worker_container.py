@@ -122,18 +122,6 @@ class ContainerExecutor:
             Container exit code (0 for success, non-zero for failure)
         """
         try:
-            # Check for unsupported features
-            if self._runtime_env.desktop_enabled:
-                self._on_log(
-                    format_log(
-                        "docker",
-                        "runner",
-                        "ERROR",
-                        "Desktop mode not yet supported in unified runner",
-                    )
-                )
-                return 1
-
             # Setup desktop state tracking
             desktop_state: dict[str, Any] = {}
 
@@ -159,6 +147,10 @@ class ContainerExecutor:
 
             # Store container ID from execution result
             self._container_id = result.container_id or plan.docker.container_name
+
+            # Setup desktop port mapping if enabled
+            if self._runtime_env.desktop_enabled and self._container_id:
+                self._setup_desktop_port_mapping(desktop_state, adapter)
 
             # Report final state
             self._report_state(desktop_state)
@@ -523,3 +515,30 @@ class ContainerExecutor:
         except Exception:
             # Container may already be removed by unified runner
             pass
+
+    def _setup_desktop_port_mapping(
+        self, desktop_state: dict[str, Any], adapter: SubprocessDockerAdapter
+    ) -> None:
+        """Setup desktop port mapping and noVNC URL.
+
+        Args:
+            desktop_state: Dictionary to populate with desktop state
+            adapter: Docker adapter for port inspection
+        """
+        if not self._container_id:
+            return
+
+        try:
+            host_port = adapter.get_port_mapping(self._container_id, "6080/tcp")
+            if host_port:
+                desktop_state["NoVncUrl"] = f"http://127.0.0.1:{host_port}/vnc.html"
+                self._on_log(
+                    format_log(
+                        "desktop",
+                        "vnc",
+                        "INFO",
+                        f"noVNC URL: {desktop_state['NoVncUrl']}",
+                    )
+                )
+        except Exception as exc:
+            self._on_log(format_log("desktop", "vnc", "ERROR", str(exc)))

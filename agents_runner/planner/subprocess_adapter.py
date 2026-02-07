@@ -78,6 +78,10 @@ class SubprocessDockerAdapter(DockerAdapter):
                 mount_str += ":ro"
             cmd.extend(["-v", mount_str])
 
+        # Add port mappings
+        for port in spec.ports:
+            cmd.extend(["-p", port])
+
         # Add image
         cmd.append(spec.image)
 
@@ -249,3 +253,43 @@ class SubprocessDockerAdapter(DockerAdapter):
             capture_output=True,
             check=False,
         )
+
+    def get_port_mapping(self, container_id: str, container_port: str) -> str | None:
+        """Get the host port mapping for a container port.
+
+        Args:
+            container_id: Container to inspect.
+            container_port: Container port in format "PORT/PROTOCOL" (e.g., "6080/tcp").
+
+        Returns:
+            Host port string (e.g., "32768") or None if not mapped.
+
+        Raises:
+            RuntimeError: If port inspection fails.
+        """
+        cmd = ["docker", "port", container_id, container_port]
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Failed to get port mapping for {container_port}: {result.stderr}"
+            )
+
+        # Parse output like "127.0.0.1:32768"
+        mapping = result.stdout.strip()
+        if not mapping:
+            return None
+
+        # Get first line if multiple
+        first_line = mapping.splitlines()[0] if mapping else ""
+        if not first_line or ":" not in first_line:
+            return None
+
+        # Extract port number from "127.0.0.1:32768"
+        host_port = first_line.rsplit(":", 1)[-1].strip()
+        return host_port if host_port.isdigit() else None

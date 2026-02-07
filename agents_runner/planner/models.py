@@ -59,6 +59,7 @@ class DockerSpec(BaseModel):
         mounts: List of volume mounts to attach.
         env: Environment variables to set in the container.
         keepalive_argv: Command to keep container running (default: ["sleep", "infinity"]).
+        ports: List of port mappings (e.g., ["127.0.0.1::6080"] for desktop/VNC).
     """
 
     image: str
@@ -67,6 +68,7 @@ class DockerSpec(BaseModel):
     mounts: list[MountSpec] = Field(default_factory=list)
     env: dict[str, str] = Field(default_factory=dict)
     keepalive_argv: list[str] = Field(default_factory=lambda: ["sleep", "infinity"])
+    ports: list[str] = Field(default_factory=list)
 
     @field_validator("workdir")
     @classmethod

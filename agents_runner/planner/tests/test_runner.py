@@ -73,6 +73,12 @@ class FakeDockerAdapter(DockerAdapter):
         """Record stop_remove call."""
         self.calls.append(("stop_remove", (container_id,)))
 
+    def get_port_mapping(self, container_id: str, container_port: str) -> str | None:
+        """Record get_port_mapping call."""
+        self.calls.append(("get_port_mapping", (container_id, container_port)))
+        # Return a fake port for testing
+        return "32768"
+
 
 def _create_test_plan(
     interactive: bool = False,

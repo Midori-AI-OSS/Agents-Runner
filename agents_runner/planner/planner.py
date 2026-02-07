@@ -182,11 +182,17 @@ def _build_docker_spec(request: RunRequest, agent_plan) -> DockerSpec:  # type: 
     # Add agent-specific environment variables if needed
     # (Future: add GH_TOKEN, etc. if gh_context_enabled)
 
+    # Add desktop port mappings if enabled
+    ports = []
+    if env.headless_desktop_enabled:
+        ports.append("127.0.0.1::6080")
+
     return DockerSpec(
         image=env.image,
         workdir=Path(CONTAINER_WORKDIR),
         mounts=mounts,
         env=env_vars,
+        ports=ports,
     )
 
 

@@ -128,3 +128,19 @@ class DockerAdapter(ABC):
             Should not raise if container is already stopped/removed.
         """
         ...
+
+    @abstractmethod
+    def get_port_mapping(self, container_id: str, container_port: str) -> str | None:
+        """Get the host port mapping for a container port.
+
+        Args:
+            container_id: Container to inspect.
+            container_port: Container port in format "PORT/PROTOCOL" (e.g., "6080/tcp").
+
+        Returns:
+            Host port string (e.g., "32768") or None if not mapped.
+
+        Raises:
+            RuntimeError: If port inspection fails.
+        """
+        ...
