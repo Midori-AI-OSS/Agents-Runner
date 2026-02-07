@@ -30,6 +30,7 @@ class DockerRunnerConfig:
     )
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
+    ports: list[str] = field(default_factory=list)
     agent_cli_args: list[str] = field(default_factory=list)
     # GitHub repo preparation
     gh_repo: str | None = None
@@ -39,3 +40,5 @@ class DockerRunnerConfig:
     gh_context_file_path: str | None = None  # Host path to GitHub context file
     # Hard timeout for post-run artifact collection/finalization (best-effort).
     artifact_collection_timeout_s: float = 30.0
+    # Optional override for container name (for testing or custom naming)
+    container_name: str | None = None

@@ -1,7 +1,9 @@
-import json
 import os
 import tempfile
 import time
+
+import tomli
+import tomli_w
 
 from datetime import datetime
 from typing import Any
@@ -14,17 +16,41 @@ TASKS_DIR_NAME = "tasks"
 TASKS_DONE_DIR_NAME = "done"
 
 
+def _strip_none_for_toml(value: Any) -> Any:
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            if item is None:
+                continue
+            cleaned_item = _strip_none_for_toml(item)
+            if cleaned_item is None:
+                continue
+            cleaned[str(key)] = cleaned_item
+        return cleaned
+    if isinstance(value, (list, tuple)):
+        cleaned_list: list[Any] = []
+        for item in value:
+            if item is None:
+                continue
+            cleaned_item = _strip_none_for_toml(item)
+            if cleaned_item is None:
+                continue
+            cleaned_list.append(cleaned_item)
+        return cleaned_list
+    return value
+
+
 def default_state_path() -> str:
     override = str(os.environ.get("AGENTS_RUNNER_STATE_PATH") or "").strip()
     if override:
         override = os.path.expanduser(override)
-        # Treat overrides as a directory unless the path clearly points to a JSON file.
+        # Treat overrides as a directory unless the path clearly points to a TOML file.
         # This is intentionally permissive so callers can pass a non-existent directory path.
-        if override.lower().endswith(".json"):
+        if override.lower().endswith(".toml"):
             return override
-        return os.path.join(override, "state.json")
+        return os.path.join(override, "state.toml")
     base = os.path.expanduser("~/.midoriai/agents-runner")
-    return os.path.join(base, "state.json")
+    return os.path.join(base, "state.toml")
 
 
 def _dt_to_str(value: datetime | None) -> str | None:
@@ -55,8 +81,8 @@ def load_state(path: str) -> dict[str, Any]:
             "settings": {},
             "environments": [],
         }
-    with open(path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
+    with open(path, "rb") as f:
+        payload = tomli.load(f)
     if not isinstance(payload, dict):
         return {
             "version": STATE_VERSION,
@@ -91,11 +117,11 @@ def save_state(path: str, payload: dict[str, Any]) -> None:
     payload["version"] = STATE_VERSION
 
     fd, tmp_path = tempfile.mkstemp(
-        prefix="state-", suffix=".json", dir=os.path.dirname(path)
+        prefix="state-", suffix=".toml", dir=os.path.dirname(path)
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
+        with os.fdopen(fd, "wb") as f:
+            tomli_w.dump(_strip_none_for_toml(payload), f)
         os.replace(tmp_path, path)
     finally:
         try:
@@ -127,7 +153,7 @@ def _safe_task_filename(task_id: str) -> str:
     ).strip()
     if not cleaned:
         cleaned = f"task-{time.time_ns()}"
-    return f"{cleaned}.json"
+    return f"{cleaned}.toml"
 
 
 def task_path(state_path: str, task_id: str, *, archived: bool = False) -> str:
@@ -143,8 +169,8 @@ def _atomic_write_json(path: str, payload: dict[str, Any]) -> None:
         dir=os.path.dirname(path),
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
+        with os.fdopen(fd, "wb") as f:
+            tomli_w.dump(_strip_none_for_toml(payload), f)
         os.replace(tmp_path, path)
     finally:
         try:
@@ -163,7 +189,7 @@ def _archive_active_task_file_if_present(state_path: str, task_id: str) -> None:
     if os.path.exists(done_path):
         dedup_path = os.path.join(
             tasks_done_dir(state_path),
-            f"{os.path.splitext(os.path.basename(done_path))[0]}.dup-{time.time_ns()}.json",
+            f"{os.path.splitext(os.path.basename(done_path))[0]}.dup-{time.time_ns()}.toml",
         )
         try:
             os.replace(active_path, dedup_path)
@@ -194,14 +220,14 @@ def load_active_task_payloads(state_path: str) -> list[dict[str, Any]]:
         return []
     payloads: list[dict[str, Any]] = []
     for name in sorted(os.listdir(root)):
-        if not name.endswith(".json"):
+        if not name.endswith(".toml"):
             continue
         path = os.path.join(root, name)
         if not os.path.isfile(path):
             continue
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                payload = json.load(f)
+            with open(path, "rb") as f:
+                payload = tomli.load(f)
         except Exception:
             continue
         if isinstance(payload, dict):
@@ -219,8 +245,8 @@ def load_task_payload(
     if not os.path.isfile(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+        with open(path, "rb") as f:
+            payload = tomli.load(f)
     except Exception:
         return None
     return payload if isinstance(payload, dict) else None
@@ -245,7 +271,7 @@ def load_done_task_payloads(
     names: list[str] = []
     try:
         for name in os.listdir(done):
-            if name.endswith(".json"):
+            if name.endswith(".toml"):
                 names.append(name)
     except OSError:
         return []
@@ -264,8 +290,8 @@ def load_done_task_payloads(
         if not os.path.isfile(path):
             continue
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                payload = json.load(f)
+            with open(path, "rb") as f:
+                payload = tomli.load(f)
         except Exception:
             continue
         if isinstance(payload, dict):
@@ -427,6 +453,11 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
         if isinstance(raw_mounts, list):
             extra_mounts = [str(item) for item in raw_mounts if str(item).strip()]
 
+        ports: list[str] = []
+        raw_ports = payload.get("ports")
+        if isinstance(raw_ports, list):
+            ports = [str(item) for item in raw_ports if str(item).strip()]
+
         agent_cli_args: list[str] = []
         raw_args = payload.get("agent_cli_args")
         if isinstance(raw_args, list):
@@ -481,6 +512,7 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             ),
             env_vars=env_vars,
             extra_mounts=extra_mounts,
+            ports=ports,
             agent_cli_args=agent_cli_args,
             artifact_collection_timeout_s=artifact_collection_timeout_s,
         )

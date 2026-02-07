@@ -8,4 +8,4 @@ GITHUB CONTEXT (read-only)
 - Task branch: {TASK_BRANCH}
 - Head commit: {HEAD_COMMIT}
 
-Do not edit or try to update any repo metadata files. If you need to update the pull request title/body, use the PR metadata JSON file instructions.
+Do not edit or try to update any repo metadata files. If you need to update the pull request title/body, use the PR metadata TOML file instructions.

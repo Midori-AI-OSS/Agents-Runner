@@ -11,10 +11,11 @@ This prompt instructs the agent on proper Git workflow and commit practices when
 VERSION CONTROL
 - The workspace is a git repository with a task/work branch already created and checked out.
 - `git` and `gh` CLI are installed and available in PATH.
-- IMPORTANT: Commit your changes as you work using:
+- IMPORTANT: Commit your changes as you work (don't just draft a commit message) using:
   - `git add <files>` or `git add -A` to stage changes
   - `git commit -m 'Your descriptive message'` to commit
+- Before finishing, `git status` should be clean (no uncommitted changes).
 - Commit frequently - after each logical change or completed feature.
 - Commits are preserved even if the task is interrupted.
-- You do NOT need to create a PR manually; just push the branch.
+- Do not push changes to the remote repository.
 - A pull request will be created automatically after task completion.

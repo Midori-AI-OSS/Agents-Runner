@@ -32,6 +32,9 @@ from agents_runner.ui.main_window_tasks_interactive_docker import (
 )
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _stain_color
+from midori_ai_logger import MidoriAiLogger
+
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class _MainWindowTasksInteractiveMixin:
@@ -321,21 +324,32 @@ class _MainWindowTasksInteractiveMixin:
                 )
 
                 if artifact_uuid:
-                    print(
-                        f"[finish] Encrypted finish file as artifact: {artifact_uuid}"
+                    logger.rprint(
+                        f"[finish] Encrypted finish file as artifact: {artifact_uuid}",
+                        mode="normal",
                     )
                 else:
-                    print("[finish] Failed to encrypt finish file, but continuing")
+                    logger.rprint(
+                        "[finish] Failed to encrypt finish file, but continuing",
+                        mode="warn",
+                    )
             except Exception as exc:
-                print(f"[finish] Error encrypting finish file: {exc}")
+                logger.rprint(
+                    f"[finish] Error encrypting finish file: {exc!r}", mode="error"
+                )
 
             # Delete plaintext finish file
             try:
                 if os.path.exists(finish_path):
                     os.unlink(finish_path)
-                    print(f"[finish] Deleted plaintext finish file: {finish_path}")
+                    logger.rprint(
+                        f"[finish] Deleted plaintext finish file: {finish_path}",
+                        mode="normal",
+                    )
             except Exception as exc:
-                print(f"[finish] Warning: failed to delete finish file: {exc}")
+                logger.rprint(
+                    f"[finish] Failed to delete finish file: {exc!r}", mode="warn"
+                )
 
             self.interactive_finished.emit(task_id, int(exit_code))
 

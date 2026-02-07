@@ -1,6 +1,6 @@
 """Entry point for running the desktop viewer as a module.
 
-Usage: python -m agents_runner.desktop_viewer --url <novnc_url> [--title <title>]
+Usage: python -m agents_runner.ui.desktop_viewer --url <novnc_url> [--title <title>]
 """
 
 from __future__ import annotations

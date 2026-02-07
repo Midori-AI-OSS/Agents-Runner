@@ -61,6 +61,7 @@ class _MainWindowTasksAgentMixin:
             return
 
         # Archive tasks and clean up workspaces
+        archived_tasks: list[Task] = []
         data_dir = os.path.dirname(self._state_path)
         for task_id in sorted(to_remove):
             task = self._tasks.get(task_id)
@@ -68,6 +69,7 @@ class _MainWindowTasksAgentMixin:
                 continue
             status = (task.status or "").lower()
             save_task_payload(self._state_path, serialize_task(task), archived=True)
+            archived_tasks.append(task)
 
             # Clean up task workspace (if using cloned GitHub repo)
             if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
@@ -88,6 +90,10 @@ class _MainWindowTasksAgentMixin:
             self._bridges.pop(task_id, None)
             self._run_started_s.pop(task_id, None)
             self._dashboard_log_refresh_s.pop(task_id, None)
+        for task in archived_tasks:
+            env = self._environments.get(task.environment_id)
+            stain = env.color if env else None
+            self._dashboard.upsert_past_task(task, stain=stain)
         self._schedule_save()
 
     def _start_task_from_ui(
@@ -422,6 +428,7 @@ class _MainWindowTasksAgentMixin:
             )
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
+        ports_for_task = list(getattr(env, "ports", []) or []) if env else []
 
         # Add host cache mount if enabled in settings
         if self._settings_data.get("mount_host_cache", False):
@@ -554,12 +561,12 @@ class _MainWindowTasksAgentMixin:
                     task.gh_context_path = host_context_path
                     task.gh_pr_metadata_path = pr_host_path
 
-                    # Only mount the PR title/body JSON into the container (agents edit this).
+                    # Only mount the PR title/body TOML into the container (agents edit this).
                     extra_mounts_for_task.append(
                         f"{pr_host_path}:{pr_container_path}:rw"
                     )
 
-                    # Provide read-only repo context inline; do not mount the repo metadata JSON.
+                    # Provide read-only repo context inline; do not mount the repo metadata file.
                     repo_url = ""
                     repo_owner = ""
                     repo_name = ""
@@ -642,6 +649,7 @@ class _MainWindowTasksAgentMixin:
             cached_preflight_script=cached_preflight_script or None,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
+            ports=ports_for_task,
             agent_cli_args=agent_cli_args,
             gh_repo=gh_repo,
             gh_prefer_gh_cli=use_host_gh,

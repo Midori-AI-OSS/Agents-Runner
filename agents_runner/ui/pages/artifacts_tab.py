@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import logging
 import os
-import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QEvent, Qt, QTimer
@@ -42,15 +40,16 @@ from agents_runner.ui.pages.artifacts_utils import (
 )
 from agents_runner.ui.widgets.glass_card import GlassCard
 from agents_runner.ui.widgets.artifact_highlighter import ArtifactSyntaxHighlighter
+from midori_ai_logger import MidoriAiLogger
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 def _emit_watcher_lifecycle_debug(message: str) -> None:
     if not str(os.environ.get("AGENTS_RUNNER_WATCHER_LIFECYCLE_DEBUG") or "").strip():
         return
 
-    print(message, file=sys.stderr, flush=True)
+    logger.rprint(f"[watcher-lifecycle] {message}", mode="debug")
     try:
         Path("/tmp/agents-artifacts").mkdir(parents=True, exist_ok=True)
         with open(
@@ -547,12 +546,14 @@ class ArtifactsTab(QWidget):
 
         # Only allow editing for staging artifacts
         if not isinstance(artifact, StagingArtifactMeta):
-            logger.warning("Cannot edit encrypted artifacts")
+            logger.rprint("Cannot edit encrypted artifacts", mode="warn")
             return
 
         # Only allow editing for text files
         if not artifact.mime_type.startswith("text/"):
-            logger.warning(f"Cannot edit non-text file: {artifact.mime_type}")
+            logger.rprint(
+                f"Cannot edit non-text file: {artifact.mime_type}", mode="warn"
+            )
             return
 
         edit_staging_artifact(artifact)

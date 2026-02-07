@@ -63,7 +63,23 @@ def additional_config_mounts(agent: str, host_config_dir: str) -> list[str]:
 
 
 def verify_cli_clause(agent: str) -> str:
-    agent = normalize_agent(agent)
+    agent_raw = str(agent or "").strip().lower()
+    # For test commands, verify the raw command name
+    # Handle both relative (sh, bash) and absolute paths (/bin/sh, /bin/bash)
+    if agent_raw in (
+        "echo",
+        "sh",
+        "bash",
+        "true",
+        "false",
+        "/bin/sh",
+        "/bin/bash",
+        "/usr/bin/sh",
+        "/usr/bin/bash",
+    ):
+        agent = agent_raw
+    else:
+        agent = normalize_agent(agent_raw)
     quoted = shlex.quote(agent)
     return (
         f"command -v {quoted} >/dev/null 2>&1 || "
@@ -82,9 +98,31 @@ def build_noninteractive_cmd(
     container_workdir: str = CONTAINER_WORKDIR,
     agent_cli_args: list[str] | None = None,
 ) -> list[str]:
-    agent = normalize_agent(agent)
+    agent_raw = str(agent or "").strip().lower()
+    agent = normalize_agent(agent_raw)
     extra_args = list(agent_cli_args or [])
     prompt = str(prompt or "").strip()
+
+    # Support test/debug commands as pass-through (for testing only)
+    # Handle both relative (sh, bash) and absolute paths (/bin/sh, /bin/bash)
+    if agent_raw in (
+        "echo",
+        "sh",
+        "bash",
+        "true",
+        "false",
+        "/bin/sh",
+        "/bin/bash",
+        "/usr/bin/sh",
+        "/usr/bin/bash",
+    ):
+        args = [agent_raw, *extra_args]
+        # For sh/bash with -c, the command is already in extra_args, don't append prompt
+        # For echo/true/false without -c, conditionally append prompt
+        has_c_flag = "-c" in extra_args
+        if prompt and agent_raw not in ("true", "false") and not has_c_flag:
+            args.append(prompt)
+        return args
 
     if agent == "claude":
         args = [

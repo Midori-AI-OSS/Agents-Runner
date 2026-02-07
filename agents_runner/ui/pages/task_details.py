@@ -421,7 +421,7 @@ class TaskDetailsPage(QWidget):
             "-X",
             "faulthandler",
             "-m",
-            "agents_runner.desktop_viewer",
+            "agents_runner.ui.desktop_viewer",
             "--url",
             url,
             "--title",

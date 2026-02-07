@@ -11,6 +11,7 @@ from agents_runner.environments.model import PromptConfig
 from agents_runner.environments.model import normalize_workspace_type
 from agents_runner.environments.parse import parse_env_vars_text
 from agents_runner.environments.parse import parse_mounts_text
+from agents_runner.environments.parse import parse_ports_text
 from agents_runner.environments.paths import default_data_dir
 from agents_runner.environments.paths import environment_path
 from agents_runner.environments.paths import managed_repo_checkout_path
@@ -38,6 +39,7 @@ __all__ = [
     "normalize_workspace_type",
     "parse_env_vars_text",
     "parse_mounts_text",
+    "parse_ports_text",
     "save_environment",
     "serialize_environment",
     "SYSTEM_ENV_ID",

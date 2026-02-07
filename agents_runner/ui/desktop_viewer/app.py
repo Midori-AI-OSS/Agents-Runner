@@ -1,7 +1,7 @@
 """Standalone Qt application for displaying noVNC in QWebEngineView.
 
 This runs as a separate process to isolate QtWebEngine crashes from the main UI.
-Invocation: python -m agents_runner.desktop_viewer --url <novnc_url> [--title <title>]
+Invocation: python -m agents_runner.ui.desktop_viewer --url <novnc_url> [--title <title>]
 """
 
 from __future__ import annotations
@@ -21,6 +21,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from midori_ai_logger import MidoriAiLogger
+
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 QWebEngineView = None
 
@@ -33,7 +36,7 @@ def _is_truthy_env(name: str) -> bool:
 def _debug_log(message: str) -> None:
     if not _is_truthy_env("AGENTS_RUNNER_DESKTOP_VIEWER_DEBUG"):
         return
-    print(f"[Desktop Viewer][debug] {message}", file=sys.stderr, flush=True)
+    logger.rprint(f"[Desktop Viewer] {message}", mode="debug")
 
 
 def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
@@ -121,7 +124,7 @@ def run_desktop_viewer(args: list[str]) -> int:
     """
     parser = argparse.ArgumentParser(
         description="Desktop viewer for noVNC (out-of-process)",
-        prog="python -m agents_runner.desktop_viewer",
+        prog="python -m agents_runner.ui.desktop_viewer",
     )
     parser.add_argument(
         "--url",
@@ -154,8 +157,9 @@ def run_desktop_viewer(args: list[str]) -> int:
     QWebEngineView = _QWebEngineView
 
     if QWebEngineView is None:
-        print(
-            "QtWebEngine not available; opening URL in system browser", file=sys.stderr
+        logger.rprint(
+            "[Desktop Viewer] QtWebEngine not available; opening URL in system browser",
+            mode="warn",
         )
         app = QApplication.instance()
         if app is None:
@@ -173,10 +177,8 @@ def run_desktop_viewer(args: list[str]) -> int:
         app.setWindowIcon(QIcon(str(icon_path)))
 
     if fault_log_path is not None:
-        print(
-            f"[Desktop Viewer] faulthandler enabled: {fault_log_path}",
-            file=sys.stderr,
-            flush=True,
+        logger.rprint(
+            f"[Desktop Viewer] faulthandler enabled: {fault_log_path}", mode="normal"
         )
 
     window = DesktopViewerWindow(url=parsed.url, title=parsed.title)

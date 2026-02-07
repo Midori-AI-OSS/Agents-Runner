@@ -89,8 +89,8 @@ class _MainWindowTaskRecoveryMixin:
         For active tasks: syncs container state and ensures log tailing
         For done tasks: queues finalization if needed (with deduplication guards)
 
-        Note: This method assumes the task has not yet been finalized (caller filters out
-        tasks with finalization_state=="done" before calling this).
+        Note: Caller (_tick_recovery) filters out tasks with finalization_state=="done"
+        before calling this method.
         """
         status_lower = (task.status or "").lower()
         if task.is_active() or status_lower == "unknown":
@@ -108,40 +108,13 @@ class _MainWindowTaskRecoveryMixin:
             # attempt to finalize the same task.
             if task.task_id in self._bridges:
                 return
-            # SYNCHRONIZATION GUARD 1: Check finalization_state
-            # _on_task_done() sets state to "pending" before queueing finalization.
-            # This prevents recovery_tick from creating duplicate work for tasks that
-            # are already being finalized via the task_done path.
-            # Also defensively check for "done" state to prevent log spam.
-            finalization_state_lower = (task.finalization_state or "").lower().strip()
-            if finalization_state_lower in {"pending", "running", "done"}:
-                self.host_log.emit(
-                    str(task.task_id or ""),
-                    format_log(
-                        "host",
-                        "recovery_tick",
-                        "INFO",
-                        f"Task {task.task_id}: skipping finalization (reason=already {finalization_state_lower}, state={finalization_state_lower})",
-                    ),
-                )
-                return
 
-            # SYNCHRONIZATION GUARD 2: Check thread existence
-            # Even if state isn't updated yet, the thread dict provides an additional
-            # guard against duplicate finalization threads for the same task.
+            # Additional defensive check: thread existence check
+            # Prevents creating duplicate threads even if state hasn't been updated yet
             task_id = str(task.task_id or "").strip()
             if task_id:
                 existing_thread = self._finalization_threads.get(task_id)
                 if existing_thread is not None and existing_thread.is_alive():
-                    self.host_log.emit(
-                        task_id,
-                        format_log(
-                            "host",
-                            "recovery_tick",
-                            "INFO",
-                            f"Task {task.task_id}: skipping finalization (reason=thread already running, state={finalization_state_lower})",
-                        ),
-                    )
                     return
 
             self.host_log.emit(
@@ -254,21 +227,9 @@ class _MainWindowTaskRecoveryMixin:
         if task is None:
             return
 
-        # DEDUPLICATION GUARD 1: Check finalization_state first for early return
-        # This prevents duplicate finalization attempts when finalization is already
-        # queued or running via any code path (task_done, recovery_tick, etc.)
+        # DEDUPLICATION GUARD 1: Check finalization_state for early return
+        # "pending" indicates finalization is needed, so allow queueing to proceed.
         finalization_state_lower = (task.finalization_state or "").lower().strip()
-        if finalization_state_lower == "pending":
-            self.host_log.emit(
-                task_id,
-                format_log(
-                    "host",
-                    "finalize",
-                    "INFO",
-                    f"Task {task_id}: skipping finalization (reason=already pending, state=pending, trigger={reason})",
-                ),
-            )
-            return
         if finalization_state_lower == "running":
             self.host_log.emit(
                 task_id,
