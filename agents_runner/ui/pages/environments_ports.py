@@ -145,21 +145,6 @@ class PortsTabWidget(QWidget):
         self._table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         simple_layout.addWidget(self._table, 1)
 
-        controls_container = QWidget(self._simple_view)
-        controls_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        controls_row = QHBoxLayout(controls_container)
-        controls_row.setContentsMargins(0, 0, 0, 0)
-        controls_row.setSpacing(BUTTON_ROW_SPACING)
-
-        controls_row.addWidget(QLabel("Add port"))
-        add_btn = QToolButton()
-        add_btn.setText("Add")
-        add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        add_btn.clicked.connect(self._on_add_row)
-        controls_row.addWidget(add_btn)
-        controls_row.addStretch(1)
-        simple_layout.addWidget(controls_container, 0)
-
         self._advanced_view = QWidget()
         advanced_layout = QVBoxLayout(self._advanced_view)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
@@ -185,14 +170,21 @@ class PortsTabWidget(QWidget):
         self._stack.addWidget(self._advanced_view)
         self._stack.setCurrentIndex(0)
 
-        mode_row = QHBoxLayout()
-        mode_row.setSpacing(BUTTON_ROW_SPACING)
-        mode_row.addStretch(1)
+        footer_row = QHBoxLayout()
+        footer_row.setSpacing(BUTTON_ROW_SPACING)
+        self._add_port_label = QLabel("Add port")
+        footer_row.addWidget(self._add_port_label)
+        self._add_port_btn = QToolButton()
+        self._add_port_btn.setText("Add")
+        self._add_port_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._add_port_btn.clicked.connect(self._on_add_row)
+        footer_row.addWidget(self._add_port_btn)
+        footer_row.addStretch(1)
         self._mode_btn = QToolButton()
         self._mode_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self._mode_btn.clicked.connect(self._on_mode_clicked)
-        mode_row.addWidget(self._mode_btn)
-        layout.addLayout(mode_row)
+        footer_row.addWidget(self._mode_btn)
+        layout.addLayout(footer_row)
 
         self._render_table()
         self._sync_mode_state()
@@ -301,6 +293,8 @@ class PortsTabWidget(QWidget):
             self._mode_btn.setToolTip(
                 "Switch to Simple mode (binds to 127.0.0.1 only)."
             )
+            self._add_port_label.setVisible(False)
+            self._add_port_btn.setVisible(False)
         else:
             self._stack.setCurrentIndex(0)
             self._mode_btn.setText("Advanced Mode")
@@ -308,6 +302,8 @@ class PortsTabWidget(QWidget):
                 "Simple mode binds ports to 127.0.0.1 only.\n"
                 "Leave Host port blank to pick a random free port."
             )
+            self._add_port_label.setVisible(True)
+            self._add_port_btn.setVisible(True)
 
     def _switch_to_advanced_mode(self) -> None:
         if not self._advanced_acknowledged:
