@@ -194,6 +194,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
     ports = payload.get("ports", [])
     ports = ports if isinstance(ports, list) else []
+    ports_unlocked = bool(payload.get("ports_unlocked", False))
 
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
@@ -402,6 +403,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
         ports=[str(item) for item in ports if str(item).strip()],
+        ports_unlocked=ports_unlocked,
         gh_management_locked=gh_management_locked,
         workspace_type=workspace_type,
         workspace_target=workspace_target,
@@ -488,6 +490,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),
         "ports": list(getattr(env, "ports", [])),
+        "ports_unlocked": bool(getattr(env, "ports_unlocked", False)),
         "gh_management_locked": bool(env.gh_management_locked),
         "workspace_type": env.workspace_type,
         "workspace_target": str(env.workspace_target or "").strip(),
