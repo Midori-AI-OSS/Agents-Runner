@@ -110,32 +110,12 @@ class PortsTabWidget(QWidget):
 
         self._desktop_effective_enabled: bool = False
         self._unlocked: bool = False
+        self._advanced_acknowledged: bool = False
         self._rows: list[_PortRow] = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*TAB_CONTENT_MARGINS)
         layout.setSpacing(TAB_CONTENT_SPACING)
-
-        header_label = QLabel(
-            "Simple mode binds ports to 127.0.0.1 only.\n"
-            "Leave Host port blank to pick a random free port."
-        )
-        header_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
-        layout.addWidget(header_label)
-
-        unlock_row = QHBoxLayout()
-        unlock_row.setSpacing(BUTTON_ROW_SPACING)
-        self._unlock_btn = QToolButton()
-        self._unlock_btn.setText("Unlock Advanced Ports")
-        self._unlock_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self._unlock_btn.clicked.connect(self._on_unlock_clicked)
-        unlock_row.addWidget(self._unlock_btn)
-        unlock_row.addStretch(1)
-        layout.addLayout(unlock_row)
-
-        self._lock_label = QLabel("Advanced ports are locked.")
-        self._lock_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
-        layout.addWidget(self._lock_label)
 
         self._stack = QStackedWidget()
         layout.addWidget(self._stack, 1)
@@ -205,46 +185,53 @@ class PortsTabWidget(QWidget):
         self._stack.addWidget(self._advanced_view)
         self._stack.setCurrentIndex(0)
 
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(BUTTON_ROW_SPACING)
+        mode_row.addStretch(1)
+        self._mode_btn = QToolButton()
+        self._mode_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._mode_btn.clicked.connect(self._on_mode_clicked)
+        mode_row.addWidget(self._mode_btn)
+        layout.addLayout(mode_row)
+
         self._render_table()
-        self._sync_lock_state()
+        self._sync_mode_state()
 
     def set_desktop_effective_enabled(self, enabled: bool) -> None:
         self._desktop_effective_enabled = bool(enabled)
 
-    def set_ports(self, ports: list[str], unlocked: bool) -> None:
+    def set_ports(
+        self, ports: list[str], unlocked: bool, advanced_acknowledged: bool
+    ) -> None:
         raw_ports = [
             str(p or "").strip() for p in (ports or []) if str(p or "").strip()
         ]
         wants_unlocked = bool(unlocked)
+        wants_ack = bool(advanced_acknowledged) or wants_unlocked
 
         rows: list[_PortRow] = []
         for spec in raw_ports:
             row = _simple_row_from_spec(spec)
             if row is None:
                 wants_unlocked = True
+                wants_ack = True
                 continue
             rows.append(row)
 
         self._rows = rows
         self._unlocked = wants_unlocked
+        self._advanced_acknowledged = bool(wants_ack or wants_unlocked)
 
-        if self._unlocked:
-            self._advanced_text.blockSignals(True)
-            try:
-                self._advanced_text.setPlainText("\n".join(raw_ports))
-            finally:
-                self._advanced_text.blockSignals(False)
-        else:
-            self._advanced_text.blockSignals(True)
-            try:
-                self._advanced_text.setPlainText("")
-            finally:
-                self._advanced_text.blockSignals(False)
+        self._advanced_text.blockSignals(True)
+        try:
+            self._advanced_text.setPlainText("\n".join(raw_ports))
+        finally:
+            self._advanced_text.blockSignals(False)
 
         self._render_table()
-        self._sync_lock_state()
+        self._sync_mode_state()
 
-    def get_ports(self) -> tuple[list[str], bool, list[str]]:
+    def get_ports(self) -> tuple[list[str], bool, bool, list[str]]:
         if self._unlocked:
             ports, errors = parse_ports_text(self._advanced_text.toPlainText() or "")
             if self._desktop_effective_enabled:
@@ -253,7 +240,7 @@ class PortsTabWidget(QWidget):
                         errors.append(
                             f"line {idx}: container port {_DESKTOP_CONTAINER_PORT} is reserved when desktop is enabled"
                         )
-            return ports, True, errors
+            return ports, True, True, errors
 
         ports: list[str] = []
         errors: list[str] = []
@@ -294,44 +281,86 @@ class PortsTabWidget(QWidget):
             else:
                 ports.append(f"{_LOCAL_BIND}::{container_port}")
 
-        return ports, False, errors
+        return ports, False, bool(self._advanced_acknowledged), errors
 
-    def _on_unlock_clicked(self) -> None:
+    def _on_mode_clicked(self) -> None:
         if self._unlocked:
-            return
-
-        result = QMessageBox.warning(
-            self,
-            "Warning: Unlock Advanced Ports",
-            "Advanced port publishing accepts raw docker -p values.\n\n"
-            "Invalid publishes can break tasks or expose services unintentionally.\n\n"
-            "Do you want to proceed?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if result != QMessageBox.Yes:
-            return
-
-        ports, _unlocked, _errors = self.get_ports()
-        self._unlocked = True
-        self._advanced_text.setPlainText("\n".join(ports))
-        self._sync_lock_state()
-        self.ports_changed.emit()
+            self._switch_to_simple_mode()
+        else:
+            self._switch_to_advanced_mode()
 
     def _on_add_row(self) -> None:
         self._rows.append(_PortRow(host_port="", container_port=""))
         self._render_table()
         self.ports_changed.emit()
 
-    def _sync_lock_state(self) -> None:
+    def _sync_mode_state(self) -> None:
         if self._unlocked:
-            self._unlock_btn.setVisible(False)
-            self._lock_label.setVisible(False)
             self._stack.setCurrentIndex(1)
+            self._mode_btn.setText("Simple Mode")
+            self._mode_btn.setToolTip(
+                "Switch to Simple mode (binds to 127.0.0.1 only)."
+            )
         else:
-            self._unlock_btn.setVisible(True)
-            self._lock_label.setVisible(True)
             self._stack.setCurrentIndex(0)
+            self._mode_btn.setText("Advanced Mode")
+            self._mode_btn.setToolTip(
+                "Simple mode binds ports to 127.0.0.1 only.\n"
+                "Leave Host port blank to pick a random free port."
+            )
+
+    def _switch_to_advanced_mode(self) -> None:
+        if not self._advanced_acknowledged:
+            result = QMessageBox.warning(
+                self,
+                "Warning: Advanced Ports",
+                "Advanced port publishing accepts raw docker -p values.\n\n"
+                "Invalid publishes can break tasks or expose services unintentionally.\n\n"
+                "Do you want to proceed?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if result != QMessageBox.Yes:
+                return
+            self._advanced_acknowledged = True
+
+        ports, _unlocked, _ack, _errors = self.get_ports()
+        self._advanced_text.blockSignals(True)
+        try:
+            self._advanced_text.setPlainText("\n".join(ports))
+        finally:
+            self._advanced_text.blockSignals(False)
+
+        self._unlocked = True
+        self._sync_mode_state()
+        self.ports_changed.emit()
+
+    def _switch_to_simple_mode(self) -> None:
+        ports, _unlocked, _ack, errors = self.get_ports()
+        if errors:
+            QMessageBox.warning(
+                self, "Invalid ports", "Fix ports:\n" + "\n".join(errors[:12])
+            )
+            return
+
+        rows: list[_PortRow] = []
+        for spec in ports:
+            row = _simple_row_from_spec(spec)
+            if row is None:
+                QMessageBox.warning(
+                    self,
+                    "Cannot switch to Simple mode",
+                    "Simple mode only supports local port publishes.\n\n"
+                    "Use Advanced mode for non-local binds, protocols, ranges, and other docker -p options.",
+                )
+                return
+            rows.append(row)
+
+        self._rows = rows
+        self._unlocked = False
+        self._render_table()
+        self._sync_mode_state()
+        self.ports_changed.emit()
 
     def _render_table(self) -> None:
         self._table.setRowCount(len(self._rows))
