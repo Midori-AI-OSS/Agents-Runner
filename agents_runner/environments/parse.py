@@ -83,6 +83,10 @@ def parse_ports_text(text: str) -> tuple[list[str], list[str]]:
         line = str(raw or "").strip()
         if not line or line.startswith("#"):
             continue
+        if "#" in line:
+            line = line.split("#", 1)[0].strip()
+            if not line:
+                continue
         if line.startswith("-"):
             errors.append(f"line {idx}: do not include flags (omit -p/--publish)")
             continue

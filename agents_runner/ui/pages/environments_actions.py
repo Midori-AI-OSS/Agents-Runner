@@ -13,7 +13,6 @@ from agents_runner.environments import delete_environment
 from agents_runner.environments import load_environments
 from agents_runner.environments import parse_env_vars_text
 from agents_runner.environments import parse_mounts_text
-from agents_runner.environments import parse_ports_text
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
@@ -151,7 +150,7 @@ class _EnvironmentsPageActionsMixin:
             return False
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
-        ports, port_errors = parse_ports_text(self._ports.toPlainText() or "")
+        ports, ports_unlocked, port_errors = self._ports_tab.get_ports()
         if port_errors:
             QMessageBox.warning(
                 self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
@@ -202,6 +201,7 @@ class _EnvironmentsPageActionsMixin:
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 ports=ports,
+                ports_unlocked=ports_unlocked,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -232,6 +232,7 @@ class _EnvironmentsPageActionsMixin:
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 ports=ports,
+                ports_unlocked=ports_unlocked,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -297,7 +298,7 @@ class _EnvironmentsPageActionsMixin:
             return None
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
-        ports, port_errors = parse_ports_text(self._ports.toPlainText() or "")
+        ports, ports_unlocked, port_errors = self._ports_tab.get_ports()
         if port_errors:
             QMessageBox.warning(
                 self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
@@ -349,6 +350,7 @@ class _EnvironmentsPageActionsMixin:
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 ports=ports,
+                ports_unlocked=ports_unlocked,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -375,6 +377,7 @@ class _EnvironmentsPageActionsMixin:
             env_vars=env_vars,
             extra_mounts=mounts,
             ports=ports,
+            ports_unlocked=ports_unlocked,
             gh_management_locked=gh_locked,
             workspace_type=workspace_type,
             workspace_target=workspace_target,

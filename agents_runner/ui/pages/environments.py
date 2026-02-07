@@ -47,6 +47,7 @@ from agents_runner.ui.constants import (
 from agents_runner.ui.pages.environments_actions import _EnvironmentsPageActionsMixin
 from agents_runner.ui.pages.environments_prompts import PromptsTabWidget
 from agents_runner.ui.pages.environments_agents import AgentsTabWidget
+from agents_runner.ui.pages.environments_ports import PortsTabWidget
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
@@ -437,24 +438,8 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         mounts_layout.addWidget(QLabel("Extra bind mounts"))
         mounts_layout.addWidget(self._mounts, 1)
 
-        self._ports = QPlainTextEdit()
-        self._ports.setPlaceholderText(
-            "\n".join(
-                [
-                    "# docker -p values (one per line)",
-                    "# 127.0.0.1:3000:3000",
-                    "# 127.0.0.1::3000  # random host port",
-                    "",
-                ]
-            )
-        )
-        self._ports.setTabChangesFocus(True)
-        ports_tab = QWidget()
-        ports_layout = QVBoxLayout(ports_tab)
-        ports_layout.setSpacing(TAB_CONTENT_SPACING)
-        ports_layout.setContentsMargins(*TAB_CONTENT_MARGINS)
-        ports_layout.addWidget(QLabel("Port forwards"))
-        ports_layout.addWidget(self._ports, 1)
+        self._ports_tab = PortsTabWidget()
+        self._ports_tab.ports_changed.connect(self._on_ports_changed)
 
         self._prompts_tab = PromptsTabWidget()
         self._prompts_tab.prompts_changed.connect(self._on_prompts_changed)
@@ -467,7 +452,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         tabs.addTab(self._prompts_tab, "Prompts")
         tabs.addTab(env_vars_tab, "Env Vars")
         tabs.addTab(mounts_tab, "Mounts")
-        tabs.addTab(ports_tab, "Ports")
+        tabs.addTab(self._ports_tab, "Ports")
         tabs.addTab(preflight_tab, "Preflight")
 
         card_layout.addWidget(tabs, 1)
@@ -527,6 +512,12 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
         """Set reference to main window settings data."""
         self._settings_data = settings_data
+        self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
+
+    def _effective_desktop_enabled(self) -> bool:
+        force = bool(self._settings_data.get("headless_desktop_enabled") or False)
+        env_enabled = bool(self._headless_desktop_enabled.isChecked())
+        return bool(force or env_enabled)
 
     def _load_selected(self) -> None:
         env_id = str(self._env_select.currentData() or "")
@@ -556,7 +547,10 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._preflight_stack.setCurrentIndex(0)
             self._env_vars.setPlainText("")
             self._mounts.setPlainText("")
-            self._ports.setPlainText("")
+            self._ports_tab.set_desktop_effective_enabled(
+                self._effective_desktop_enabled()
+            )
+            self._ports_tab.set_ports([], False)
             self._prompts_tab.set_prompts([], False)
             self._agents_tab.set_agent_selection(None)
             self._sync_workspace_controls()
@@ -572,6 +566,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._headless_desktop_enabled.setChecked(
             bool(getattr(env, "headless_desktop_enabled", False))
         )
+        self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
         self._cache_desktop_build.setChecked(
             bool(getattr(env, "cache_desktop_build", False))
         )
@@ -635,7 +630,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         env_lines = "\n".join(f"{k}={v}" for k, v in sorted(env.env_vars.items()))
         self._env_vars.setPlainText(env_lines)
         self._mounts.setPlainText("\n".join(env.extra_mounts))
-        self._ports.setPlainText("\n".join(getattr(env, "ports", []) or []))
+        self._ports_tab.set_ports(
+            getattr(env, "ports", []) or [], bool(getattr(env, "ports_unlocked", False))
+        )
         self._prompts_tab.set_prompts(env.prompts or [], env.prompts_unlocked or False)
 
         # Load agent selection and cross-agent allowlist
@@ -651,6 +648,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
     def _on_agents_changed(self) -> None:
         pass
 
+    def _on_ports_changed(self) -> None:
+        pass
+
     def _on_headless_desktop_toggled(self, state: int) -> None:
         """Handle headless desktop checkbox state change.
 
@@ -658,6 +658,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         When desktop is enabled, enable cache checkbox (but leave unchecked by default).
         """
         is_enabled = state == Qt.CheckState.Checked.value
+        self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
         self._cache_desktop_build.setEnabled(is_enabled)
         if not is_enabled:
             # Desktop disabled, also disable cache
