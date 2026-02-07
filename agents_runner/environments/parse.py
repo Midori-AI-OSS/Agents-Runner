@@ -65,3 +65,29 @@ def parse_mounts_text(text: str) -> list[str]:
             continue
         mounts.append(line)
     return mounts
+
+
+def parse_ports_text(text: str) -> tuple[list[str], list[str]]:
+    """
+    Parse Docker port forwards from text format.
+
+    One publish spec per line (the value passed to docker's ``-p`` / ``--publish``).
+    Comments (#) and empty lines are ignored.
+
+    Returns:
+        Tuple of (parsed ports list, list of error messages)
+    """
+    ports: list[str] = []
+    errors: list[str] = []
+    for idx, raw in enumerate((text or "").splitlines(), start=1):
+        line = str(raw or "").strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("-"):
+            errors.append(f"line {idx}: do not include flags (omit -p/--publish)")
+            continue
+        if any(ch.isspace() for ch in line):
+            errors.append(f"line {idx}: whitespace is not allowed")
+            continue
+        ports.append(line)
+    return ports, errors

@@ -31,6 +31,26 @@ from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _safe_str
 
 
+def _publishes_container_port(spec: str, port: int) -> bool:
+    base = str(spec or "").strip()
+    if not base:
+        return False
+    base = base.split("/", 1)[0]
+    container_part = base.rsplit(":", 1)[-1].strip()
+    if not container_part:
+        return False
+    if container_part.isdigit():
+        return int(container_part) == int(port)
+    if "-" in container_part:
+        left, right = (p.strip() for p in container_part.split("-", 1))
+        if left.isdigit() and right.isdigit():
+            start = int(left)
+            end = int(right)
+            p = int(port)
+            return start <= p <= end
+    return False
+
+
 def launch_docker_terminal_task(
     main_window: object,
     task: Task,
@@ -162,6 +182,15 @@ def launch_docker_terminal_task(
             main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             main_window._details.update_task(task)
             main_window._schedule_save()
+
+        # Apply environment-specified ports (if any)
+        for port_spec in (getattr(env, "ports", None) or []) if env else []:
+            spec = str(port_spec or "").strip()
+            if not spec:
+                continue
+            if desktop_enabled and _publishes_container_port(spec, 6080):
+                continue
+            port_args.extend(["-p", spec])
 
         # Prepare extra mounts
         extra_mount_args: list[str] = []

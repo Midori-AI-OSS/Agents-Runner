@@ -393,9 +393,38 @@ class ContainerExecutor:
     def _build_port_args(self) -> list[str]:
         """Build port mapping arguments."""
         port_args: list[str] = []
+        for port_spec in self._config.ports or []:
+            spec = str(port_spec or "").strip()
+            if not spec:
+                continue
+            if self._runtime_env.desktop_enabled and self._publishes_container_port(
+                spec, 6080
+            ):
+                continue
+            port_args.extend(["-p", spec])
         if self._runtime_env.desktop_enabled:
             port_args.extend(["-p", "127.0.0.1::6080"])
         return port_args
+
+    @staticmethod
+    def _publishes_container_port(spec: str, port: int) -> bool:
+        base = str(spec or "").strip()
+        if not base:
+            return False
+        base = base.split("/", 1)[0]
+        container_part = base.rsplit(":", 1)[-1].strip()
+        if not container_part:
+            return False
+        if container_part.isdigit():
+            return int(container_part) == int(port)
+        if "-" in container_part:
+            left, right = (p.strip() for p in container_part.split("-", 1))
+            if left.isdigit() and right.isdigit():
+                start = int(left)
+                end = int(right)
+                p = int(port)
+                return start <= p <= end
+        return False
 
     def _build_extra_mounts(self) -> list[str]:
         """Build extra mount arguments with deduplication."""
