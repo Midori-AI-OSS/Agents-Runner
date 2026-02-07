@@ -192,6 +192,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     extra_mounts = payload.get("extra_mounts", [])
     extra_mounts = extra_mounts if isinstance(extra_mounts, list) else []
 
+    ports = payload.get("ports", [])
+    ports = ports if isinstance(ports, list) else []
+
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
@@ -398,6 +401,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         preflight_script=preflight_script,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
+        ports=[str(item) for item in ports if str(item).strip()],
         gh_management_locked=gh_management_locked,
         workspace_type=workspace_type,
         workspace_target=workspace_target,
@@ -483,6 +487,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "preflight_script": env.preflight_script,
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),
+        "ports": list(getattr(env, "ports", [])),
         "gh_management_locked": bool(env.gh_management_locked),
         "workspace_type": env.workspace_type,
         "workspace_target": str(env.workspace_target or "").strip(),

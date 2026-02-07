@@ -549,6 +549,7 @@ class TaskSupervisor:
             container_environment_preflight_path=self._config.container_environment_preflight_path,
             env_vars=self._config.env_vars,
             extra_mounts=self._config.extra_mounts,
+            ports=self._config.ports,
             agent_cli_args=agent_cli_args or self._config.agent_cli_args,
             gh_repo=self._config.gh_repo,
             gh_prefer_gh_cli=self._config.gh_prefer_gh_cli,

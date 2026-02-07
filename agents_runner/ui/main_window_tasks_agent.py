@@ -428,6 +428,7 @@ class _MainWindowTasksAgentMixin:
             )
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
+        ports_for_task = list(getattr(env, "ports", []) or []) if env else []
 
         # Add host cache mount if enabled in settings
         if self._settings_data.get("mount_host_cache", False):
@@ -648,6 +649,7 @@ class _MainWindowTasksAgentMixin:
             cached_preflight_script=cached_preflight_script or None,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
+            ports=ports_for_task,
             agent_cli_args=agent_cli_args,
             gh_repo=gh_repo,
             gh_prefer_gh_cli=use_host_gh,

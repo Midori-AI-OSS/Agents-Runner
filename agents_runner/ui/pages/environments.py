@@ -437,6 +437,25 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         mounts_layout.addWidget(QLabel("Extra bind mounts"))
         mounts_layout.addWidget(self._mounts, 1)
 
+        self._ports = QPlainTextEdit()
+        self._ports.setPlaceholderText(
+            "\n".join(
+                [
+                    "# docker -p values (one per line)",
+                    "# 127.0.0.1:3000:3000",
+                    "# 127.0.0.1::3000  # random host port",
+                    "",
+                ]
+            )
+        )
+        self._ports.setTabChangesFocus(True)
+        ports_tab = QWidget()
+        ports_layout = QVBoxLayout(ports_tab)
+        ports_layout.setSpacing(TAB_CONTENT_SPACING)
+        ports_layout.setContentsMargins(*TAB_CONTENT_MARGINS)
+        ports_layout.addWidget(QLabel("Port forwards"))
+        ports_layout.addWidget(self._ports, 1)
+
         self._prompts_tab = PromptsTabWidget()
         self._prompts_tab.prompts_changed.connect(self._on_prompts_changed)
 
@@ -448,6 +467,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         tabs.addTab(self._prompts_tab, "Prompts")
         tabs.addTab(env_vars_tab, "Env Vars")
         tabs.addTab(mounts_tab, "Mounts")
+        tabs.addTab(ports_tab, "Ports")
         tabs.addTab(preflight_tab, "Preflight")
 
         card_layout.addWidget(tabs, 1)
@@ -536,6 +556,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._preflight_stack.setCurrentIndex(0)
             self._env_vars.setPlainText("")
             self._mounts.setPlainText("")
+            self._ports.setPlainText("")
             self._prompts_tab.set_prompts([], False)
             self._agents_tab.set_agent_selection(None)
             self._sync_workspace_controls()
@@ -614,6 +635,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         env_lines = "\n".join(f"{k}={v}" for k, v in sorted(env.env_vars.items()))
         self._env_vars.setPlainText(env_lines)
         self._mounts.setPlainText("\n".join(env.extra_mounts))
+        self._ports.setPlainText("\n".join(getattr(env, "ports", []) or []))
         self._prompts_tab.set_prompts(env.prompts or [], env.prompts_unlocked or False)
 
         # Load agent selection and cross-agent allowlist

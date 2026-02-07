@@ -13,6 +13,7 @@ from agents_runner.environments import delete_environment
 from agents_runner.environments import load_environments
 from agents_runner.environments import parse_env_vars_text
 from agents_runner.environments import parse_mounts_text
+from agents_runner.environments import parse_ports_text
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
@@ -150,6 +151,12 @@ class _EnvironmentsPageActionsMixin:
             return False
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        ports, port_errors = parse_ports_text(self._ports.toPlainText() or "")
+        if port_errors:
+            QMessageBox.warning(
+                self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
+            )
+            return False
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
 
@@ -194,6 +201,7 @@ class _EnvironmentsPageActionsMixin:
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                ports=ports,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -223,6 +231,7 @@ class _EnvironmentsPageActionsMixin:
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                ports=ports,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -288,6 +297,12 @@ class _EnvironmentsPageActionsMixin:
             return None
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        ports, port_errors = parse_ports_text(self._ports.toPlainText() or "")
+        if port_errors:
+            QMessageBox.warning(
+                self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
+            )
+            return None
         name = (self._name.text() or "").strip() or env_id
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
@@ -333,6 +348,7 @@ class _EnvironmentsPageActionsMixin:
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                ports=ports,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -358,6 +374,7 @@ class _EnvironmentsPageActionsMixin:
             preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
+            ports=ports,
             gh_management_locked=gh_locked,
             workspace_type=workspace_type,
             workspace_target=workspace_target,

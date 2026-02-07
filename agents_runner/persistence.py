@@ -453,6 +453,11 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
         if isinstance(raw_mounts, list):
             extra_mounts = [str(item) for item in raw_mounts if str(item).strip()]
 
+        ports: list[str] = []
+        raw_ports = payload.get("ports")
+        if isinstance(raw_ports, list):
+            ports = [str(item) for item in raw_ports if str(item).strip()]
+
         agent_cli_args: list[str] = []
         raw_args = payload.get("agent_cli_args")
         if isinstance(raw_args, list):
@@ -507,6 +512,7 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             ),
             env_vars=env_vars,
             extra_mounts=extra_mounts,
+            ports=ports,
             agent_cli_args=agent_cli_args,
             artifact_collection_timeout_s=artifact_collection_timeout_s,
         )
