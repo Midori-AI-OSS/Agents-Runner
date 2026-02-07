@@ -88,6 +88,7 @@ class Environment:
     extra_mounts: list[str] = field(default_factory=list)
     ports: list[str] = field(default_factory=list)
     ports_unlocked: bool = False
+    ports_advanced_acknowledged: bool = False
     gh_management_locked: bool = False
     workspace_type: str = WORKSPACE_NONE
     workspace_target: str = ""

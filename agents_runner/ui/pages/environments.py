@@ -550,7 +550,7 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
             self._ports_tab.set_desktop_effective_enabled(
                 self._effective_desktop_enabled()
             )
-            self._ports_tab.set_ports([], False)
+            self._ports_tab.set_ports([], False, False)
             self._prompts_tab.set_prompts([], False)
             self._agents_tab.set_agent_selection(None)
             self._sync_workspace_controls()
@@ -631,7 +631,9 @@ class EnvironmentsPage(QWidget, _EnvironmentsPageActionsMixin):
         self._env_vars.setPlainText(env_lines)
         self._mounts.setPlainText("\n".join(env.extra_mounts))
         self._ports_tab.set_ports(
-            getattr(env, "ports", []) or [], bool(getattr(env, "ports_unlocked", False))
+            getattr(env, "ports", []) or [],
+            bool(getattr(env, "ports_unlocked", False)),
+            bool(getattr(env, "ports_advanced_acknowledged", False)),
         )
         self._prompts_tab.set_prompts(env.prompts or [], env.prompts_unlocked or False)
 

@@ -150,7 +150,9 @@ class _EnvironmentsPageActionsMixin:
             return False
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
-        ports, ports_unlocked, port_errors = self._ports_tab.get_ports()
+        ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
+            self._ports_tab.get_ports()
+        )
         if port_errors:
             QMessageBox.warning(
                 self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
@@ -202,6 +204,7 @@ class _EnvironmentsPageActionsMixin:
                 extra_mounts=mounts,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
+                ports_advanced_acknowledged=ports_advanced_acknowledged,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -233,6 +236,7 @@ class _EnvironmentsPageActionsMixin:
                 extra_mounts=mounts,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
+                ports_advanced_acknowledged=ports_advanced_acknowledged,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -298,7 +302,9 @@ class _EnvironmentsPageActionsMixin:
             return None
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
-        ports, ports_unlocked, port_errors = self._ports_tab.get_ports()
+        ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
+            self._ports_tab.get_ports()
+        )
         if port_errors:
             QMessageBox.warning(
                 self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
@@ -351,6 +357,7 @@ class _EnvironmentsPageActionsMixin:
                 extra_mounts=mounts,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
+                ports_advanced_acknowledged=ports_advanced_acknowledged,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -378,6 +385,7 @@ class _EnvironmentsPageActionsMixin:
             extra_mounts=mounts,
             ports=ports,
             ports_unlocked=ports_unlocked,
+            ports_advanced_acknowledged=ports_advanced_acknowledged,
             gh_management_locked=gh_locked,
             workspace_type=workspace_type,
             workspace_target=workspace_target,
