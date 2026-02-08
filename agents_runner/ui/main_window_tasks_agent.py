@@ -120,6 +120,42 @@ class _MainWindowTasksAgentMixin:
         self._settings_data["active_environment_id"] = env_id
         env = self._environments.get(env_id)
 
+        if (
+            env
+            and env.agent_selection
+            and str(getattr(env.agent_selection, "selection_mode", "") or "")
+            .strip()
+            .lower()
+            == "pinned"
+        ):
+            pinned_id = str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip()
+            pinned_lower = pinned_id.lower()
+            pinned_inst = next(
+                (
+                    inst
+                    for inst in list(getattr(env.agent_selection, "agents", []) or [])
+                    if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
+                ),
+                None,
+            ) or next(
+                (
+                    inst
+                    for inst in list(getattr(env.agent_selection, "agents", []) or [])
+                    if str(getattr(inst, "agent_id", "") or "").strip().lower()
+                    == pinned_lower
+                ),
+                None,
+            )
+            if pinned_inst is None:
+                QMessageBox.warning(
+                    self,
+                    "Pinned agent missing",
+                    "This environment is set to Pinned mode, but the pinned agent ID is missing or invalid.",
+                )
+                return
+
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
@@ -183,7 +219,15 @@ class _MainWindowTasksAgentMixin:
             # Get fallback agent name
             fallback_name = None
             fallback_agent = None
-            if env and env.agent_selection and env.agent_selection.agent_fallbacks:
+            if (
+                env
+                and env.agent_selection
+                and env.agent_selection.agent_fallbacks
+                and str(getattr(env.agent_selection, "selection_mode", "") or "")
+                .strip()
+                .lower()
+                == "fallback"
+            ):
                 # Find primary agent
                 primary_agent = None
                 if env.agent_selection.agents:
@@ -277,8 +321,23 @@ class _MainWindowTasksAgentMixin:
 
         resolved_agent_selection: AgentSelection | None = None
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            selection_mode = str(
+                getattr(env.agent_selection, "selection_mode", "") or "round-robin"
+            ).strip()
+            pinned_agent_id = str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip()
+            pinned_lower = pinned_agent_id.lower()
             resolved_agents: list[AgentInstance] = []
             for inst in list(env.agent_selection.agents or []):
+                if (
+                    selection_mode.lower() == "pinned"
+                    and pinned_agent_id
+                    and str(getattr(inst, "agent_id", "") or "").strip() != pinned_agent_id
+                    and str(getattr(inst, "agent_id", "") or "").strip().lower()
+                    != pinned_lower
+                ):
+                    continue
                 inst_cli = str(getattr(inst, "agent_cli", "") or "").strip()
                 inst_dir = os.path.expanduser(
                     str(getattr(inst, "config_dir", "") or "").strip()
@@ -300,12 +359,13 @@ class _MainWindowTasksAgentMixin:
                 )
             resolved_agent_selection = AgentSelection(
                 agents=resolved_agents,
-                selection_mode=str(
-                    getattr(env.agent_selection, "selection_mode", "") or "round-robin"
+                selection_mode=selection_mode,
+                agent_fallbacks=(
+                    {}
+                    if selection_mode.lower() == "pinned"
+                    else dict(getattr(env.agent_selection, "agent_fallbacks", {}) or {})
                 ),
-                agent_fallbacks=dict(
-                    getattr(env.agent_selection, "agent_fallbacks", {}) or {}
-                ),
+                pinned_agent_id=pinned_agent_id,
             )
 
         host_codex = os.path.expanduser(str(host_codex or "").strip())

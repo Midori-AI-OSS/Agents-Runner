@@ -281,6 +281,25 @@ class _MainWindowEnvironmentMixin:
                     ]
                 else:
                     agent_names = []
+            elif mode == "pinned":
+                pinned_id = str(getattr(selection, "pinned_agent_id", "") or "").strip()
+                pinned_inst = None
+                if pinned_id:
+                    pinned_lower = pinned_id.lower()
+                    pinned_inst = next(
+                        (a for a in selection.agents if a.agent_id == pinned_id), None
+                    ) or next(
+                        (
+                            a
+                            for a in selection.agents
+                            if str(a.agent_id or "").lower() == pinned_lower
+                        ),
+                        None,
+                    )
+                if pinned_inst is not None:
+                    agent_names = [normalize_agent(pinned_inst.agent_cli)]
+                else:
+                    agent_names = []
             else:
                 # Round-robin or least-used: show all agents in priority order
                 agent_names = [normalize_agent(a.agent_cli) for a in selection.agents]
