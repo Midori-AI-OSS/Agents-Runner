@@ -121,6 +121,42 @@ class _MainWindowTasksInteractiveMixin:
             # Update in-memory copy to persist across tab changes and reloads
             self._environments[env.env_id] = env
 
+        if (
+            env
+            and env.agent_selection
+            and str(getattr(env.agent_selection, "selection_mode", "") or "")
+            .strip()
+            .lower()
+            == "pinned"
+        ):
+            pinned_id = str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip()
+            pinned_lower = pinned_id.lower()
+            pinned_inst = next(
+                (
+                    inst
+                    for inst in list(getattr(env.agent_selection, "agents", []) or [])
+                    if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
+                ),
+                None,
+            ) or next(
+                (
+                    inst
+                    for inst in list(getattr(env.agent_selection, "agents", []) or [])
+                    if str(getattr(inst, "agent_id", "") or "").strip().lower()
+                    == pinned_lower
+                ),
+                None,
+            )
+            if pinned_inst is None:
+                QMessageBox.warning(
+                    self,
+                    "Pinned agent missing",
+                    "This environment is set to Pinned mode, but the pinned agent ID is missing or invalid.",
+                )
+                return
+
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):

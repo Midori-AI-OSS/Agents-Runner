@@ -67,6 +67,7 @@ class AgentSelection:
     agents: list[AgentInstance] = field(default_factory=list)
     selection_mode: str = "round-robin"
     agent_fallbacks: dict[str, str] = field(default_factory=dict)
+    pinned_agent_id: str = ""
 
 
 @dataclass

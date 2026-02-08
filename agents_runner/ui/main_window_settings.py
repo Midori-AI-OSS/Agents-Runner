@@ -273,6 +273,32 @@ class _MainWindowSettingsMixin:
                 return counts.get(inst_id, 0), agents.index(inst)
 
             chosen = min(agents, key=_score)
+        elif mode == "pinned":
+            pinned_id = str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip()
+            if pinned_id:
+                pinned_lower = pinned_id.lower()
+                pinned_inst = next(
+                    (
+                        inst
+                        for inst in agents
+                        if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
+                    ),
+                    None,
+                ) or next(
+                    (
+                        inst
+                        for inst in agents
+                        if str(getattr(inst, "agent_id", "") or "")
+                        .strip()
+                        .lower()
+                        == pinned_lower
+                    ),
+                    None,
+                )
+                if pinned_inst is not None:
+                    chosen = pinned_inst
 
         agent_cli = normalize_agent(str(getattr(chosen, "agent_cli", "") or "codex"))
         agent_id = str(getattr(chosen, "agent_id", "") or "").strip()
@@ -454,6 +480,36 @@ class _MainWindowSettingsMixin:
             .lower()
         )
         env_id = str(getattr(env, "env_id", "") or "")
+
+        if mode == "pinned":
+            pinned_id = str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip()
+            if pinned_id:
+                pinned_lower = pinned_id.lower()
+                pinned_inst = next(
+                    (
+                        inst
+                        for inst in agents
+                        if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
+                    ),
+                    None,
+                ) or next(
+                    (
+                        inst
+                        for inst in agents
+                        if str(getattr(inst, "agent_id", "") or "")
+                        .strip()
+                        .lower()
+                        == pinned_lower
+                    ),
+                    None,
+                )
+                if pinned_inst is not None:
+                    return self._format_agent_label(pinned_inst), ""
+            current = agents[0]
+            return self._format_agent_label(current), ""
+
         cursor_map = (
             getattr(self, "_agent_selection_round_robin_cursor", {})
             if hasattr(self, "_agent_selection_round_robin_cursor")
