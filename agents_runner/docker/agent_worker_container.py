@@ -182,7 +182,7 @@ class ContainerExecutor:
             agent=self._runtime_env.agent_cli,
             prompt=self._runtime_env.prompt_for_agent,
             host_workdir=self._runtime_env.host_mount,
-            host_config_dir=self._config.host_codex_dir,
+            host_config_dir=self._config.host_config_dir,
             container_workdir=self._config.container_workdir,
             agent_cli_args=list(self._config.agent_cli_args or []),
         )
@@ -435,7 +435,7 @@ class ContainerExecutor:
 
         # Add primary config mount
         all_mounts.append(
-            f"{self._config.host_codex_dir}:{self._runtime_env.config_container_dir}"
+            f"{self._config.host_config_dir}:{self._runtime_env.config_container_dir}"
         )
 
         # Add workspace mount

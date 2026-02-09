@@ -82,6 +82,9 @@ class CopilotAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["copilot", "--version"]
 
+    def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
+        return list(cmd_parts)
+
     def build_interactive_command_parts(
         self,
         *,

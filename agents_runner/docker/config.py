@@ -6,10 +6,10 @@ from dataclasses import field
 class DockerRunnerConfig:
     task_id: str
     image: str
-    host_codex_dir: str
+    host_config_dir: str
     host_workdir: str
     agent_cli: str = "codex"
-    container_codex_dir: str = "/home/midori-ai/.codex"
+    container_config_dir: str = ""
     container_workdir: str = "/home/midori-ai/workspace"
     auto_remove: bool = True
     pull_before_run: bool = True

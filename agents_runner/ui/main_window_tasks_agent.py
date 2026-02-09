@@ -429,7 +429,7 @@ class _MainWindowTasksAgentMixin:
             prompt=prompt,
             image=image,
             host_workdir=effective_workdir,
-            host_codex_dir=host_config_dir,
+            host_config_dir=host_config_dir,
             environment_id=env_id,
             created_at_s=time.time(),
             status="queued",
@@ -696,7 +696,7 @@ class _MainWindowTasksAgentMixin:
         config = DockerRunnerConfig(
             task_id=task_id,
             image=image,
-            host_codex_dir=host_config_dir,
+            host_config_dir=host_config_dir,
             host_workdir=effective_workdir,
             agent_cli=agent_cli,
             environment_id=env_id,

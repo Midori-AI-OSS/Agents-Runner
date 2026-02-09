@@ -141,7 +141,7 @@ def test_config(temp_state_dir, request):
         task_id=task_id,
         image=TEST_IMAGE,
         host_workdir=workdir,
-        host_codex_dir=codex_dir,
+        host_config_dir=codex_dir,
         container_workdir="/workspace",
         auto_remove=True,
         agent_cli="echo",  # Mock the agent CLI with echo
@@ -235,7 +235,7 @@ def test_task_lifecycle_completes_successfully(test_config):
             "prompt": "test prompt",
             "image": TEST_IMAGE,
             "host_workdir": workdir,
-            "host_codex_dir": codex_dir,
+            "host_config_dir": codex_dir,
             "created_at_s": time.time(),
         }
         # Only include container_id if present (None values are stripped during TOML serialization)

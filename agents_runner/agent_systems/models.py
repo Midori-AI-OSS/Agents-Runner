@@ -126,6 +126,14 @@ class AgentSystemPlugin(Protocol):
 
     def verify_command(self) -> list[str]: ...
 
+    def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
+        """Normalize interactive command parts for storage in settings.
+
+        This is used by the UI to strip agent-specific prefixes (for example:
+        Codex's `exec`) after removing the leading agent executable name.
+        """
+        ...
+
     def build_interactive_command_parts(
         self,
         *,

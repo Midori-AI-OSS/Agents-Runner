@@ -20,19 +20,37 @@ def available_agents() -> list[str]:
     return available_agent_system_names()
 
 
+def _safe_agent_token(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    safe = "".join(ch for ch in raw if ch.isalnum() or ch in {"-", "_"})
+    return safe
+
+
 def container_config_dir(agent: str) -> str:
-    agent = normalize_agent(agent)
     from agents_runner.agent_systems import get_agent_system
+    from agents_runner.agent_systems import get_default_agent_system_name
+
+    raw = str(agent or "").strip().lower()
+    if not raw:
+        raw = get_default_agent_system_name()
 
     try:
-        return str(get_agent_system(agent).container_config_dir())
+        return str(get_agent_system(raw).container_config_dir())
     except KeyError:
-        return f"{CONTAINER_HOME}/.codex"
+        safe = _safe_agent_token(raw)
+        if safe:
+            return f"{CONTAINER_HOME}/.{safe}"
+        return f"{CONTAINER_HOME}/.midoriai"
 
 
 def default_host_config_dir(agent: str, *, codex_default: str | None = None) -> str:
-    agent = normalize_agent(agent)
-    if agent == "codex":
+    raw = str(agent or "").strip().lower()
+    if not raw:
+        from agents_runner.agent_systems import get_default_agent_system_name
+
+        raw = get_default_agent_system_name()
+
+    if raw == "codex":
         fallback = (
             str(codex_default or "").strip()
             or os.environ.get("CODEX_HOST_CODEX_DIR", "").strip()
@@ -42,9 +60,12 @@ def default_host_config_dir(agent: str, *, codex_default: str | None = None) -> 
     from agents_runner.agent_systems import get_agent_system
 
     try:
-        return os.path.expanduser(get_agent_system(agent).default_host_config_dir())
+        return os.path.expanduser(get_agent_system(raw).default_host_config_dir())
     except KeyError:
-        return os.path.expanduser("~/.codex")
+        safe = _safe_agent_token(raw)
+        if safe:
+            return os.path.expanduser(f"~/.midoriai/.{safe}_config")
+        return os.path.expanduser("~/.midoriai/.agent_config")
 
 
 def agent_requires_github_token(agent: str) -> bool:

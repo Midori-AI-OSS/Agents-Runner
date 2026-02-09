@@ -149,7 +149,7 @@ class WorkerSetup:
 
     def _setup_platform(self) -> _PlatformConfig:
         """Setup platform-specific configuration."""
-        os.makedirs(self._config.host_codex_dir, exist_ok=True)
+        os.makedirs(self._config.host_config_dir, exist_ok=True)
         forced_platform = docker_platform_for_pixelarch()
         platform_args = docker_platform_args_for_pixelarch()
         rosetta_available = True
@@ -230,9 +230,12 @@ class WorkerSetup:
         return self._WorkspaceConfig(
             host_mount=host_mount,
             container_cwd=container_cwd,
-            config_container_dir=container_config_dir(agent_cli),
+            config_container_dir=(
+                str(self._config.container_config_dir or "").strip()
+                or container_config_dir(agent_cli)
+            ),
             config_extra_mounts=additional_config_mounts(
-                agent_cli, self._config.host_codex_dir
+                agent_cli, self._config.host_config_dir
             ),
         )
 
