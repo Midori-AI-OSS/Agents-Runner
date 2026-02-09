@@ -187,10 +187,7 @@ class _MainWindowTasksInteractiveMixin:
         # Build command with agent-specific handling
         raw_command = str(command or "").strip()
         if not raw_command:
-            interactive_key = self._interactive_command_key(agent_cli)
-            raw_command = str(self._settings_data.get(interactive_key) or "").strip()
-            if not raw_command:
-                raw_command = self._default_interactive_command(agent_cli)
+            raw_command = self._default_interactive_command(agent_cli)
         command = raw_command
         extra_preflight_script = str(extra_preflight_script or "")
         is_help_launch = self._is_agent_help_interactive_launch(
