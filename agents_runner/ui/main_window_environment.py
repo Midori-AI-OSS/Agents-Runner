@@ -223,15 +223,9 @@ class _MainWindowEnvironmentMixin:
         self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)
         self._update_new_task_agent_chain(env)
         self._sync_new_task_repo_controls(env)
-        interactive_key = self._interactive_command_key(agent_cli)
-        interactive_command = str(
-            self._settings_data.get(interactive_key) or ""
-        ).strip()
-        if not interactive_command:
-            interactive_command = self._default_interactive_command(agent_cli)
         self._new_task.set_interactive_defaults(
             terminal_id=str(self._settings_data.get("interactive_terminal_id") or ""),
-            command=interactive_command,
+            command=self._default_interactive_command(agent_cli),
         )
         self._populate_environment_pickers()
 
