@@ -3,10 +3,11 @@ from __future__ import annotations
 import math
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from PySide6.QtCore import QPointF, QRect, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen, QRadialGradient
+from PySide6.QtWidgets import QWidget
 
 
 _CLAUDE_SEGMENT_LIFETIME_S: float = 90.0
@@ -314,3 +315,98 @@ def paint_claude_background(
 
     painter.restore()
     return claude_tips, next_reset_s
+
+
+def _blend_colors(color1: QColor | str, color2: QColor | str, t: float) -> QColor:
+    c1 = QColor(color1) if isinstance(color1, str) else color1
+    c2 = QColor(color2) if isinstance(color2, str) else color2
+    t = float(min(max(t, 0.0), 1.0))
+    r = int(c1.red() + (c2.red() - c1.red()) * t)
+    g = int(c1.green() + (c2.green() - c1.green()) * t)
+    b = int(c1.blue() + (c2.blue() - c1.blue()) * t)
+    return QColor(r, g, b)
+
+
+@dataclass
+class _ClaudeRuntime:
+    rng: random.Random = field(default_factory=random.Random)
+    tips: list[_ClaudeBranchTip] = field(default_factory=list)
+    segments: list[_ClaudeBranchSegment] = field(default_factory=list)
+    tick_accum_s: float = 0.0
+    palette_phase: float = 0.0
+    next_reset_s: float = 0.0
+
+
+class _ClaudeBackground:
+    theme_name = "claude"
+    _STEP_S: float = 0.06
+
+    @staticmethod
+    def base_color() -> QColor:
+        return QColor(245, 245, 240)  # #F5F5F0
+
+    @staticmethod
+    def overlay_alpha() -> int:
+        return 22
+
+    @staticmethod
+    def init_runtime(*, widget: QWidget) -> object:
+        runtime = _ClaudeRuntime()
+        runtime.next_reset_s = time.monotonic() + 0.5
+        return runtime
+
+    @staticmethod
+    def on_resize(*, runtime: object, widget: QWidget) -> None:
+        if not isinstance(runtime, _ClaudeRuntime):
+            return
+        runtime.next_reset_s = time.monotonic()
+
+    @classmethod
+    def tick(
+        cls, *, runtime: object, widget: QWidget, now_s: float, dt_s: float
+    ) -> bool:
+        if not isinstance(runtime, _ClaudeRuntime):
+            return True
+
+        runtime.tick_accum_s += float(dt_s)
+        max_steps = 8
+        steps = 0
+        while runtime.tick_accum_s >= cls._STEP_S and steps < max_steps:
+            runtime.tick_accum_s -= cls._STEP_S
+            (
+                runtime.tips,
+                runtime.segments,
+                runtime.palette_phase,
+                runtime.next_reset_s,
+            ) = tick_claude_tree(
+                runtime.tips,
+                runtime.segments,
+                runtime.rng,
+                widget.width(),
+                widget.height(),
+                runtime.next_reset_s,
+                dt_s=cls._STEP_S,
+                now_s=now_s,
+            )
+            steps += 1
+
+        return True
+
+    @staticmethod
+    def paint(*, painter: QPainter, rect: QRect, runtime: object) -> None:
+        state = runtime if isinstance(runtime, _ClaudeRuntime) else _ClaudeRuntime()
+        state.tips, state.next_reset_s = paint_claude_background(
+            painter,
+            rect,
+            state.tips,
+            state.segments,
+            state.rng,
+            state.palette_phase,
+            rect.width(),
+            rect.height(),
+            time.monotonic(),
+            _blend_colors,
+        )
+
+
+BACKGROUND = _ClaudeBackground()
