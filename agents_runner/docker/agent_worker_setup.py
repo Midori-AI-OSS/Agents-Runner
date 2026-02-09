@@ -26,7 +26,7 @@ from agents_runner.docker_platform import (
 from agents_runner.environments import load_environments
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.process import _has_image, _has_platform_image, _pull_image
-from agents_runner.docker.utils import _resolve_workspace_mount, _write_preflight_script
+from agents_runner.docker.utils import _write_preflight_script
 from agents_runner.docker.image_builder import (
     ensure_desktop_image,
     compute_desktop_cache_key,
@@ -207,25 +207,13 @@ class WorkerSetup:
 
     def _resolve_workspace(self, agent_cli: str) -> _WorkspaceConfig:
         """Resolve workspace mount points."""
-        host_mount, container_cwd = _resolve_workspace_mount(
-            self._config.host_workdir, container_mount=self._config.container_workdir
+        host_mount = os.path.abspath(
+            os.path.expanduser(str(self._config.host_workdir or "").strip())
         )
-
-        if host_mount != self._config.host_workdir:
-            self._on_log(
-                format_log(
-                    "host",
-                    "none",
-                    "INFO",
-                    f"mounting workspace root: {host_mount} (selected {self._config.host_workdir})",
-                )
-            )
-        if container_cwd != self._config.container_workdir:
-            self._on_log(
-                format_log(
-                    "host", "none", "INFO", f"container workdir: {container_cwd}"
-                )
-            )
+        container_cwd = (
+            str(self._config.container_workdir or "").strip()
+            or "/home/midori-ai/workspace"
+        )
 
         return self._WorkspaceConfig(
             host_mount=host_mount,

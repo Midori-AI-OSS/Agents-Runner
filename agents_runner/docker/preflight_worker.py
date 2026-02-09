@@ -28,7 +28,6 @@ from agents_runner.docker.process import _has_platform_image
 from agents_runner.docker.process import _inspect_state
 from agents_runner.docker.process import _pull_image
 from agents_runner.docker.process import _run_docker
-from agents_runner.docker.utils import _resolve_workspace_mount
 from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
@@ -170,25 +169,13 @@ class DockerPreflightWorker:
             config_extra_mounts = additional_config_mounts(
                 agent_cli, self._config.host_config_dir
             )
-            host_mount, container_cwd = _resolve_workspace_mount(
-                self._config.host_workdir,
-                container_mount=self._config.container_workdir,
+            host_mount = os.path.abspath(
+                os.path.expanduser(str(self._config.host_workdir or "").strip())
             )
-            if host_mount != self._config.host_workdir:
-                self._on_log(
-                    format_log(
-                        "host",
-                        "none",
-                        "INFO",
-                        f"mounting workspace root: {host_mount} (selected {self._config.host_workdir})",
-                    )
-                )
-            if container_cwd != self._config.container_workdir:
-                self._on_log(
-                    format_log(
-                        "host", "none", "INFO", f"container workdir: {container_cwd}"
-                    )
-                )
+            container_cwd = (
+                str(self._config.container_workdir or "").strip()
+                or "/home/midori-ai/workspace"
+            )
 
             template_detection = scan_midoriai_agents_template(host_mount)
             if self._config.environment_id:
