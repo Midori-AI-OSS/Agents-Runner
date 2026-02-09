@@ -1,0 +1,1 @@
+"""Claude agent system plugin."""
