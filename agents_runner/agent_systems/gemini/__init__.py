@@ -1,0 +1,1 @@
+"""Gemini agent system plugin."""
