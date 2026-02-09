@@ -14,6 +14,7 @@ from agents_runner.agent_systems.models import (
     PromptDeliverySpec,
     UiThemeSpec,
 )
+from agents_runner.agent_systems.interactive_command import move_positional_to_end
 
 
 CONTAINER_HOME = Path("/home/midori-ai")
@@ -95,6 +96,38 @@ class CodexAgentSystemPlugin:
 
     def verify_command(self) -> list[str]:
         return ["codex", "--version"]
+
+    def build_interactive_command_parts(
+        self,
+        *,
+        cmd_parts: list[str],
+        agent_cli_args: list[str],
+        prompt: str,
+        is_help_launch: bool,
+        help_repos_dir: str,
+    ) -> list[str]:
+        parts = list(cmd_parts)
+
+        if len(parts) >= 2 and parts[1] == "exec":
+            parts.pop(1)
+
+        if agent_cli_args:
+            parts.extend(agent_cli_args)
+
+        if is_help_launch:
+            found_sandbox = False
+            for idx in range(len(parts) - 1):
+                if parts[idx] != "--sandbox":
+                    continue
+                parts[idx + 1] = "danger-full-access"
+                found_sandbox = True
+            if not found_sandbox:
+                parts[1:1] = ["--sandbox", "danger-full-access"]
+
+        if prompt:
+            move_positional_to_end(parts, prompt)
+
+        return parts
 
 
 PLUGIN = CodexAgentSystemPlugin()
