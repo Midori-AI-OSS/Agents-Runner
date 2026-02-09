@@ -125,3 +125,13 @@ class AgentSystemPlugin(Protocol):
     def config_command(self) -> str | None: ...
 
     def verify_command(self) -> list[str]: ...
+
+    def build_interactive_command_parts(
+        self,
+        *,
+        cmd_parts: list[str],
+        agent_cli_args: list[str],
+        prompt: str,
+        is_help_launch: bool,
+        help_repos_dir: str,
+    ) -> list[str]: ...

@@ -13,6 +13,7 @@ from agents_runner.agent_systems.models import (
     PromptDeliverySpec,
     UiThemeSpec,
 )
+from agents_runner.agent_systems.interactive_command import move_positional_to_end
 
 
 CONTAINER_HOME = Path("/home/midori-ai")
@@ -93,6 +94,34 @@ class ClaudeAgentSystemPlugin:
 
     def verify_command(self) -> list[str]:
         return ["claude", "--version"]
+
+    def build_interactive_command_parts(
+        self,
+        *,
+        cmd_parts: list[str],
+        agent_cli_args: list[str],
+        prompt: str,
+        is_help_launch: bool,
+        help_repos_dir: str,
+    ) -> list[str]:
+        parts = list(cmd_parts)
+
+        if agent_cli_args:
+            parts.extend(agent_cli_args)
+
+        if "--add-dir" not in parts:
+            parts[1:1] = ["--add-dir", "/home/midori-ai/workspace"]
+
+        if is_help_launch:
+            if "--permission-mode" not in parts:
+                parts[1:1] = ["--permission-mode", "bypassPermissions"]
+            if help_repos_dir not in parts:
+                parts[1:1] = ["--add-dir", help_repos_dir]
+
+        if prompt:
+            move_positional_to_end(parts, prompt)
+
+        return parts
 
 
 PLUGIN = ClaudeAgentSystemPlugin()
