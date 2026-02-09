@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
+from agents_runner.agent_cli import available_agents
 from agents_runner.ui.utils import _looks_like_agent_help_command
 from agents_runner.environments import Environment
 
@@ -144,7 +145,7 @@ class _MainWindowSettingsMixin:
             cmd_parts = shlex.split(value)
         except ValueError:
             cmd_parts = []
-        if cmd_parts and cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
+        if cmd_parts and cmd_parts[0] in set(available_agents()):
             head = cmd_parts.pop(0)
             if head == "codex" and cmd_parts and cmd_parts[0] == "exec":
                 cmd_parts.pop(0)
@@ -290,9 +291,7 @@ class _MainWindowSettingsMixin:
                     (
                         inst
                         for inst in agents
-                        if str(getattr(inst, "agent_id", "") or "")
-                        .strip()
-                        .lower()
+                        if str(getattr(inst, "agent_id", "") or "").strip().lower()
                         == pinned_lower
                     ),
                     None,
@@ -498,9 +497,7 @@ class _MainWindowSettingsMixin:
                     (
                         inst
                         for inst in agents
-                        if str(getattr(inst, "agent_id", "") or "")
-                        .strip()
-                        .lower()
+                        if str(getattr(inst, "agent_id", "") or "").strip().lower()
                         == pinned_lower
                     ),
                     None,

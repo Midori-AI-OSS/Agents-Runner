@@ -16,6 +16,8 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox
 
+from agents_runner.agent_cli import agent_requires_github_token
+from agents_runner.agent_cli import available_agents
 from agents_runner.agent_cli import verify_cli_clause
 from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
@@ -148,7 +150,7 @@ def launch_docker_terminal_task(
 
         # Check if we need to forward GH_TOKEN
         forward_gh_token = bool(
-            (cmd_parts and cmd_parts[0] == "copilot")
+            (cmd_parts and agent_requires_github_token(cmd_parts[0]))
             or (env and getattr(env, "gh_context_enabled", False))
         )
         if forward_gh_token:
@@ -216,7 +218,7 @@ def launch_docker_terminal_task(
         # Build container script with preflight and command
         target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
         verify_clause = ""
-        if cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
+        if cmd_parts and cmd_parts[0] in set(available_agents()):
             verify_clause = verify_cli_clause(cmd_parts[0])
 
         container_script = (

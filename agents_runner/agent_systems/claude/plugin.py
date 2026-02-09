@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 
 from agents_runner.agent_systems.models import (
-    AgentSystemContext,
     AgentSystemPlan,
     AgentSystemRequest,
     CapabilitySpec,
@@ -54,9 +53,7 @@ class ClaudeAgentSystemPlugin:
                 dst=self.container_config_dir(),
                 mode="rw",
             ),
-            *self.additional_config_mounts(
-                host_config_dir=context.config_host, context=context
-            ),
+            *self.additional_config_mounts(host_config_dir=context.config_host),
         ]
 
         return AgentSystemPlan(
@@ -74,9 +71,7 @@ class ClaudeAgentSystemPlugin:
     def default_host_config_dir(self) -> str:
         return os.path.expanduser("~/.claude")
 
-    def additional_config_mounts(
-        self, *, host_config_dir: Path, context: AgentSystemContext
-    ) -> list[MountSpec]:
+    def additional_config_mounts(self, *, host_config_dir: Path) -> list[MountSpec]:
         host_dir = Path(os.path.expanduser(str(host_config_dir))).resolve()
         settings_path = host_dir.parent / ".claude.json"
         if settings_path.is_file():
