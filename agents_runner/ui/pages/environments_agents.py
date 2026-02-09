@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
-from agents_runner.agent_cli import SUPPORTED_AGENTS
+from agents_runner.agent_cli import available_agents
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.constants import (
@@ -126,7 +126,7 @@ class AgentsTabWidget(QWidget):
         # Add agent controls
         controls_row.addWidget(QLabel("Add agent"))
         self._add_agent_cli = QComboBox()
-        for agent in SUPPORTED_AGENTS:
+        for agent in available_agents():
             self._add_agent_cli.addItem(agent.title(), agent)
         controls_row.addWidget(self._add_agent_cli)
 

@@ -1,32 +1,11 @@
-"""Agent-specific setup and configuration commands.
+"""Agent-specific setup and configuration commands."""
 
-This module provides the command strings used to set up and configure
-different AI agent CLIs.
-"""
+from __future__ import annotations
+
+import shlex
 
 from agents_runner.agent_cli import normalize_agent
-
-
-# Login commands for each agent
-# These commands open interactive authentication flows
-AGENT_LOGIN_COMMANDS: dict[str, str | None] = {
-    "codex": "codex login; read -p 'Press Enter to close...'",
-    "claude": "claude; read -p 'Press Enter to close...'",  # Launches interactive setup
-    "copilot": "gh auth login && gh copilot explain 'hello'; read -p 'Press Enter to close...'",
-    "gemini": None,  # RESEARCH NEEDED: No known interactive setup command
-    "github": "gh auth login; read -p 'Press Enter to close...'",
-}
-
-
-# Configuration commands for each agent
-# These open configuration interfaces or files
-AGENT_CONFIG_COMMANDS: dict[str, str | None] = {
-    "codex": "codex --help; read -p 'Press Enter to close...'",
-    "claude": None,  # Open config directory instead
-    "copilot": "gh copilot config; read -p 'Press Enter to close...'",
-    "gemini": None,  # Open settings.json instead
-    "github": "gh config list; read -p 'Press Enter to close...'",
-}
+from agents_runner.agent_systems import get_agent_system
 
 
 def get_setup_command(agent_name: str) -> str | None:
@@ -41,8 +20,13 @@ def get_setup_command(agent_name: str) -> str | None:
     Returns:
         Shell command string, or None if agent doesn't support setup
     """
-    agent = normalize_agent(agent_name) if agent_name != "github" else "github"
-    return AGENT_LOGIN_COMMANDS.get(agent)
+    if agent_name == "github":
+        return "gh auth login; read -p 'Press Enter to close...'"
+    agent = normalize_agent(agent_name)
+    try:
+        return get_agent_system(agent).setup_command()
+    except KeyError:
+        return None
 
 
 def get_login_command(agent_name: str) -> str | None:
@@ -71,8 +55,13 @@ def get_config_command(agent_name: str) -> str | None:
     Returns:
         Shell command string, or None if agent doesn't have a config command
     """
-    agent = normalize_agent(agent_name) if agent_name != "github" else "github"
-    return AGENT_CONFIG_COMMANDS.get(agent)
+    if agent_name == "github":
+        return "gh config list; read -p 'Press Enter to close...'"
+    agent = normalize_agent(agent_name)
+    try:
+        return get_agent_system(agent).config_command()
+    except KeyError:
+        return None
 
 
 def get_verify_command(agent_name: str) -> str:
@@ -86,5 +75,11 @@ def get_verify_command(agent_name: str) -> str:
     Returns:
         Shell command string
     """
-    agent = normalize_agent(agent_name) if agent_name != "github" else "gh"
-    return f"{agent} --version"
+    if agent_name == "github":
+        return "gh --version"
+    agent = normalize_agent(agent_name)
+    try:
+        argv = get_agent_system(agent).verify_command()
+    except KeyError:
+        argv = [agent, "--version"]
+    return " ".join(shlex.quote(part) for part in argv)
