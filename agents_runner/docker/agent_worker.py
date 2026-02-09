@@ -116,7 +116,7 @@ class DockerAgentWorker:
                     return
 
             # Step 2: Prepare runtime environment
-            os.makedirs(self._config.host_codex_dir, exist_ok=True)
+            os.makedirs(self._config.host_config_dir, exist_ok=True)
             setup = WorkerSetup(
                 self._config, self._prompt, self._on_log, self._on_state
             )

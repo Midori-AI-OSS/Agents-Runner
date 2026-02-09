@@ -319,7 +319,7 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "prompt": task.prompt,
         "image": task.image,
         "host_workdir": task.host_workdir,
-        "host_codex_dir": task.host_codex_dir,
+        "host_config_dir": task.host_config_dir,
         "environment_id": getattr(task, "environment_id", ""),
         "created_at_s": task.created_at_s,
         "status": task.status,
@@ -381,7 +381,9 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         prompt=sanitize_prompt(str(data.get("prompt") or "")),
         image=str(data.get("image") or ""),
         host_workdir=str(data.get("host_workdir") or ""),
-        host_codex_dir=str(data.get("host_codex_dir") or ""),
+        host_config_dir=str(
+            data.get("host_config_dir") or data.get("host_codex_dir") or ""
+        ),
         environment_id=str(data.get("environment_id") or ""),
         created_at_s=float(data.get("created_at_s") or 0.0),
         status=str(data.get("status") or "queued"),
@@ -473,15 +475,21 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
         if artifact_collection_timeout_s <= 0.0:
             artifact_collection_timeout_s = 30.0
 
+        agent_cli = str(payload.get("agent_cli") or "codex")
+        agent_cli_lower = agent_cli.strip().lower()
+        container_config_dir = str(payload.get("container_config_dir") or "").strip()
+        if not container_config_dir and agent_cli_lower == "codex":
+            container_config_dir = str(payload.get("container_codex_dir") or "").strip()
+
         return DockerRunnerConfig(
             task_id=str(payload.get("task_id") or task_id),
             image=str(payload.get("image") or ""),
-            host_codex_dir=str(payload.get("host_codex_dir") or ""),
-            host_workdir=str(payload.get("host_workdir") or ""),
-            agent_cli=str(payload.get("agent_cli") or "codex"),
-            container_codex_dir=str(
-                payload.get("container_codex_dir") or "/home/midori-ai/.codex"
+            host_config_dir=str(
+                payload.get("host_config_dir") or payload.get("host_codex_dir") or ""
             ),
+            host_workdir=str(payload.get("host_workdir") or ""),
+            agent_cli=agent_cli,
+            container_config_dir=container_config_dir,
             container_workdir=str(
                 payload.get("container_workdir") or "/home/midori-ai/workspace"
             ),

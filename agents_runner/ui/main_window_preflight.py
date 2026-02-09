@@ -91,7 +91,7 @@ class _MainWindowPreflightMixin:
             prompt=label,
             image=image,
             host_workdir=host_workdir,
-            host_codex_dir=host_codex,
+            host_config_dir=host_codex,
             environment_id=env.env_id,
             created_at_s=time.time(),
             status="pulling",
@@ -108,7 +108,7 @@ class _MainWindowPreflightMixin:
         config = DockerRunnerConfig(
             task_id=task_id,
             image=image,
-            host_codex_dir=host_codex,
+            host_config_dir=host_codex,
             host_workdir=host_workdir,
             agent_cli=agent_cli,
             environment_id=env.env_id if env else "",

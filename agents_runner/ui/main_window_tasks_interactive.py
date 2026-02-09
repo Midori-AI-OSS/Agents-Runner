@@ -251,7 +251,7 @@ class _MainWindowTasksInteractiveMixin:
             prompt=prompt,
             image=image,
             host_workdir=host_workdir,
-            host_codex_dir=host_codex,
+            host_config_dir=host_codex,
             environment_id=env_id,
             created_at_s=time.time(),
             status="starting",

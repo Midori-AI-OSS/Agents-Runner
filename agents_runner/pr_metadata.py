@@ -63,7 +63,7 @@ def github_context_host_path(data_dir: str, task_id: str) -> str:
 def pr_metadata_container_path(task_id: str) -> str:
     """Container path for editable PR title/body only."""
     task_token = _safe_task_token(task_id)
-    return f"/tmp/codex-pr-metadata-{task_token}.toml"
+    return f"/tmp/agent-pr-metadata-{task_token}.toml"
 
 
 def pr_metadata_host_path(data_dir: str, task_id: str) -> str:
@@ -292,7 +292,7 @@ def github_context_prompt_instructions(
 
 def pr_metadata_prompt_instructions(container_path: str) -> str:
     """Generate prompt instructions for editable PR title/body TOML."""
-    container_path = str(container_path or "").strip() or "/tmp/codex-pr-metadata.toml"
+    container_path = str(container_path or "").strip() or "/tmp/agent-pr-metadata.toml"
     return load_prompt(
         "pr_metadata",
         PR_METADATA_FILE=container_path,

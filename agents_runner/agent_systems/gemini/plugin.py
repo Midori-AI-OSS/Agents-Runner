@@ -85,6 +85,9 @@ class GeminiAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["gemini", "--version"]
 
+    def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
+        return list(cmd_parts)
+
     def build_interactive_command_parts(
         self,
         *,

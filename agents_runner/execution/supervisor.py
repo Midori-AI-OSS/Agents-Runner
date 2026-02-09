@@ -327,7 +327,7 @@ class TaskSupervisor:
             default_agent = AgentInstance(
                 agent_id="default",
                 agent_cli=self._config.agent_cli,
-                config_dir=self._config.host_codex_dir,
+                config_dir=self._config.host_config_dir,
                 cli_flags="",
             )
             self._agent_chain = [default_agent]
@@ -439,9 +439,9 @@ class TaskSupervisor:
 
         # Build agent-specific config
         agent_config = self._build_agent_config(agent)
-        config_mount_sources = [str(agent_config.host_codex_dir or "").strip()]
+        config_mount_sources = [str(agent_config.host_config_dir or "").strip()]
         for mount_spec in additional_config_mounts(
-            agent.agent_cli, agent_config.host_codex_dir
+            agent.agent_cli, agent_config.host_config_dir
         ):
             src = str(mount_spec or "").split(":", 1)[0].strip()
             if src:
@@ -455,7 +455,7 @@ class TaskSupervisor:
                 "supervisor",
                 "attempt",
                 "INFO",
-                f"selected agent={agent.agent_cli} config={agent_config.host_codex_dir} config_mounts=[{preview}]",
+                f"selected agent={agent.agent_cli} config={agent_config.host_config_dir} config_mounts=[{preview}]",
             )
         )
 
@@ -530,10 +530,10 @@ class TaskSupervisor:
         config = DockerRunnerConfig(
             task_id=self._config.task_id,
             image=self._config.image,
-            host_codex_dir=host_config_dir,
+            host_config_dir=host_config_dir,
             host_workdir=self._config.host_workdir,
             agent_cli=agent.agent_cli,
-            container_codex_dir=self._config.container_codex_dir,
+            container_config_dir=self._config.container_config_dir,
             container_workdir=self._config.container_workdir,
             auto_remove=self._config.auto_remove,
             pull_before_run=self._config.pull_before_run,
@@ -561,8 +561,11 @@ class TaskSupervisor:
 
     def _resolve_host_config_dir(self, agent: AgentInstance) -> str:
         configured = os.path.expanduser(str(agent.config_dir or "").strip())
+        codex_default: str | None = None
+        if str(self._config.agent_cli or "").strip().lower() == "codex":
+            codex_default = self._config.host_config_dir
         host_config_dir = configured or default_host_config_dir(
-            agent.agent_cli, codex_default=self._config.host_codex_dir
+            agent.agent_cli, codex_default=codex_default
         )
         host_config_dir = str(host_config_dir or "").strip()
         if host_config_dir:
