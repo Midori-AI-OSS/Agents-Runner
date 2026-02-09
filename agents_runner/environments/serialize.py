@@ -286,7 +286,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     agents: list[AgentInstance] = []
     if isinstance(agent_selection_data, dict):
         selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
-        pinned_agent_id = str(agent_selection_data.get("pinned_agent_id", "") or "").strip()
+        pinned_agent_id = str(
+            agent_selection_data.get("pinned_agent_id", "") or ""
+        ).strip()
 
         agents_payload = agent_selection_data.get("agents")
         seen_ids: set[str] = set()
@@ -460,7 +462,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
             "agents": agents_list,
             "enabled_agents": enabled_agents,
             "selection_mode": env.agent_selection.selection_mode,
-            "pinned_agent_id": str(getattr(env.agent_selection, "pinned_agent_id", "") or "").strip(),
+            "pinned_agent_id": str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip(),
             "agent_config_dirs": legacy_config_dirs,
             "agent_fallbacks": dict(env.agent_selection.agent_fallbacks),
         }
