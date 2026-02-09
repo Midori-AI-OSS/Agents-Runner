@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import importlib
 import random
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Callable
 
 from PySide6.QtCore import (
     QEasingCurve,
@@ -22,11 +24,64 @@ from PySide6.QtGui import QPaintEvent
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QWidget
 
-from agents_runner.ui.themes.claude import background as claude_bg
-from agents_runner.ui.themes.codex import background as codex_bg
-from agents_runner.ui.themes.copilot import background as copilot_bg
-from agents_runner.ui.themes.gemini import background as gemini_bg
-from agents_runner.ui.themes.midoriai import background as midoriai_bg
+_BACKGROUND_MODULE_CACHE: dict[str, Any | None] = {}
+
+
+def _load_background_module(theme_name: str) -> Any | None:
+    theme_name = str(theme_name or "").strip().lower()
+    if not theme_name:
+        return None
+    if theme_name in _BACKGROUND_MODULE_CACHE:
+        return _BACKGROUND_MODULE_CACHE[theme_name]
+
+    module_name = f"agents_runner.ui.themes.{theme_name}.background"
+    try:
+        module = importlib.import_module(module_name)
+    except Exception:
+        module = None
+    _BACKGROUND_MODULE_CACHE[theme_name] = module
+    return module
+
+
+def _theme_name_for_agent(agent_cli: str) -> str:
+    agent_cli = str(agent_cli or "").strip().lower()
+    if not agent_cli:
+        return "midoriai"
+
+    try:
+        from agents_runner.agent_systems import get_agent_system
+
+        plugin = get_agent_system(agent_cli)
+    except Exception:
+        return "midoriai"
+
+    theme_name = ""
+    if getattr(plugin, "ui_theme", None) is not None:
+        theme_name = str(getattr(plugin.ui_theme, "theme_name", "") or "").strip()
+    return theme_name.lower() or "midoriai"
+
+
+def _base_color_for_theme(theme_name: str) -> QColor:
+    theme_name = str(theme_name or "").strip().lower()
+    if theme_name == "copilot":
+        return QColor(13, 17, 23)  # #0D1117
+    if theme_name == "claude":
+        return QColor(245, 245, 240)  # #F5F5F0
+    if theme_name == "gemini":
+        return QColor(18, 20, 28)  # #12141C (avoid white flash)
+    if theme_name == "codex":
+        return QColor(12, 13, 15)
+    return QColor(10, 11, 13)
+
+
+def _blend_colors(color1: QColor | str, color2: QColor | str, t: float) -> QColor:
+    c1 = QColor(color1) if isinstance(color1, str) else color1
+    c2 = QColor(color2) if isinstance(color2, str) else color2
+    t = float(min(max(t, 0.0), 1.0))
+    r = int(c1.red() + (c2.red() - c1.red()) * t)
+    g = int(c1.green() + (c2.green() - c1.green()) * t)
+    b = int(c1.blue() + (c2.blue() - c1.blue()) * t)
+    return QColor(r, g, b)
 
 
 class _EnvironmentTintOverlay(QWidget):
@@ -60,32 +115,12 @@ class _AgentTheme:
 
 
 def _theme_for_agent(agent_cli: str) -> _AgentTheme:
-    agent_cli = str(agent_cli or "midoriai").strip().lower()
-    if agent_cli == "copilot":
-        return _AgentTheme(
-            name="copilot",
-            base=QColor(13, 17, 23),  # #0D1117
-        )
-    if agent_cli == "claude":
-        return _AgentTheme(
-            name="claude",
-            base=QColor(245, 245, 240),  # #F5F5F0
-        )
-    if agent_cli == "gemini":
-        return _AgentTheme(
-            name="gemini",
-            base=QColor(18, 20, 28),  # #12141C (avoid white flash)
-        )
-    if agent_cli == "codex":
-        return _AgentTheme(
-            name="codex",
-            base=QColor(12, 13, 15),
-        )
-
-    # midoriai neutral / default fallback
+    theme_name = _theme_name_for_agent(agent_cli)
+    if _load_background_module(theme_name) is None:
+        theme_name = "midoriai"
     return _AgentTheme(
-        name="midoriai",
-        base=QColor(10, 11, 13),
+        name=theme_name,
+        base=_base_color_for_theme(theme_name),
     )
 
 
@@ -123,20 +158,20 @@ class GlassRoot(QWidget):
         self._cached_gradient_bottom_color: QColor | None = None
 
         self._claude_rng = random.Random()
-        self._claude_tips: list[claude_bg._ClaudeBranchTip] = []
-        self._claude_segments: list[claude_bg._ClaudeBranchSegment] = []
+        self._claude_tips: list[object] = []
+        self._claude_segments: list[object] = []
         self._claude_last_tick_s = time.monotonic()
         self._claude_tick_accum_s = 0.0
         self._claude_palette_phase = 0.0
         self._claude_next_reset_s = self._claude_last_tick_s + 0.5
 
         self._gemini_rng = random.Random()
-        self._gemini_orbs: list[gemini_bg._GeminiChromaOrb] = []
+        self._gemini_orbs: list[object] = []
         self._gemini_last_tick_s = time.monotonic()
         self._gemini_tick_accum_s = 0.0
 
         self._copilot_rng = random.Random()
-        self._copilot_panes: list[copilot_bg._CopilotPane] = []
+        self._copilot_panes: list[object] = []
         self._copilot_last_tick_s = time.monotonic()
         self._copilot_tick_accum_s = 0.0
         self._copilot_repo_root: Path | None = None
@@ -231,13 +266,17 @@ class GlassRoot(QWidget):
 
     def _update_background_animation(self) -> None:
         """Update Codex and Midori AI background animation phase parameters."""
-        self._codex_split_ratio = codex_bg.calc_split_ratio()
-        self._codex_color_blend_phase_top = codex_bg.calc_top_phase()
-        self._codex_color_blend_phase_bottom = codex_bg.calc_bottom_phase()
+        codex_bg = _load_background_module("codex")
+        if codex_bg is not None:
+            self._codex_split_ratio = codex_bg.calc_split_ratio()
+            self._codex_color_blend_phase_top = codex_bg.calc_top_phase()
+            self._codex_color_blend_phase_bottom = codex_bg.calc_bottom_phase()
 
-        self._midoriai_split_ratio = midoriai_bg.calc_split_ratio()
-        self._midoriai_color_blend_phase_top = midoriai_bg.calc_top_phase()
-        self._midoriai_color_blend_phase_bottom = midoriai_bg.calc_bottom_phase()
+        midoriai_bg = _load_background_module("midoriai")
+        if midoriai_bg is not None:
+            self._midoriai_split_ratio = midoriai_bg.calc_split_ratio()
+            self._midoriai_color_blend_phase_top = midoriai_bg.calc_top_phase()
+            self._midoriai_color_blend_phase_bottom = midoriai_bg.calc_bottom_phase()
 
         now_s = time.monotonic()
         dt = now_s - self._claude_last_tick_s
@@ -247,29 +286,31 @@ class GlassRoot(QWidget):
             if self._theme.name == "claude" or (
                 self._theme_to is not None and self._theme_to.name == "claude"
             ):
-                self._claude_tick_accum_s += float(dt)
-                step_s = float(self._CLAUDE_STEP_S)
-                # Use fixed-timestep integration for smoother motion.
-                max_steps = 8
-                steps = 0
-                while self._claude_tick_accum_s >= step_s and steps < max_steps:
-                    self._claude_tick_accum_s -= step_s
-                    (
-                        self._claude_tips,
-                        self._claude_segments,
-                        self._claude_palette_phase,
-                        self._claude_next_reset_s,
-                    ) = claude_bg.tick_claude_tree(
-                        self._claude_tips,
-                        self._claude_segments,
-                        self._claude_rng,
-                        self.width(),
-                        self.height(),
-                        self._claude_next_reset_s,
-                        dt_s=step_s,
-                        now_s=now_s,
-                    )
-                    steps += 1
+                claude_bg = _load_background_module("claude")
+                if claude_bg is not None:
+                    self._claude_tick_accum_s += float(dt)
+                    step_s = float(self._CLAUDE_STEP_S)
+                    # Use fixed-timestep integration for smoother motion.
+                    max_steps = 8
+                    steps = 0
+                    while self._claude_tick_accum_s >= step_s and steps < max_steps:
+                        self._claude_tick_accum_s -= step_s
+                        (
+                            self._claude_tips,
+                            self._claude_segments,
+                            self._claude_palette_phase,
+                            self._claude_next_reset_s,
+                        ) = claude_bg.tick_claude_tree(
+                            self._claude_tips,
+                            self._claude_segments,
+                            self._claude_rng,
+                            self.width(),
+                            self.height(),
+                            self._claude_next_reset_s,
+                            dt_s=step_s,
+                            now_s=now_s,
+                        )
+                        steps += 1
 
         dt_gemini = now_s - self._gemini_last_tick_s
         if dt_gemini > 0.0:
@@ -312,6 +353,10 @@ class GlassRoot(QWidget):
             self.update()
 
     def _ensure_gemini_orbs(self) -> None:
+        gemini_bg = _load_background_module("gemini")
+        if gemini_bg is None:
+            self._gemini_orbs = []
+            return
         self._gemini_orbs = gemini_bg.ensure_gemini_orbs(
             self._gemini_orbs,
             self._gemini_rng,
@@ -320,6 +365,9 @@ class GlassRoot(QWidget):
         )
 
     def _constrain_gemini_orbs(self) -> None:
+        gemini_bg = _load_background_module("gemini")
+        if gemini_bg is None:
+            return
         gemini_bg.constrain_gemini_orbs(
             self._gemini_orbs,
             self.width(),
@@ -328,6 +376,9 @@ class GlassRoot(QWidget):
 
     def _tick_gemini_chroma_orbs(self, *, dt_s: float) -> None:
         self._ensure_gemini_orbs()
+        gemini_bg = _load_background_module("gemini")
+        if gemini_bg is None:
+            return
         gemini_bg.tick_gemini_chroma_orbs(
             self._gemini_orbs,
             self._gemini_rng,
@@ -338,9 +389,19 @@ class GlassRoot(QWidget):
 
     def _paint_gemini_background(self, painter: QPainter, rect: QRect) -> None:
         self._ensure_gemini_orbs()
+        gemini_bg = _load_background_module("gemini")
+        if gemini_bg is None:
+            painter.fillRect(rect, _base_color_for_theme("gemini"))
+            return
         gemini_bg.paint_gemini_background(painter, rect, self._gemini_orbs)
 
     def _copilot_font_metrics(self) -> tuple[QFont, QFontMetricsF, float, float]:
+        copilot_bg = _load_background_module("copilot")
+        if copilot_bg is None:
+            font = self._copilot_font or self.font()
+            metrics = self._copilot_metrics or QFontMetricsF(font)
+            return font, metrics, self._copilot_char_w, self._copilot_line_h
+
         font, metrics, char_w, line_h = copilot_bg.copilot_font_metrics(
             self,
             self._copilot_font,
@@ -355,6 +416,11 @@ class GlassRoot(QWidget):
         return font, metrics, char_w, line_h
 
     def _ensure_copilot_sources(self) -> None:
+        copilot_bg = _load_background_module("copilot")
+        if copilot_bg is None:
+            self._copilot_source_files = []
+            self._copilot_repo_root = None
+            return
         self._copilot_source_files, self._copilot_repo_root = (
             copilot_bg.ensure_copilot_sources(
                 self._copilot_source_files,
@@ -363,6 +429,10 @@ class GlassRoot(QWidget):
         )
 
     def _ensure_copilot_panes(self) -> None:
+        copilot_bg = _load_background_module("copilot")
+        if copilot_bg is None:
+            self._copilot_panes = []
+            return
         self._ensure_copilot_sources()
         self._copilot_panes = copilot_bg.ensure_copilot_panes(
             self,
@@ -372,6 +442,9 @@ class GlassRoot(QWidget):
         )
 
     def _tick_copilot_typed_code(self, *, dt_s: float) -> None:
+        copilot_bg = _load_background_module("copilot")
+        if copilot_bg is None:
+            return
         self._ensure_copilot_panes()
         if not self._copilot_panes:
             return
@@ -389,6 +462,10 @@ class GlassRoot(QWidget):
         )
 
     def _paint_copilot_background(self, painter: QPainter, rect: QRect) -> None:
+        copilot_bg = _load_background_module("copilot")
+        if copilot_bg is None:
+            painter.fillRect(rect, _base_color_for_theme("copilot"))
+            return
         self._ensure_copilot_panes()
         font, _, char_w, line_h = self._copilot_font_metrics()
 
@@ -408,6 +485,16 @@ class GlassRoot(QWidget):
         )
 
     def _paint_claude_background(self, painter: QPainter, rect: QRect) -> None:
+        claude_bg = _load_background_module("claude")
+        if claude_bg is None:
+            painter.fillRect(rect, _base_color_for_theme("claude"))
+            return
+
+        blend_fn: Callable[[QColor | str, QColor | str, float], QColor] = _blend_colors
+        codex_bg = _load_background_module("codex")
+        if codex_bg is not None and getattr(codex_bg, "blend_colors", None) is not None:
+            blend_fn = codex_bg.blend_colors
+
         self._claude_tips, self._claude_next_reset_s = (
             claude_bg.paint_claude_background(
                 painter,
@@ -419,7 +506,7 @@ class GlassRoot(QWidget):
                 self.width(),
                 self.height(),
                 time.monotonic(),
-                codex_bg.blend_colors,
+                blend_fn,
             )
         )
 
@@ -437,6 +524,10 @@ class GlassRoot(QWidget):
             painter: QPainter instance to draw with
             rect: Rectangle defining the paint area
         """
+        codex_bg = _load_background_module("codex")
+        if codex_bg is None:
+            painter.fillRect(rect, _base_color_for_theme("codex"))
+            return
         # Use cached phase values (updated by timer)
         (
             self._cached_top_color,
@@ -470,6 +561,10 @@ class GlassRoot(QWidget):
             painter: QPainter instance to draw with
             rect: Rectangle defining the paint area
         """
+        midoriai_bg = _load_background_module("midoriai")
+        if midoriai_bg is None:
+            painter.fillRect(rect, _base_color_for_theme("midoriai"))
+            return
         # Use cached phase values (updated by timer)
         (
             self._cached_top_color,
