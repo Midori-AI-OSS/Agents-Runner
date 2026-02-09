@@ -333,7 +333,8 @@ class _MainWindowTasksAgentMixin:
                 if (
                     selection_mode.lower() == "pinned"
                     and pinned_agent_id
-                    and str(getattr(inst, "agent_id", "") or "").strip() != pinned_agent_id
+                    and str(getattr(inst, "agent_id", "") or "").strip()
+                    != pinned_agent_id
                     and str(getattr(inst, "agent_id", "") or "").strip().lower()
                     != pinned_lower
                 ):
