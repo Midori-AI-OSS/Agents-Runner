@@ -1,87 +1,70 @@
 from __future__ import annotations
 
 import importlib
-import random
 import time
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Callable
 
-from PySide6.QtCore import (
-    QEasingCurve,
-    QRect,
-    Property,
-    QPropertyAnimation,
-    Qt,
-    QTimer,
-)
-from PySide6.QtGui import QColor
-from PySide6.QtGui import QFont
-from PySide6.QtGui import QFontMetricsF
-from PySide6.QtGui import QLinearGradient
-from PySide6.QtGui import QPainter
-from PySide6.QtGui import QPaintEvent
-from PySide6.QtGui import QResizeEvent
+from PySide6.QtCore import QEasingCurve, Property, QPropertyAnimation, Qt, QTimer
+from PySide6.QtGui import QColor, QPainter, QPaintEvent, QResizeEvent
 from PySide6.QtWidgets import QWidget
 
-_BACKGROUND_MODULE_CACHE: dict[str, Any | None] = {}
+from agents_runner.ui.themes.types import ThemeBackground
+
+_BACKGROUND_CACHE: dict[str, ThemeBackground | None] = {}
 
 
-def _load_background_module(theme_name: str) -> Any | None:
+def _load_background(theme_name: str) -> ThemeBackground | None:
     theme_name = str(theme_name or "").strip().lower()
     if not theme_name:
         return None
-    if theme_name in _BACKGROUND_MODULE_CACHE:
-        return _BACKGROUND_MODULE_CACHE[theme_name]
+    if theme_name in _BACKGROUND_CACHE:
+        return _BACKGROUND_CACHE[theme_name]
 
     module_name = f"agents_runner.ui.themes.{theme_name}.background"
     try:
         module = importlib.import_module(module_name)
     except Exception:
         module = None
-    _BACKGROUND_MODULE_CACHE[theme_name] = module
-    return module
+
+    background = getattr(module, "BACKGROUND", None) if module is not None else None
+    if background is not None and not isinstance(background, ThemeBackground):
+        background = None
+
+    _BACKGROUND_CACHE[theme_name] = background
+    return background
+
+
+def _fallback_theme_name() -> str:
+    return "midoriai"
+
+
+def _resolve_theme_name(theme_name: str) -> str:
+    candidate = str(theme_name or "").strip().lower()
+    if not candidate:
+        candidate = _fallback_theme_name()
+    if _load_background(candidate) is not None:
+        return candidate
+    fallback = _fallback_theme_name()
+    if candidate != fallback and _load_background(fallback) is not None:
+        return fallback
+    return candidate
 
 
 def _theme_name_for_agent(agent_cli: str) -> str:
     agent_cli = str(agent_cli or "").strip().lower()
     if not agent_cli:
-        return "midoriai"
+        return _fallback_theme_name()
 
     try:
         from agents_runner.agent_systems import get_agent_system
 
         plugin = get_agent_system(agent_cli)
     except Exception:
-        return "midoriai"
+        return _fallback_theme_name()
 
     theme_name = ""
     if getattr(plugin, "ui_theme", None) is not None:
         theme_name = str(getattr(plugin.ui_theme, "theme_name", "") or "").strip()
-    return theme_name.lower() or "midoriai"
-
-
-def _base_color_for_theme(theme_name: str) -> QColor:
-    theme_name = str(theme_name or "").strip().lower()
-    if theme_name == "copilot":
-        return QColor(13, 17, 23)  # #0D1117
-    if theme_name == "claude":
-        return QColor(245, 245, 240)  # #F5F5F0
-    if theme_name == "gemini":
-        return QColor(18, 20, 28)  # #12141C (avoid white flash)
-    if theme_name == "codex":
-        return QColor(12, 13, 15)
-    return QColor(10, 11, 13)
-
-
-def _blend_colors(color1: QColor | str, color2: QColor | str, t: float) -> QColor:
-    c1 = QColor(color1) if isinstance(color1, str) else color1
-    c2 = QColor(color2) if isinstance(color2, str) else color2
-    t = float(min(max(t, 0.0), 1.0))
-    r = int(c1.red() + (c2.red() - c1.red()) * t)
-    g = int(c1.green() + (c2.green() - c1.green()) * t)
-    b = int(c1.blue() + (c2.blue() - c1.blue()) * t)
-    return QColor(r, g, b)
+    return theme_name.lower() or _fallback_theme_name()
 
 
 class _EnvironmentTintOverlay(QWidget):
@@ -108,117 +91,74 @@ class _EnvironmentTintOverlay(QWidget):
         painter.fillRect(self.rect(), self._color)
 
 
-@dataclass(frozen=True)
-class _AgentTheme:
-    name: str
-    base: QColor
-
-
-def _theme_for_agent(agent_cli: str) -> _AgentTheme:
-    theme_name = _theme_name_for_agent(agent_cli)
-    if _load_background_module(theme_name) is None:
-        theme_name = "midoriai"
-    return _AgentTheme(
-        name=theme_name,
-        base=_base_color_for_theme(theme_name),
-    )
-
-
 class GlassRoot(QWidget):
-    _CLAUDE_STEP_S: float = 0.06
-
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        self._theme = _theme_for_agent("midoriai")
-        self._theme_to: _AgentTheme | None = None
+        self._theme_name = _fallback_theme_name()
+        self._theme_to_name: str | None = None
         self._theme_blend = 0.0
         self._theme_anim: QPropertyAnimation | None = None
 
-        # Midori AI background animation phase parameters (reuses Codex logic)
-        self._midoriai_split_ratio: float = 0.45
-        self._midoriai_color_blend_phase_top: float = 0.0
-        self._midoriai_color_blend_phase_bottom: float = 0.0
+        self._theme_runtimes: dict[str, object] = {}
+        self._tick_last_s = time.monotonic()
 
-        # Codex background animation phase parameters
-        self._codex_split_ratio: float = 0.45
-        self._codex_color_blend_phase_top: float = 0.0
-        self._codex_color_blend_phase_bottom: float = 0.0
-        self._codex_jitter_x: float = 0.0
-        self._codex_jitter_y: float = 0.0
+        self._ensure_theme_runtime(self._theme_name)
 
-        # Performance optimization: cache colors and gradient
-        self._cached_top_color: QColor | None = None
-        self._cached_bottom_color: QColor | None = None
-        self._cached_top_phase: float = -1.0
-        self._cached_bottom_phase: float = -1.0
-        self._cached_gradient: QLinearGradient | None = None
-        self._cached_boundary_y: int = -1
-        self._cached_gradient_top_color: QColor | None = None
-        self._cached_gradient_bottom_color: QColor | None = None
+        ticker = QTimer(self)
+        ticker.setInterval(100)
+        ticker.timeout.connect(self._update_background_animation)
+        ticker.start()
 
-        self._claude_rng = random.Random()
-        self._claude_tips: list[object] = []
-        self._claude_segments: list[object] = []
-        self._claude_last_tick_s = time.monotonic()
-        self._claude_tick_accum_s = 0.0
-        self._claude_palette_phase = 0.0
-        self._claude_next_reset_s = self._claude_last_tick_s + 0.5
+    def _ensure_theme_runtime(self, theme_name: str) -> object | None:
+        resolved = _resolve_theme_name(theme_name)
+        background = _load_background(resolved)
+        if background is None:
+            return None
+        if resolved not in self._theme_runtimes:
+            try:
+                self._theme_runtimes[resolved] = background.init_runtime(widget=self)
+            except Exception:
+                return None
+        return self._theme_runtimes.get(resolved)
 
-        self._gemini_rng = random.Random()
-        self._gemini_orbs: list[object] = []
-        self._gemini_last_tick_s = time.monotonic()
-        self._gemini_tick_accum_s = 0.0
+    def _paint_theme(self, painter: QPainter, theme_name: str) -> int:
+        resolved = _resolve_theme_name(theme_name)
+        rect = self.rect()
+        background = _load_background(resolved)
+        runtime = self._ensure_theme_runtime(resolved)
 
-        self._copilot_rng = random.Random()
-        self._copilot_panes: list[object] = []
-        self._copilot_last_tick_s = time.monotonic()
-        self._copilot_tick_accum_s = 0.0
-        self._copilot_repo_root: Path | None = None
-        self._copilot_source_files: list[Path] = []
-        self._copilot_font: QFont | None = None
-        self._copilot_metrics: QFontMetricsF | None = None
-        self._copilot_char_w: float = 8.0
-        self._copilot_line_h: float = 16.0
-
-        # Start Codex background animation timer
-        codex_timer = QTimer(self)
-        codex_timer.setInterval(100)
-        codex_timer.timeout.connect(self._update_background_animation)
-        codex_timer.start()
-
-    @staticmethod
-    def _darken_overlay_alpha(theme: _AgentTheme) -> int:
-        if theme.name == "midoriai":
+        if background is None or runtime is None:
+            painter.fillRect(rect, QColor(10, 11, 13))
             return 32
-        if theme.name == "codex":
-            return 28
-        if theme.name == "claude":
-            return 22
-        if theme.name in {"copilot", "gemini"}:
-            return 18
-        lightness = float(theme.base.lightnessF())
-        # Keep the background readable without crushing the palette into near-black.
-        # Slightly stronger darkening on light themes, lighter on dark themes.
-        alpha = int(165 + 55 * lightness)
-        return int(min(max(alpha, 0), 255))
+
+        try:
+            background.paint(painter=painter, rect=rect, runtime=runtime)
+        except Exception:
+            painter.fillRect(rect, background.base_color())
+
+        try:
+            return int(background.overlay_alpha())
+        except Exception:
+            return 32
 
     def set_agent_theme(self, agent_cli: str) -> None:
-        theme = _theme_for_agent(agent_cli)
-        if theme.name == self._theme.name:
+        theme_name = _resolve_theme_name(_theme_name_for_agent(agent_cli))
+        if theme_name == self._theme_name:
             return
 
-        if theme.name == "claude":
-            self._claude_next_reset_s = time.monotonic()
-        if theme.name == "gemini":
-            self._gemini_tick_accum_s = 0.0
-            self._gemini_last_tick_s = time.monotonic()
-        if theme.name == "copilot":
-            self._copilot_tick_accum_s = 0.0
-            self._copilot_last_tick_s = time.monotonic()
-            self._copilot_panes = []
+        self._ensure_theme_runtime(theme_name)
+        background = _load_background(theme_name)
+        runtime = self._theme_runtimes.get(theme_name)
+        if background is not None and runtime is not None:
+            try:
+                background.tick(
+                    runtime=runtime, widget=self, now_s=time.monotonic(), dt_s=0.0
+                )
+            except Exception:
+                pass
 
-        self._theme_to = theme
+        self._theme_to_name = theme_name
         self._set_theme_blend(0.0)
 
         if self._theme_anim is not None:
@@ -231,8 +171,8 @@ class GlassRoot(QWidget):
         anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
 
         def _finish() -> None:
-            self._theme = theme
-            self._theme_to = None
+            self._theme_name = theme_name
+            self._theme_to_name = None
             self._set_theme_blend(0.0)
 
         anim.finished.connect(_finish)
@@ -241,19 +181,20 @@ class GlassRoot(QWidget):
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
-        self._copilot_metrics = None
-        if self._theme.name == "claude" or (
-            self._theme_to is not None and self._theme_to.name == "claude"
-        ):
-            self._claude_next_reset_s = time.monotonic()
-        if self._theme.name == "gemini" or (
-            self._theme_to is not None and self._theme_to.name == "gemini"
-        ):
-            self._constrain_gemini_orbs()
-        if self._theme.name == "copilot" or (
-            self._theme_to is not None and self._theme_to.name == "copilot"
-        ):
-            self._copilot_panes = []
+        candidates = {self._theme_name}
+        if self._theme_to_name:
+            candidates.add(self._theme_to_name)
+
+        for theme_name in candidates:
+            resolved = _resolve_theme_name(theme_name)
+            background = _load_background(resolved)
+            runtime = self._theme_runtimes.get(resolved)
+            if background is None or runtime is None:
+                continue
+            try:
+                background.on_resize(runtime=runtime, widget=self)
+            except Exception:
+                pass
 
     def _get_theme_blend(self) -> float:
         return float(self._theme_blend)
@@ -265,358 +206,50 @@ class GlassRoot(QWidget):
     themeBlend = Property(float, _get_theme_blend, _set_theme_blend)
 
     def _update_background_animation(self) -> None:
-        """Update Codex and Midori AI background animation phase parameters."""
-        codex_bg = _load_background_module("codex")
-        if codex_bg is not None:
-            self._codex_split_ratio = codex_bg.calc_split_ratio()
-            self._codex_color_blend_phase_top = codex_bg.calc_top_phase()
-            self._codex_color_blend_phase_bottom = codex_bg.calc_bottom_phase()
-
-        midoriai_bg = _load_background_module("midoriai")
-        if midoriai_bg is not None:
-            self._midoriai_split_ratio = midoriai_bg.calc_split_ratio()
-            self._midoriai_color_blend_phase_top = midoriai_bg.calc_top_phase()
-            self._midoriai_color_blend_phase_bottom = midoriai_bg.calc_bottom_phase()
-
         now_s = time.monotonic()
-        dt = now_s - self._claude_last_tick_s
-        if dt > 0.0:
-            self._claude_last_tick_s = now_s
-            dt = min(dt, 0.25)
-            if self._theme.name == "claude" or (
-                self._theme_to is not None and self._theme_to.name == "claude"
-            ):
-                claude_bg = _load_background_module("claude")
-                if claude_bg is not None:
-                    self._claude_tick_accum_s += float(dt)
-                    step_s = float(self._CLAUDE_STEP_S)
-                    # Use fixed-timestep integration for smoother motion.
-                    max_steps = 8
-                    steps = 0
-                    while self._claude_tick_accum_s >= step_s and steps < max_steps:
-                        self._claude_tick_accum_s -= step_s
-                        (
-                            self._claude_tips,
-                            self._claude_segments,
-                            self._claude_palette_phase,
-                            self._claude_next_reset_s,
-                        ) = claude_bg.tick_claude_tree(
-                            self._claude_tips,
-                            self._claude_segments,
-                            self._claude_rng,
-                            self.width(),
-                            self.height(),
-                            self._claude_next_reset_s,
-                            dt_s=step_s,
-                            now_s=now_s,
-                        )
-                        steps += 1
+        dt_s = float(now_s - float(self._tick_last_s))
+        if dt_s <= 0.0:
+            return
+        self._tick_last_s = now_s
+        dt_s = float(min(dt_s, 0.25))
 
-        dt_gemini = now_s - self._gemini_last_tick_s
-        if dt_gemini > 0.0:
-            self._gemini_last_tick_s = now_s
-            dt_gemini = min(dt_gemini, 0.25)
-            if self._theme.name == "gemini" or (
-                self._theme_to is not None and self._theme_to.name == "gemini"
-            ):
-                self._gemini_tick_accum_s += float(dt_gemini)
-                step_s = 0.05
-                max_steps = 6
-                steps = 0
-                while self._gemini_tick_accum_s >= step_s and steps < max_steps:
-                    self._gemini_tick_accum_s -= step_s
-                    self._tick_gemini_chroma_orbs(dt_s=step_s)
-                    steps += 1
+        repaint = False
+        candidates = [self._theme_name]
+        if self._theme_to_name:
+            candidates.append(self._theme_to_name)
 
-        dt_copilot = now_s - self._copilot_last_tick_s
-        if dt_copilot > 0.0:
-            self._copilot_last_tick_s = now_s
-            dt_copilot = min(dt_copilot, 0.25)
-            if self._theme.name == "copilot" or (
-                self._theme_to is not None and self._theme_to.name == "copilot"
-            ):
-                self._copilot_tick_accum_s += float(dt_copilot)
-                step_s = 0.05
-                max_steps = 6
-                steps = 0
-                while self._copilot_tick_accum_s >= step_s and steps < max_steps:
-                    self._copilot_tick_accum_s -= step_s
-                    self._tick_copilot_typed_code(dt_s=step_s)
-                    steps += 1
+        for theme_name in candidates:
+            resolved = _resolve_theme_name(theme_name)
+            background = _load_background(resolved)
+            runtime = self._ensure_theme_runtime(resolved)
+            if background is None or runtime is None:
+                continue
+            try:
+                repaint = bool(
+                    repaint
+                    or background.tick(
+                        runtime=runtime,
+                        widget=self,
+                        now_s=now_s,
+                        dt_s=dt_s,
+                    )
+                )
+            except Exception:
+                repaint = True
 
-        # Trigger repaint if using Codex / Midori AI / Claude / Gemini / Copilot theme
-        if self._theme.name in {"codex", "midoriai", "claude", "gemini", "copilot"} or (
-            self._theme_to is not None
-            and self._theme_to.name
-            in {"codex", "midoriai", "claude", "gemini", "copilot"}
-        ):
+        if repaint:
             self.update()
-
-    def _ensure_gemini_orbs(self) -> None:
-        gemini_bg = _load_background_module("gemini")
-        if gemini_bg is None:
-            self._gemini_orbs = []
-            return
-        self._gemini_orbs = gemini_bg.ensure_gemini_orbs(
-            self._gemini_orbs,
-            self._gemini_rng,
-            self.width(),
-            self.height(),
-        )
-
-    def _constrain_gemini_orbs(self) -> None:
-        gemini_bg = _load_background_module("gemini")
-        if gemini_bg is None:
-            return
-        gemini_bg.constrain_gemini_orbs(
-            self._gemini_orbs,
-            self.width(),
-            self.height(),
-        )
-
-    def _tick_gemini_chroma_orbs(self, *, dt_s: float) -> None:
-        self._ensure_gemini_orbs()
-        gemini_bg = _load_background_module("gemini")
-        if gemini_bg is None:
-            return
-        gemini_bg.tick_gemini_chroma_orbs(
-            self._gemini_orbs,
-            self._gemini_rng,
-            self.width(),
-            self.height(),
-            dt_s,
-        )
-
-    def _paint_gemini_background(self, painter: QPainter, rect: QRect) -> None:
-        self._ensure_gemini_orbs()
-        gemini_bg = _load_background_module("gemini")
-        if gemini_bg is None:
-            painter.fillRect(rect, _base_color_for_theme("gemini"))
-            return
-        gemini_bg.paint_gemini_background(painter, rect, self._gemini_orbs)
-
-    def _copilot_font_metrics(self) -> tuple[QFont, QFontMetricsF, float, float]:
-        copilot_bg = _load_background_module("copilot")
-        if copilot_bg is None:
-            font = self._copilot_font or self.font()
-            metrics = self._copilot_metrics or QFontMetricsF(font)
-            return font, metrics, self._copilot_char_w, self._copilot_line_h
-
-        font, metrics, char_w, line_h = copilot_bg.copilot_font_metrics(
-            self,
-            self._copilot_font,
-            self._copilot_metrics,
-            self._copilot_char_w,
-            self._copilot_line_h,
-        )
-        self._copilot_font = font
-        self._copilot_metrics = metrics
-        self._copilot_char_w = char_w
-        self._copilot_line_h = line_h
-        return font, metrics, char_w, line_h
-
-    def _ensure_copilot_sources(self) -> None:
-        copilot_bg = _load_background_module("copilot")
-        if copilot_bg is None:
-            self._copilot_source_files = []
-            self._copilot_repo_root = None
-            return
-        self._copilot_source_files, self._copilot_repo_root = (
-            copilot_bg.ensure_copilot_sources(
-                self._copilot_source_files,
-                self._copilot_repo_root,
-            )
-        )
-
-    def _ensure_copilot_panes(self) -> None:
-        copilot_bg = _load_background_module("copilot")
-        if copilot_bg is None:
-            self._copilot_panes = []
-            return
-        self._ensure_copilot_sources()
-        self._copilot_panes = copilot_bg.ensure_copilot_panes(
-            self,
-            self._copilot_panes,
-            self._copilot_rng,
-            self._copilot_source_files,
-        )
-
-    def _tick_copilot_typed_code(self, *, dt_s: float) -> None:
-        copilot_bg = _load_background_module("copilot")
-        if copilot_bg is None:
-            return
-        self._ensure_copilot_panes()
-        if not self._copilot_panes:
-            return
-
-        font, _, char_w, line_h = self._copilot_font_metrics()
-        copilot_bg.tick_copilot_typed_code(
-            self,
-            self._copilot_panes,
-            self._copilot_rng,
-            self._copilot_source_files,
-            font,
-            char_w,
-            line_h,
-            dt_s=dt_s,
-        )
-
-    def _paint_copilot_background(self, painter: QPainter, rect: QRect) -> None:
-        copilot_bg = _load_background_module("copilot")
-        if copilot_bg is None:
-            painter.fillRect(rect, _base_color_for_theme("copilot"))
-            return
-        self._ensure_copilot_panes()
-        font, _, char_w, line_h = self._copilot_font_metrics()
-
-        pane_rects = copilot_bg.copilot_pane_rects(rect, self._copilot_panes)
-        if len(pane_rects) != len(self._copilot_panes):
-            # Pane count can change across resizes; keep the visuals stable.
-            self._copilot_panes = []
-            self._ensure_copilot_panes()
-
-        copilot_bg.paint_copilot_background(
-            painter,
-            rect,
-            self._copilot_panes,
-            font,
-            char_w,
-            line_h,
-        )
-
-    def _paint_claude_background(self, painter: QPainter, rect: QRect) -> None:
-        claude_bg = _load_background_module("claude")
-        if claude_bg is None:
-            painter.fillRect(rect, _base_color_for_theme("claude"))
-            return
-
-        blend_fn: Callable[[QColor | str, QColor | str, float], QColor] = _blend_colors
-        codex_bg = _load_background_module("codex")
-        if codex_bg is not None and getattr(codex_bg, "blend_colors", None) is not None:
-            blend_fn = codex_bg.blend_colors
-
-        self._claude_tips, self._claude_next_reset_s = (
-            claude_bg.paint_claude_background(
-                painter,
-                rect,
-                self._claude_tips,
-                self._claude_segments,
-                self._claude_rng,
-                self._claude_palette_phase,
-                self.width(),
-                self.height(),
-                time.monotonic(),
-                blend_fn,
-            )
-        )
-
-    def _paint_codex_background(self, painter: QPainter, rect: QRect) -> None:
-        """
-        Paint the two-band background composition for Codex theme.
-
-        Renders animated background with:
-        - Top band: DarkBlue to DarkGreen gradient
-        - Bottom band: Dark accent gradient
-        - Soft feathered diagonal boundary between bands
-        - Large soft color blobs overlay
-
-        Args:
-            painter: QPainter instance to draw with
-            rect: Rectangle defining the paint area
-        """
-        codex_bg = _load_background_module("codex")
-        if codex_bg is None:
-            painter.fillRect(rect, _base_color_for_theme("codex"))
-            return
-        # Use cached phase values (updated by timer)
-        (
-            self._cached_top_color,
-            self._cached_top_phase,
-            self._cached_bottom_color,
-            self._cached_bottom_phase,
-        ) = codex_bg.paint_codex_background(
-            painter,
-            rect,
-            self._codex_split_ratio,
-            self._codex_color_blend_phase_top,
-            self._codex_color_blend_phase_bottom,
-            self._cached_top_color,
-            self._cached_top_phase,
-            self._cached_bottom_color,
-            self._cached_bottom_phase,
-        )
-
-    def _paint_midoriai_background(self, painter: QPainter, rect: QRect) -> None:
-        """
-        Paint the two-band background composition for Midori AI theme.
-
-        Renders animated background with:
-        - Top band: Darker blue to teal gradient
-        - Bottom band: Darker accent gradient
-        - Soft feathered diagonal boundary between bands
-        - Large soft color blobs overlay
-        - Extra dark overlay for deeper appearance
-
-        Args:
-            painter: QPainter instance to draw with
-            rect: Rectangle defining the paint area
-        """
-        midoriai_bg = _load_background_module("midoriai")
-        if midoriai_bg is None:
-            painter.fillRect(rect, _base_color_for_theme("midoriai"))
-            return
-        # Use cached phase values (updated by timer)
-        (
-            self._cached_top_color,
-            self._cached_top_phase,
-            self._cached_bottom_color,
-            self._cached_bottom_phase,
-        ) = midoriai_bg.paint_midoriai_background(
-            painter,
-            rect,
-            self._midoriai_split_ratio,
-            self._midoriai_color_blend_phase_top,
-            self._midoriai_color_blend_phase_bottom,
-            self._cached_top_color,
-            self._cached_top_phase,
-            self._cached_bottom_color,
-            self._cached_bottom_phase,
-        )
-
-    def _paint_theme(self, painter: QPainter, theme: _AgentTheme) -> None:
-        if theme.name == "midoriai":
-            self._paint_midoriai_background(painter, self.rect())
-            return
-        if theme.name == "codex":
-            self._paint_codex_background(painter, self.rect())
-            return
-        if theme.name == "claude":
-            self._paint_claude_background(painter, self.rect())
-            return
-        if theme.name == "gemini":
-            self._paint_gemini_background(painter, self.rect())
-            return
-        if theme.name == "copilot":
-            self._paint_copilot_background(painter, self.rect())
-            return
-
-        # Fallback for any unknown themes
-        painter.fillRect(self.rect(), theme.base)
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
-        self._paint_theme(painter, self._theme)
-        painter.fillRect(
-            self.rect(), QColor(0, 0, 0, self._darken_overlay_alpha(self._theme))
-        )
+        alpha = self._paint_theme(painter, self._theme_name)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, int(alpha)))
 
-        if self._theme_to is not None and self._theme_blend > 0.0:
+        if self._theme_to_name is not None and self._theme_blend > 0.0:
             painter.save()
             painter.setOpacity(float(self._theme_blend))
-            self._paint_theme(painter, self._theme_to)
-            painter.fillRect(
-                self.rect(), QColor(0, 0, 0, self._darken_overlay_alpha(self._theme_to))
-            )
+            alpha_to = self._paint_theme(painter, self._theme_to_name)
+            painter.fillRect(self.rect(), QColor(0, 0, 0, int(alpha_to)))
             painter.restore()
