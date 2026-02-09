@@ -141,7 +141,7 @@ class DockerPreflightWorker:
                     self._on_done(1, str(exc))
                     return
 
-            os.makedirs(self._config.host_codex_dir, exist_ok=True)
+            os.makedirs(self._config.host_config_dir, exist_ok=True)
             forced_platform = docker_platform_for_pixelarch()
             platform_args = docker_platform_args_for_pixelarch()
             if forced_platform:
@@ -164,9 +164,11 @@ class DockerPreflightWorker:
                         )
                     )
             agent_cli = normalize_agent(self._config.agent_cli)
-            config_container_dir = container_config_dir(agent_cli)
+            config_container_dir = str(self._config.container_config_dir or "").strip()
+            if not config_container_dir:
+                config_container_dir = container_config_dir(agent_cli)
             config_extra_mounts = additional_config_mounts(
-                agent_cli, self._config.host_codex_dir
+                agent_cli, self._config.host_config_dir
             )
             host_mount, container_cwd = _resolve_workspace_mount(
                 self._config.host_workdir,
@@ -385,7 +387,7 @@ class DockerPreflightWorker:
             all_mounts: list[str] = []
 
             # Add primary config mount
-            all_mounts.append(f"{self._config.host_codex_dir}:{config_container_dir}")
+            all_mounts.append(f"{self._config.host_config_dir}:{config_container_dir}")
 
             # Add workspace mount
             all_mounts.append(f"{host_mount}:{self._config.container_workdir}")

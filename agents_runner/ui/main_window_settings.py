@@ -147,12 +147,20 @@ class _MainWindowSettingsMixin:
             cmd_parts = []
         if cmd_parts and cmd_parts[0] in set(available_agents()):
             head = cmd_parts.pop(0)
-            if head == "codex" and cmd_parts and cmd_parts[0] == "exec":
-                cmd_parts.pop(0)
+            try:
+                from agents_runner.agent_systems import get_agent_system
+
+                cmd_parts = get_agent_system(head).sanitize_interactive_command_parts(
+                    cmd_parts=cmd_parts
+                )
+            except Exception:
+                pass
             value = " ".join(shlex.quote(part) for part in cmd_parts)
 
         if _looks_like_agent_help_command(value):
-            agent_cli = "codex"
+            from agents_runner.agent_systems import get_default_agent_system_name
+
+            agent_cli = get_default_agent_system_name()
             if str(key or "").endswith("_claude"):
                 agent_cli = "claude"
             elif str(key or "").endswith("_copilot"):

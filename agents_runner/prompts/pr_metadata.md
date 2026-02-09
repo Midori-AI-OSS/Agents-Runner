@@ -3,7 +3,7 @@
 This prompt guides the agent on how to create and update the PR metadata TOML file for automatic pull request creation.
 
 **When used:** GitHub management + PR metadata enabled for environment  
-**Template variables:** `{PR_METADATA_FILE}` - Container path to TOML file (default: "/tmp/codex-pr-metadata.toml")
+**Template variables:** `{PR_METADATA_FILE}` - Container path to TOML file (default: "/tmp/agent-pr-metadata.toml")
 
 ## Prompt
 

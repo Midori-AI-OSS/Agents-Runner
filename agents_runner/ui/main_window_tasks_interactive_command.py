@@ -10,6 +10,7 @@ import shlex
 
 from agents_runner.agent_cli import available_agents
 from agents_runner.agent_systems import get_agent_system
+from agents_runner.agent_systems import normalize_agent_system_name
 
 
 def build_agent_command_parts(
@@ -21,7 +22,7 @@ def build_agent_command_parts(
     help_repos_dir: str = "/home/midori-ai/.agent-help/repos",
 ) -> list[str]:
     """Build command parts with agent-system plugin handling."""
-    agent_cli = str(agent_cli or "").strip().lower() or "codex"
+    agent_cli = normalize_agent_system_name(agent_cli)
 
     if command.startswith("-"):
         cmd_parts = [agent_cli, *shlex.split(command)]
