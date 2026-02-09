@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 
 from agents_runner.agent_systems.models import (
-    AgentSystemContext,
     AgentSystemPlan,
     AgentSystemRequest,
     CapabilitySpec,
@@ -52,9 +51,7 @@ class CopilotAgentSystemPlugin:
                 dst=self.container_config_dir(),
                 mode="rw",
             ),
-            *self.additional_config_mounts(
-                host_config_dir=context.config_host, context=context
-            ),
+            *self.additional_config_mounts(host_config_dir=context.config_host),
         ]
 
         return AgentSystemPlan(
@@ -72,9 +69,7 @@ class CopilotAgentSystemPlugin:
     def default_host_config_dir(self) -> str:
         return os.path.expanduser("~/.copilot")
 
-    def additional_config_mounts(
-        self, *, host_config_dir: Path, context: AgentSystemContext
-    ) -> list[MountSpec]:
+    def additional_config_mounts(self, *, host_config_dir: Path) -> list[MountSpec]:
         return []
 
     def setup_command(self) -> str | None:
