@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt
@@ -556,3 +556,119 @@ def paint_copilot_background(
     painter.fillRect(rect, vignette)
 
     painter.restore()
+
+
+@dataclass
+class _CopilotRuntime:
+    rng: random.Random = field(default_factory=random.Random)
+    panes: list[_CopilotPane] = field(default_factory=list)
+    repo_root: Path | None = None
+    source_files: list[Path] = field(default_factory=list)
+    font: QFont | None = None
+    metrics: QFontMetricsF | None = None
+    char_w: float = 8.0
+    line_h: float = 16.0
+    tick_accum_s: float = 0.0
+
+
+class _CopilotBackground:
+    theme_name = "copilot"
+
+    @staticmethod
+    def base_color() -> QColor:
+        return QColor(13, 17, 23)  # #0D1117
+
+    @staticmethod
+    def overlay_alpha() -> int:
+        return 18
+
+    @staticmethod
+    def init_runtime(*, widget: QWidget) -> object:
+        return _CopilotRuntime()
+
+    @staticmethod
+    def on_resize(*, runtime: object, widget: QWidget) -> None:
+        if not isinstance(runtime, _CopilotRuntime):
+            return
+        runtime.metrics = None
+        runtime.panes = []
+
+    @staticmethod
+    def tick(*, runtime: object, widget: QWidget, now_s: float, dt_s: float) -> bool:
+        if not isinstance(runtime, _CopilotRuntime):
+            return True
+
+        runtime.tick_accum_s += float(dt_s)
+        step_s = 0.05
+        max_steps = 6
+        steps = 0
+        while runtime.tick_accum_s >= step_s and steps < max_steps:
+            runtime.tick_accum_s -= step_s
+
+            runtime.source_files, runtime.repo_root = ensure_copilot_sources(
+                runtime.source_files,
+                runtime.repo_root,
+            )
+            runtime.panes = ensure_copilot_panes(
+                widget,
+                runtime.panes,
+                runtime.rng,
+                runtime.source_files,
+            )
+
+            runtime.font, runtime.metrics, runtime.char_w, runtime.line_h = (
+                copilot_font_metrics(
+                    widget,
+                    runtime.font,
+                    runtime.metrics,
+                    runtime.char_w,
+                    runtime.line_h,
+                )
+            )
+
+            tick_copilot_typed_code(
+                widget,
+                runtime.panes,
+                runtime.rng,
+                runtime.source_files,
+                runtime.font,
+                runtime.char_w,
+                runtime.line_h,
+                dt_s=step_s,
+            )
+            steps += 1
+
+        return True
+
+    @staticmethod
+    def paint(*, painter: QPainter, rect: QRect, runtime: object) -> None:
+        state = runtime if isinstance(runtime, _CopilotRuntime) else _CopilotRuntime()
+        state.source_files, state.repo_root = ensure_copilot_sources(
+            state.source_files, state.repo_root
+        )
+        state.panes = ensure_copilot_panes(
+            rect, state.panes, state.rng, state.source_files
+        )
+
+        state.font, state.metrics, state.char_w, state.line_h = copilot_font_metrics(
+            rect, state.font, state.metrics, state.char_w, state.line_h
+        )
+
+        pane_rects = copilot_pane_rects(rect, state.panes)
+        if len(pane_rects) != len(state.panes):
+            state.panes = []
+            state.panes = ensure_copilot_panes(
+                rect, state.panes, state.rng, state.source_files
+            )
+
+        paint_copilot_background(
+            painter,
+            rect,
+            state.panes,
+            state.font,
+            state.char_w,
+            state.line_h,
+        )
+
+
+BACKGROUND = _CopilotBackground()

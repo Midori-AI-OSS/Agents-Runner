@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import time
+from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRect, Qt
 from PySide6.QtGui import (
@@ -16,6 +17,7 @@ from PySide6.QtGui import (
     QPainter,
     QRadialGradient,
 )
+from PySide6.QtWidgets import QWidget
 
 # Midori AI theme constant: diagonal boundary angle in degrees
 _MIDORIAI_BOUNDARY_ANGLE_DEG: float = 15.0
@@ -292,3 +294,66 @@ def paint_midoriai_blobs(painter: QPainter, rect: QRect) -> None:
         painter.restore()
 
     painter.restore()
+
+
+@dataclass
+class _MidoriAiRuntime:
+    split_ratio: float = 0.45
+    top_phase: float = 0.0
+    bottom_phase: float = 0.0
+    cached_top_color: QColor | None = None
+    cached_top_phase: float = -1.0
+    cached_bottom_color: QColor | None = None
+    cached_bottom_phase: float = -1.0
+
+
+class _MidoriAiBackground:
+    theme_name = "midoriai"
+
+    @staticmethod
+    def base_color() -> QColor:
+        return QColor(10, 11, 13)
+
+    @staticmethod
+    def overlay_alpha() -> int:
+        return 32
+
+    @staticmethod
+    def init_runtime(*, widget: QWidget) -> object:
+        return _MidoriAiRuntime()
+
+    @staticmethod
+    def on_resize(*, runtime: object, widget: QWidget) -> None:
+        return
+
+    @staticmethod
+    def tick(*, runtime: object, widget: QWidget, now_s: float, dt_s: float) -> bool:
+        if not isinstance(runtime, _MidoriAiRuntime):
+            return True
+        runtime.split_ratio = calc_split_ratio()
+        runtime.top_phase = calc_top_phase()
+        runtime.bottom_phase = calc_bottom_phase()
+        return True
+
+    @staticmethod
+    def paint(*, painter: QPainter, rect: QRect, runtime: object) -> None:
+        state = runtime if isinstance(runtime, _MidoriAiRuntime) else _MidoriAiRuntime()
+        (
+            state.cached_top_color,
+            state.cached_top_phase,
+            state.cached_bottom_color,
+            state.cached_bottom_phase,
+        ) = paint_midoriai_background(
+            painter,
+            rect,
+            state.split_ratio,
+            state.top_phase,
+            state.bottom_phase,
+            state.cached_top_color,
+            state.cached_top_phase,
+            state.cached_bottom_color,
+            state.cached_bottom_phase,
+        )
+
+
+BACKGROUND = _MidoriAiBackground()
