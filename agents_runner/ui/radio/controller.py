@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-import logging
 import re
 import time
 from typing import Any
+
+from midori_ai_logger import MidoriAiLogger
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QTimer
@@ -21,7 +22,7 @@ except Exception:  # pragma: no cover - runtime capability path
     QAudioOutput = None  # type: ignore[assignment]
     QMediaPlayer = None  # type: ignore[assignment]
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class RadioController(QObject):
@@ -162,7 +163,7 @@ class RadioController(QObject):
             probe_player.setAudioOutput(probe_audio)
             return True
         except Exception as exc:
-            logger.warning("radio probe failed: %s", exc)
+            logger.rprint(f"radio probe failed: {exc}", mode="warn")
             return False
         finally:
             if probe_player is not None:
@@ -695,4 +696,4 @@ class RadioController(QObject):
         if now - last < self.ERROR_LOG_THROTTLE_S:
             return
         self._last_error_log_ts[key] = now
-        logger.warning("[radio] %s", message)
+        logger.rprint(f"[radio] {message}", mode="warn")
