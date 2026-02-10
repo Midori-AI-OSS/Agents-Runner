@@ -199,19 +199,10 @@ class _MainWindowEnvironmentMixin:
                 ui_theme = normalize_ui_theme_name(
                     self._settings_data.get("ui_theme"), allow_auto=True
                 )
-                startup_pending = bool(getattr(self, "_theme_startup_pending", False))
                 if ui_theme == "auto":
-                    if startup_pending:
-                        self._root.apply_startup_agent_theme(agent_cli)
-                        self._theme_startup_pending = False
-                    else:
-                        self._root.set_agent_theme(agent_cli)
+                    self._root.set_agent_theme(agent_cli)
                 else:
-                    if startup_pending:
-                        self._root.apply_startup_theme_name(ui_theme)
-                        self._theme_startup_pending = False
-                    else:
-                        self._root.set_theme_name(ui_theme)
+                    self._root.set_theme_name(ui_theme)
             except Exception:
                 pass
         current_agent, next_agent = self._get_next_agent_info(env=env)
