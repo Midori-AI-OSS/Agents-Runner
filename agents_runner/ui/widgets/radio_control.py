@@ -8,6 +8,7 @@ from PySide6.QtCore import QSignalBlocker
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QSlider
@@ -27,6 +28,8 @@ class RadioControlWidget(QWidget):
     EXPANDED_WIDTH = 230
     ANIMATION_MS = 170
     COLLAPSE_DELAY_MS = 350
+    ICON_COLOR_PLAYING = (16, 185, 129)
+    ICON_COLOR_IDLE = (239, 68, 68)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -48,7 +51,6 @@ class RadioControlWidget(QWidget):
 
         self._play_button = QToolButton(self)
         self._play_button.setObjectName("RadioControlButton")
-        self._play_button.setIcon(lucide_icon("audio-lines"))
         self._play_button.setIconSize(QSize(18, 18))
         self._play_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._play_button.setAutoRaise(False)
@@ -104,6 +106,7 @@ class RadioControlWidget(QWidget):
         ):
             watched.installEventFilter(self)
 
+        self._refresh_play_button_icon()
         self._refresh_tooltip()
         self._refresh_interaction_enabled()
 
@@ -115,6 +118,7 @@ class RadioControlWidget(QWidget):
     def set_playing(self, playing: bool) -> None:
         self._is_playing = bool(playing)
         self._play_button.setChecked(self._is_playing)
+        self._refresh_play_button_icon()
         self._refresh_tooltip()
 
     def set_radio_enabled(self, enabled: bool) -> None:
@@ -149,6 +153,17 @@ class RadioControlWidget(QWidget):
             tooltip = "Start Midori AI Radio and enable the radio system."
         self._play_button.setToolTip(tooltip)
         self.setToolTip(tooltip)
+
+    def _refresh_play_button_icon(self) -> None:
+        color_rgb = (
+            self.ICON_COLOR_PLAYING if self._is_playing else self.ICON_COLOR_IDLE
+        )
+        self._play_button.setIcon(
+            lucide_icon(
+                "audio-lines",
+                color=QColor(*color_rgb),
+            )
+        )
 
     def _on_slider_pressed(self) -> None:
         self._drag_active = True
