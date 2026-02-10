@@ -273,7 +273,10 @@ class _SettingsFormMixin:
             for spec in specs:
                 button = QToolButton()
                 button.setObjectName("SettingsNavButton")
-                button.setText(spec.title)
+                button_label = (
+                    "Preferences" if spec.key == "general_preferences" else spec.title
+                )
+                button.setText(button_label)
                 button.setToolTip(spec.subtitle)
                 button.setCheckable(True)
                 button.setAutoExclusive(True)
