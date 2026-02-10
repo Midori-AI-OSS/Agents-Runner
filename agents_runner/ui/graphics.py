@@ -2,8 +2,15 @@ from __future__ import annotations
 
 import importlib
 import time
+from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, Property, QPropertyAnimation, Qt, QTimer
+from PySide6.QtCore import (
+    QEasingCurve,
+    Property,
+    QPropertyAnimation,
+    Qt,
+    QTimer,
+)
 from PySide6.QtGui import QColor, QPainter, QPaintEvent, QResizeEvent
 from PySide6.QtWidgets import QWidget
 
@@ -35,6 +42,85 @@ def _load_background(theme_name: str) -> ThemeBackground | None:
 
 def _fallback_theme_name() -> str:
     return "midoriai"
+
+
+def discover_theme_module_names() -> list[str]:
+    """Discover available background theme modules from ui/themes."""
+    root = Path(__file__).resolve().parent / "themes"
+    discovered: list[str] = []
+    try:
+        entries = sorted(root.iterdir(), key=lambda path: path.name.lower())
+    except Exception:
+        return discovered
+
+    for entry in entries:
+        if not entry.is_dir() or entry.name.startswith("__"):
+            continue
+        if not (entry / "background.py").is_file():
+            continue
+        name = str(entry.name or "").strip().lower()
+        if not name:
+            continue
+        if _load_background(name) is None:
+            continue
+        discovered.append(name)
+    return discovered
+
+
+def discover_plugin_theme_names() -> list[str]:
+    """Discover theme names declared by agent system plugins."""
+    try:
+        from agents_runner.agent_systems import available_agent_system_names
+        from agents_runner.agent_systems import get_agent_system
+    except Exception:
+        return []
+
+    discovered: list[str] = []
+    for agent_name in available_agent_system_names():
+        try:
+            plugin = get_agent_system(agent_name)
+        except Exception:
+            continue
+        theme_name = ""
+        if getattr(plugin, "ui_theme", None) is not None:
+            theme_name = str(getattr(plugin.ui_theme, "theme_name", "") or "").strip()
+        normalized = theme_name.lower()
+        if not normalized or normalized in discovered:
+            continue
+        if _load_background(normalized) is None:
+            continue
+        discovered.append(normalized)
+    return discovered
+
+
+def available_ui_theme_names() -> list[str]:
+    """Return selectable UI theme names discovered from plugins and theme modules."""
+    ordered: list[str] = []
+    for name in discover_plugin_theme_names():
+        if name not in ordered:
+            ordered.append(name)
+    for name in discover_theme_module_names():
+        if name not in ordered:
+            ordered.append(name)
+    fallback = _fallback_theme_name()
+    if fallback not in ordered and _load_background(fallback) is not None:
+        ordered.append(fallback)
+    return ordered
+
+
+def normalize_ui_theme_name(theme_name: str | None, *, allow_auto: bool = True) -> str:
+    """Normalize a persisted theme setting to a discovered value."""
+    raw = str(theme_name or "").strip().lower()
+    if allow_auto and (not raw or raw == "auto"):
+        return "auto"
+
+    available = set(available_ui_theme_names())
+    if raw in available:
+        return raw
+
+    if allow_auto:
+        return "auto"
+    return _fallback_theme_name()
 
 
 def _resolve_theme_name(theme_name: str) -> str:
@@ -142,8 +228,8 @@ class GlassRoot(QWidget):
         except Exception:
             return 32
 
-    def set_agent_theme(self, agent_cli: str) -> None:
-        theme_name = _resolve_theme_name(_theme_name_for_agent(agent_cli))
+    def _transition_to_theme(self, theme_name: str) -> None:
+        theme_name = _resolve_theme_name(theme_name)
         if theme_name == self._theme_name:
             return
 
@@ -178,6 +264,12 @@ class GlassRoot(QWidget):
         anim.finished.connect(_finish)
         anim.start()
         self._theme_anim = anim
+
+    def set_theme_name(self, theme_name: str) -> None:
+        self._transition_to_theme(theme_name)
+
+    def set_agent_theme(self, agent_cli: str) -> None:
+        self._transition_to_theme(_theme_name_for_agent(agent_cli))
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
