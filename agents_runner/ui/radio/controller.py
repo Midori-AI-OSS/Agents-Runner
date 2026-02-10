@@ -46,6 +46,8 @@ class RadioController(QObject):
     RECONNECT_SUPPRESS_AFTER_STOP_S = 1.0
     WATCHDOG_INTERVAL_MS = 1000
     WATCHDOG_MIN_RESTART_INTERVAL_S = 0.75
+    WATCHDOG_STUCK_STATUS_RESTART_AFTER_S = 3.0
+    BOUNDARY_RECONNECT_MIN_INTERVAL_S = 2.0
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -75,6 +77,7 @@ class RadioController(QObject):
         self._reconnect_in_progress = False
         self._last_restart_ts_s = 0.0
         self._suppress_reconnect_until_s = 0.0
+        self._stuck_status_since_s: float | None = None
         self._last_error_log_ts: dict[str, float] = {}
 
         self._audio_output: Any | None = None
@@ -535,12 +538,31 @@ class RadioController(QObject):
             if self._pending_quality:
                 self._apply_pending_quality(boundary_detected=True)
             elif self._enabled and self._desired_playing:
-                self._queue_reconnect(
-                    "track boundary detected",
-                    allow_without_service=True,
-                    force_restart=True,
-                    immediate=True,
+                media_status = None
+                if self._player is not None:
+                    media_status = self._coerce_media_status(self._player.mediaStatus())
+                media_status_name = self._media_status_name(media_status)
+                restartable_status = self._is_restart_media_status(media_status)
+                restart_recently = self._last_restart_ts_s > 0.0 and (
+                    time.monotonic() - self._last_restart_ts_s
+                    < self.BOUNDARY_RECONNECT_MIN_INTERVAL_S
                 )
+                should_boundary_reconnect = (not self._is_playing) or restartable_status
+                if should_boundary_reconnect and not restart_recently:
+                    self._queue_reconnect(
+                        "track boundary detected",
+                        allow_without_service=True,
+                        force_restart=True,
+                        immediate=True,
+                    )
+                else:
+                    self._log_debug(
+                        "boundary reconnect skipped"
+                        f" should_boundary_reconnect={should_boundary_reconnect}"
+                        f" restart_recently={restart_recently}"
+                        f" is_playing={self._is_playing}"
+                        f" media_status={media_status_name}"
+                    )
 
         self._emit_state()
 
@@ -663,11 +685,13 @@ class RadioController(QObject):
         )
         self._is_playing = is_playing_now
         if is_playing_now:
+            self._stuck_status_since_s = None
             self._cancel_reconnect(reset_attempts=True)
             self._degraded_from_playback = False
             self._status_text = f"Playing Midori AI Radio ({self._active_quality})."
             self._emit_state()
             return
+        self._stuck_status_since_s = None
         if not is_playing_now and self._pending_quality:
             self._apply_pending_quality(boundary_detected=False)
             if self._is_playing:
@@ -698,6 +722,7 @@ class RadioController(QObject):
         if media_status is None:
             return
         status_name = self._media_status_name(media_status)
+        self._update_stuck_status_tracking(media_status)
         self._log_debug(
             "media status changed"
             f" status={status_name}"
@@ -705,6 +730,12 @@ class RadioController(QObject):
             f" desired={self._desired_playing}"
             f" enabled={self._enabled}"
         )
+        if self._reconnect_in_progress and self._is_restart_media_status(media_status):
+            self._log_debug(
+                "media status restart event ignored while reconnect is already in progress"
+                f" status={status_name}"
+            )
+            return
         if self._is_restart_media_status(media_status):
             self._queue_reconnect(
                 f"media status {status_name}",
@@ -736,11 +767,45 @@ class RadioController(QObject):
             media_status_type.NoMedia,
         }
 
+    def _stuck_watchdog_statuses(self) -> set[Any]:
+        if QMediaPlayer is None:
+            return set()
+        media_status_type = QMediaPlayer.MediaStatus
+        return {
+            media_status_type.LoadingMedia,
+            media_status_type.LoadedMedia,
+            media_status_type.BufferingMedia,
+        }
+
     def _is_restart_media_status(self, status: Any) -> bool:
         media_status = self._coerce_media_status(status)
         if media_status is None:
             return False
         return media_status in self._restart_media_statuses()
+
+    def _is_stuck_watchdog_status(self, status: Any) -> bool:
+        media_status = self._coerce_media_status(status)
+        if media_status is None:
+            return False
+        return media_status in self._stuck_watchdog_statuses()
+
+    def _update_stuck_status_tracking(self, status: Any) -> None:
+        media_status = self._coerce_media_status(status)
+        if media_status is None:
+            self._stuck_status_since_s = None
+            return
+        if self._is_restart_media_status(media_status):
+            self._stuck_status_since_s = None
+            return
+        if (
+            self._enabled
+            and self._desired_playing
+            and self._is_stuck_watchdog_status(media_status)
+        ):
+            if self._stuck_status_since_s is None:
+                self._stuck_status_since_s = time.monotonic()
+        else:
+            self._stuck_status_since_s = None
 
     def _media_status_name(self, status: Any) -> str:
         media_status = self._coerce_media_status(status)
@@ -909,6 +974,13 @@ class RadioController(QObject):
                 except Exception:
                     pass
                 self._is_playing = False
+                try:
+                    self._player.setSource(QUrl())
+                    self._log_debug(
+                        "attempt reconnect cleared previous media source before reload"
+                    )
+                except Exception as exc:
+                    self._log_debug(f"attempt reconnect source clear failed: {exc!r}")
             self._player.setSource(QUrl(self._build_stream_url(quality_to_use)))
             self._player.play()
             self._log_debug(
@@ -987,6 +1059,28 @@ class RadioController(QObject):
                 immediate=True,
             )
             self._emit_state()
+            return
+
+        if self._is_stuck_watchdog_status(media_status):
+            if self._stuck_status_since_s is None:
+                self._stuck_status_since_s = now
+            stuck_for_s = now - self._stuck_status_since_s
+            if stuck_for_s >= self.WATCHDOG_STUCK_STATUS_RESTART_AFTER_S:
+                status_name = self._media_status_name(media_status)
+                self._log_debug(
+                    "watchdog scheduling reconnect because media status is stuck"
+                    f" status={status_name}"
+                    f" stuck_for_s={stuck_for_s:.2f}"
+                )
+                self._queue_reconnect(
+                    f"watchdog stuck media status {status_name}",
+                    allow_without_service=True,
+                    force_restart=True,
+                    immediate=True,
+                )
+                self._emit_state()
+        else:
+            self._stuck_status_since_s = None
 
     def _log_error_throttled(self, key: str, message: str) -> None:
         now = time.monotonic()
