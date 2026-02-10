@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import threading
 
 from PySide6.QtCore import Qt
@@ -416,17 +417,20 @@ class MainWindow(
         if not track:
             return ""
 
-        prefix = f"{APP_TITLE} - "
-        while track.casefold().startswith(prefix.casefold()):
-            track = track[len(prefix) :].strip()
-
-        parts = [part.strip() for part in track.split(" - ") if part.strip()]
+        parts = [
+            part.strip() for part in re.split(r"\s+[—–-]\s+", track) if part.strip()
+        ]
         if not parts:
             return ""
 
+        app_title = APP_TITLE.casefold()
+        while parts and parts[0].casefold() == app_title:
+            parts.pop(0)
         while len(parts) >= 2 and parts[-1].casefold() == parts[-2].casefold():
             parts.pop()
         while len(parts) >= 2 and parts[0].casefold() == parts[-1].casefold():
+            parts.pop()
+        while parts and parts[-1].casefold() == app_title:
             parts.pop()
 
         if not parts:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -475,22 +476,14 @@ class RadioController(QObject):
         if station:
             known_suffixes.add(station)
 
-        prefix_candidates = [f"{label} - " for label in known_suffixes]
-        lowered = title.casefold()
-        updated = True
-        while updated and title:
-            updated = False
-            lowered = title.casefold()
-            for prefix in prefix_candidates:
-                if lowered.startswith(prefix):
-                    title = title[len(prefix) :].strip()
-                    updated = True
-                    break
-
-        parts = [part.strip() for part in title.split(" - ") if part.strip()]
+        parts = [
+            part.strip() for part in re.split(r"\s+[—–-]\s+", title) if part.strip()
+        ]
         if not parts:
             return ""
 
+        while parts and parts[0].casefold() in known_suffixes:
+            parts.pop(0)
         while len(parts) >= 2 and parts[-1].casefold() == parts[-2].casefold():
             parts.pop()
         while len(parts) >= 2 and parts[0].casefold() == parts[-1].casefold():
