@@ -12,31 +12,27 @@ import shlex
 import shutil
 import threading
 import time
+from datetime import datetime
+from datetime import timezone
 from uuid import uuid4
 
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
-from agents_runner.environments.cleanup import cleanup_task_workspace
-from agents_runner.gh_management import GhManagementError
 from agents_runner.gh_management import is_gh_available
-from agents_runner.gh_management import prepare_github_repo_for_task
+from agents_runner.log_format import format_log
 from agents_runner.prompt_sanitizer import sanitize_prompt
-from agents_runner.pr_metadata import ensure_pr_metadata_file
-from agents_runner.pr_metadata import pr_metadata_container_path
-from agents_runner.pr_metadata import pr_metadata_host_path
-from agents_runner.pr_metadata import pr_metadata_prompt_instructions
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
-from agents_runner.ui.main_window_tasks_interactive_command import (
-    build_agent_command_parts,
-)
 from agents_runner.ui.main_window_tasks_interactive_docker import (
     launch_docker_terminal_task,
 )
+from agents_runner.ui.interactive_prep_worker import InteractivePrepWorker
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _stain_color
 from midori_ai_logger import MidoriAiLogger
@@ -219,85 +215,6 @@ class _MainWindowTasksInteractiveMixin:
             if workspace_type == WORKSPACE_CLONED and env
             else ""
         )
-        gh_repo_root: str | None = None
-        gh_base_branch: str | None = None
-        gh_branch: str | None = None
-        gh_prepare_logs: list[str] = []
-        pr_host_path = ""
-        pr_metadata_mount = ""
-
-        if workspace_type == WORKSPACE_CLONED and gh_repo:
-            if os.path.exists(host_workdir):
-                cleanup_success = cleanup_task_workspace(
-                    env_id=env_id,
-                    task_id=task_id,
-                    data_dir=os.path.dirname(self._state_path),
-                    on_log=gh_prepare_logs.append,
-                )
-                if not cleanup_success:
-                    QMessageBox.warning(
-                        self,
-                        "Workspace cleanup failed",
-                        "Unable to prepare a fresh cloned workspace for this task.",
-                    )
-                    return
-
-            try:
-                gh_result = prepare_github_repo_for_task(
-                    gh_repo,
-                    host_workdir,
-                    task_id=task_id,
-                    base_branch=desired_base or None,
-                    prefer_gh=gh_use_host_cli,
-                    recreate_if_needed=False,
-                    on_log=gh_prepare_logs.append,
-                )
-            except (GhManagementError, Exception) as exc:
-                QMessageBox.warning(self, "GitHub setup failed", str(exc))
-                return
-
-            gh_repo_root = str(gh_result.get("repo_root") or "").strip() or None
-            gh_base_branch = str(gh_result.get("base_branch") or "").strip() or None
-            gh_branch = str(gh_result.get("branch") or "").strip() or None
-            if not gh_repo_root or not gh_branch:
-                QMessageBox.warning(
-                    self,
-                    "GitHub setup failed",
-                    "Could not prepare a task branch for this cloned repository.",
-                )
-                return
-
-            if env and env.gh_context_enabled:
-                pr_host_path = pr_metadata_host_path(
-                    os.path.dirname(self._state_path), task_id
-                )
-                pr_container_path = pr_metadata_container_path(task_id)
-                try:
-                    ensure_pr_metadata_file(pr_host_path, task_id=task_id)
-                except Exception as exc:
-                    QMessageBox.warning(
-                        self,
-                        "PR metadata setup failed",
-                        f"Could not create PR metadata file: {exc}",
-                    )
-                    return
-                pr_metadata_mount = f"{pr_host_path}:{pr_container_path}:rw"
-                prompt_for_agent = (
-                    f"{prompt_for_agent}"
-                    f"{pr_metadata_prompt_instructions(pr_container_path)}"
-                )
-
-        try:
-            cmd_parts = build_agent_command_parts(
-                command=command,
-                agent_cli=agent_cli,
-                agent_cli_args=agent_cli_args,
-                prompt=prompt_for_agent,
-                is_help_launch=is_help_launch,
-            )
-        except ValueError as exc:
-            QMessageBox.warning(self, "Invalid container command", str(exc))
-            return
 
         image = PIXELARCH_EMERALD_IMAGE
 
@@ -326,8 +243,6 @@ class _MainWindowTasksInteractiveMixin:
             settings=self._settings_data,
         )
         config_extra_mounts.extend(cross_agent_mounts)
-        if pr_metadata_mount:
-            config_extra_mounts.append(pr_metadata_mount)
 
         container_workdir = "/home/midori-ai/workspace"
 
@@ -355,41 +270,148 @@ class _MainWindowTasksInteractiveMixin:
         if env:
             task.workspace_type = env.workspace_type
 
-        task.gh_repo_root = gh_repo_root or ""
-        task.gh_base_branch = gh_base_branch or desired_base
-        task.gh_branch = gh_branch or ""
-        task.gh_pr_metadata_path = pr_host_path or ""
+        self._show_dashboard()
+        self._new_task.reset_for_new_run()
 
-        for line in gh_prepare_logs:
-            self._on_task_log(task_id, str(line or ""))
-
-        # Launch interactive terminal - delegated to Docker launcher module
-        launch_docker_terminal_task(
-            main_window=self,
-            task=task,
-            env=env,
-            env_id=env_id,
+        prep_worker = InteractivePrepWorker(
             task_id=task_id,
-            task_token=task_token,
-            terminal_opt=opt,
-            cmd_parts=cmd_parts,
-            prompt=prompt,
+            env_id=env_id,
+            workspace_type=workspace_type,
+            gh_repo=gh_repo,
+            host_workdir=host_workdir,
+            desired_base=desired_base,
+            gh_use_host_cli=gh_use_host_cli,
+            gh_context_enabled=bool(env and env.gh_context_enabled),
+            data_dir=os.path.dirname(self._state_path),
+            image=image,
             command=command,
             agent_cli=agent_cli,
-            host_codex=host_codex,
-            host_workdir=host_workdir,
-            config_extra_mounts=config_extra_mounts,
-            image=image,
-            container_name=container_name,
-            container_agent_dir=container_agent_dir,
-            container_workdir=container_workdir,
-            settings_preflight_script=settings_preflight_script,
-            environment_preflight_script=environment_preflight_script,
-            extra_preflight_script=extra_preflight_script,
-            stain=stain,
-            spinner=spinner,
-            desired_base=desired_base,
+            agent_cli_args=agent_cli_args,
+            prompt_for_agent=prompt_for_agent,
+            is_help_launch=is_help_launch,
         )
+        prep_thread = QThread(self)
+        prep_worker.moveToThread(prep_thread)
+        prep_thread.started.connect(prep_worker.run)
+
+        def _refresh_task_card(updated_task: Task) -> None:
+            env_for_task = self._environments.get(updated_task.environment_id)
+            task_stain = env_for_task.color if env_for_task else None
+            task_spinner = _stain_color(env_for_task.color) if env_for_task else None
+            self._dashboard.upsert_task(
+                updated_task, stain=task_stain, spinner_color=task_spinner
+            )
+            self._details.update_task(updated_task)
+            self._schedule_save()
+
+        def _clear_prep_refs() -> None:
+            self._interactive_prep_workers.pop(task_id, None)
+            self._interactive_prep_threads.pop(task_id, None)
+
+        def _on_prep_stage(emitted_task_id: str, status: str, _: str) -> None:
+            active_task = self._tasks.get(str(emitted_task_id or "").strip())
+            if active_task is None:
+                return
+            status_text = str(status or "").strip().lower()
+            if status_text:
+                active_task.status = status_text
+                active_task.error = None
+            _refresh_task_card(active_task)
+
+        def _on_prep_log(emitted_task_id: str, line: str) -> None:
+            emitted_task_id = str(emitted_task_id or "").strip()
+            if not emitted_task_id:
+                return
+            self._on_task_log(emitted_task_id, str(line or ""))
+
+        def _on_prep_failed(emitted_task_id: str, error_message: str) -> None:
+            _clear_prep_refs()
+            failed_task = self._tasks.get(str(emitted_task_id or "").strip())
+            if failed_task is None:
+                return
+            failed_task.status = "failed"
+            failed_task.error = (
+                str(error_message or "").strip() or "Interactive prep failed"
+            )
+            failed_task.exit_code = 1
+            failed_task.finished_at = datetime.now(tz=timezone.utc)
+            failed_task.finalization_state = "done"
+            self._on_task_log(
+                failed_task.task_id,
+                format_log("ui", "prep", "ERROR", failed_task.error),
+            )
+            _refresh_task_card(failed_task)
+
+        def _on_prep_succeeded(emitted_task_id: str, payload: dict) -> None:
+            _clear_prep_refs()
+            ready_task = self._tasks.get(str(emitted_task_id or "").strip())
+            if ready_task is None:
+                return
+
+            cmd_parts = payload.get("cmd_parts")
+            if not isinstance(cmd_parts, list) or not cmd_parts:
+                _on_prep_failed(
+                    emitted_task_id, "Interactive prep returned no command."
+                )
+                return
+
+            ready_task.gh_repo_root = str(payload.get("gh_repo_root") or "").strip()
+            ready_task.gh_base_branch = (
+                str(payload.get("gh_base_branch") or "").strip() or desired_base
+            )
+            ready_task.gh_branch = str(payload.get("gh_branch") or "").strip()
+            ready_task.gh_pr_metadata_path = str(
+                payload.get("gh_pr_metadata_path") or ""
+            ).strip()
+            ready_task.error = None
+            _refresh_task_card(ready_task)
+
+            launch_mounts = list(config_extra_mounts)
+            pr_metadata_mount = str(payload.get("pr_metadata_mount") or "").strip()
+            if pr_metadata_mount:
+                launch_mounts.append(pr_metadata_mount)
+
+            launch_docker_terminal_task(
+                main_window=self,
+                task=ready_task,
+                env=env,
+                env_id=env_id,
+                task_id=task_id,
+                task_token=task_token,
+                terminal_opt=opt,
+                cmd_parts=cmd_parts,
+                prompt=prompt,
+                command=command,
+                agent_cli=agent_cli,
+                host_codex=host_codex,
+                host_workdir=host_workdir,
+                config_extra_mounts=launch_mounts,
+                image=image,
+                container_name=container_name,
+                container_agent_dir=container_agent_dir,
+                container_workdir=container_workdir,
+                settings_preflight_script=settings_preflight_script,
+                environment_preflight_script=environment_preflight_script,
+                extra_preflight_script=extra_preflight_script,
+                stain=stain,
+                spinner=spinner,
+                desired_base=desired_base,
+                skip_image_pull=True,
+            )
+
+        prep_worker.stage.connect(_on_prep_stage, Qt.QueuedConnection)
+        prep_worker.log.connect(_on_prep_log, Qt.QueuedConnection)
+        prep_worker.succeeded.connect(_on_prep_succeeded, Qt.QueuedConnection)
+        prep_worker.failed.connect(_on_prep_failed, Qt.QueuedConnection)
+        prep_worker.succeeded.connect(prep_thread.quit, Qt.QueuedConnection)
+        prep_worker.failed.connect(prep_thread.quit, Qt.QueuedConnection)
+        prep_worker.succeeded.connect(prep_worker.deleteLater, Qt.QueuedConnection)
+        prep_worker.failed.connect(prep_worker.deleteLater, Qt.QueuedConnection)
+        prep_thread.finished.connect(prep_thread.deleteLater)
+
+        self._interactive_prep_workers[task_id] = prep_worker
+        self._interactive_prep_threads[task_id] = prep_thread
+        prep_thread.start()
 
     def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
         task_id = str(task_id or "").strip()

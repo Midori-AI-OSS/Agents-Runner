@@ -54,6 +54,9 @@ class _MainWindowPersistenceMixin:
                     "starting",
                     "running",
                     "created",
+                    "pulling",
+                    "cloning",
+                    "cleaning",
                 }:
                     return True
                 if status not in {"cancelled", "killed"}:

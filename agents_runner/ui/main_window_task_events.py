@@ -228,6 +228,10 @@ class _MainWindowTaskEventsMixin:
 
         bridge = self._bridges.get(task_id)
         thread = self._threads.get(task_id)
+        prep_workers = getattr(self, "_interactive_prep_workers", {})
+        prep_threads = getattr(self, "_interactive_prep_threads", {})
+        prep_worker = prep_workers.get(task_id)
+        prep_thread = prep_threads.get(task_id)
         container_id = task.container_id or (
             bridge.container_id if bridge is not None else None
         )
@@ -241,9 +245,20 @@ class _MainWindowTaskEventsMixin:
                 bridge.request_user_cancel()
             except Exception:
                 pass
+        if prep_worker is not None:
+            try:
+                prep_worker.request_stop()
+            except Exception:
+                pass
         if thread is not None:
             try:
                 thread.quit()
+            except Exception:
+                pass
+        if prep_thread is not None:
+            try:
+                prep_thread.quit()
+                prep_thread.wait(200)
             except Exception:
                 pass
 
@@ -251,6 +266,8 @@ class _MainWindowTaskEventsMixin:
         self._tasks.pop(task_id, None)
         self._threads.pop(task_id, None)
         self._bridges.pop(task_id, None)
+        prep_threads.pop(task_id, None)
+        prep_workers.pop(task_id, None)
         self._run_started_s.pop(task_id, None)
         self._dashboard_log_refresh_s.pop(task_id, None)
         self._interactive_watch.pop(task_id, None)

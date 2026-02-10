@@ -103,6 +103,8 @@ class MainWindow(
         self._tasks: dict[str, Task] = {}
         self._threads: dict[str, QThread] = {}
         self._bridges: dict[str, TaskRunnerBridge] = {}
+        self._interactive_prep_threads: dict[str, QThread] = {}
+        self._interactive_prep_workers: dict[str, object] = {}
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}

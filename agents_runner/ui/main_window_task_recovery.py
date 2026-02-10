@@ -159,6 +159,10 @@ class _MainWindowTaskRecoveryMixin:
         # Don't start recovery log tail if task has an active bridge (bridge already streams logs)
         if task_id in self._bridges:
             return
+        # Interactive tasks do not have a container until launch starts and the finish
+        # watcher is registered.
+        if task.is_interactive_run() and task_id not in self._interactive_watch:
+            return
 
         stop = threading.Event()
         self._recovery_log_stop[task_id] = stop
