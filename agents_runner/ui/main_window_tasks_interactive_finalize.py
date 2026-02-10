@@ -115,7 +115,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                         str(task.prompt or ""),
                         str(task.task_id or task_id),
                         bool(task.gh_use_host_cli),
-                        None,
+                        (str(task.gh_pr_metadata_path or "").strip() or None),
                         str(task.agent_cli or "").strip(),
                         str(task.agent_cli_args or "").strip(),
                     ),

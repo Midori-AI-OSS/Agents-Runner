@@ -20,8 +20,15 @@ from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
+from agents_runner.environments.cleanup import cleanup_task_workspace
+from agents_runner.gh_management import GhManagementError
 from agents_runner.gh_management import is_gh_available
+from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.pr_metadata import ensure_pr_metadata_file
+from agents_runner.pr_metadata import pr_metadata_container_path
+from agents_runner.pr_metadata import pr_metadata_host_path
+from agents_runner.pr_metadata import pr_metadata_prompt_instructions
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.main_window_tasks_interactive_command import (
@@ -204,12 +211,88 @@ class _MainWindowTasksInteractiveMixin:
                 ]
             ).strip()
 
+        prompt_for_agent = str(prompt or "")
+        gh_use_host_cli = bool(getattr(env, "gh_use_host_cli", True)) if env else True
+        gh_use_host_cli = bool(gh_use_host_cli and is_gh_available())
+        gh_repo = (
+            str(env.workspace_target or "").strip()
+            if workspace_type == WORKSPACE_CLONED and env
+            else ""
+        )
+        gh_repo_root: str | None = None
+        gh_base_branch: str | None = None
+        gh_branch: str | None = None
+        gh_prepare_logs: list[str] = []
+        pr_host_path = ""
+        pr_metadata_mount = ""
+
+        if workspace_type == WORKSPACE_CLONED and gh_repo:
+            if os.path.exists(host_workdir):
+                cleanup_success = cleanup_task_workspace(
+                    env_id=env_id,
+                    task_id=task_id,
+                    data_dir=os.path.dirname(self._state_path),
+                    on_log=gh_prepare_logs.append,
+                )
+                if not cleanup_success:
+                    QMessageBox.warning(
+                        self,
+                        "Workspace cleanup failed",
+                        "Unable to prepare a fresh cloned workspace for this task.",
+                    )
+                    return
+
+            try:
+                gh_result = prepare_github_repo_for_task(
+                    gh_repo,
+                    host_workdir,
+                    task_id=task_id,
+                    base_branch=desired_base or None,
+                    prefer_gh=gh_use_host_cli,
+                    recreate_if_needed=False,
+                    on_log=gh_prepare_logs.append,
+                )
+            except (GhManagementError, Exception) as exc:
+                QMessageBox.warning(self, "GitHub setup failed", str(exc))
+                return
+
+            gh_repo_root = str(gh_result.get("repo_root") or "").strip() or None
+            gh_base_branch = str(gh_result.get("base_branch") or "").strip() or None
+            gh_branch = str(gh_result.get("branch") or "").strip() or None
+            if not gh_repo_root or not gh_branch:
+                QMessageBox.warning(
+                    self,
+                    "GitHub setup failed",
+                    "Could not prepare a task branch for this cloned repository.",
+                )
+                return
+
+            if env and env.gh_context_enabled:
+                pr_host_path = pr_metadata_host_path(
+                    os.path.dirname(self._state_path), task_id
+                )
+                pr_container_path = pr_metadata_container_path(task_id)
+                try:
+                    ensure_pr_metadata_file(pr_host_path, task_id=task_id)
+                except Exception as exc:
+                    QMessageBox.warning(
+                        self,
+                        "PR metadata setup failed",
+                        f"Could not create PR metadata file: {exc}",
+                    )
+                    return
+                pr_metadata_mount = f"{pr_host_path}:{pr_container_path}:rw"
+                prompt_for_agent = (
+                    f"{prompt_for_agent}"
+                    f"{pr_metadata_prompt_instructions(pr_container_path)}"
+                )
+
         try:
             cmd_parts = build_agent_command_parts(
                 command=command,
                 agent_cli=agent_cli,
                 agent_cli_args=agent_cli_args,
-                prompt=prompt,
+                prompt=prompt_for_agent,
                 is_help_launch=is_help_launch,
             )
         except ValueError as exc:
@@ -243,6 +326,8 @@ class _MainWindowTasksInteractiveMixin:
             settings=self._settings_data,
         )
         config_extra_mounts.extend(cross_agent_mounts)
+        if pr_metadata_mount:
+            config_extra_mounts.append(pr_metadata_mount)
 
         container_workdir = "/home/midori-ai/workspace"
 
@@ -256,9 +341,7 @@ class _MainWindowTasksInteractiveMixin:
             created_at_s=time.time(),
             status="starting",
             container_id=container_name,
-            gh_use_host_cli=(
-                bool(getattr(env, "gh_use_host_cli", True)) if env else True
-            ),
+            gh_use_host_cli=gh_use_host_cli,
             agent_cli=agent_cli,
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
@@ -272,12 +355,13 @@ class _MainWindowTasksInteractiveMixin:
         if env:
             task.workspace_type = env.workspace_type
 
-        task.gh_use_host_cli = bool(task.gh_use_host_cli and is_gh_available())
+        task.gh_repo_root = gh_repo_root or ""
+        task.gh_base_branch = gh_base_branch or desired_base
+        task.gh_branch = gh_branch or ""
+        task.gh_pr_metadata_path = pr_host_path or ""
 
-        # Extract gh_repo from environment if GitHub management is enabled
-        gh_repo: str = ""
-        if workspace_type == WORKSPACE_CLONED and env:
-            gh_repo = str(env.workspace_target or "").strip()
+        for line in gh_prepare_logs:
+            self._on_task_log(task_id, str(line or ""))
 
         # Launch interactive terminal - delegated to Docker launcher module
         launch_docker_terminal_task(
@@ -305,8 +389,6 @@ class _MainWindowTasksInteractiveMixin:
             stain=stain,
             spinner=spinner,
             desired_base=desired_base,
-            gh_repo=gh_repo,
-            gh_prefer_gh_cli=bool(task.gh_use_host_cli),
         )
 
     def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
