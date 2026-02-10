@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
+from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
@@ -22,8 +23,10 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_agent_system
 from agents_runner.agent_systems import get_default_agent_system_name
+from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
 from agents_runner.ui.graphics import normalize_ui_theme_name
+from agents_runner.ui.widgets.theme_preview import ThemePreviewTile
 from agents_runner.ui.constants import (
     GRID_HORIZONTAL_SPACING,
     GRID_VERTICAL_SPACING,
@@ -100,6 +103,11 @@ class _SettingsFormMixin:
             "Auto syncs background theme to the active agent.\n"
             "Select a specific theme to force an override."
         )
+        self._theme_preview_tiles: dict[str, ThemePreviewTile] = {}
+        self._theme_preview_order: list[str] = []
+        self._theme_preview_grid: QGridLayout | None = None
+        self._theme_preview_host: QWidget | None = None
+        self._ui_theme.currentIndexChanged.connect(self._on_theme_combo_changed)
         self._refresh_theme_options(selected="auto")
 
         self._host_codex_dir = QLineEdit()
@@ -201,6 +209,18 @@ class _SettingsFormMixin:
         themes_grid.addWidget(QLabel("Theme"), 0, 0)
         themes_grid.addWidget(self._ui_theme, 0, 1)
         themes_body.addLayout(themes_grid)
+        previews_heading = QLabel("Theme previews")
+        previews_heading.setObjectName("SettingsPaneSubtitle")
+        themes_body.addWidget(previews_heading)
+
+        self._theme_preview_host = QWidget(themes_page)
+        self._theme_preview_host.setObjectName("ThemePreviewGridHost")
+        self._theme_preview_grid = QGridLayout(self._theme_preview_host)
+        self._theme_preview_grid.setContentsMargins(0, 0, 0, 0)
+        self._theme_preview_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        self._theme_preview_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
+        themes_body.addWidget(self._theme_preview_host)
+        self._refresh_theme_preview_tiles(selected="auto")
         themes_body.addStretch(1)
         self._register_page("themes", themes_page)
 
@@ -354,8 +374,98 @@ class _SettingsFormMixin:
             self._ui_theme.clear()
             self._ui_theme.addItem("Auto (sync to active agent)", "auto")
             for theme_name in available_ui_theme_names():
-                self._ui_theme.addItem(self._format_key_label(theme_name), theme_name)
+                self._ui_theme.addItem(self._format_theme_label(theme_name), theme_name)
             self._set_combo_value(self._ui_theme, normalized_selected, fallback="auto")
+        self._refresh_theme_preview_tiles(selected=normalized_selected)
+
+    def _refresh_theme_preview_tiles(self, selected: str | None) -> None:
+        if self._theme_preview_grid is None:
+            return
+
+        normalized_selected = normalize_ui_theme_name(selected, allow_auto=True)
+        theme_names = [name for name in available_ui_theme_names() if str(name).strip()]
+        if theme_names != self._theme_preview_order:
+            self._rebuild_theme_preview_tiles(theme_names)
+
+        for theme_name, tile in self._theme_preview_tiles.items():
+            tile.set_selected(
+                normalized_selected != "auto" and theme_name == normalized_selected
+            )
+
+    def _rebuild_theme_preview_tiles(self, theme_names: list[str]) -> None:
+        if self._theme_preview_grid is None:
+            return
+
+        self._theme_preview_order = list(theme_names)
+        self._theme_preview_tiles.clear()
+        self._clear_layout(self._theme_preview_grid)
+
+        columns = 3
+        if not theme_names:
+            empty = QLabel("No themes available.")
+            empty.setObjectName("SettingsPaneSubtitle")
+            self._theme_preview_grid.addWidget(empty, 0, 0, 1, columns)
+            for col in range(columns):
+                self._theme_preview_grid.setColumnStretch(col, 1)
+            return
+
+        for index, theme_name in enumerate(theme_names):
+            row = index // columns
+            col = index % columns
+            tile = ThemePreviewTile(
+                theme_name=theme_name,
+                label=self._format_theme_label(theme_name),
+                parent=self._theme_preview_host,
+            )
+            tile.clicked.connect(self._on_theme_preview_tile_clicked)
+            self._theme_preview_grid.addWidget(tile, row, col)
+            self._theme_preview_tiles[theme_name] = tile
+
+        for col in range(columns):
+            self._theme_preview_grid.setColumnStretch(col, 1)
+
+        trailing_row = (len(theme_names) + columns - 1) // columns
+        self._theme_preview_grid.setRowStretch(trailing_row, 1)
+
+    def _on_theme_combo_changed(self, _index: int) -> None:
+        theme_value = normalize_ui_theme_name(
+            str(self._ui_theme.currentData() or "auto"),
+            allow_auto=True,
+        )
+        self._refresh_theme_preview_tiles(selected=theme_value)
+
+    def _on_theme_preview_tile_clicked(self, theme_name: str) -> None:
+        normalized_theme = normalize_ui_theme_name(theme_name, allow_auto=False)
+        dialog = ThemePreviewDialog(
+            theme_name=normalized_theme,
+            theme_label=self._format_theme_label(normalized_theme),
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        applied_theme = dialog.applied_theme_name()
+        if not applied_theme:
+            return
+
+        normalized_selected = normalize_ui_theme_name(applied_theme, allow_auto=True)
+        self._set_combo_value(self._ui_theme, normalized_selected, fallback="auto")
+        self._refresh_theme_preview_tiles(selected=normalized_selected)
+
+    @staticmethod
+    def _clear_layout(layout: QGridLayout) -> None:
+        while layout.count() > 0:
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    @staticmethod
+    def _format_theme_label(value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        if normalized == "midoriai":
+            return "Midori AI"
+        return _SettingsFormMixin._format_key_label(normalized)
 
     @staticmethod
     def _format_key_label(value: str) -> str:
