@@ -152,6 +152,7 @@ class MainWindow(
 
         self._root = GlassRoot()
         self.setCentralWidget(self._root)
+        self._theme_startup_pending = True
 
         outer = QVBoxLayout(self._root)
         outer.setContentsMargins(18, 18, 18, 18)
