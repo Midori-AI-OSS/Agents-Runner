@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
+import time
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
@@ -48,6 +49,7 @@ class InteractivePrepWorker(QObject):
         agent_cli_args: list[str],
         prompt_for_agent: str,
         is_help_launch: bool,
+        prep_id: str = "",
     ) -> None:
         super().__init__()
         self._task_id = str(task_id or "").strip()
@@ -65,6 +67,7 @@ class InteractivePrepWorker(QObject):
         self._agent_cli_args = list(agent_cli_args or [])
         self._prompt_for_agent = str(prompt_for_agent or "")
         self._is_help_launch = bool(is_help_launch)
+        self._prep_id = str(prep_id or "").strip()
         self._stop_requested = False
 
     @Slot()
@@ -79,13 +82,23 @@ class InteractivePrepWorker(QObject):
         self.stage.emit(self._task_id, status, message)
         self.log.emit(self._task_id, format_log("ui", "prep", "INFO", message))
 
+    def _diag(self, level: str, message: str) -> None:
+        level_text = str(level or "INFO").strip().upper() or "INFO"
+        prep_prefix = f"[prep:{self._prep_id}] " if self._prep_id else ""
+        self.log.emit(
+            self._task_id,
+            format_log("ui", "prepdiag", level_text, f"{prep_prefix}{message}"),
+        )
+
     def _pull_image(self) -> None:
+        pull_started_s = time.monotonic()
         pull_parts = [
             "docker",
             "pull",
             *docker_platform_args_for_pixelarch(),
             self._image,
         ]
+        self._diag("INFO", f"docker pull start image={self._image}")
         self.log.emit(
             self._task_id,
             format_log(
@@ -113,10 +126,14 @@ class InteractivePrepWorker(QObject):
                 or f"docker pull failed with exit code {completed.returncode}"
             )
             raise RuntimeError(detail)
+        pull_elapsed_ms = (time.monotonic() - pull_started_s) * 1000.0
+        self._diag("INFO", f"docker pull done elapsed_ms={pull_elapsed_ms:.0f}")
 
     @Slot()
     def run(self) -> None:
         try:
+            run_started_s = time.monotonic()
+            self._diag("INFO", "worker started")
             self._check_stop()
             gh_repo_root = ""
             gh_base_branch = self._desired_base
@@ -127,6 +144,8 @@ class InteractivePrepWorker(QObject):
 
             if self._workspace_type == WORKSPACE_CLONED and self._gh_repo:
                 self._emit_stage("starting", "Preparing task workspace")
+                cleanup_started_s = time.monotonic()
+                self._diag("INFO", "phase=workspace_prepare begin")
                 if os.path.exists(self._host_workdir):
                     cleanup_success = cleanup_task_workspace(
                         env_id=self._env_id,
@@ -140,9 +159,16 @@ class InteractivePrepWorker(QObject):
                         raise RuntimeError(
                             "Unable to prepare a fresh cloned workspace for this task."
                         )
+                cleanup_elapsed_ms = (time.monotonic() - cleanup_started_s) * 1000.0
+                self._diag(
+                    "INFO",
+                    f"phase=workspace_prepare done elapsed_ms={cleanup_elapsed_ms:.0f}",
+                )
 
                 self._check_stop()
                 self._emit_stage("cloning", "Syncing repository and preparing branch")
+                clone_started_s = time.monotonic()
+                self._diag("INFO", "phase=repo_clone_or_sync begin")
                 try:
                     gh_result = prepare_github_repo_for_task(
                         self._gh_repo,
@@ -157,6 +183,11 @@ class InteractivePrepWorker(QObject):
                     )
                 except GhManagementError as exc:
                     raise RuntimeError(str(exc)) from exc
+                clone_elapsed_ms = (time.monotonic() - clone_started_s) * 1000.0
+                self._diag(
+                    "INFO",
+                    f"phase=repo_clone_or_sync done elapsed_ms={clone_elapsed_ms:.0f}",
+                )
 
                 gh_repo_root = str(gh_result.get("repo_root") or "").strip()
                 gh_base_branch = str(gh_result.get("base_branch") or "").strip()
@@ -169,6 +200,8 @@ class InteractivePrepWorker(QObject):
                 if self._gh_context_enabled:
                     self._check_stop()
                     self._emit_stage("starting", "Preparing PR metadata file")
+                    metadata_started_s = time.monotonic()
+                    self._diag("INFO", "phase=pr_metadata_prepare begin")
                     pr_host_path = pr_metadata_host_path(self._data_dir, self._task_id)
                     pr_container_path = pr_metadata_container_path(self._task_id)
                     try:
@@ -182,12 +215,23 @@ class InteractivePrepWorker(QObject):
                         f"{prompt_for_agent}"
                         f"{pr_metadata_prompt_instructions(pr_container_path)}"
                     )
+                    metadata_elapsed_ms = (
+                        time.monotonic() - metadata_started_s
+                    ) * 1000.0
+                    self._diag(
+                        "INFO",
+                        f"phase=pr_metadata_prepare done elapsed_ms={metadata_elapsed_ms:.0f}",
+                    )
 
             self._check_stop()
             self._emit_stage("pulling", f"Ensuring image is available: {self._image}")
+            self._diag("INFO", "phase=image_ready begin")
             self._pull_image()
+            self._diag("INFO", "phase=image_ready done")
 
             self._check_stop()
+            cmd_started_s = time.monotonic()
+            self._diag("INFO", "phase=command_build begin")
             cmd_parts = build_agent_command_parts(
                 command=self._command,
                 agent_cli=self._agent_cli,
@@ -195,8 +239,14 @@ class InteractivePrepWorker(QObject):
                 prompt=prompt_for_agent,
                 is_help_launch=self._is_help_launch,
             )
+            cmd_elapsed_ms = (time.monotonic() - cmd_started_s) * 1000.0
+            self._diag(
+                "INFO", f"phase=command_build done elapsed_ms={cmd_elapsed_ms:.0f}"
+            )
 
             self._emit_stage("starting", "Launching interactive terminal")
+            total_elapsed_ms = (time.monotonic() - run_started_s) * 1000.0
+            self._diag("INFO", f"worker succeeded elapsed_ms={total_elapsed_ms:.0f}")
             self.succeeded.emit(
                 self._task_id,
                 {
@@ -209,4 +259,5 @@ class InteractivePrepWorker(QObject):
                 },
             )
         except Exception as exc:
+            self._diag("ERROR", f"worker failed error={exc}")
             self.failed.emit(self._task_id, str(exc))
