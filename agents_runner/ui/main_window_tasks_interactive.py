@@ -29,6 +29,13 @@ from agents_runner.log_format import format_log
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
+from agents_runner.ui.interactive_prep_diagnostics import (
+    init_interactive_prep_diag,
+    log_interactive_prep_diag,
+    start_interactive_prep_heartbeat,
+    stop_interactive_prep_diag,
+    touch_interactive_prep_callback,
+)
 from agents_runner.ui.main_window_tasks_interactive_docker import (
     launch_docker_terminal_task,
 )
@@ -270,8 +277,30 @@ class _MainWindowTasksInteractiveMixin:
         if env:
             task.workspace_type = env.workspace_type
 
+        prep_id = uuid4().hex[:8]
+        init_interactive_prep_diag(
+            main_window=self,
+            task_id=task_id,
+            task_created_at_s=float(task.created_at_s or time.time()),
+            prep_id=prep_id,
+        )
+        log_interactive_prep_diag(
+            main_window=self,
+            task_id=task_id,
+            prep_id=prep_id,
+            level="INFO",
+            message="diagnostics initialized",
+        )
         self._show_dashboard()
         self._new_task.reset_for_new_run()
+        start_interactive_prep_heartbeat(
+            main_window=self,
+            task_id=task_id,
+            prep_id=prep_id,
+            task_created_at_s=float(task.created_at_s or time.time()),
+            interval_s=10.0,
+            warn_no_progress_after_s=30.0,
+        )
 
         prep_worker = InteractivePrepWorker(
             task_id=task_id,
@@ -289,6 +318,7 @@ class _MainWindowTasksInteractiveMixin:
             agent_cli_args=agent_cli_args,
             prompt_for_agent=prompt_for_agent,
             is_help_launch=is_help_launch,
+            prep_id=prep_id,
         )
         prep_thread = QThread(self)
         prep_worker.moveToThread(prep_thread)
@@ -305,26 +335,60 @@ class _MainWindowTasksInteractiveMixin:
             self._schedule_save()
 
         def _clear_prep_refs() -> None:
+            stop_interactive_prep_diag(main_window=self, task_id=task_id)
             self._interactive_prep_workers.pop(task_id, None)
             self._interactive_prep_threads.pop(task_id, None)
 
         def _on_prep_stage(emitted_task_id: str, status: str, _: str) -> None:
+            status_text = str(status or "").strip().lower()
+            touch_interactive_prep_callback(
+                main_window=self,
+                task_id=task_id,
+                kind="stage",
+                stage=status_text,
+            )
+            log_interactive_prep_diag(
+                main_window=self,
+                task_id=task_id,
+                prep_id=prep_id,
+                level="DEBUG",
+                message=f"stage callback enter status={status_text or 'none'}",
+            )
             active_task = self._tasks.get(str(emitted_task_id or "").strip())
             if active_task is None:
                 return
-            status_text = str(status or "").strip().lower()
             if status_text:
                 active_task.status = status_text
                 active_task.error = None
             _refresh_task_card(active_task)
+            log_interactive_prep_diag(
+                main_window=self,
+                task_id=task_id,
+                prep_id=prep_id,
+                level="DEBUG",
+                message=f"stage callback exit status={status_text or 'none'}",
+            )
 
         def _on_prep_log(emitted_task_id: str, line: str) -> None:
             emitted_task_id = str(emitted_task_id or "").strip()
             if not emitted_task_id:
                 return
+            touch_interactive_prep_callback(
+                main_window=self, task_id=task_id, kind="log"
+            )
             self._on_task_log(emitted_task_id, str(line or ""))
 
         def _on_prep_failed(emitted_task_id: str, error_message: str) -> None:
+            touch_interactive_prep_callback(
+                main_window=self, task_id=task_id, kind="failed"
+            )
+            log_interactive_prep_diag(
+                main_window=self,
+                task_id=task_id,
+                prep_id=prep_id,
+                level="DEBUG",
+                message="failed callback enter",
+            )
             _clear_prep_refs()
             failed_task = self._tasks.get(str(emitted_task_id or "").strip())
             if failed_task is None:
@@ -341,8 +405,25 @@ class _MainWindowTasksInteractiveMixin:
                 format_log("ui", "prep", "ERROR", failed_task.error),
             )
             _refresh_task_card(failed_task)
+            log_interactive_prep_diag(
+                main_window=self,
+                task_id=task_id,
+                prep_id=prep_id,
+                level="DEBUG",
+                message="failed callback exit",
+            )
 
         def _on_prep_succeeded(emitted_task_id: str, payload: dict) -> None:
+            touch_interactive_prep_callback(
+                main_window=self, task_id=task_id, kind="success"
+            )
+            log_interactive_prep_diag(
+                main_window=self,
+                task_id=task_id,
+                prep_id=prep_id,
+                level="DEBUG",
+                message="success callback enter",
+            )
             _clear_prep_refs()
             ready_task = self._tasks.get(str(emitted_task_id or "").strip())
             if ready_task is None:
@@ -398,7 +479,21 @@ class _MainWindowTasksInteractiveMixin:
                 desired_base=desired_base,
                 skip_image_pull=True,
             )
+            log_interactive_prep_diag(
+                main_window=self,
+                task_id=task_id,
+                prep_id=prep_id,
+                level="DEBUG",
+                message="success callback exit",
+            )
 
+        log_interactive_prep_diag(
+            main_window=self,
+            task_id=task_id,
+            prep_id=prep_id,
+            level="INFO",
+            message="connecting prep worker signals",
+        )
         prep_worker.stage.connect(_on_prep_stage, Qt.QueuedConnection)
         prep_worker.log.connect(_on_prep_log, Qt.QueuedConnection)
         prep_worker.succeeded.connect(_on_prep_succeeded, Qt.QueuedConnection)
@@ -411,6 +506,13 @@ class _MainWindowTasksInteractiveMixin:
 
         self._interactive_prep_workers[task_id] = prep_worker
         self._interactive_prep_threads[task_id] = prep_thread
+        log_interactive_prep_diag(
+            main_window=self,
+            task_id=task_id,
+            prep_id=prep_id,
+            level="INFO",
+            message="prep thread start requested",
+        )
         prep_thread.start()
 
     def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
