@@ -260,6 +260,51 @@ TEMPLATE_BASE = """
         color: rgba(237, 239, 245, 160);
     }
 
+    QWidget#ThemePreviewGridHost {
+        background: transparent;
+    }
+
+    QFrame#ThemePreviewTile {
+        background-color: rgba(18, 20, 28, 105);
+        border: 1px solid rgba(255, 255, 255, 16);
+        border-radius: 0px;
+        padding: 0px;
+    }
+
+    QFrame#ThemePreviewTile:hover {
+        border: 1px solid rgba(56, 189, 248, 85);
+        background-color: rgba(56, 189, 248, 16);
+    }
+
+    QFrame#ThemePreviewTile[selected="true"] {
+        border: 1px solid rgba(56, 189, 248, 120);
+        background-color: rgba(56, 189, 248, 28);
+    }
+
+    QLabel#ThemePreviewTileLabel {
+        color: rgba(237, 239, 245, 215);
+        font-weight: 620;
+        padding: 0px 2px 2px 2px;
+    }
+
+    QWidget#ThemePreviewCanvas {
+        border: 1px solid rgba(255, 255, 255, 22);
+        border-radius: 0px;
+        background-color: rgba(10, 11, 13, 255);
+    }
+
+    QWidget#ThemePreviewDialogFrame {
+        border: 1px solid rgba(255, 255, 255, 16);
+        border-radius: 0px;
+        background-color: rgba(18, 20, 28, 70);
+    }
+
+    QWidget#ThemePreviewDialogCanvas {
+        border: 1px solid rgba(255, 255, 255, 20);
+        border-radius: 0px;
+        background-color: rgba(10, 11, 13, 255);
+    }
+
     QCheckBox {
         spacing: 10px;
     }
