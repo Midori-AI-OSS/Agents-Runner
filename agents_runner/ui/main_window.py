@@ -402,11 +402,11 @@ class MainWindow(
         degraded_from_playback = bool(state.get("degraded_from_playback"))
 
         if degraded_from_playback and (not service_available) and last_track:
-            self.setWindowTitle(f"{APP_TITLE} - {last_track} [Radio unavailable]")
+            self.setWindowTitle(f"{last_track} [Radio unavailable]")
             return
 
         if current_track:
-            self.setWindowTitle(f"{APP_TITLE} - {current_track}")
+            self.setWindowTitle(current_track)
             return
 
         self.setWindowTitle(APP_TITLE)
