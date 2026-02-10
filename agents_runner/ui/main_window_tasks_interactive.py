@@ -36,6 +36,7 @@ from agents_runner.ui.interactive_prep_diagnostics import (
     stop_interactive_prep_diag,
     touch_interactive_prep_callback,
 )
+from agents_runner.ui.interactive_prep_bridge import InteractivePrepBridge
 from agents_runner.ui.main_window_tasks_interactive_docker import (
     launch_docker_terminal_task,
 )
@@ -323,197 +324,262 @@ class _MainWindowTasksInteractiveMixin:
         prep_thread = QThread(self)
         prep_worker.moveToThread(prep_thread)
         prep_thread.started.connect(prep_worker.run)
-
-        def _refresh_task_card(updated_task: Task) -> None:
-            env_for_task = self._environments.get(updated_task.environment_id)
-            task_stain = env_for_task.color if env_for_task else None
-            task_spinner = _stain_color(env_for_task.color) if env_for_task else None
-            self._dashboard.upsert_task(
-                updated_task, stain=task_stain, spinner_color=task_spinner
-            )
-            self._details.update_task(updated_task)
-            self._schedule_save()
-
-        def _clear_prep_refs() -> None:
-            stop_interactive_prep_diag(main_window=self, task_id=task_id)
-            self._interactive_prep_workers.pop(task_id, None)
-            self._interactive_prep_threads.pop(task_id, None)
-
-        def _on_prep_stage(emitted_task_id: str, status: str, _: str) -> None:
-            status_text = str(status or "").strip().lower()
-            touch_interactive_prep_callback(
-                main_window=self,
-                task_id=task_id,
-                kind="stage",
-                stage=status_text,
-            )
-            log_interactive_prep_diag(
-                main_window=self,
-                task_id=task_id,
-                prep_id=prep_id,
-                level="DEBUG",
-                message=f"stage callback enter status={status_text or 'none'}",
-            )
-            active_task = self._tasks.get(str(emitted_task_id or "").strip())
-            if active_task is None:
-                return
-            if status_text:
-                active_task.status = status_text
-                active_task.error = None
-            _refresh_task_card(active_task)
-            log_interactive_prep_diag(
-                main_window=self,
-                task_id=task_id,
-                prep_id=prep_id,
-                level="DEBUG",
-                message=f"stage callback exit status={status_text or 'none'}",
-            )
-
-        def _on_prep_log(emitted_task_id: str, line: str) -> None:
-            emitted_task_id = str(emitted_task_id or "").strip()
-            if not emitted_task_id:
-                return
-            touch_interactive_prep_callback(
-                main_window=self, task_id=task_id, kind="log"
-            )
-            self._on_task_log(emitted_task_id, str(line or ""))
-
-        def _on_prep_failed(emitted_task_id: str, error_message: str) -> None:
-            touch_interactive_prep_callback(
-                main_window=self, task_id=task_id, kind="failed"
-            )
-            log_interactive_prep_diag(
-                main_window=self,
-                task_id=task_id,
-                prep_id=prep_id,
-                level="DEBUG",
-                message="failed callback enter",
-            )
-            _clear_prep_refs()
-            failed_task = self._tasks.get(str(emitted_task_id or "").strip())
-            if failed_task is None:
-                return
-            failed_task.status = "failed"
-            failed_task.error = (
-                str(error_message or "").strip() or "Interactive prep failed"
-            )
-            failed_task.exit_code = 1
-            failed_task.finished_at = datetime.now(tz=timezone.utc)
-            failed_task.finalization_state = "done"
-            self._on_task_log(
-                failed_task.task_id,
-                format_log("ui", "prep", "ERROR", failed_task.error),
-            )
-            _refresh_task_card(failed_task)
-            log_interactive_prep_diag(
-                main_window=self,
-                task_id=task_id,
-                prep_id=prep_id,
-                level="DEBUG",
-                message="failed callback exit",
-            )
-
-        def _on_prep_succeeded(emitted_task_id: str, payload: dict) -> None:
-            touch_interactive_prep_callback(
-                main_window=self, task_id=task_id, kind="success"
-            )
-            log_interactive_prep_diag(
-                main_window=self,
-                task_id=task_id,
-                prep_id=prep_id,
-                level="DEBUG",
-                message="success callback enter",
-            )
-            _clear_prep_refs()
-            ready_task = self._tasks.get(str(emitted_task_id or "").strip())
-            if ready_task is None:
-                return
-
-            cmd_parts = payload.get("cmd_parts")
-            if not isinstance(cmd_parts, list) or not cmd_parts:
-                _on_prep_failed(
-                    emitted_task_id, "Interactive prep returned no command."
-                )
-                return
-
-            ready_task.gh_repo_root = str(payload.get("gh_repo_root") or "").strip()
-            ready_task.gh_base_branch = (
-                str(payload.get("gh_base_branch") or "").strip() or desired_base
-            )
-            ready_task.gh_branch = str(payload.get("gh_branch") or "").strip()
-            ready_task.gh_pr_metadata_path = str(
-                payload.get("gh_pr_metadata_path") or ""
-            ).strip()
-            ready_task.error = None
-            _refresh_task_card(ready_task)
-
-            launch_mounts = list(config_extra_mounts)
-            pr_metadata_mount = str(payload.get("pr_metadata_mount") or "").strip()
-            if pr_metadata_mount:
-                launch_mounts.append(pr_metadata_mount)
-
-            launch_docker_terminal_task(
-                main_window=self,
-                task=ready_task,
-                env=env,
-                env_id=env_id,
-                task_id=task_id,
-                task_token=task_token,
-                terminal_opt=opt,
-                cmd_parts=cmd_parts,
-                prompt=prompt,
-                command=command,
-                agent_cli=agent_cli,
-                host_codex=host_codex,
-                host_workdir=host_workdir,
-                config_extra_mounts=launch_mounts,
-                image=image,
-                container_name=container_name,
-                container_agent_dir=container_agent_dir,
-                container_workdir=container_workdir,
-                settings_preflight_script=settings_preflight_script,
-                environment_preflight_script=environment_preflight_script,
-                extra_preflight_script=extra_preflight_script,
-                stain=stain,
-                spinner=spinner,
-                desired_base=desired_base,
-                skip_image_pull=True,
-            )
-            log_interactive_prep_diag(
-                main_window=self,
-                task_id=task_id,
-                prep_id=prep_id,
-                level="DEBUG",
-                message="success callback exit",
-            )
-
-        log_interactive_prep_diag(
-            main_window=self,
-            task_id=task_id,
-            prep_id=prep_id,
-            level="INFO",
-            message="connecting prep worker signals",
+        self._interactive_prep_context[task_id] = {
+            "env": env,
+            "env_id": env_id,
+            "task_token": task_token,
+            "terminal_opt": opt,
+            "prompt": prompt,
+            "command": command,
+            "agent_cli": agent_cli,
+            "host_codex": host_codex,
+            "host_workdir": host_workdir,
+            "config_extra_mounts": list(config_extra_mounts),
+            "image": image,
+            "container_name": container_name,
+            "container_agent_dir": container_agent_dir,
+            "container_workdir": container_workdir,
+            "settings_preflight_script": settings_preflight_script,
+            "environment_preflight_script": environment_preflight_script,
+            "extra_preflight_script": extra_preflight_script,
+            "stain": stain,
+            "spinner": spinner,
+            "desired_base": desired_base,
+            "prep_id": prep_id,
+        }
+        prep_bridge = InteractivePrepBridge(
+            on_stage=self._on_interactive_prep_stage,
+            on_log=self._on_interactive_prep_log,
+            on_succeeded=self._on_interactive_prep_succeeded,
+            on_failed=self._on_interactive_prep_failed,
+            parent=self,
         )
-        prep_worker.stage.connect(_on_prep_stage, Qt.QueuedConnection)
-        prep_worker.log.connect(_on_prep_log, Qt.QueuedConnection)
-        prep_worker.succeeded.connect(_on_prep_succeeded, Qt.QueuedConnection)
-        prep_worker.failed.connect(_on_prep_failed, Qt.QueuedConnection)
+
+        self._interactive_prep_workers[task_id] = prep_worker
+        self._interactive_prep_threads[task_id] = prep_thread
+        self._interactive_prep_bridges[task_id] = prep_bridge
+
+        self._interactive_prep_diag_log(
+            task_id, "INFO", "connecting prep worker signals via bridge"
+        )
+        prep_worker.stage.connect(prep_bridge.on_stage, Qt.QueuedConnection)
+        prep_worker.log.connect(prep_bridge.on_log, Qt.QueuedConnection)
+        prep_worker.succeeded.connect(prep_bridge.on_succeeded, Qt.QueuedConnection)
+        prep_worker.failed.connect(prep_bridge.on_failed, Qt.QueuedConnection)
         prep_worker.succeeded.connect(prep_thread.quit, Qt.QueuedConnection)
         prep_worker.failed.connect(prep_thread.quit, Qt.QueuedConnection)
         prep_worker.succeeded.connect(prep_worker.deleteLater, Qt.QueuedConnection)
         prep_worker.failed.connect(prep_worker.deleteLater, Qt.QueuedConnection)
         prep_thread.finished.connect(prep_thread.deleteLater)
+        prep_thread.finished.connect(prep_bridge.deleteLater, Qt.QueuedConnection)
 
-        self._interactive_prep_workers[task_id] = prep_worker
-        self._interactive_prep_threads[task_id] = prep_thread
+        self._interactive_prep_diag_log(task_id, "INFO", "prep thread start requested")
+        prep_thread.start()
+
+    def _interactive_prep_id(self, task_id: str) -> str:
+        task_id = str(task_id or "").strip()
+        context = self._interactive_prep_context.get(task_id)
+        if isinstance(context, dict):
+            prep_id = str(context.get("prep_id") or "").strip()
+            if prep_id:
+                return prep_id
+        diag = self._interactive_prep_diag.get(task_id)
+        if isinstance(diag, dict):
+            prep_id = str(diag.get("prep_id") or "").strip()
+            if prep_id:
+                return prep_id
+        return "unknown"
+
+    def _interactive_prep_diag_log(
+        self, task_id: str, level: str, message: str
+    ) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
         log_interactive_prep_diag(
             main_window=self,
             task_id=task_id,
-            prep_id=prep_id,
-            level="INFO",
-            message="prep thread start requested",
+            prep_id=self._interactive_prep_id(task_id),
+            level=level,
+            message=message,
         )
-        prep_thread.start()
+
+    def _refresh_interactive_prep_task_card(self, task: Task) -> None:
+        env_for_task = self._environments.get(task.environment_id)
+        task_stain = env_for_task.color if env_for_task else None
+        task_spinner = _stain_color(env_for_task.color) if env_for_task else None
+        self._dashboard.upsert_task(task, stain=task_stain, spinner_color=task_spinner)
+        self._details.update_task(task)
+        self._schedule_save()
+
+    def _clear_interactive_prep_refs(self, task_id: str) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
+        stop_interactive_prep_diag(main_window=self, task_id=task_id)
+        self._interactive_prep_context.pop(task_id, None)
+        bridge = self._interactive_prep_bridges.pop(task_id, None)
+        if bridge is not None:
+            try:
+                bridge.deleteLater()
+            except Exception:
+                pass
+        self._interactive_prep_workers.pop(task_id, None)
+        self._interactive_prep_threads.pop(task_id, None)
+
+    def _on_interactive_prep_stage(self, task_id: str, status: str, _: str) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
+        status_text = str(status or "").strip().lower()
+        touch_interactive_prep_callback(
+            main_window=self,
+            task_id=task_id,
+            kind="stage",
+            stage=status_text,
+        )
+        self._interactive_prep_diag_log(
+            task_id,
+            "DEBUG",
+            f"bridge stage callback enter status={status_text or 'none'}",
+        )
+        task = self._tasks.get(task_id)
+        if task is None:
+            self._interactive_prep_diag_log(
+                task_id, "WARN", "bridge stage callback ignored: task missing"
+            )
+            return
+        if status_text:
+            task.status = status_text
+            task.error = None
+        self._refresh_interactive_prep_task_card(task)
+        self._interactive_prep_diag_log(
+            task_id,
+            "DEBUG",
+            f"bridge stage callback exit status={status_text or 'none'}",
+        )
+
+    def _on_interactive_prep_log(self, task_id: str, line: str) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
+        touch_interactive_prep_callback(main_window=self, task_id=task_id, kind="log")
+        self._on_task_log(task_id, str(line or ""))
+
+    def _on_interactive_prep_failed(self, task_id: str, error_message: str) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
+        touch_interactive_prep_callback(
+            main_window=self, task_id=task_id, kind="failed"
+        )
+        self._interactive_prep_diag_log(
+            task_id, "DEBUG", "bridge failed callback enter"
+        )
+        task = self._tasks.get(task_id)
+        if task is None:
+            self._interactive_prep_diag_log(
+                task_id, "WARN", "bridge failed callback ignored: task missing"
+            )
+            self._clear_interactive_prep_refs(task_id)
+            return
+        task.status = "failed"
+        task.error = str(error_message or "").strip() or "Interactive prep failed"
+        task.exit_code = 1
+        task.finished_at = datetime.now(tz=timezone.utc)
+        task.finalization_state = "done"
+        self._on_task_log(
+            task.task_id,
+            format_log("ui", "prep", "ERROR", task.error),
+        )
+        self._refresh_interactive_prep_task_card(task)
+        self._interactive_prep_diag_log(task_id, "DEBUG", "bridge failed callback exit")
+        self._clear_interactive_prep_refs(task_id)
+
+    def _on_interactive_prep_succeeded(self, task_id: str, payload: dict) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
+        touch_interactive_prep_callback(
+            main_window=self, task_id=task_id, kind="success"
+        )
+        self._interactive_prep_diag_log(
+            task_id, "DEBUG", "bridge success callback enter"
+        )
+        task = self._tasks.get(task_id)
+        if task is None:
+            self._interactive_prep_diag_log(
+                task_id, "WARN", "bridge success callback ignored: task missing"
+            )
+            self._clear_interactive_prep_refs(task_id)
+            return
+
+        cmd_parts = payload.get("cmd_parts")
+        if not isinstance(cmd_parts, list) or not cmd_parts:
+            self._on_interactive_prep_failed(
+                task_id, "Interactive prep returned no command."
+            )
+            return
+
+        task.gh_repo_root = str(payload.get("gh_repo_root") or "").strip()
+        task.gh_base_branch = str(payload.get("gh_base_branch") or "").strip()
+        task.gh_branch = str(payload.get("gh_branch") or "").strip()
+        task.gh_pr_metadata_path = str(payload.get("gh_pr_metadata_path") or "").strip()
+        task.error = None
+
+        context = self._interactive_prep_context.get(task_id)
+        if not isinstance(context, dict):
+            self._on_interactive_prep_failed(
+                task_id, "Interactive prep context is unavailable."
+            )
+            return
+        if not task.gh_base_branch:
+            task.gh_base_branch = str(context.get("desired_base") or "").strip()
+        self._refresh_interactive_prep_task_card(task)
+
+        launch_mounts = list(context.get("config_extra_mounts") or [])
+        pr_metadata_mount = str(payload.get("pr_metadata_mount") or "").strip()
+        if pr_metadata_mount:
+            launch_mounts.append(pr_metadata_mount)
+
+        try:
+            launch_docker_terminal_task(
+                main_window=self,
+                task=task,
+                env=context.get("env"),
+                env_id=context.get("env_id") or "",
+                task_id=task_id,
+                task_token=context.get("task_token") or "",
+                terminal_opt=context.get("terminal_opt"),
+                cmd_parts=cmd_parts,
+                prompt=context.get("prompt") or "",
+                command=context.get("command") or "",
+                agent_cli=context.get("agent_cli") or "",
+                host_codex=context.get("host_codex") or "",
+                host_workdir=context.get("host_workdir") or "",
+                config_extra_mounts=launch_mounts,
+                image=context.get("image") or "",
+                container_name=context.get("container_name") or "",
+                container_agent_dir=context.get("container_agent_dir") or "",
+                container_workdir=context.get("container_workdir") or "",
+                settings_preflight_script=context.get("settings_preflight_script"),
+                environment_preflight_script=context.get(
+                    "environment_preflight_script"
+                ),
+                extra_preflight_script=context.get("extra_preflight_script") or "",
+                stain=context.get("stain"),
+                spinner=context.get("spinner"),
+                desired_base=context.get("desired_base") or "",
+                skip_image_pull=True,
+            )
+        except Exception as exc:
+            self._on_interactive_prep_failed(task_id, str(exc))
+            return
+
+        self._interactive_prep_diag_log(
+            task_id, "DEBUG", "bridge success callback exit"
+        )
+        self._clear_interactive_prep_refs(task_id)
 
     def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
         task_id = str(task_id or "").strip()
