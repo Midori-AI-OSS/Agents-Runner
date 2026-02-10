@@ -10,6 +10,7 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import available_agents
+from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import _looks_like_agent_help_command
 from agents_runner.environments import Environment
 
@@ -30,6 +31,7 @@ class _MainWindowSettingsMixin:
         self._new_task.set_stt_mode("offline")
 
     def _apply_settings(self, settings: dict) -> None:
+        previous_radio_enabled = bool(self._settings_data.get("radio_enabled") or False)
         merged = dict(self._settings_data)
         merged.update(settings or {})
         merged.pop("stt_mode", None)
@@ -95,6 +97,14 @@ class _MainWindowSettingsMixin:
         merged["headless_desktop_enabled"] = bool(
             merged.get("headless_desktop_enabled") or False
         )
+        merged["radio_enabled"] = bool(merged.get("radio_enabled") or False)
+        merged["radio_autostart"] = bool(merged.get("radio_autostart") or False)
+        merged["radio_quality"] = RadioController.normalize_quality(
+            merged.get("radio_quality")
+        )
+        merged["radio_volume"] = RadioController.clamp_volume(
+            merged.get("radio_volume")
+        )
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
 
@@ -111,6 +121,10 @@ class _MainWindowSettingsMixin:
         except Exception:
             merged["max_agents_running"] = -1
         self._settings_data = merged
+        self._sync_radio_controller_from_settings(
+            user_initiated=True,
+            previous_enabled=previous_radio_enabled,
+        )
         self._apply_settings_to_pages()
         self._schedule_save()
 
