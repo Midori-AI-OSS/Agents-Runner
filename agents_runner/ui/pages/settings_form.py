@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QSlider
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -23,6 +24,7 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_agent_system
 from agents_runner.agent_systems import get_default_agent_system_name
+from agents_runner.ui.radio import RadioController
 from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
 from agents_runner.ui.graphics import normalize_ui_theme_name
@@ -45,7 +47,7 @@ class _SettingsPaneSpec:
 
 class _SettingsFormMixin:
     def _default_pane_specs(self) -> list[_SettingsPaneSpec]:
-        return [
+        specs = [
             _SettingsPaneSpec(
                 key="general_preferences",
                 title="General Preferences",
@@ -83,6 +85,16 @@ class _SettingsFormMixin:
                 section="Runtime",
             ),
         ]
+        if bool(getattr(self, "_radio_supported", True)):
+            specs.append(
+                _SettingsPaneSpec(
+                    key="radio",
+                    title="Radio",
+                    subtitle="Midori AI Radio playback controls and defaults.",
+                    section="Runtime",
+                )
+            )
+        return specs
 
     def _build_controls(self) -> None:
         self._use = QComboBox()
@@ -189,6 +201,29 @@ class _SettingsFormMixin:
         self._test_preflights.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self._test_preflights.clicked.connect(self._on_test_preflight)
 
+        self._radio_enabled = QCheckBox("Enable Midori AI Radio")
+        self._radio_enabled.setToolTip(
+            "Allows starting radio playback from the navbar control."
+        )
+        self._radio_autostart = QCheckBox("Auto-start radio on app launch")
+        self._radio_autostart.setToolTip(
+            "Starts playback automatically at launch when radio is enabled."
+        )
+        self._radio_autostart.setEnabled(False)
+
+        self._radio_quality = QComboBox()
+        self._radio_quality.addItem("Low (96 kbps)", "low")
+        self._radio_quality.addItem("Medium (160 kbps)", "medium")
+        self._radio_quality.addItem("High (320 kbps)", "high")
+
+        self._radio_volume = QSlider(Qt.Horizontal)
+        self._radio_volume.setRange(0, 100)
+        self._radio_volume.setValue(70)
+        self._radio_volume_value = QLabel("70%")
+        self._radio_volume_value.setObjectName("SettingsPaneSubtitle")
+        self._radio_volume.valueChanged.connect(self._on_radio_volume_value_changed)
+        self._radio_enabled.toggled.connect(self._radio_autostart.setEnabled)
+
     def _build_pages(self) -> None:
         specs_by_key = {spec.key: spec for spec in self._pane_specs}
 
@@ -279,6 +314,29 @@ class _SettingsFormMixin:
         preflight_actions.addWidget(autosave_hint)
         preflight_body.addLayout(preflight_actions)
         self._register_page("preflight_script", preflight_page)
+
+        radio_spec = specs_by_key.get("radio")
+        if radio_spec is not None:
+            radio_page, radio_body = self._create_page(radio_spec)
+            radio_body.addWidget(self._radio_enabled)
+            radio_body.addWidget(self._radio_autostart)
+
+            radio_grid = QGridLayout()
+            radio_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+            radio_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
+            radio_grid.setColumnStretch(1, 1)
+            radio_grid.addWidget(QLabel("Stream quality"), 0, 0)
+            radio_grid.addWidget(self._radio_quality, 0, 1)
+            radio_grid.addWidget(QLabel("Volume"), 1, 0)
+            volume_row = QHBoxLayout()
+            volume_row.setSpacing(8)
+            volume_row.addWidget(self._radio_volume, 1)
+            volume_row.addWidget(self._radio_volume_value, 0, Qt.AlignRight)
+            radio_grid.addLayout(volume_row, 1, 1)
+
+            radio_body.addLayout(radio_grid)
+            radio_body.addStretch(1)
+            self._register_page("radio", radio_page)
 
     def _build_navigation(self, nav_layout: QVBoxLayout) -> None:
         sections: dict[str, list[_SettingsPaneSpec]] = {}
@@ -476,6 +534,9 @@ class _SettingsFormMixin:
             return "Unknown"
         return " ".join(word.capitalize() for word in words)
 
+    def _on_radio_volume_value_changed(self, value: int) -> None:
+        self._radio_volume_value.setText(f"{max(0, min(100, int(value)))}%")
+
     def set_settings(self, settings: dict) -> None:
         self._suppress_autosave = True
         try:
@@ -549,6 +610,20 @@ class _SettingsFormMixin:
                 settings.get("ui_theme"), allow_auto=True
             )
             self._refresh_theme_options(selected=theme_value)
+
+            radio_enabled = bool(settings.get("radio_enabled") or False)
+            self._radio_enabled.setChecked(radio_enabled)
+            self._radio_autostart.setChecked(
+                bool(settings.get("radio_autostart") or False)
+            )
+            self._radio_autostart.setEnabled(radio_enabled)
+            radio_quality = RadioController.normalize_quality(
+                settings.get("radio_quality")
+            )
+            self._set_combo_value(self._radio_quality, radio_quality, fallback="medium")
+            radio_volume = RadioController.clamp_volume(settings.get("radio_volume"))
+            self._radio_volume.setValue(radio_volume)
+            self._on_radio_volume_value_changed(radio_volume)
         finally:
             self._suppress_autosave = False
 
@@ -582,6 +657,12 @@ class _SettingsFormMixin:
             "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
             "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),
             "mount_host_cache": bool(self._mount_host_cache.isChecked()),
+            "radio_enabled": bool(self._radio_enabled.isChecked()),
+            "radio_autostart": bool(self._radio_autostart.isChecked()),
+            "radio_quality": RadioController.normalize_quality(
+                str(self._radio_quality.currentData() or "medium")
+            ),
+            "radio_volume": RadioController.clamp_volume(self._radio_volume.value()),
         }
 
     def _pick_codex_dir(self) -> None:
