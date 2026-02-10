@@ -28,7 +28,9 @@ from agents_runner.gh_management import is_gh_available
 from agents_runner.log_format import format_log
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
+from agents_runner.ui.constants import PIXELARCH_AGENT_CONTEXT_SUFFIX
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
+from agents_runner.ui.constants import PIXELARCH_GIT_CONTEXT_SUFFIX
 from agents_runner.ui.interactive_prep_diagnostics import (
     log_interactive_prep_diag,
 )
@@ -62,6 +64,7 @@ class _MainWindowTasksInteractiveMixin:
             return
 
         prompt = sanitize_prompt((prompt or "").strip())
+        has_typed_prompt = bool(str(prompt or "").strip())
         host_codex = os.path.expanduser((host_codex or "").strip())
 
         options = {opt.terminal_id: opt for opt in detect_terminal_options()}
@@ -211,7 +214,15 @@ class _MainWindowTasksInteractiveMixin:
                 ]
             ).strip()
 
+        apply_full_prompting = bool(has_typed_prompt and not is_help_launch)
         prompt_for_agent = str(prompt or "")
+        if apply_full_prompting:
+            prompt_for_agent = self._build_interactive_base_prompt(
+                prompt=prompt_for_agent,
+                workspace_type=workspace_type,
+                env=env,
+                task_id=task_id,
+            )
         gh_use_host_cli = bool(getattr(env, "gh_use_host_cli", True)) if env else True
         gh_use_host_cli = bool(gh_use_host_cli and is_gh_available())
         gh_repo = (
@@ -234,6 +245,12 @@ class _MainWindowTasksInteractiveMixin:
         environment_preflight_script: str | None = None
         if env and env.preflight_enabled and (env.preflight_script or "").strip():
             environment_preflight_script = env.preflight_script
+
+        desktop_enabled = bool(
+            "websockify" in extra_preflight_script
+            or "noVNC" in extra_preflight_script
+            or "[desktop]" in extra_preflight_script
+        )
 
         container_name = f"agents-runner-tui-it-{task_id}"
         container_agent_dir = container_config_dir(agent_cli)
@@ -294,6 +311,8 @@ class _MainWindowTasksInteractiveMixin:
             agent_cli_args=agent_cli_args,
             prompt_for_agent=prompt_for_agent,
             is_help_launch=is_help_launch,
+            apply_full_prompting=apply_full_prompting,
+            desktop_enabled=desktop_enabled,
             prep_id=prep_id,
         )
         prep_thread = QThread(self)
@@ -346,6 +365,46 @@ class _MainWindowTasksInteractiveMixin:
         prep_thread.finished.connect(prep_bridge.deleteLater, Qt.QueuedConnection)
 
         prep_thread.start()
+
+    def _build_interactive_base_prompt(
+        self,
+        *,
+        prompt: str,
+        workspace_type: str,
+        env: object | None,
+        task_id: str,
+    ) -> str:
+        runner_prompt = str(prompt or "")
+
+        if bool(self._settings_data.get("append_pixelarch_context") or False):
+            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
+
+        if workspace_type == WORKSPACE_CLONED:
+            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_GIT_CONTEXT_SUFFIX}"
+
+        enabled_env_prompts: list[str] = []
+        if env and bool(getattr(env, "prompts_unlocked", False)):
+            for p in getattr(env, "prompts", None) or []:
+                text = str(getattr(p, "text", "") or "").strip()
+                if not text or not bool(getattr(p, "enabled", False)):
+                    continue
+                enabled_env_prompts.append(sanitize_prompt(text))
+
+        if enabled_env_prompts:
+            runner_prompt = f"{runner_prompt.rstrip()}\n\n" + "\n\n".join(
+                enabled_env_prompts
+            )
+            self._on_task_log(
+                task_id,
+                format_log(
+                    "env",
+                    "prompts",
+                    "INFO",
+                    f"appended {len(enabled_env_prompts)} environment prompt(s) (interactive)",
+                ),
+            )
+
+        return runner_prompt
 
     def _interactive_prep_id(self, task_id: str) -> str:
         task_id = str(task_id or "").strip()

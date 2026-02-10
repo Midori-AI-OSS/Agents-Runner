@@ -9,13 +9,20 @@ from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
 
+from agents_runner.docker.agent_worker_prompt import PromptAssembler
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import cleanup_task_workspace
+from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh_management import GhManagementError
 from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.log_format import format_log
+from agents_runner.midoriai_template import MidoriAITemplateDetection
+from agents_runner.midoriai_template import scan_midoriai_agents_template
+from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.prompts import load_prompt
 from agents_runner.pr_metadata import ensure_pr_metadata_file
+from agents_runner.pr_metadata import github_context_prompt_instructions
 from agents_runner.pr_metadata import pr_metadata_container_path
 from agents_runner.pr_metadata import pr_metadata_host_path
 from agents_runner.pr_metadata import pr_metadata_prompt_instructions
@@ -49,6 +56,8 @@ class InteractivePrepWorker(QObject):
         agent_cli_args: list[str],
         prompt_for_agent: str,
         is_help_launch: bool,
+        apply_full_prompting: bool,
+        desktop_enabled: bool,
         prep_id: str = "",
     ) -> None:
         super().__init__()
@@ -67,6 +76,8 @@ class InteractivePrepWorker(QObject):
         self._agent_cli_args = list(agent_cli_args or [])
         self._prompt_for_agent = str(prompt_for_agent or "")
         self._is_help_launch = bool(is_help_launch)
+        self._apply_full_prompting = bool(apply_full_prompting)
+        self._desktop_enabled = bool(desktop_enabled)
         self._prep_id = str(prep_id or "").strip()
         self._stop_requested = False
 
@@ -131,6 +142,83 @@ class InteractivePrepWorker(QObject):
         pull_elapsed_ms = (time.monotonic() - pull_started_s) * 1000.0
         self._diag("INFO", f"docker pull done elapsed_ms={pull_elapsed_ms:.0f}")
 
+    def _prepare_pr_metadata_file(self) -> tuple[str, str, str]:
+        pr_host_path = pr_metadata_host_path(self._data_dir, self._task_id)
+        pr_container_path = pr_metadata_container_path(self._task_id)
+        try:
+            ensure_pr_metadata_file(pr_host_path, task_id=self._task_id)
+        except Exception as exc:
+            raise RuntimeError(f"Could not create PR metadata file: {exc}") from exc
+        return (
+            pr_host_path,
+            pr_container_path,
+            f"{pr_host_path}:{pr_container_path}:rw",
+        )
+
+    def _append_full_prompt_github_context(
+        self,
+        *,
+        prompt_for_agent: str,
+        pr_container_path: str,
+        repo_url: str,
+        repo_owner: str,
+        repo_name: str,
+        base_branch: str,
+        task_branch: str,
+        head_commit: str,
+    ) -> str:
+        return (
+            f"{prompt_for_agent}"
+            f"{github_context_prompt_instructions(repo_url=repo_url, repo_owner=repo_owner, repo_name=repo_name, base_branch=base_branch, task_branch=task_branch, head_commit=head_commit)}"
+            f"{pr_metadata_prompt_instructions(pr_container_path)}"
+        )
+
+    def _apply_interactive_template_and_standby_prompt(self, prompt: str) -> str:
+        prompt_for_agent = str(prompt or "")
+
+        template_detection: MidoriAITemplateDetection
+        try:
+            template_detection = scan_midoriai_agents_template(self._host_workdir)
+        except Exception:
+            template_detection = MidoriAITemplateDetection(
+                midoriai_template_likelihood=0.0,
+                midoriai_template_detected=False,
+                midoriai_template_detected_path=None,
+            )
+
+        assembler = PromptAssembler(
+            prompt_for_agent,
+            self._env_id or None,
+            lambda line: self.log.emit(self._task_id, str(line or "")),
+        )
+        prompt_for_agent = assembler.assemble_prompt(
+            self._agent_cli,
+            template_detection,
+            self._desktop_enabled,
+            ":1",
+        )
+
+        try:
+            standby_prompt = load_prompt("interactive_standby").strip()
+        except Exception as exc:
+            self.log.emit(
+                self._task_id,
+                format_log(
+                    "ui",
+                    "prep",
+                    "WARN",
+                    f"failed to load interactive standby prompt: {exc}",
+                ),
+            )
+            standby_prompt = ""
+
+        if standby_prompt:
+            prompt_for_agent = sanitize_prompt(
+                f"{prompt_for_agent.rstrip()}\n\n{standby_prompt}"
+            )
+
+        return prompt_for_agent
+
     @Slot()
     def run(self) -> None:
         try:
@@ -141,6 +229,7 @@ class InteractivePrepWorker(QObject):
             gh_base_branch = self._desired_base
             gh_branch = ""
             pr_host_path = ""
+            pr_container_path = ""
             pr_metadata_mount = ""
             prompt_for_agent = self._prompt_for_agent
 
@@ -204,19 +293,40 @@ class InteractivePrepWorker(QObject):
                     self._emit_stage("starting", "Preparing PR metadata file")
                     metadata_started_s = time.monotonic()
                     self._diag("INFO", "phase=pr_metadata_prepare begin")
-                    pr_host_path = pr_metadata_host_path(self._data_dir, self._task_id)
-                    pr_container_path = pr_metadata_container_path(self._task_id)
-                    try:
-                        ensure_pr_metadata_file(pr_host_path, task_id=self._task_id)
-                    except Exception as exc:
-                        raise RuntimeError(
-                            f"Could not create PR metadata file: {exc}"
-                        ) from exc
-                    pr_metadata_mount = f"{pr_host_path}:{pr_container_path}:rw"
-                    prompt_for_agent = (
-                        f"{prompt_for_agent}"
-                        f"{pr_metadata_prompt_instructions(pr_container_path)}"
-                    )
+                    (
+                        pr_host_path,
+                        pr_container_path,
+                        pr_metadata_mount,
+                    ) = self._prepare_pr_metadata_file()
+                    if self._apply_full_prompting:
+                        git_info = get_git_info(gh_repo_root)
+                        if git_info:
+                            prompt_for_agent = self._append_full_prompt_github_context(
+                                prompt_for_agent=prompt_for_agent,
+                                pr_container_path=pr_container_path,
+                                repo_url=git_info.repo_url,
+                                repo_owner=git_info.repo_owner or "",
+                                repo_name=git_info.repo_name or "",
+                                base_branch=git_info.branch,
+                                task_branch=gh_branch,
+                                head_commit=git_info.commit_sha,
+                            )
+                        else:
+                            prompt_for_agent = self._append_full_prompt_github_context(
+                                prompt_for_agent=prompt_for_agent,
+                                pr_container_path=pr_container_path,
+                                repo_url=self._gh_repo,
+                                repo_owner="",
+                                repo_name="",
+                                base_branch=gh_base_branch or self._desired_base,
+                                task_branch=gh_branch,
+                                head_commit="(unknown)",
+                            )
+                    elif self._is_help_launch:
+                        prompt_for_agent = (
+                            f"{prompt_for_agent}"
+                            f"{pr_metadata_prompt_instructions(pr_container_path)}"
+                        )
                     metadata_elapsed_ms = (
                         time.monotonic() - metadata_started_s
                     ) * 1000.0
@@ -224,6 +334,36 @@ class InteractivePrepWorker(QObject):
                         "INFO",
                         f"phase=pr_metadata_prepare done elapsed_ms={metadata_elapsed_ms:.0f}",
                     )
+
+            if (
+                self._workspace_type != WORKSPACE_CLONED
+                and self._gh_context_enabled
+                and self._apply_full_prompting
+            ):
+                git_info = get_git_info(self._host_workdir)
+                if git_info:
+                    self._check_stop()
+                    self._emit_stage("starting", "Preparing PR metadata file")
+                    (
+                        pr_host_path,
+                        pr_container_path,
+                        pr_metadata_mount,
+                    ) = self._prepare_pr_metadata_file()
+                    prompt_for_agent = self._append_full_prompt_github_context(
+                        prompt_for_agent=prompt_for_agent,
+                        pr_container_path=pr_container_path,
+                        repo_url=git_info.repo_url,
+                        repo_owner=git_info.repo_owner or "",
+                        repo_name=git_info.repo_name or "",
+                        base_branch=git_info.branch,
+                        task_branch=git_info.branch,
+                        head_commit=git_info.commit_sha,
+                    )
+
+            if self._apply_full_prompting:
+                prompt_for_agent = self._apply_interactive_template_and_standby_prompt(
+                    prompt_for_agent
+                )
 
             self._check_stop()
             self._emit_stage("pulling", f"Ensuring image is available: {self._image}")
