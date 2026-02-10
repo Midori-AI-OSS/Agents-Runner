@@ -92,18 +92,28 @@ class _EnvironmentsPageActionsMixin:
         delete_environment(env.env_id)
         self.updated.emit("")
 
-    def _on_save(self) -> None:
-        self.try_autosave()
+    def try_autosave(
+        self,
+        *,
+        preferred_env_id: str | None = None,
+        show_validation_errors: bool = True,
+    ) -> bool:
+        autosave_timer = getattr(self, "_autosave_timer", None)
+        if autosave_timer is not None and autosave_timer.isActive():
+            autosave_timer.stop()
 
-    def try_autosave(self, *, preferred_env_id: str | None = None) -> bool:
+        if bool(getattr(self, "_suppress_autosave", False)):
+            return True
+
         env_id = self._current_env_id
         if not env_id:
             return True
         name = (self._name.text() or "").strip()
         if not name:
-            QMessageBox.warning(
-                self, "Missing name", "Enter an environment name first."
-            )
+            if show_validation_errors:
+                QMessageBox.warning(
+                    self, "Missing name", "Enter an environment name first."
+                )
             return False
 
         existing = self._environments.get(env_id)
@@ -144,9 +154,10 @@ class _EnvironmentsPageActionsMixin:
 
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
-            QMessageBox.warning(
-                self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
-            )
+            if show_validation_errors:
+                QMessageBox.warning(
+                    self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
+                )
             return False
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
@@ -154,9 +165,10 @@ class _EnvironmentsPageActionsMixin:
             self._ports_tab.get_ports()
         )
         if port_errors:
-            QMessageBox.warning(
-                self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
-            )
+            if show_validation_errors:
+                QMessageBox.warning(
+                    self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
+                )
             return False
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
