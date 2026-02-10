@@ -152,6 +152,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._mount_host_cache,
             self._radio_enabled,
             self._radio_autostart,
+            self._radio_loudness_boost_enabled,
         ):
             checkbox.toggled.connect(self._trigger_immediate_autosave)
 
@@ -165,6 +166,9 @@ class SettingsPage(QWidget, _SettingsFormMixin):
 
         self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
         self._radio_volume.valueChanged.connect(self._queue_debounced_autosave)
+        self._radio_loudness_boost_factor.valueChanged.connect(
+            self._queue_debounced_autosave
+        )
 
     def _on_back(self) -> None:
         self.try_autosave()

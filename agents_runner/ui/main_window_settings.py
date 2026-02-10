@@ -105,6 +105,14 @@ class _MainWindowSettingsMixin:
         merged["radio_volume"] = RadioController.clamp_volume(
             merged.get("radio_volume")
         )
+        merged["radio_loudness_boost_enabled"] = bool(
+            merged.get("radio_loudness_boost_enabled") or False
+        )
+        merged["radio_loudness_boost_factor"] = (
+            RadioController.normalize_loudness_boost_factor(
+                merged.get("radio_loudness_boost_factor")
+            )
+        )
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
 
