@@ -105,6 +105,8 @@ class MainWindow(
         self._bridges: dict[str, TaskRunnerBridge] = {}
         self._interactive_prep_threads: dict[str, QThread] = {}
         self._interactive_prep_workers: dict[str, object] = {}
+        self._interactive_prep_bridges: dict[str, object] = {}
+        self._interactive_prep_context: dict[str, dict[str, object]] = {}
         self._interactive_prep_diag: dict[str, dict[str, object]] = {}
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
