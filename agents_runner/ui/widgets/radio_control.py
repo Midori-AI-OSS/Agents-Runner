@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import QEasingCurve
 from PySide6.QtCore import QEvent
 from PySide6.QtCore import QPropertyAnimation
+from PySide6.QtCore import QSize
 from PySide6.QtCore import QSignalBlocker
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
@@ -48,6 +49,7 @@ class RadioControlWidget(QWidget):
         self._play_button = QToolButton(self)
         self._play_button.setObjectName("RadioControlButton")
         self._play_button.setIcon(lucide_icon("audio-lines"))
+        self._play_button.setIconSize(QSize(18, 18))
         self._play_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._play_button.setAutoRaise(False)
         self._play_button.setCheckable(True)
