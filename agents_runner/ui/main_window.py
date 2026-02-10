@@ -377,6 +377,9 @@ class MainWindow(
                 bool(snapshot.get("service_available"))
             )
             self._radio_control.set_playing(bool(snapshot.get("is_playing")))
+            self._radio_control.set_connection_state(
+                str(snapshot.get("connection_state") or "")
+            )
             self._radio_control.set_radio_enabled(bool(snapshot.get("enabled")))
             try:
                 volume_value = int(snapshot.get("volume") or 70)

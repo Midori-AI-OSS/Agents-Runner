@@ -7,6 +7,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtCore import QSignalBlocker
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
+from PySide6.QtCore import QVariantAnimation
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QGraphicsOpacityEffect
@@ -30,6 +31,10 @@ class RadioControlWidget(QWidget):
     COLLAPSE_DELAY_MS = 350
     ICON_COLOR_PLAYING = (16, 185, 129)
     ICON_COLOR_IDLE = (239, 68, 68)
+    ICON_COLOR_RECONNECT_START = (250, 204, 21)
+    ICON_COLOR_RECONNECT_END = (76, 29, 149)
+    RECONNECT_ANIMATION_MS = 900
+    CONNECTION_STATES = ("unavailable", "idle", "playing", "reconnecting")
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -43,6 +48,8 @@ class RadioControlWidget(QWidget):
         self._service_available = False
         self._is_playing = False
         self._radio_enabled = False
+        self._connection_state = "idle"
+        self._reconnect_anim_value = 0.0
         self._status_text = "Radio unavailable."
 
         root = QHBoxLayout(self)
@@ -97,6 +104,15 @@ class RadioControlWidget(QWidget):
         self._opacity_anim.setDuration(self.ANIMATION_MS)
         self._opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._opacity_anim.finished.connect(self._on_opacity_animation_finished)
+        self._reconnect_anim = QVariantAnimation(self)
+        self._reconnect_anim.setDuration(self.RECONNECT_ANIMATION_MS)
+        self._reconnect_anim.setStartValue(0.0)
+        self._reconnect_anim.setKeyValueAt(0.5, 1.0)
+        self._reconnect_anim.setEndValue(0.0)
+        self._reconnect_anim.setLoopCount(-1)
+        self._reconnect_anim.valueChanged.connect(
+            self._on_reconnect_animation_value_changed
+        )
 
         for watched in (
             self,
@@ -125,6 +141,20 @@ class RadioControlWidget(QWidget):
         self._radio_enabled = bool(enabled)
         self._refresh_tooltip()
 
+    def set_connection_state(self, state: str) -> None:
+        normalized = str(state or "").strip().lower()
+        if normalized not in self.CONNECTION_STATES:
+            normalized = "idle"
+        if normalized == self._connection_state:
+            return
+        self._connection_state = normalized
+        if normalized == "reconnecting":
+            self._start_reconnect_animation()
+        else:
+            self._stop_reconnect_animation()
+        self._refresh_play_button_icon()
+        self._refresh_tooltip()
+
     def set_volume(self, value: int) -> None:
         clamped = max(0, min(100, int(value)))
         with QSignalBlocker(self._volume_slider):
@@ -145,6 +175,8 @@ class RadioControlWidget(QWidget):
     def _refresh_tooltip(self) -> None:
         if not self._service_available:
             tooltip = self._status_text or "Midori AI Radio is currently unavailable."
+        elif self._connection_state == "reconnecting":
+            tooltip = "Reconnecting Midori AI Radio."
         elif self._is_playing:
             tooltip = "Stop Midori AI Radio."
         elif self._radio_enabled:
@@ -155,15 +187,46 @@ class RadioControlWidget(QWidget):
         self.setToolTip(tooltip)
 
     def _refresh_play_button_icon(self) -> None:
-        color_rgb = (
-            self.ICON_COLOR_PLAYING if self._is_playing else self.ICON_COLOR_IDLE
-        )
+        if self._connection_state == "reconnecting":
+            color = self._interpolated_reconnect_color(self._reconnect_anim_value)
+        elif self._connection_state == "playing" or self._is_playing:
+            color = QColor(*self.ICON_COLOR_PLAYING)
+        else:
+            color = QColor(*self.ICON_COLOR_IDLE)
         self._play_button.setIcon(
             lucide_icon(
                 "audio-lines",
-                color=QColor(*color_rgb),
+                color=color,
             )
         )
+
+    def _start_reconnect_animation(self) -> None:
+        if self._reconnect_anim.state() == QVariantAnimation.State.Running:
+            return
+        self._reconnect_anim.start()
+
+    def _stop_reconnect_animation(self) -> None:
+        if self._reconnect_anim.state() == QVariantAnimation.State.Running:
+            self._reconnect_anim.stop()
+        self._reconnect_anim_value = 0.0
+
+    def _on_reconnect_animation_value_changed(self, value: object) -> None:
+        try:
+            parsed = float(value)
+        except Exception:
+            return
+        self._reconnect_anim_value = max(0.0, min(1.0, parsed))
+        if self._connection_state == "reconnecting":
+            self._refresh_play_button_icon()
+
+    def _interpolated_reconnect_color(self, progress: float) -> QColor:
+        clamped = max(0.0, min(1.0, float(progress)))
+        start_r, start_g, start_b = self.ICON_COLOR_RECONNECT_START
+        end_r, end_g, end_b = self.ICON_COLOR_RECONNECT_END
+        red = int(round(start_r + ((end_r - start_r) * clamped)))
+        green = int(round(start_g + ((end_g - start_g) * clamped)))
+        blue = int(round(start_b + ((end_b - start_b) * clamped)))
+        return QColor(red, green, blue)
 
     def _on_slider_pressed(self) -> None:
         self._drag_active = True
