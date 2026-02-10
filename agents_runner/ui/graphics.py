@@ -188,6 +188,7 @@ class GlassRoot(QWidget):
         self._startup_black_active = True
         self._startup_theme_applied = False
         self._startup_blend_from_black = False
+        self._startup_pending_theme: str | None = None
 
         self._theme_runtimes: dict[str, object] = {}
         self._tick_last_s = time.monotonic()
@@ -276,27 +277,46 @@ class GlassRoot(QWidget):
         self._animate_theme_transition(theme_name, from_black=False)
 
     def set_theme_name(self, theme_name: str) -> None:
-        if self._startup_black_active and not self._startup_theme_applied:
+        if self._startup_black_active:
             self.apply_startup_theme_name(theme_name)
             return
         self._transition_to_theme(theme_name)
 
     def set_agent_theme(self, agent_cli: str) -> None:
-        if self._startup_black_active and not self._startup_theme_applied:
+        if self._startup_black_active:
             self.apply_startup_agent_theme(agent_cli)
             return
         self._transition_to_theme(_theme_name_for_agent(agent_cli))
 
     def apply_startup_theme_name(self, theme_name: str) -> None:
-        if self._startup_theme_applied:
-            self._transition_to_theme(theme_name)
+        resolved = _resolve_theme_name(theme_name)
+
+        if not self._startup_black_active:
+            self._transition_to_theme(resolved)
             return
+
+        self._startup_pending_theme = resolved
+        if not self.isVisible():
+            self.update()
+            return
+
+        if self._startup_theme_applied:
+            if self._theme_to_name != resolved or not self._startup_blend_from_black:
+                self._animate_theme_transition(resolved, from_black=True)
+            return
+
         self._startup_theme_applied = True
-        self._startup_black_active = False
-        self._animate_theme_transition(theme_name, from_black=True)
+        self._animate_theme_transition(resolved, from_black=True)
 
     def apply_startup_agent_theme(self, agent_cli: str) -> None:
         self.apply_startup_theme_name(_theme_name_for_agent(agent_cli))
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if not self._startup_black_active or self._startup_theme_applied:
+            return
+        target = self._startup_pending_theme or self._theme_name
+        self.apply_startup_theme_name(target)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
