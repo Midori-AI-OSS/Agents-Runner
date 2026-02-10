@@ -68,6 +68,7 @@ class RadioController(QObject):
         self._reconnect_attempts = 0
         self._last_reconnect_reason = ""
         self._reconnect_allow_service_bypass = False
+        self._reconnect_force_restart = False
         self._suppress_reconnect_until_s = 0.0
         self._last_error_log_ts: dict[str, float] = {}
 
@@ -563,7 +564,10 @@ class RadioController(QObject):
                 self.start_playback()
                 return
         else:
-            if not self._reconnect_allow_service_bypass:
+            if (
+                not self._reconnect_allow_service_bypass
+                and not self._reconnect_force_restart
+            ):
                 self._cancel_reconnect(reset_attempts=False)
             if previous and self._is_playing and self._last_track_title:
                 self._degraded_from_playback = True
@@ -605,7 +609,11 @@ class RadioController(QObject):
         text = str(error_string or "media playback error")
         self._log_error_throttled("media_error", text)
         self._status_text = "Radio playback error. Attempting to recover..."
-        self._queue_reconnect("media error", allow_without_service=True)
+        self._queue_reconnect(
+            "media error",
+            allow_without_service=True,
+            force_restart=True,
+        )
         self._emit_state()
 
     def _on_media_status_changed(self, status: Any) -> None:
@@ -622,6 +630,7 @@ class RadioController(QObject):
             self._queue_reconnect(
                 f"media status {status_name}",
                 allow_without_service=True,
+                force_restart=True,
             )
             self._emit_state()
 
@@ -632,14 +641,19 @@ class RadioController(QObject):
             pass
         return str(status)
 
-    def _should_auto_reconnect(self, *, allow_without_service: bool = False) -> bool:
+    def _should_auto_reconnect(
+        self,
+        *,
+        allow_without_service: bool = False,
+        force_restart: bool = False,
+    ) -> bool:
         if not self._qt_available or self._player is None:
             return False
         if not self._enabled:
             return False
         if not allow_without_service and not self._service_available:
             return False
-        if self._is_playing:
+        if self._is_playing and not force_restart:
             return False
         if time.monotonic() < self._suppress_reconnect_until_s:
             return False
@@ -650,15 +664,22 @@ class RadioController(QObject):
         reason: str,
         *,
         allow_without_service: bool = False,
+        force_restart: bool = False,
     ) -> None:
-        if not self._should_auto_reconnect(allow_without_service=allow_without_service):
+        if not self._should_auto_reconnect(
+            allow_without_service=allow_without_service,
+            force_restart=force_restart,
+        ):
             return
         if self._reconnect_timer is not None and self._reconnect_timer.isActive():
             if allow_without_service:
                 self._reconnect_allow_service_bypass = True
+            if force_restart:
+                self._reconnect_force_restart = True
             return
 
         self._reconnect_allow_service_bypass = bool(allow_without_service)
+        self._reconnect_force_restart = bool(force_restart)
         self._reconnect_attempts += 1
         self._last_reconnect_reason = str(reason or "unknown")
         delay_ms = self._next_reconnect_delay_ms(self._reconnect_attempts)
@@ -677,7 +698,11 @@ class RadioController(QObject):
 
     def _attempt_reconnect(self) -> None:
         allow_without_service = bool(self._reconnect_allow_service_bypass)
-        if not self._should_auto_reconnect(allow_without_service=allow_without_service):
+        force_restart = bool(self._reconnect_force_restart)
+        if not self._should_auto_reconnect(
+            allow_without_service=allow_without_service,
+            force_restart=force_restart,
+        ):
             if not self._enabled:
                 self._cancel_reconnect(reset_attempts=True)
             return
@@ -691,6 +716,12 @@ class RadioController(QObject):
         self._status_text = f"Reconnecting Midori AI Radio ({quality_to_use})..."
 
         try:
+            if force_restart:
+                try:
+                    self._player.stop()
+                except Exception:
+                    pass
+                self._is_playing = False
             self._player.setSource(QUrl(self._build_stream_url(quality_to_use)))
             self._player.play()
         except Exception as exc:
@@ -701,6 +732,7 @@ class RadioController(QObject):
             self._queue_reconnect(
                 "reconnect exception",
                 allow_without_service=allow_without_service,
+                force_restart=force_restart,
             )
 
         self._emit_state()
@@ -712,6 +744,7 @@ class RadioController(QObject):
             self._reconnect_attempts = 0
             self._last_reconnect_reason = ""
             self._reconnect_allow_service_bypass = False
+            self._reconnect_force_restart = False
 
     def _log_error_throttled(self, key: str, message: str) -> None:
         now = time.monotonic()
