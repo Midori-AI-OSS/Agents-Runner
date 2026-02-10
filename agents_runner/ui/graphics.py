@@ -265,11 +265,42 @@ class GlassRoot(QWidget):
         anim.start()
         self._theme_anim = anim
 
+    def _apply_theme_immediately(self, theme_name: str) -> None:
+        resolved = _resolve_theme_name(theme_name)
+        if resolved == self._theme_name and self._theme_to_name is None:
+            return
+
+        self._ensure_theme_runtime(resolved)
+        background = _load_background(resolved)
+        runtime = self._theme_runtimes.get(resolved)
+        if background is not None and runtime is not None:
+            try:
+                background.tick(
+                    runtime=runtime, widget=self, now_s=time.monotonic(), dt_s=0.0
+                )
+            except Exception:
+                pass
+
+        if self._theme_anim is not None:
+            self._theme_anim.stop()
+            self._theme_anim = None
+
+        self._theme_name = resolved
+        self._theme_to_name = None
+        self._set_theme_blend(0.0)
+
     def set_theme_name(self, theme_name: str) -> None:
+        if not self.isVisible():
+            self._apply_theme_immediately(theme_name)
+            return
         self._transition_to_theme(theme_name)
 
     def set_agent_theme(self, agent_cli: str) -> None:
-        self._transition_to_theme(_theme_name_for_agent(agent_cli))
+        resolved = _theme_name_for_agent(agent_cli)
+        if not self.isVisible():
+            self._apply_theme_immediately(resolved)
+            return
+        self._transition_to_theme(resolved)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
