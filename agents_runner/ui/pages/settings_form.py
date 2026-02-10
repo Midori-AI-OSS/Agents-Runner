@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QDoubleSpinBox
 from PySide6.QtWidgets import QFileDialog
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
@@ -222,6 +223,37 @@ class _SettingsFormMixin:
         self._radio_volume_value = QLabel("70%")
         self._radio_volume_value.setObjectName("SettingsPaneSubtitle")
         self._radio_volume.valueChanged.connect(self._on_radio_volume_value_changed)
+
+        self._radio_loudness_boost_enabled = QCheckBox("Loudness Boost")
+        self._radio_loudness_boost_enabled.setToolTip(
+            "Applies a gain multiplier to radio volume mapping."
+        )
+        self._radio_loudness_boost_enabled.toggled.connect(
+            self._on_radio_loudness_boost_toggled
+        )
+
+        self._radio_loudness_boost_factor = QDoubleSpinBox()
+        self._radio_loudness_boost_factor.setRange(
+            RadioController.LOUDNESS_BOOST_MIN,
+            RadioController.LOUDNESS_BOOST_MAX,
+        )
+        self._radio_loudness_boost_factor.setSingleStep(
+            RadioController.LOUDNESS_BOOST_STEP
+        )
+        self._radio_loudness_boost_factor.setDecimals(2)
+        self._radio_loudness_boost_factor.setValue(
+            RadioController.LOUDNESS_BOOST_DEFAULT
+        )
+        self._radio_loudness_boost_factor.setSuffix("x")
+        self._radio_loudness_boost_factor.setEnabled(False)
+        self._radio_loudness_boost_factor.setToolTip(
+            "Boost multiplier for radio loudness. Effective output is capped by Qt "
+            "audio output at 100%."
+        )
+        self._radio_loudness_boost_factor.valueChanged.connect(
+            self._on_radio_loudness_boost_factor_changed
+        )
+
         self._radio_enabled.toggled.connect(self._radio_autostart.setEnabled)
 
     def _build_pages(self) -> None:
@@ -333,6 +365,14 @@ class _SettingsFormMixin:
             volume_row.addWidget(self._radio_volume, 1)
             volume_row.addWidget(self._radio_volume_value, 0, Qt.AlignRight)
             radio_grid.addLayout(volume_row, 1, 1)
+            radio_grid.addWidget(QLabel("Loudness"), 2, 0)
+
+            boost_row = QHBoxLayout()
+            boost_row.setSpacing(8)
+            boost_row.addWidget(self._radio_loudness_boost_enabled)
+            boost_row.addWidget(self._radio_loudness_boost_factor)
+            boost_row.addStretch(1)
+            radio_grid.addLayout(boost_row, 2, 1)
 
             radio_body.addLayout(radio_grid)
             radio_body.addStretch(1)
@@ -535,7 +575,29 @@ class _SettingsFormMixin:
         return " ".join(word.capitalize() for word in words)
 
     def _on_radio_volume_value_changed(self, value: int) -> None:
-        self._radio_volume_value.setText(f"{max(0, min(100, int(value)))}%")
+        _ = value
+        self._refresh_radio_volume_label()
+
+    def _on_radio_loudness_boost_toggled(self, enabled: bool) -> None:
+        self._radio_loudness_boost_factor.setEnabled(bool(enabled))
+        self._refresh_radio_volume_label()
+
+    def _on_radio_loudness_boost_factor_changed(self, _value: float) -> None:
+        self._refresh_radio_volume_label()
+
+    def _refresh_radio_volume_label(self) -> None:
+        raw = max(0, min(100, int(self._radio_volume.value())))
+        effective = self._effective_radio_volume_percent(raw)
+        self._radio_volume_value.setText(f"{effective}%")
+
+    def _effective_radio_volume_percent(self, value: int) -> int:
+        raw = max(0, min(100, int(value)))
+        if not self._radio_loudness_boost_enabled.isChecked():
+            return raw
+        factor = RadioController.normalize_loudness_boost_factor(
+            self._radio_loudness_boost_factor.value()
+        )
+        return max(0, int(round(raw * factor)))
 
     def set_settings(self, settings: dict) -> None:
         self._suppress_autosave = True
@@ -623,7 +685,18 @@ class _SettingsFormMixin:
             self._set_combo_value(self._radio_quality, radio_quality, fallback="medium")
             radio_volume = RadioController.clamp_volume(settings.get("radio_volume"))
             self._radio_volume.setValue(radio_volume)
-            self._on_radio_volume_value_changed(radio_volume)
+            radio_loudness_boost_enabled = bool(
+                settings.get("radio_loudness_boost_enabled") or False
+            )
+            self._radio_loudness_boost_enabled.setChecked(radio_loudness_boost_enabled)
+            radio_loudness_boost_factor = (
+                RadioController.normalize_loudness_boost_factor(
+                    settings.get("radio_loudness_boost_factor")
+                )
+            )
+            self._radio_loudness_boost_factor.setValue(radio_loudness_boost_factor)
+            self._radio_loudness_boost_factor.setEnabled(radio_loudness_boost_enabled)
+            self._refresh_radio_volume_label()
         finally:
             self._suppress_autosave = False
 
@@ -663,6 +736,14 @@ class _SettingsFormMixin:
                 str(self._radio_quality.currentData() or "medium")
             ),
             "radio_volume": RadioController.clamp_volume(self._radio_volume.value()),
+            "radio_loudness_boost_enabled": bool(
+                self._radio_loudness_boost_enabled.isChecked()
+            ),
+            "radio_loudness_boost_factor": (
+                RadioController.normalize_loudness_boost_factor(
+                    self._radio_loudness_boost_factor.value()
+                )
+            ),
         }
 
     def _pick_codex_dir(self) -> None:

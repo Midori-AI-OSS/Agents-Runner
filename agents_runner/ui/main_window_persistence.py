@@ -181,6 +181,8 @@ class _MainWindowPersistenceMixin:
         self._settings_data.setdefault("radio_quality", "medium")
         self._settings_data.setdefault("radio_volume", 70)
         self._settings_data.setdefault("radio_autostart", False)
+        self._settings_data.setdefault("radio_loudness_boost_enabled", False)
+        self._settings_data.setdefault("radio_loudness_boost_factor", 2.2)
         host_codex_dir = os.path.normpath(
             os.path.expanduser(
                 str(self._settings_data.get("host_codex_dir") or "").strip()
@@ -230,6 +232,14 @@ class _MainWindowPersistenceMixin:
         )
         self._settings_data["radio_volume"] = RadioController.clamp_volume(
             self._settings_data.get("radio_volume")
+        )
+        self._settings_data["radio_loudness_boost_enabled"] = bool(
+            self._settings_data.get("radio_loudness_boost_enabled") or False
+        )
+        self._settings_data["radio_loudness_boost_factor"] = (
+            RadioController.normalize_loudness_boost_factor(
+                self._settings_data.get("radio_loudness_boost_factor")
+            )
         )
 
         items = load_active_task_payloads(self._state_path)

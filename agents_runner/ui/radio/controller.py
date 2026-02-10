@@ -35,6 +35,10 @@ class RadioController(QObject):
     HEALTH_INTERVAL_MS = 30_000
     CURRENT_INTERVAL_MS = 10_000
     QUALITY_VALUES = ("low", "medium", "high")
+    LOUDNESS_BOOST_MIN = 0.1
+    LOUDNESS_BOOST_MAX = 5.0
+    LOUDNESS_BOOST_STEP = 0.05
+    LOUDNESS_BOOST_DEFAULT = 2.2
     ERROR_LOG_THROTTLE_S = 30.0
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -47,6 +51,9 @@ class RadioController(QObject):
         self._active_quality = "medium"
         self._pending_quality: str | None = None
         self._volume = 70
+        self._loudness_boost_enabled = False
+        self._loudness_boost_factor = self.LOUDNESS_BOOST_DEFAULT
+        self._effective_volume_percent = self._volume
         self._is_playing = False
         self._status_text = "Radio unavailable."
         self._current_track_title = ""
@@ -82,7 +89,7 @@ class RadioController(QObject):
             self._audio_output = QAudioOutput(self)
             self._player = QMediaPlayer(self)
             self._player.setAudioOutput(self._audio_output)
-            self._audio_output.setVolume(float(self._volume) / 100.0)
+            self._apply_audio_output_volume()
             self._player.playbackStateChanged.connect(self._on_playback_state_changed)
             self._player.errorOccurred.connect(self._on_media_error)
             self._player.mediaStatusChanged.connect(self._on_media_status_changed)
@@ -120,6 +127,20 @@ class RadioController(QObject):
         return max(0, min(100, parsed))
 
     @classmethod
+    def normalize_loudness_boost_factor(cls, value: object) -> float:
+        try:
+            parsed = float(str(value).strip())
+        except Exception:
+            parsed = cls.LOUDNESS_BOOST_DEFAULT
+        parsed = max(cls.LOUDNESS_BOOST_MIN, min(cls.LOUDNESS_BOOST_MAX, parsed))
+        step_count = int(
+            round((parsed - cls.LOUDNESS_BOOST_MIN) / cls.LOUDNESS_BOOST_STEP)
+        )
+        snapped = cls.LOUDNESS_BOOST_MIN + (step_count * cls.LOUDNESS_BOOST_STEP)
+        snapped = max(cls.LOUDNESS_BOOST_MIN, min(cls.LOUDNESS_BOOST_MAX, snapped))
+        return round(snapped, 2)
+
+    @classmethod
     def probe_qt_multimedia_available(cls) -> bool:
         if QAudioOutput is None or QMediaPlayer is None:
             return False
@@ -153,6 +174,9 @@ class RadioController(QObject):
             "active_quality": self._active_quality,
             "pending_quality": self._pending_quality,
             "volume": self._volume,
+            "loudness_boost_enabled": self._loudness_boost_enabled,
+            "loudness_boost_factor": self._loudness_boost_factor,
+            "effective_volume_percent": self._effective_volume_percent,
             "is_playing": self._is_playing,
             "status_text": self._status_text,
             "current_track": self._current_track_title,
@@ -216,9 +240,32 @@ class RadioController(QObject):
         if clamped == self._volume:
             return
         self._volume = clamped
-        if self._audio_output is not None:
-            self._audio_output.setVolume(float(clamped) / 100.0)
+        self._apply_audio_output_volume()
         self._emit_state()
+
+    def set_loudness_boost(self, enabled: bool, factor: float) -> None:
+        normalized_enabled = bool(enabled)
+        normalized_factor = self.normalize_loudness_boost_factor(factor)
+        if (
+            normalized_enabled == self._loudness_boost_enabled
+            and normalized_factor == self._loudness_boost_factor
+        ):
+            return
+        self._loudness_boost_enabled = normalized_enabled
+        self._loudness_boost_factor = normalized_factor
+        self._apply_audio_output_volume()
+        self._emit_state()
+
+    def _compute_effective_volume_percent(self) -> int:
+        if not self._loudness_boost_enabled:
+            return self._volume
+        return max(0, int(round(float(self._volume) * self._loudness_boost_factor)))
+
+    def _apply_audio_output_volume(self) -> None:
+        self._effective_volume_percent = self._compute_effective_volume_percent()
+        qt_volume = max(0.0, min(1.0, float(self._effective_volume_percent) / 100.0))
+        if self._audio_output is not None:
+            self._audio_output.setVolume(qt_volume)
 
     def request_start_when_service_ready(self) -> None:
         if not self._qt_available:
