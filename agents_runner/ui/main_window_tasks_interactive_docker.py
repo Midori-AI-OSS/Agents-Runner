@@ -77,6 +77,7 @@ def launch_docker_terminal_task(
     stain: str | None,
     spinner: str | None,
     desired_base: str = "",
+    skip_image_pull: bool = False,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
 
@@ -112,6 +113,7 @@ def launch_docker_terminal_task(
         stain: Task color stain
         spinner: Task spinner color
         desired_base: Desired base branch for git
+        skip_image_pull: If True, skip docker pull in host launcher script
     """
     # Prepare preflight scripts and get mounts
     preflight_clause, preflight_mounts, tmp_paths = _prepare_preflight_scripts(
@@ -258,9 +260,11 @@ def launch_docker_terminal_task(
             )
 
         # Build docker pull command
-        docker_platform_args = docker_platform_args_for_pixelarch()
-        docker_pull_parts = ["docker", "pull", *docker_platform_args, image]
-        docker_pull_cmd = " ".join(shlex.quote(part) for part in docker_pull_parts)
+        docker_pull_cmd = ":"
+        if not skip_image_pull:
+            docker_platform_args = docker_platform_args_for_pixelarch()
+            docker_pull_parts = ["docker", "pull", *docker_platform_args, image]
+            docker_pull_cmd = " ".join(shlex.quote(part) for part in docker_pull_parts)
 
         # Build host shell script
         host_script = _build_host_shell_script(
