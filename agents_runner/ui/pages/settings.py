@@ -36,9 +36,15 @@ class SettingsPage(QWidget, _SettingsFormMixin):
     saved = Signal(dict)
     test_preflight_requested = Signal(dict)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        radio_supported: bool = True,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("SettingsPageRoot")
+        self._radio_supported = bool(radio_supported)
 
         self._suppress_autosave = False
         self._autosave_timer = QTimer(self)
@@ -134,7 +140,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         QTimer.singleShot(0, self._sync_nav_button_sizes)
 
     def _connect_autosave_signals(self) -> None:
-        for combo in (self._use, self._shell, self._ui_theme):
+        for combo in (self._use, self._shell, self._ui_theme, self._radio_quality):
             combo.currentIndexChanged.connect(self._trigger_immediate_autosave)
 
         for checkbox in (
@@ -144,6 +150,8 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._gh_context_default,
             self._spellcheck_enabled,
             self._mount_host_cache,
+            self._radio_enabled,
+            self._radio_autostart,
         ):
             checkbox.toggled.connect(self._trigger_immediate_autosave)
 
@@ -156,6 +164,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             line_edit.textChanged.connect(self._queue_debounced_autosave)
 
         self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
+        self._radio_volume.valueChanged.connect(self._queue_debounced_autosave)
 
     def _on_back(self) -> None:
         self.try_autosave()

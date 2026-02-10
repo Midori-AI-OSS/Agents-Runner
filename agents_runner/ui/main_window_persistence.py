@@ -11,6 +11,7 @@ from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import save_state
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
+from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import _parse_docker_time
 from agents_runner.ui.utils import _stain_color
 
@@ -176,6 +177,10 @@ class _MainWindowPersistenceMixin:
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("spellcheck_enabled", True)
         self._settings_data.setdefault("ui_theme", "auto")
+        self._settings_data.setdefault("radio_enabled", False)
+        self._settings_data.setdefault("radio_quality", "medium")
+        self._settings_data.setdefault("radio_volume", 70)
+        self._settings_data.setdefault("radio_autostart", False)
         host_codex_dir = os.path.normpath(
             os.path.expanduser(
                 str(self._settings_data.get("host_codex_dir") or "").strip()
@@ -213,6 +218,19 @@ class _MainWindowPersistenceMixin:
             )
         except Exception:
             self._settings_data["ui_theme"] = "auto"
+
+        self._settings_data["radio_enabled"] = bool(
+            self._settings_data.get("radio_enabled") or False
+        )
+        self._settings_data["radio_autostart"] = bool(
+            self._settings_data.get("radio_autostart") or False
+        )
+        self._settings_data["radio_quality"] = RadioController.normalize_quality(
+            self._settings_data.get("radio_quality")
+        )
+        self._settings_data["radio_volume"] = RadioController.clamp_volume(
+            self._settings_data.get("radio_volume")
+        )
 
         items = load_active_task_payloads(self._state_path)
         loaded: list[Task] = []
