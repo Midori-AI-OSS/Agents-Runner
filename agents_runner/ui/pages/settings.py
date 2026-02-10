@@ -122,6 +122,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         self._build_controls()
         self._build_pages()
         self._build_navigation(nav_layout)
+        self._sync_nav_button_sizes()
         self._connect_autosave_signals()
 
         if self._pane_specs:
@@ -130,6 +131,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._set_current_pane(first_key, animate=False)
 
         self._update_navigation_mode()
+        QTimer.singleShot(0, self._sync_nav_button_sizes)
 
     def _connect_autosave_signals(self) -> None:
         for combo in (self._use, self._shell, self._ui_theme):
@@ -288,6 +290,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
+        self._sync_nav_button_sizes()
 
     def _update_navigation_mode(self) -> None:
         compact = self.width() < 1080
@@ -296,3 +299,23 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         self._compact_mode = compact
         self._compact_nav.setVisible(compact)
         self._nav_panel.setVisible(not compact)
+        if not compact:
+            QTimer.singleShot(0, self._sync_nav_button_sizes)
+
+    def _sync_nav_button_sizes(self) -> None:
+        if self._compact_mode or not self._nav_buttons:
+            return
+
+        panel_width = self._nav_panel.width()
+        if panel_width <= 0:
+            return
+
+        inner_width = panel_width
+        nav_layout = self._nav_panel.layout()
+        if nav_layout is not None:
+            margins = nav_layout.contentsMargins()
+            inner_width -= margins.left() + margins.right()
+
+        target_width = max(1, inner_width - 2)
+        for button in self._nav_buttons.values():
+            button.setFixedWidth(target_width)

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -45,7 +46,13 @@ class _SettingsFormMixin:
             _SettingsPaneSpec(
                 key="general_preferences",
                 title="General Preferences",
-                subtitle="Theme and global editor defaults.",
+                subtitle="Global editor and default behavior toggles.",
+                section="General",
+            ),
+            _SettingsPaneSpec(
+                key="themes",
+                title="Themes",
+                subtitle="Background theme behavior and overrides.",
                 section="Appearance",
             ),
             _SettingsPaneSpec(
@@ -180,18 +187,22 @@ class _SettingsFormMixin:
         general_page, general_body = self._create_page(
             specs_by_key["general_preferences"]
         )
-        general_grid = QGridLayout()
-        general_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        general_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        general_grid.setColumnStretch(1, 1)
-        general_grid.addWidget(QLabel("Theme"), 0, 0)
-        general_grid.addWidget(self._ui_theme, 0, 1)
-        general_body.addLayout(general_grid)
         general_body.addWidget(self._spellcheck_enabled)
         general_body.addWidget(self._gh_context_default)
         general_body.addWidget(self._append_pixelarch_context)
         general_body.addStretch(1)
         self._register_page("general_preferences", general_page)
+
+        themes_page, themes_body = self._create_page(specs_by_key["themes"])
+        themes_grid = QGridLayout()
+        themes_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        themes_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
+        themes_grid.setColumnStretch(1, 1)
+        themes_grid.addWidget(QLabel("Theme"), 0, 0)
+        themes_grid.addWidget(self._ui_theme, 0, 1)
+        themes_body.addLayout(themes_grid)
+        themes_body.addStretch(1)
+        self._register_page("themes", themes_page)
 
         agent_page, agent_body = self._create_page(specs_by_key["agent_defaults"])
         agent_grid = QGridLayout()
@@ -267,6 +278,11 @@ class _SettingsFormMixin:
                 button.setCheckable(True)
                 button.setAutoExclusive(True)
                 button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+                button.setFixedHeight(40)
+                button.setSizePolicy(
+                    QSizePolicy.Policy.Fixed,
+                    QSizePolicy.Policy.Fixed,
+                )
                 button.clicked.connect(
                     lambda checked=False, key=spec.key: self._on_nav_button_clicked(key)
                 )
