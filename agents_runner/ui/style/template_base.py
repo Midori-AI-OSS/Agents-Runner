@@ -218,7 +218,7 @@ TEMPLATE_BASE = """
         max-width: 40px;
         min-height: 40px;
         max-height: 40px;
-        padding: 8px;
+        padding: 0px;
     }
 
     QWidget#RadioControlSliderWrap {
