@@ -175,6 +175,7 @@ class _MainWindowPersistenceMixin:
         )
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("spellcheck_enabled", True)
+        self._settings_data.setdefault("ui_theme", "auto")
         host_codex_dir = os.path.normpath(
             os.path.expanduser(
                 str(self._settings_data.get("host_codex_dir") or "").strip()
@@ -204,6 +205,14 @@ class _MainWindowPersistenceMixin:
             self._settings_data[key] = self._sanitize_interactive_command_value(
                 key, raw
             )
+        try:
+            from agents_runner.ui.graphics import normalize_ui_theme_name
+
+            self._settings_data["ui_theme"] = normalize_ui_theme_name(
+                self._settings_data.get("ui_theme"), allow_auto=True
+            )
+        except Exception:
+            self._settings_data["ui_theme"] = "auto"
 
         items = load_active_task_payloads(self._state_path)
         loaded: list[Task] = []

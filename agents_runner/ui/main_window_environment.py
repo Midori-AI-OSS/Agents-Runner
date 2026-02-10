@@ -194,7 +194,15 @@ class _MainWindowEnvironmentMixin:
         agent_cli, host_codex = self._effective_agent_and_config(env=env)
         if hasattr(self, "_root"):
             try:
-                self._root.set_agent_theme(agent_cli)
+                from agents_runner.ui.graphics import normalize_ui_theme_name
+
+                ui_theme = normalize_ui_theme_name(
+                    self._settings_data.get("ui_theme"), allow_auto=True
+                )
+                if ui_theme == "auto":
+                    self._root.set_agent_theme(agent_cli)
+                else:
+                    self._root.set_theme_name(ui_theme)
             except Exception:
                 pass
         current_agent, next_agent = self._get_next_agent_info(env=env)

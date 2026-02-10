@@ -95,6 +95,14 @@ class _MainWindowSettingsMixin:
         merged["headless_desktop_enabled"] = bool(
             merged.get("headless_desktop_enabled") or False
         )
+        try:
+            from agents_runner.ui.graphics import normalize_ui_theme_name
+
+            merged["ui_theme"] = normalize_ui_theme_name(
+                merged.get("ui_theme"), allow_auto=True
+            )
+        except Exception:
+            merged["ui_theme"] = "auto"
 
         try:
             merged["max_agents_running"] = int(
