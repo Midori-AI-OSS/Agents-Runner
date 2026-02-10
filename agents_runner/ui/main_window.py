@@ -104,6 +104,8 @@ class MainWindow(
             "radio_quality": "medium",
             "radio_volume": 70,
             "radio_autostart": False,
+            "radio_loudness_boost_enabled": False,
+            "radio_loudness_boost_factor": 2.2,
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False
@@ -301,11 +303,19 @@ class MainWindow(
         )
         volume = RadioController.clamp_volume(self._settings_data.get("radio_volume"))
         autostart = bool(self._settings_data.get("radio_autostart") or False)
+        loudness_boost_enabled = bool(
+            self._settings_data.get("radio_loudness_boost_enabled") or False
+        )
+        loudness_boost_factor = RadioController.normalize_loudness_boost_factor(
+            self._settings_data.get("radio_loudness_boost_factor")
+        )
 
         self._settings_data["radio_enabled"] = enabled
         self._settings_data["radio_quality"] = quality
         self._settings_data["radio_volume"] = volume
         self._settings_data["radio_autostart"] = autostart
+        self._settings_data["radio_loudness_boost_enabled"] = loudness_boost_enabled
+        self._settings_data["radio_loudness_boost_factor"] = loudness_boost_factor
 
         if not self._radio_controller.qt_available:
             self._update_window_title_from_radio_state(
@@ -314,6 +324,10 @@ class MainWindow(
             return
 
         self._radio_controller.set_quality(quality)
+        self._radio_controller.set_loudness_boost(
+            loudness_boost_enabled,
+            loudness_boost_factor,
+        )
         self._radio_controller.set_volume(volume)
 
         start_when_enabled = bool(
