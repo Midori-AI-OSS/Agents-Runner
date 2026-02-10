@@ -26,7 +26,6 @@ from agents_runner.environments import Environment
 from agents_runner.github_token import resolve_github_token
 from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
-from agents_runner.core.shell_templates import build_git_clone_or_update_snippet
 from agents_runner.core.shell_templates import git_identity_clause
 from agents_runner.core.shell_templates import shell_log_statement
 from agents_runner.ui.task_model import Task
@@ -78,8 +77,6 @@ def launch_docker_terminal_task(
     stain: str | None,
     spinner: str | None,
     desired_base: str = "",
-    gh_repo: str = "",
-    gh_prefer_gh_cli: bool = True,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
 
@@ -87,7 +84,6 @@ def launch_docker_terminal_task(
     - Preflight script preparation and mounting
     - Docker run command construction
     - Environment variables and port mapping
-    - Git clone/update script generation
     - Terminal launcher invocation
     - Error handling and cleanup
 
@@ -116,8 +112,6 @@ def launch_docker_terminal_task(
         stain: Task color stain
         spinner: Task spinner color
         desired_base: Desired base branch for git
-        gh_repo: GitHub repository (owner/repo)
-        gh_prefer_gh_cli: Prefer gh CLI over git for cloning
     """
     # Prepare preflight scripts and get mounts
     preflight_clause, preflight_mounts, tmp_paths = _prepare_preflight_scripts(
@@ -263,26 +257,6 @@ def launch_docker_terminal_task(
                 f"Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}",
             )
 
-        # Build git clone snippet if gh_repo is specified
-        gh_clone_snippet = ""
-        if gh_repo:
-            quoted_dest = shlex.quote(host_workdir)
-            gh_clone_snippet = build_git_clone_or_update_snippet(
-                gh_repo=gh_repo,
-                host_workdir=host_workdir,
-                quoted_dest=quoted_dest,
-                prefer_gh_cli=gh_prefer_gh_cli,
-                task_id=task_id,
-                desired_base=desired_base,
-                is_locked_env=False,
-            )
-            # Update task with branch info
-            branch_name = f"agents-runner-{task_id}"
-            task.gh_repo_root = host_workdir
-            task.gh_branch = branch_name
-            task.gh_base_branch = desired_base
-            main_window._schedule_save()
-
         # Build docker pull command
         docker_platform_args = docker_platform_args_for_pixelarch()
         docker_pull_parts = ["docker", "pull", *docker_platform_args, image]
@@ -296,7 +270,6 @@ def launch_docker_terminal_task(
             finish_path=finish_path,
             gh_token_snippet="",
             rosetta_snippet=rosetta_snippet,
-            gh_clone_snippet=gh_clone_snippet,
             docker_pull_cmd=docker_pull_cmd,
             docker_cmd=docker_cmd,
         )
@@ -642,7 +615,6 @@ def _build_host_shell_script(
     finish_path: str,
     gh_token_snippet: str,
     rosetta_snippet: str,
-    gh_clone_snippet: str,
     docker_pull_cmd: str,
     docker_cmd: str,
 ) -> str:
@@ -655,7 +627,6 @@ def _build_host_shell_script(
         finish_path: Path to finish file
         gh_token_snippet: GH token setup snippet
         rosetta_snippet: Rosetta warning snippet
-        gh_clone_snippet: Git clone/update snippet
         docker_pull_cmd: Docker pull command
         docker_cmd: Docker run command
 
@@ -681,8 +652,6 @@ def _build_host_shell_script(
 
     if rosetta_snippet:
         host_script_parts.append(rosetta_snippet)
-    if gh_clone_snippet:
-        host_script_parts.append(gh_clone_snippet)
 
     host_script_parts.extend(
         [
