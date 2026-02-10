@@ -232,11 +232,9 @@ class _MainWindowTaskEventsMixin:
         prep_threads = getattr(self, "_interactive_prep_threads", {})
         prep_bridges = getattr(self, "_interactive_prep_bridges", {})
         prep_context = getattr(self, "_interactive_prep_context", {})
-        prep_diags = getattr(self, "_interactive_prep_diag", {})
         prep_worker = prep_workers.get(task_id)
         prep_thread = prep_threads.get(task_id)
         prep_bridge = prep_bridges.get(task_id)
-        prep_diag = prep_diags.get(task_id)
         container_id = task.container_id or (
             bridge.container_id if bridge is not None else None
         )
@@ -255,10 +253,6 @@ class _MainWindowTaskEventsMixin:
                 prep_worker.request_stop()
             except Exception:
                 pass
-        if isinstance(prep_diag, dict):
-            stop_event = prep_diag.get("stop_event")
-            if isinstance(stop_event, threading.Event):
-                stop_event.set()
         if thread is not None:
             try:
                 thread.quit()
@@ -284,7 +278,6 @@ class _MainWindowTaskEventsMixin:
         prep_workers.pop(task_id, None)
         prep_bridges.pop(task_id, None)
         prep_context.pop(task_id, None)
-        prep_diags.pop(task_id, None)
         self._run_started_s.pop(task_id, None)
         self._dashboard_log_refresh_s.pop(task_id, None)
         self._interactive_watch.pop(task_id, None)

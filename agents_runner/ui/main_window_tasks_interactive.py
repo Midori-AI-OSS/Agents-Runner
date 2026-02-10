@@ -30,11 +30,7 @@ from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.interactive_prep_diagnostics import (
-    init_interactive_prep_diag,
     log_interactive_prep_diag,
-    start_interactive_prep_heartbeat,
-    stop_interactive_prep_diag,
-    touch_interactive_prep_callback,
 )
 from agents_runner.ui.interactive_prep_bridge import InteractivePrepBridge
 from agents_runner.ui.main_window_tasks_interactive_docker import (
@@ -279,29 +275,8 @@ class _MainWindowTasksInteractiveMixin:
             task.workspace_type = env.workspace_type
 
         prep_id = uuid4().hex[:8]
-        init_interactive_prep_diag(
-            main_window=self,
-            task_id=task_id,
-            task_created_at_s=float(task.created_at_s or time.time()),
-            prep_id=prep_id,
-        )
-        log_interactive_prep_diag(
-            main_window=self,
-            task_id=task_id,
-            prep_id=prep_id,
-            level="INFO",
-            message="diagnostics initialized",
-        )
         self._show_dashboard()
         self._new_task.reset_for_new_run()
-        start_interactive_prep_heartbeat(
-            main_window=self,
-            task_id=task_id,
-            prep_id=prep_id,
-            task_created_at_s=float(task.created_at_s or time.time()),
-            interval_s=10.0,
-            warn_no_progress_after_s=30.0,
-        )
 
         prep_worker = InteractivePrepWorker(
             task_id=task_id,
@@ -359,9 +334,6 @@ class _MainWindowTasksInteractiveMixin:
         self._interactive_prep_threads[task_id] = prep_thread
         self._interactive_prep_bridges[task_id] = prep_bridge
 
-        self._interactive_prep_diag_log(
-            task_id, "INFO", "connecting prep worker signals via bridge"
-        )
         prep_worker.stage.connect(prep_bridge.on_stage, Qt.QueuedConnection)
         prep_worker.log.connect(prep_bridge.on_log, Qt.QueuedConnection)
         prep_worker.succeeded.connect(prep_bridge.on_succeeded, Qt.QueuedConnection)
@@ -373,7 +345,6 @@ class _MainWindowTasksInteractiveMixin:
         prep_thread.finished.connect(prep_thread.deleteLater)
         prep_thread.finished.connect(prep_bridge.deleteLater, Qt.QueuedConnection)
 
-        self._interactive_prep_diag_log(task_id, "INFO", "prep thread start requested")
         prep_thread.start()
 
     def _interactive_prep_id(self, task_id: str) -> str:
@@ -381,11 +352,6 @@ class _MainWindowTasksInteractiveMixin:
         context = self._interactive_prep_context.get(task_id)
         if isinstance(context, dict):
             prep_id = str(context.get("prep_id") or "").strip()
-            if prep_id:
-                return prep_id
-        diag = self._interactive_prep_diag.get(task_id)
-        if isinstance(diag, dict):
-            prep_id = str(diag.get("prep_id") or "").strip()
             if prep_id:
                 return prep_id
         return "unknown"
@@ -416,7 +382,6 @@ class _MainWindowTasksInteractiveMixin:
         task_id = str(task_id or "").strip()
         if not task_id:
             return
-        stop_interactive_prep_diag(main_window=self, task_id=task_id)
         self._interactive_prep_context.pop(task_id, None)
         bridge = self._interactive_prep_bridges.pop(task_id, None)
         if bridge is not None:
@@ -432,17 +397,6 @@ class _MainWindowTasksInteractiveMixin:
         if not task_id:
             return
         status_text = str(status or "").strip().lower()
-        touch_interactive_prep_callback(
-            main_window=self,
-            task_id=task_id,
-            kind="stage",
-            stage=status_text,
-        )
-        self._interactive_prep_diag_log(
-            task_id,
-            "DEBUG",
-            f"bridge stage callback enter status={status_text or 'none'}",
-        )
         task = self._tasks.get(task_id)
         if task is None:
             self._interactive_prep_diag_log(
@@ -453,29 +407,17 @@ class _MainWindowTasksInteractiveMixin:
             task.status = status_text
             task.error = None
         self._refresh_interactive_prep_task_card(task)
-        self._interactive_prep_diag_log(
-            task_id,
-            "DEBUG",
-            f"bridge stage callback exit status={status_text or 'none'}",
-        )
 
     def _on_interactive_prep_log(self, task_id: str, line: str) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
             return
-        touch_interactive_prep_callback(main_window=self, task_id=task_id, kind="log")
         self._on_task_log(task_id, str(line or ""))
 
     def _on_interactive_prep_failed(self, task_id: str, error_message: str) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
             return
-        touch_interactive_prep_callback(
-            main_window=self, task_id=task_id, kind="failed"
-        )
-        self._interactive_prep_diag_log(
-            task_id, "DEBUG", "bridge failed callback enter"
-        )
         task = self._tasks.get(task_id)
         if task is None:
             self._interactive_prep_diag_log(
@@ -493,19 +435,12 @@ class _MainWindowTasksInteractiveMixin:
             format_log("ui", "prep", "ERROR", task.error),
         )
         self._refresh_interactive_prep_task_card(task)
-        self._interactive_prep_diag_log(task_id, "DEBUG", "bridge failed callback exit")
         self._clear_interactive_prep_refs(task_id)
 
     def _on_interactive_prep_succeeded(self, task_id: str, payload: dict) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
             return
-        touch_interactive_prep_callback(
-            main_window=self, task_id=task_id, kind="success"
-        )
-        self._interactive_prep_diag_log(
-            task_id, "DEBUG", "bridge success callback enter"
-        )
         task = self._tasks.get(task_id)
         if task is None:
             self._interactive_prep_diag_log(
@@ -576,9 +511,6 @@ class _MainWindowTasksInteractiveMixin:
             self._on_interactive_prep_failed(task_id, str(exc))
             return
 
-        self._interactive_prep_diag_log(
-            task_id, "DEBUG", "bridge success callback exit"
-        )
         self._clear_interactive_prep_refs(task_id)
 
     def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
