@@ -209,6 +209,57 @@ TEMPLATE_BASE = """
         border: 1px solid rgba(56, 189, 248, 90);
     }
 
+    QWidget#SettingsNavPanel {
+        background-color: rgba(18, 20, 28, 95);
+        border: 1px solid rgba(255, 255, 255, 14);
+        border-radius: 0px;
+    }
+
+    QLabel#SettingsNavSection {
+        color: rgba(237, 239, 245, 145);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+        margin-top: 8px;
+        margin-bottom: 2px;
+        padding: 2px 6px;
+    }
+
+    QToolButton#SettingsNavButton {
+        text-align: left;
+        padding: 9px 10px;
+        border: 1px solid rgba(255, 255, 255, 14);
+        background-color: rgba(18, 20, 28, 95);
+        color: rgba(237, 239, 245, 220);
+        border-radius: 0px;
+        font-weight: 620;
+    }
+
+    QToolButton#SettingsNavButton:hover {
+        border: 1px solid rgba(56, 189, 248, 70);
+        background-color: rgba(56, 189, 248, 20);
+    }
+
+    QToolButton#SettingsNavButton:checked {
+        border: 1px solid rgba(56, 189, 248, 110);
+        background-color: rgba(56, 189, 248, 62);
+    }
+
+    QToolButton#SettingsNavButton:checked:hover {
+        border: 1px solid rgba(56, 189, 248, 130);
+        background-color: rgba(56, 189, 248, 76);
+    }
+
+    QLabel#SettingsPaneTitle {
+        font-size: 16px;
+        font-weight: 760;
+        color: rgba(237, 239, 245, 245);
+    }
+
+    QLabel#SettingsPaneSubtitle {
+        color: rgba(237, 239, 245, 160);
+    }
+
     QCheckBox {
         spacing: 10px;
     }

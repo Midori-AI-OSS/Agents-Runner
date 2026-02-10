@@ -1,24 +1,24 @@
 from __future__ import annotations
 
-import os
-
-from PySide6.QtCore import Qt
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QCheckBox
+from PySide6.QtCore import (
+    QEasingCurve,
+    QParallelAnimationGroup,
+    QPoint,
+    QPropertyAnimation,
+    QSignalBlocker,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtWidgets import QComboBox
-from PySide6.QtWidgets import QFileDialog
-from PySide6.QtWidgets import QGridLayout
+from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
-from PySide6.QtWidgets import QLineEdit
-from PySide6.QtWidgets import QPlainTextEdit
-from PySide6.QtWidgets import QPushButton
-from PySide6.QtWidgets import QSplitter
+from PySide6.QtWidgets import QStackedWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
-from agents_runner.agent_cli import normalize_agent
 from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.constants import (
     MAIN_LAYOUT_MARGINS,
@@ -27,20 +27,33 @@ from agents_runner.ui.constants import (
     HEADER_SPACING,
     CARD_MARGINS,
     CARD_SPACING,
-    GRID_HORIZONTAL_SPACING,
-    GRID_VERTICAL_SPACING,
-    BUTTON_ROW_SPACING,
-    STANDARD_BUTTON_WIDTH,
 )
+from agents_runner.ui.pages.settings_form import _SettingsFormMixin
 
 
-class SettingsPage(QWidget):
+class SettingsPage(QWidget, _SettingsFormMixin):
     back_requested = Signal()
     saved = Signal(dict)
     test_preflight_requested = Signal(dict)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self.setObjectName("SettingsPageRoot")
+
+        self._suppress_autosave = False
+        self._autosave_timer = QTimer(self)
+        self._autosave_timer.setSingleShot(True)
+        self._autosave_timer.setInterval(450)
+        self._autosave_timer.timeout.connect(self._emit_saved)
+
+        self._pane_animation: QParallelAnimationGroup | None = None
+        self._pane_rest_pos: QPoint | None = None
+        self._compact_mode = False
+        self._active_pane_key = ""
+
+        self._pane_specs = self._default_pane_specs()
+        self._pane_index_by_key: dict[str, int] = {}
+        self._nav_buttons: dict[str, QToolButton] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*MAIN_LAYOUT_MARGINS)
@@ -60,7 +73,7 @@ class SettingsPage(QWidget):
         back = QToolButton()
         back.setText("Back")
         back.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        back.clicked.connect(self.back_requested.emit)
+        back.clicked.connect(self._on_back)
 
         header_layout.addWidget(title)
         header_layout.addStretch(1)
@@ -72,320 +85,214 @@ class SettingsPage(QWidget):
         card_layout.setContentsMargins(*CARD_MARGINS)
         card_layout.setSpacing(CARD_SPACING)
 
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        grid.setColumnStretch(1, 1)
+        self._compact_nav = QComboBox()
+        self._compact_nav.setObjectName("SettingsCompactNav")
+        self._compact_nav.setVisible(False)
+        self._compact_nav.currentIndexChanged.connect(self._on_compact_nav_changed)
+        card_layout.addWidget(self._compact_nav)
 
-        self._use = QComboBox()
-        self._use.addItem("OpenAI Codex", "codex")
-        self._use.addItem("Claude Code", "claude")
-        self._use.addItem("Github Copilot", "copilot")
-        self._use.addItem("Google Gemini", "gemini")
+        panes_layout = QHBoxLayout()
+        panes_layout.setContentsMargins(0, 0, 0, 0)
+        panes_layout.setSpacing(14)
 
-        self._shell = QComboBox()
-        for label, value in [
-            ("bash", "bash"),
-            ("sh", "sh"),
-            ("zsh", "zsh"),
-            ("fish", "fish"),
-            ("tmux", "tmux"),
-        ]:
-            self._shell.addItem(label, value)
+        self._nav_panel = QWidget()
+        self._nav_panel.setObjectName("SettingsNavPanel")
+        self._nav_panel.setMinimumWidth(250)
+        self._nav_panel.setMaximumWidth(320)
+        nav_layout = QVBoxLayout(self._nav_panel)
+        nav_layout.setContentsMargins(10, 10, 10, 10)
+        nav_layout.setSpacing(6)
 
-        self._host_codex_dir = QLineEdit()
-        self._host_codex_dir.setPlaceholderText(os.path.expanduser("~/.codex"))
-        browse_codex = QPushButton("Browse…")
-        browse_codex.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        browse_codex.clicked.connect(self._pick_codex_dir)
-
-        self._host_claude_dir = QLineEdit()
-        self._host_claude_dir.setPlaceholderText(os.path.expanduser("~/.claude"))
-        browse_claude = QPushButton("Browse…")
-        browse_claude.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        browse_claude.clicked.connect(self._pick_claude_dir)
-
-        self._host_copilot_dir = QLineEdit()
-        self._host_copilot_dir.setPlaceholderText(os.path.expanduser("~/.copilot"))
-        browse_copilot = QPushButton("Browse…")
-        browse_copilot.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        browse_copilot.clicked.connect(self._pick_copilot_dir)
-
-        self._host_gemini_dir = QLineEdit()
-        self._host_gemini_dir.setPlaceholderText(os.path.expanduser("~/.gemini"))
-        browse_gemini = QPushButton("Browse…")
-        browse_gemini.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        browse_gemini.clicked.connect(self._pick_gemini_dir)
-
-        self._preflight_enabled = QCheckBox("Enable settings preflight")
-        self._preflight_enabled.setToolTip(
-            "Runs on all environments before environment-specific preflight.\n"
-            "Useful for global setup tasks like installing system packages."
-        )
-        self._append_pixelarch_context = QCheckBox("Append PixelArch context")
-        self._append_pixelarch_context.setToolTip(
-            "When enabled, appends a short note to the end of the prompt passed to Run Agent.\n"
-            "This never affects Run Interactive."
-        )
-        self._headless_desktop_enabled = QCheckBox(
-            "Force headless desktop for all environments"
-        )
-        self._headless_desktop_enabled.setToolTip(
-            "When enabled, this overrides the per-environment headless desktop setting."
-        )
-
-        self._gh_context_default = QCheckBox(
-            "Enable GitHub context by default for new environments"
-        )
-        self._gh_context_default.setToolTip(
-            "When enabled, new environments will have GitHub context enabled by default.\n"
-            "This only affects newly created environments, not existing ones.\n"
-            "Users can still disable it per-environment in the Environments editor."
-        )
-
-        self._spellcheck_enabled = QCheckBox("Enable spellcheck in prompt editor")
-        self._spellcheck_enabled.setToolTip(
-            "When enabled, misspelled words in the prompt editor will be underlined in red.\n"
-            "Right-click on a misspelled word to see suggestions or add it to your dictionary."
-        )
-
-        self._mount_host_cache = QCheckBox("Mount host cache into containers")
-        self._mount_host_cache.setToolTip(
-            "Mounts ~/.cache to /home/midori-ai/.cache for faster package installs.\n"
-            "Speeds up uv, pip, npm, bun, yarn, cargo, and other package managers.\n"
-            "Cache is shared across all environments."
-        )
-
-        self._preflight_script = QPlainTextEdit()
-        self._preflight_script.setPlaceholderText(
-            "#!/usr/bin/env bash\n"
-            "set -euo pipefail\n"
-            "\n"
-            "# Runs inside the container before the agent command.\n"
-            "# Runs on every environment, before environment preflight (if enabled).\n"
-            "# This script is mounted read-only and deleted from the host after the task finishes.\n"
-        )
-        self._preflight_script.setTabChangesFocus(True)
-        self._preflight_enabled.toggled.connect(self._preflight_script.setEnabled)
-        self._preflight_script.setEnabled(False)
-
-        grid.addWidget(QLabel("Agent CLI"), 0, 0)
-        grid.addWidget(self._use, 0, 1)
-        grid.addWidget(QLabel("Shell"), 0, 2)
-        grid.addWidget(self._shell, 0, 3)
-        codex_label = QLabel("Codex Config folder")
-        claude_label = QLabel("Claude Config folder")
-        copilot_label = QLabel("Copilot Config folder")
-        gemini_label = QLabel("Gemini Config folder")
-
-        grid.addWidget(codex_label, 1, 0)
-        grid.addWidget(self._host_codex_dir, 1, 1, 1, 2)
-        grid.addWidget(browse_codex, 1, 3)
-        grid.addWidget(claude_label, 2, 0)
-        grid.addWidget(self._host_claude_dir, 2, 1, 1, 2)
-        grid.addWidget(browse_claude, 2, 3)
-        grid.addWidget(copilot_label, 3, 0)
-        grid.addWidget(self._host_copilot_dir, 3, 1, 1, 2)
-        grid.addWidget(browse_copilot, 3, 3)
-        grid.addWidget(gemini_label, 4, 0)
-        grid.addWidget(self._host_gemini_dir, 4, 1, 1, 2)
-        grid.addWidget(browse_gemini, 4, 3)
-
-        # Create two-column layout for checkboxes and preflight editor
-        preflight_splitter = QSplitter(Qt.Orientation.Horizontal)
-        preflight_splitter.setChildrenCollapsible(False)
-
-        # Left column: checkboxes stacked vertically
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(GRID_VERTICAL_SPACING)
-        left_layout.addWidget(self._preflight_enabled)
-        left_layout.addWidget(self._append_pixelarch_context)
-        left_layout.addWidget(self._headless_desktop_enabled)
-        left_layout.addWidget(self._gh_context_default)
-        left_layout.addWidget(self._spellcheck_enabled)
-        left_layout.addWidget(self._mount_host_cache)
-        left_layout.addStretch(1)
-
-        # Right column: preflight script editor
-        right_widget = QWidget()
-        right_layout = QVBoxLayout(right_widget)
+        self._right_panel = QWidget()
+        self._right_panel.setObjectName("SettingsPaneHost")
+        right_layout = QVBoxLayout(self._right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(GRID_VERTICAL_SPACING)
-        right_layout.addWidget(QLabel("Preflight script"))
-        right_layout.addWidget(self._preflight_script, 1)
+        right_layout.setSpacing(0)
 
-        preflight_splitter.addWidget(left_widget)
-        preflight_splitter.addWidget(right_widget)
-        preflight_splitter.setStretchFactor(0, 3)
-        preflight_splitter.setStretchFactor(1, 7)
+        self._page_stack = QStackedWidget()
+        self._page_stack.setObjectName("SettingsPageStack")
+        right_layout.addWidget(self._page_stack, 1)
 
-        self._agent_config_widgets: dict[str, tuple[QWidget, ...]] = {
-            "codex": (codex_label, self._host_codex_dir, browse_codex),
-            "claude": (claude_label, self._host_claude_dir, browse_claude),
-            "copilot": (copilot_label, self._host_copilot_dir, browse_copilot),
-            "gemini": (gemini_label, self._host_gemini_dir, browse_gemini),
-        }
-        self._use.currentIndexChanged.connect(self._sync_agent_config_widgets)
-        self._sync_agent_config_widgets()
+        panes_layout.addWidget(self._nav_panel)
+        panes_layout.addWidget(self._right_panel, 1)
 
-        buttons = QHBoxLayout()
-        buttons.setSpacing(BUTTON_ROW_SPACING)
-        save = QToolButton()
-        save.setText("Save")
-        save.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        save.clicked.connect(self._on_save)
-        test = QToolButton()
-        test.setText("Test preflights (all envs)")
-        test.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        test.clicked.connect(self._on_test_preflight)
-        buttons.addWidget(test)
-        buttons.addWidget(save)
-        buttons.addStretch(1)
-
-        card_layout.addLayout(grid)
-        card_layout.addWidget(preflight_splitter, 1)
-        card_layout.addLayout(buttons)
+        card_layout.addLayout(panes_layout, 1)
         layout.addWidget(card, 1)
 
-    def set_settings(self, settings: dict) -> None:
-        use_value = normalize_agent(str(settings.get("use") or "codex"))
-        self._set_combo_value(self._use, use_value, fallback="codex")
-        self._sync_agent_config_widgets()
+        self._build_controls()
+        self._build_pages()
+        self._build_navigation(nav_layout)
+        self._connect_autosave_signals()
 
-        shell_value = str(settings.get("shell") or "bash").strip().lower()
-        self._set_combo_value(self._shell, shell_value, fallback="bash")
+        if self._pane_specs:
+            first_key = self._pane_specs[0].key
+            self._set_active_navigation(first_key)
+            self._set_current_pane(first_key, animate=False)
 
-        host_codex_dir = os.path.expanduser(
-            str(settings.get("host_codex_dir") or "").strip()
-        )
-        if not host_codex_dir:
-            host_codex_dir = os.path.expanduser("~/.codex")
-        self._host_codex_dir.setText(host_codex_dir)
+        self._update_navigation_mode()
 
-        host_claude_dir = os.path.expanduser(
-            str(settings.get("host_claude_dir") or "").strip()
-        )
-        self._host_claude_dir.setText(host_claude_dir)
+    def _connect_autosave_signals(self) -> None:
+        for combo in (self._use, self._shell, self._ui_theme):
+            combo.currentIndexChanged.connect(self._trigger_immediate_autosave)
 
-        host_copilot_dir = os.path.expanduser(
-            str(settings.get("host_copilot_dir") or "").strip()
-        )
-        self._host_copilot_dir.setText(host_copilot_dir)
+        for checkbox in (
+            self._preflight_enabled,
+            self._append_pixelarch_context,
+            self._headless_desktop_enabled,
+            self._gh_context_default,
+            self._spellcheck_enabled,
+            self._mount_host_cache,
+        ):
+            checkbox.toggled.connect(self._trigger_immediate_autosave)
 
-        host_gemini_dir = os.path.expanduser(
-            str(settings.get("host_gemini_dir") or "").strip()
-        )
-        self._host_gemini_dir.setText(host_gemini_dir)
+        for line_edit in (
+            self._host_codex_dir,
+            self._host_claude_dir,
+            self._host_copilot_dir,
+            self._host_gemini_dir,
+        ):
+            line_edit.textChanged.connect(self._queue_debounced_autosave)
 
-        enabled = bool(settings.get("preflight_enabled") or False)
-        self._preflight_enabled.setChecked(enabled)
-        self._preflight_script.setEnabled(enabled)
-        self._preflight_script.setPlainText(str(settings.get("preflight_script") or ""))
+        self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
 
-        self._append_pixelarch_context.setChecked(
-            bool(settings.get("append_pixelarch_context") or False)
-        )
-        self._headless_desktop_enabled.setChecked(
-            bool(settings.get("headless_desktop_enabled") or False)
-        )
-        self._gh_context_default.setChecked(
-            bool(settings.get("gh_context_default_enabled") or False)
-        )
-        self._spellcheck_enabled.setChecked(
-            bool(settings.get("spellcheck_enabled", True))
-        )
-        self._mount_host_cache.setChecked(bool(settings.get("mount_host_cache", False)))
-
-    def get_settings(self) -> dict:
-        return {
-            "use": str(self._use.currentData() or "codex"),
-            "shell": str(self._shell.currentData() or "bash"),
-            "host_codex_dir": os.path.expanduser(
-                str(self._host_codex_dir.text() or "").strip()
-            ),
-            "host_claude_dir": os.path.expanduser(
-                str(self._host_claude_dir.text() or "").strip()
-            ),
-            "host_copilot_dir": os.path.expanduser(
-                str(self._host_copilot_dir.text() or "").strip()
-            ),
-            "host_gemini_dir": os.path.expanduser(
-                str(self._host_gemini_dir.text() or "").strip()
-            ),
-            "preflight_enabled": bool(self._preflight_enabled.isChecked()),
-            "preflight_script": str(self._preflight_script.toPlainText() or ""),
-            "append_pixelarch_context": bool(
-                self._append_pixelarch_context.isChecked()
-            ),
-            "headless_desktop_enabled": bool(
-                self._headless_desktop_enabled.isChecked()
-            ),
-            "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
-            "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),
-            "mount_host_cache": bool(self._mount_host_cache.isChecked()),
-        }
-
-    def _pick_codex_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Config folder",
-            self._host_codex_dir.text() or os.path.expanduser("~/.codex"),
-        )
-        if path:
-            self._host_codex_dir.setText(path)
-
-    def _pick_claude_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Claude Config folder",
-            self._host_claude_dir.text() or os.path.expanduser("~/.claude"),
-        )
-        if path:
-            self._host_claude_dir.setText(path)
-
-    def _pick_copilot_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Copilot Config folder",
-            self._host_copilot_dir.text() or os.path.expanduser("~/.copilot"),
-        )
-        if path:
-            self._host_copilot_dir.setText(path)
-
-    def _pick_gemini_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Gemini Config folder",
-            self._host_gemini_dir.text() or os.path.expanduser("~/.gemini"),
-        )
-        if path:
-            self._host_gemini_dir.setText(path)
-
-    def _on_save(self) -> None:
+    def _on_back(self) -> None:
         self.try_autosave()
-
-    def try_autosave(self) -> bool:
-        self.saved.emit(self.get_settings())
-        return True
+        self.back_requested.emit()
 
     def _on_test_preflight(self) -> None:
+        self.try_autosave()
         self.test_preflight_requested.emit(self.get_settings())
 
-    def _sync_agent_config_widgets(self) -> None:
-        use_value = normalize_agent(str(self._use.currentData() or "codex"))
-        for agent, widgets in self._agent_config_widgets.items():
-            visible = agent == use_value
-            for widget in widgets:
-                widget.setVisible(visible)
+    def _on_nav_button_clicked(self, key: str) -> None:
+        self._navigate_to_pane(key, user_initiated=True)
 
-    @staticmethod
-    def _set_combo_value(combo: QComboBox, value: str, fallback: str) -> None:
-        idx = combo.findData(value)
-        if idx >= 0:
-            combo.setCurrentIndex(idx)
+    def _on_compact_nav_changed(self, _index: int) -> None:
+        key = str(self._compact_nav.currentData() or "").strip()
+        if not key:
             return
-        idx = combo.findData(fallback)
+        self._navigate_to_pane(key, user_initiated=True)
+
+    def _navigate_to_pane(self, key: str, *, user_initiated: bool) -> None:
+        key = str(key or "").strip()
+        if not key or key not in self._pane_index_by_key:
+            return
+        if key == self._active_pane_key:
+            self._set_active_navigation(key)
+            return
+
+        if user_initiated:
+            self.try_autosave()
+
+        self._set_current_pane(key, animate=True)
+        self._set_active_navigation(key)
+
+    def _set_active_navigation(self, key: str) -> None:
+        self._active_pane_key = key
+        for pane_key, button in self._nav_buttons.items():
+            button.setChecked(pane_key == key)
+
+        idx = self._compact_nav.findData(key)
         if idx >= 0:
-            combo.setCurrentIndex(idx)
+            with QSignalBlocker(self._compact_nav):
+                self._compact_nav.setCurrentIndex(idx)
+
+    def _set_current_pane(self, key: str, *, animate: bool) -> None:
+        target_index = self._pane_index_by_key.get(key)
+        if target_index is None:
+            return
+
+        current_index = self._page_stack.currentIndex()
+        if current_index == target_index:
+            self._active_pane_key = key
+            return
+
+        if current_index < 0 or not animate:
+            self._page_stack.setCurrentIndex(target_index)
+            self._active_pane_key = key
+            return
+
+        forward = target_index > current_index
+        self._page_stack.setCurrentIndex(target_index)
+        self._animate_stack(forward=forward)
+        self._active_pane_key = key
+
+    def _animate_stack(self, *, forward: bool) -> None:
+        if self._pane_animation is not None:
+            self._pane_animation.stop()
+            self._pane_animation = None
+
+        if self._pane_rest_pos is not None:
+            self._page_stack.move(self._pane_rest_pos)
+        self._page_stack.setGraphicsEffect(None)
+
+        base_pos = self._page_stack.pos()
+        self._pane_rest_pos = QPoint(base_pos)
+
+        offset = 16 if forward else -16
+        start_pos = QPoint(base_pos.x() + offset, base_pos.y())
+
+        effect = QGraphicsOpacityEffect(self._page_stack)
+        effect.setOpacity(0.0)
+        self._page_stack.setGraphicsEffect(effect)
+        self._page_stack.move(start_pos)
+
+        pos_anim = QPropertyAnimation(self._page_stack, b"pos", self)
+        pos_anim.setDuration(210)
+        pos_anim.setStartValue(start_pos)
+        pos_anim.setEndValue(base_pos)
+        pos_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        opacity_anim = QPropertyAnimation(effect, b"opacity", self)
+        opacity_anim.setDuration(210)
+        opacity_anim.setStartValue(0.0)
+        opacity_anim.setEndValue(1.0)
+        opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        group = QParallelAnimationGroup(self)
+        group.addAnimation(pos_anim)
+        group.addAnimation(opacity_anim)
+
+        def _cleanup() -> None:
+            if self._pane_rest_pos is not None:
+                self._page_stack.move(self._pane_rest_pos)
+            self._page_stack.setGraphicsEffect(None)
+            self._pane_animation = None
+
+        group.finished.connect(_cleanup)
+        group.start()
+        self._pane_animation = group
+
+    def _queue_debounced_autosave(self, *_args: object) -> None:
+        if self._suppress_autosave:
+            return
+        self._autosave_timer.start()
+
+    def _trigger_immediate_autosave(self, *_args: object) -> None:
+        if self._suppress_autosave:
+            return
+        if self._autosave_timer.isActive():
+            self._autosave_timer.stop()
+        self._emit_saved()
+
+    def _emit_saved(self) -> None:
+        if self._suppress_autosave:
+            return
+        self.saved.emit(self.get_settings())
+
+    def try_autosave(self) -> bool:
+        if self._autosave_timer.isActive():
+            self._autosave_timer.stop()
+        self._emit_saved()
+        return True
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_navigation_mode()
+
+    def _update_navigation_mode(self) -> None:
+        compact = self.width() < 1080
+        if compact == self._compact_mode:
+            return
+        self._compact_mode = compact
+        self._compact_nav.setVisible(compact)
+        self._nav_panel.setVisible(not compact)
