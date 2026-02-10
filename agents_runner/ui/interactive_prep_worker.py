@@ -84,6 +84,8 @@ class InteractivePrepWorker(QObject):
 
     def _diag(self, level: str, message: str) -> None:
         level_text = str(level or "INFO").strip().upper() or "INFO"
+        if level_text not in {"WARN", "ERROR"}:
+            return
         prep_prefix = f"[prep:{self._prep_id}] " if self._prep_id else ""
         self.log.emit(
             self._task_id,
