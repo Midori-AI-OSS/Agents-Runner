@@ -250,6 +250,83 @@ TEMPLATE_BASE = """
         border: 1px solid rgba(56, 189, 248, 170);
     }
 
+    QWidget#SettingsPageRoot QSlider::groove:horizontal {
+        height: 6px;
+        border: 1px solid rgba(255, 255, 255, 20);
+        background: rgba(18, 20, 28, 140);
+        border-radius: 0px;
+    }
+
+    QWidget#SettingsPageRoot QSlider::sub-page:horizontal {
+        background: rgba(56, 189, 248, 90);
+        border-radius: 0px;
+    }
+
+    QWidget#SettingsPageRoot QSlider::add-page:horizontal {
+        background: rgba(18, 20, 28, 140);
+        border-radius: 0px;
+    }
+
+    QWidget#SettingsPageRoot QSlider::handle:horizontal {
+        width: 10px;
+        margin: -4px 0px;
+        border: 1px solid rgba(56, 189, 248, 120);
+        background: rgba(237, 239, 245, 240);
+        border-radius: 0px;
+    }
+
+    QWidget#SettingsPageRoot QSlider::handle:horizontal:hover {
+        border: 1px solid rgba(56, 189, 248, 170);
+    }
+
+    QWidget#SettingsPageRoot QSlider::handle:horizontal:pressed {
+        border: 1px solid rgba(56, 189, 248, 210);
+    }
+
+    QWidget#SettingsPageRoot QAbstractSpinBox {
+        min-height: 36px;
+        background-color: rgba(18, 20, 28, 190);
+        border: 1px solid rgba(255, 255, 255, 22);
+        border-radius: 0px;
+        padding: 0px 8px;
+        selection-background-color: __STYLE_SELECTION_BG__;
+    }
+
+    QWidget#SettingsPageRoot QAbstractSpinBox:hover {
+        border: 1px solid rgba(56, 189, 248, 60);
+        background-color: rgba(18, 20, 28, 210);
+    }
+
+    QWidget#SettingsPageRoot QAbstractSpinBox:focus {
+        border: 1px solid rgba(56, 189, 248, 120);
+        background-color: rgba(18, 20, 28, 225);
+    }
+
+    QWidget#SettingsPageRoot QAbstractSpinBox:disabled {
+        background-color: rgba(18, 20, 28, 90);
+        color: rgba(237, 239, 245, 130);
+        border: 1px solid rgba(255, 255, 255, 14);
+    }
+
+    QWidget#SettingsPageRoot QAbstractSpinBox::up-button,
+    QWidget#SettingsPageRoot QAbstractSpinBox::down-button {
+        width: 20px;
+        border: 0px;
+        border-left: 1px solid rgba(255, 255, 255, 14);
+        background-color: rgba(18, 20, 28, 120);
+        border-radius: 0px;
+    }
+
+    QWidget#SettingsPageRoot QAbstractSpinBox::up-button:hover,
+    QWidget#SettingsPageRoot QAbstractSpinBox::down-button:hover {
+        background-color: rgba(56, 189, 248, 30);
+    }
+
+    QWidget#SettingsPageRoot QAbstractSpinBox::up-button:pressed,
+    QWidget#SettingsPageRoot QAbstractSpinBox::down-button:pressed {
+        background-color: rgba(56, 189, 248, 60);
+    }
+
     QWidget#SettingsNavPanel {
         background-color: rgba(18, 20, 28, 95);
         border: 1px solid rgba(255, 255, 255, 14);
