@@ -41,7 +41,7 @@ def _load_background(theme_name: str) -> ThemeBackground | None:
 
 
 def _fallback_theme_name() -> str:
-    return "midoriai"
+    return "midoriai_dark"
 
 
 def discover_theme_module_names() -> list[str]:

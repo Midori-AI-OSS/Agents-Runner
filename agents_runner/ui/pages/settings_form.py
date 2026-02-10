@@ -463,8 +463,10 @@ class _SettingsFormMixin:
     @staticmethod
     def _format_theme_label(value: str) -> str:
         normalized = str(value or "").strip().lower()
-        if normalized == "midoriai":
-            return "Midori AI"
+        if normalized == "midoriai_dark":
+            return "Midori AI (Dark Theme)"
+        if normalized == "midoriai_light":
+            return "Midori AI (Light Theme)"
         return _SettingsFormMixin._format_key_label(normalized)
 
     @staticmethod
