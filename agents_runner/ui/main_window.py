@@ -393,8 +393,10 @@ class MainWindow(
             self.setWindowTitle(APP_TITLE)
             return
 
-        current_track = str(state.get("current_track") or "").strip()
-        last_track = str(state.get("last_track") or "").strip()
+        current_track = self._normalize_radio_window_track_title(
+            state.get("current_track")
+        )
+        last_track = self._normalize_radio_window_track_title(state.get("last_track"))
         service_available = bool(state.get("service_available"))
         degraded_from_playback = bool(state.get("degraded_from_playback"))
 
@@ -407,3 +409,26 @@ class MainWindow(
             return
 
         self.setWindowTitle(APP_TITLE)
+
+    @staticmethod
+    def _normalize_radio_window_track_title(value: object) -> str:
+        track = " ".join(str(value or "").split())
+        if not track:
+            return ""
+
+        prefix = f"{APP_TITLE} - "
+        while track.casefold().startswith(prefix.casefold()):
+            track = track[len(prefix) :].strip()
+
+        parts = [part.strip() for part in track.split(" - ") if part.strip()]
+        if not parts:
+            return ""
+
+        while len(parts) >= 2 and parts[-1].casefold() == parts[-2].casefold():
+            parts.pop()
+        while len(parts) >= 2 and parts[0].casefold() == parts[-1].casefold():
+            parts.pop()
+
+        if not parts:
+            return ""
+        return " - ".join(parts)

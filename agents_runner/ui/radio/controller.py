@@ -437,7 +437,10 @@ class RadioController(QObject):
 
         previous_track_id = self._current_track_id
         track_id = str(data.get("track_id") or "").strip()
-        title = str(data.get("title") or "").strip()
+        title = self._normalize_track_title(
+            data.get("title"),
+            station_label=data.get("station_label"),
+        )
         if track_id:
             self._current_track_id = track_id
         if title:
@@ -456,6 +459,48 @@ class RadioController(QObject):
             self._apply_pending_quality(boundary_detected=True)
 
         self._emit_state()
+
+    def _normalize_track_title(
+        self,
+        raw_title: object,
+        *,
+        station_label: object = "",
+    ) -> str:
+        title = " ".join(str(raw_title or "").split())
+        if not title:
+            return ""
+
+        known_suffixes = {"midori ai agents runner", "midori ai radio"}
+        station = " ".join(str(station_label or "").split()).strip().casefold()
+        if station:
+            known_suffixes.add(station)
+
+        prefix_candidates = [f"{label} - " for label in known_suffixes]
+        lowered = title.casefold()
+        updated = True
+        while updated and title:
+            updated = False
+            lowered = title.casefold()
+            for prefix in prefix_candidates:
+                if lowered.startswith(prefix):
+                    title = title[len(prefix) :].strip()
+                    updated = True
+                    break
+
+        parts = [part.strip() for part in title.split(" - ") if part.strip()]
+        if not parts:
+            return ""
+
+        while len(parts) >= 2 and parts[-1].casefold() == parts[-2].casefold():
+            parts.pop()
+        while len(parts) >= 2 and parts[0].casefold() == parts[-1].casefold():
+            parts.pop()
+        while parts and parts[-1].casefold() in known_suffixes:
+            parts.pop()
+
+        if not parts:
+            return ""
+        return " - ".join(parts)
 
     def _apply_pending_quality(self, *, boundary_detected: bool) -> None:
         if not self._pending_quality:
