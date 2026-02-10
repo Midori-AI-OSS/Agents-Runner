@@ -230,9 +230,12 @@ class _MainWindowTaskEventsMixin:
         thread = self._threads.get(task_id)
         prep_workers = getattr(self, "_interactive_prep_workers", {})
         prep_threads = getattr(self, "_interactive_prep_threads", {})
+        prep_bridges = getattr(self, "_interactive_prep_bridges", {})
+        prep_context = getattr(self, "_interactive_prep_context", {})
         prep_diags = getattr(self, "_interactive_prep_diag", {})
         prep_worker = prep_workers.get(task_id)
         prep_thread = prep_threads.get(task_id)
+        prep_bridge = prep_bridges.get(task_id)
         prep_diag = prep_diags.get(task_id)
         container_id = task.container_id or (
             bridge.container_id if bridge is not None else None
@@ -267,6 +270,11 @@ class _MainWindowTaskEventsMixin:
                 prep_thread.wait(200)
             except Exception:
                 pass
+        if prep_bridge is not None:
+            try:
+                prep_bridge.deleteLater()
+            except Exception:
+                pass
 
         self._dashboard.remove_tasks({task_id})
         self._tasks.pop(task_id, None)
@@ -274,6 +282,8 @@ class _MainWindowTaskEventsMixin:
         self._bridges.pop(task_id, None)
         prep_threads.pop(task_id, None)
         prep_workers.pop(task_id, None)
+        prep_bridges.pop(task_id, None)
+        prep_context.pop(task_id, None)
         prep_diags.pop(task_id, None)
         self._run_started_s.pop(task_id, None)
         self._dashboard_log_refresh_s.pop(task_id, None)
