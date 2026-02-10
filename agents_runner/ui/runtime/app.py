@@ -11,6 +11,15 @@ _FAULT_LOG_HANDLE = None
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
+def _is_truthy_env(name: str) -> bool:
+    return str(os.environ.get(name, "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _maybe_enable_faulthandler() -> None:
     """Enable faulthandler logging when requested via env var.
 
@@ -18,8 +27,7 @@ def _maybe_enable_faulthandler() -> None:
     Set `AGENTS_RUNNER_FAULTHANDLER=1` to write tracebacks to:
     `~/.midoriai/agents-runner/faulthandler.log`
     """
-    enabled = str(os.environ.get("AGENTS_RUNNER_FAULTHANDLER", "")).strip().lower()
-    if enabled not in {"1", "true", "yes", "on"}:
+    if not _is_truthy_env("AGENTS_RUNNER_FAULTHANDLER"):
         return
 
     try:
@@ -114,6 +122,41 @@ def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
     return " ".join(tokens).strip()
 
 
+def _append_qt_logging_rules(existing: str, extra_rules: list[str]) -> str:
+    tokens: list[str] = []
+    existing_rules = (existing or "").replace("\n", ";").strip()
+    if existing_rules:
+        tokens.extend(
+            rule.strip() for rule in existing_rules.split(";") if rule.strip()
+        )
+
+    existing_keys = {
+        str(rule.split("=", 1)[0]).strip().lower() for rule in tokens if "=" in rule
+    }
+    for rule in extra_rules:
+        key = str(rule.split("=", 1)[0]).strip().lower()
+        if key and key not in existing_keys:
+            tokens.append(rule)
+            existing_keys.add(key)
+    return ";".join(tokens)
+
+
+def _configure_qt_logging_runtime() -> None:
+    # Keep full Qt output in explicit diagnostics mode.
+    if _is_truthy_env("AGENTS_RUNNER_QT_DIAGNOSTICS"):
+        return
+
+    existing_rules = os.environ.get("QT_LOGGING_RULES", "")
+    os.environ["QT_LOGGING_RULES"] = _append_qt_logging_rules(
+        existing_rules,
+        [
+            "default.warning=false",
+            "qt.core.qfuture.continuations.warning=false",
+            "qt.multimedia.ffmpeg=false",
+        ],
+    )
+
+
 def _configure_qtwebengine_runtime() -> None:
     fontconfig_file = os.environ.get("FONTCONFIG_FILE")
     if not fontconfig_file:
@@ -152,6 +195,7 @@ def _initialize_qtwebengine() -> None:
 
 def run_app(argv: list[str]) -> None:
     _maybe_enable_faulthandler()
+    _configure_qt_logging_runtime()
     _configure_qtwebengine_runtime()
 
     from agents_runner.diagnostics.crash_reporting import install_exception_hooks
@@ -185,10 +229,7 @@ def run_app(argv: list[str]) -> None:
         app.setWindowIcon(icon)
     app.setStyleSheet(app_stylesheet())
 
-    eager_qtwebengine = (
-        str(os.environ.get("AGENTS_RUNNER_EAGER_QTWEBENGINE_INIT", "")).strip().lower()
-    )
-    if eager_qtwebengine in {"1", "true", "yes", "on"}:
+    if _is_truthy_env("AGENTS_RUNNER_EAGER_QTWEBENGINE_INIT"):
         _initialize_qtwebengine()
 
     # Check if first-run setup is needed
