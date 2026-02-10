@@ -72,6 +72,7 @@ class RadioController(QObject):
         self._last_reconnect_reason = ""
         self._reconnect_allow_service_bypass = False
         self._reconnect_force_restart = False
+        self._reconnect_in_progress = False
         self._last_restart_ts_s = 0.0
         self._suppress_reconnect_until_s = 0.0
         self._last_error_log_ts: dict[str, float] = {}
@@ -207,10 +208,29 @@ class RadioController(QObject):
             "desired_playing": self._desired_playing,
             "reconnect_attempts": self._reconnect_attempts,
             "last_reconnect_reason": self._last_reconnect_reason,
+            "connection_state": self._connection_state_value(),
         }
 
     def _emit_state(self) -> None:
         self.state_changed.emit(dict(self.state_snapshot()))
+
+    def _connection_state_value(self) -> str:
+        if not self._qt_available:
+            return "unavailable"
+        if self._is_reconnecting():
+            return "reconnecting"
+        if self._is_playing:
+            return "playing"
+        if not self._service_available:
+            return "unavailable"
+        return "idle"
+
+    def _is_reconnecting(self) -> bool:
+        if self._reconnect_in_progress:
+            return True
+        return bool(
+            self._reconnect_timer is not None and self._reconnect_timer.isActive()
+        )
 
     def shutdown(self) -> None:
         self.cancel_start_when_service_ready()
@@ -478,20 +498,26 @@ class RadioController(QObject):
         self._set_service_available(True, reason="current track ok")
 
         previous_track_id = self._current_track_id
+        previous_title = self._last_track_title or self._current_track_title
         track_id = str(data.get("track_id") or "").strip()
         title = self._normalize_track_title(
             data.get("title"),
             station_label=data.get("station_label"),
         )
-        if track_id:
-            self._current_track_id = track_id
+        self._current_track_id = track_id
         if title:
             self._current_track_title = title
             self._last_track_title = title
         else:
             self._current_track_title = ""
 
-        if previous_track_id and track_id and previous_track_id != track_id:
+        boundary_detected = False
+        if previous_track_id and track_id:
+            boundary_detected = previous_track_id != track_id
+        elif previous_title and title:
+            boundary_detected = previous_title != title
+
+        if boundary_detected:
             if self._pending_quality:
                 self._apply_pending_quality(boundary_detected=True)
             elif self._enabled and self._desired_playing:
@@ -642,13 +668,11 @@ class RadioController(QObject):
         if QMediaPlayer is None:
             return
 
-        status_name = self._media_status_name(status)
-        restart_statuses = {
-            "EndOfMedia",
-            "InvalidMedia",
-            "StalledMedia",
-        }
-        if status_name in restart_statuses:
+        media_status = self._coerce_media_status(status)
+        if media_status is None:
+            return
+        if self._is_restart_media_status(media_status):
+            status_name = self._media_status_name(media_status)
             self._queue_reconnect(
                 f"media status {status_name}",
                 allow_without_service=True,
@@ -657,7 +681,41 @@ class RadioController(QObject):
             )
             self._emit_state()
 
+    def _coerce_media_status(self, status: Any) -> Any | None:
+        if QMediaPlayer is None:
+            return None
+        media_status_type = QMediaPlayer.MediaStatus
+        if isinstance(status, media_status_type):
+            return status
+        try:
+            return media_status_type(int(status))
+        except Exception:
+            return None
+
+    def _restart_media_statuses(self) -> set[Any]:
+        if QMediaPlayer is None:
+            return set()
+        media_status_type = QMediaPlayer.MediaStatus
+        return {
+            media_status_type.EndOfMedia,
+            media_status_type.InvalidMedia,
+            media_status_type.StalledMedia,
+            media_status_type.NoMedia,
+        }
+
+    def _is_restart_media_status(self, status: Any) -> bool:
+        media_status = self._coerce_media_status(status)
+        if media_status is None:
+            return False
+        return media_status in self._restart_media_statuses()
+
     def _media_status_name(self, status: Any) -> str:
+        media_status = self._coerce_media_status(status)
+        if media_status is not None:
+            try:
+                return str(media_status.name)
+            except Exception:
+                pass
         try:
             return str(status.name)
         except Exception:
@@ -743,6 +801,7 @@ class RadioController(QObject):
         self._active_quality = quality_to_use
         self._status_text = f"Reconnecting Midori AI Radio ({quality_to_use})..."
         self._last_restart_ts_s = time.monotonic()
+        self._reconnect_in_progress = True
 
         try:
             if force_restart:
@@ -763,12 +822,15 @@ class RadioController(QObject):
                 allow_without_service=allow_without_service,
                 force_restart=force_restart,
             )
+        finally:
+            self._reconnect_in_progress = False
 
         self._emit_state()
 
     def _cancel_reconnect(self, *, reset_attempts: bool) -> None:
         if self._reconnect_timer is not None and self._reconnect_timer.isActive():
             self._reconnect_timer.stop()
+        self._reconnect_in_progress = False
         if reset_attempts:
             self._reconnect_attempts = 0
             self._last_reconnect_reason = ""
@@ -799,8 +861,9 @@ class RadioController(QObject):
             self._emit_state()
             return
 
-        status_name = self._media_status_name(self._player.mediaStatus())
-        if status_name in {"EndOfMedia", "InvalidMedia", "StalledMedia"}:
+        media_status = self._coerce_media_status(self._player.mediaStatus())
+        if self._is_restart_media_status(media_status):
+            status_name = self._media_status_name(media_status)
             self._queue_reconnect(
                 f"watchdog media status {status_name}",
                 allow_without_service=True,
