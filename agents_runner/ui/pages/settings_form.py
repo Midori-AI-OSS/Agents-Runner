@@ -218,6 +218,7 @@ class _SettingsFormMixin:
         self._radio_quality.addItem("High (320 kbps)", "high")
 
         self._radio_volume = QSlider(Qt.Horizontal)
+        self._radio_volume.setObjectName("SettingsVolumeSlider")
         self._radio_volume.setRange(0, 100)
         self._radio_volume.setValue(70)
         self._radio_volume_value = QLabel("70%")
@@ -233,6 +234,7 @@ class _SettingsFormMixin:
         )
 
         self._radio_loudness_boost_factor = QDoubleSpinBox()
+        self._radio_loudness_boost_factor.setObjectName("SettingsBoostSpinBox")
         self._radio_loudness_boost_factor.setRange(
             RadioController.LOUDNESS_BOOST_MIN,
             RadioController.LOUDNESS_BOOST_MAX,
