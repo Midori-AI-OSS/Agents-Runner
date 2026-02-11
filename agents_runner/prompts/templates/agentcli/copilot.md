@@ -29,3 +29,15 @@ This section is appended because Copilot CLI is selected and available for this 
 
 **Prompt contract**
 - When Copilot acts as Router/Orchestrator: the main agent must include the full router flow/template inline in the prompt; Copilot must restate the flow Copilot will run and then follow it strictly.
+- When Copilot is Router/Orchestrator, do not directly invoke other agent CLIs (for example: `codex exec`, `gemini`, `claude`). Prefer Copilot-native delegation via the `task` tool.
+
+**Copilot-native sub-agents (`task` tool)**
+- Example payload:
+  ```json
+  {
+    "agent_type": "coder",
+    "description": "Saying hi",
+    "prompt": "Say hi."
+  }
+  ```
+- If you need another runtime (Codex/Claude/Gemini) for a subtask (for example, compression/summarization or targeted debugging), spawn a Copilot sub-agent and instruct that sub-agent to invoke the other runtime with appropriately scoped sandbox/permissions.

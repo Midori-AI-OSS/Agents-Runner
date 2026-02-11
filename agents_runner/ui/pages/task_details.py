@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QProcess
+from PySide6.QtCore import QProcessEnvironment
 from PySide6.QtCore import QUrl
 from PySide6.QtCore import QSize
 from PySide6.QtCore import QTimer
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QToolButton
@@ -29,9 +31,9 @@ from agents_runner.ui.task_model import _task_display_status
 from agents_runner.ui.utils import _format_duration
 from agents_runner.ui.utils import _rgba
 from agents_runner.ui.utils import _status_color
-from agents_runner.widgets import GlassCard
-from agents_runner.widgets import LogHighlighter
-from agents_runner.widgets import StatusGlyph
+from agents_runner.ui.widgets import GlassCard
+from agents_runner.ui.widgets import LogHighlighter
+from agents_runner.ui.widgets import StatusGlyph
 
 import logging
 import sys
@@ -51,6 +53,7 @@ class TaskDetailsPage(QWidget):
         self._environments: dict[str, object] | None = None
         self._desktop_viewer_process: QProcess | None = None
         self._desktop_viewer_url: str = ""
+        self._desktop_viewer_output_lines: list[str] = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -129,7 +132,7 @@ class TaskDetailsPage(QWidget):
         # Right side: Container state + Prompt cards stacked vertically
         right_column = QVBoxLayout()
         right_column.setSpacing(14)
-        
+
         # Container state card (top-right)
         state_card = GlassCard()
         state_layout = QVBoxLayout(state_card)
@@ -208,7 +211,7 @@ class TaskDetailsPage(QWidget):
         state_layout.addLayout(state_row)
         state_layout.addLayout(details)
         right_column.addWidget(state_card)
-        
+
         # Prompt card (bottom-right)
         prompt_card = GlassCard()
         prompt_layout = QVBoxLayout(prompt_card)
@@ -221,7 +224,7 @@ class TaskDetailsPage(QWidget):
         prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
         prompt_title_row.addWidget(prompt_title)
         prompt_title_row.addStretch(1)
-        
+
         self._btn_copy_prompt = QToolButton()
         self._btn_copy_prompt.setText("Copy")
         self._btn_copy_prompt.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -265,7 +268,7 @@ class TaskDetailsPage(QWidget):
         prompt_layout.addWidget(self._prompt, 1)
         prompt_layout.addLayout(cfg)
         right_column.addWidget(prompt_card, 1)
-        
+
         mid.addLayout(right_column, 2)
 
         # Artifacts tab
@@ -306,7 +309,9 @@ class TaskDetailsPage(QWidget):
         """Show the Artifacts tab if not already visible."""
         if self._artifacts_tab_visible:
             return
-        self._artifacts_tab_index = self._tabs.addTab(self._artifacts_tab_widget, "Artifacts")
+        self._artifacts_tab_index = self._tabs.addTab(
+            self._artifacts_tab_widget, "Artifacts"
+        )
         self._artifacts_tab_visible = True
 
     def _hide_artifacts_tab(self) -> None:
@@ -328,7 +333,7 @@ class TaskDetailsPage(QWidget):
     def _sync_review_menu(self, task: Task) -> None:
         # Task.requires_git_metadata() already checks workspace_type
         can_pr = task.requires_git_metadata()
-        
+
         pr_url = str(task.gh_pr_url or "").strip()
         self._review_pr.setVisible(can_pr)
         self._review_pr.setEnabled(can_pr and not task.is_active())
@@ -368,42 +373,88 @@ class TaskDetailsPage(QWidget):
         """Launch the external desktop viewer process."""
         if not self._last_task:
             return
-        
+
         url = str(self._last_task.novnc_url or "").strip()
         if not url:
             logger.warning("Cannot launch desktop viewer: no noVNC URL available")
             return
-        
+
+        try:
+            from PySide6 import QtWebEngineWidgets as _  # noqa: F401
+        except Exception:
+            logger.warning(
+                "QtWebEngine not available; opening noVNC URL in system browser instead"
+            )
+            QDesktopServices.openUrl(QUrl(url))
+            return
+
         # If viewer is already running for this URL, don't launch another
-        if (self._desktop_viewer_process is not None 
+        if (
+            self._desktop_viewer_process is not None
             and self._desktop_viewer_process.state() == QProcess.ProcessState.Running
-            and self._desktop_viewer_url == url):
+            and self._desktop_viewer_url == url
+        ):
             logger.info("Desktop viewer already running")
             return
-        
+
         # Clean up old process if it exists
         if self._desktop_viewer_process is not None:
             self._desktop_viewer_process.kill()
             self._desktop_viewer_process.waitForFinished(1000)
             self._desktop_viewer_process = None
-        
+
         # Launch new viewer process
         task_id = str(self._current_task_id or "")
         title = f"Task {task_id}" if task_id else "Desktop"
-        
+
         self._desktop_viewer_process = QProcess(self)
+        self._desktop_viewer_process.setProcessChannelMode(
+            QProcess.ProcessChannelMode.MergedChannels
+        )
+        self._desktop_viewer_process.readyReadStandardOutput.connect(
+            self._on_viewer_output
+        )
         self._desktop_viewer_process.finished.connect(self._on_viewer_finished)
-        
+
         # Use sys.executable to get the current Python interpreter
         args = [
-            "-m", "agents_runner.desktop_viewer",
-            "--url", url,
-            "--title", title,
+            "-X",
+            "faulthandler",
+            "-m",
+            "agents_runner.ui.desktop_viewer",
+            "--url",
+            url,
+            "--title",
+            title,
         ]
-        
+
         self._desktop_viewer_url = url
+        self._desktop_viewer_output_lines = []
+        env = QProcessEnvironment.systemEnvironment()
+        env.insert("AGENTS_RUNNER_DESKTOP_VIEWER_FAULTHANDLER", "1")
+        # QtWebEngine/Wayland can crash on some GPU stacks (often around GBM support).
+        # Prefer XWayland for the out-of-process viewer unless the user overrides.
+        try:
+            session_type = str(env.value("XDG_SESSION_TYPE") or "").strip().lower()
+        except Exception:
+            session_type = ""
+        allow_wayland = str(
+            env.value("AGENTS_RUNNER_DESKTOP_VIEWER_ALLOW_WAYLAND") or ""
+        ).strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if (
+            session_type == "wayland"
+            and not allow_wayland
+            and not env.contains("QT_QPA_PLATFORM")
+        ):
+            env.insert("QT_QPA_PLATFORM", "xcb")
+        self._desktop_viewer_process.setProcessEnvironment(env)
         self._desktop_viewer_process.start(sys.executable, args)
-        
+
         if not self._desktop_viewer_process.waitForStarted(3000):
             logger.error("Failed to start desktop viewer process")
             self._desktop_viewer_process = None
@@ -411,15 +462,64 @@ class TaskDetailsPage(QWidget):
         else:
             logger.info(f"Desktop viewer launched: {title}")
 
-    def _on_viewer_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
+    def _on_viewer_output(self) -> None:
+        """Capture desktop viewer output for crash diagnostics."""
+        proc = self._desktop_viewer_process
+        if proc is None:
+            return
+        try:
+            chunk = bytes(proc.readAllStandardOutput()).decode(
+                "utf-8", errors="replace"
+            )
+        except Exception:
+            return
+
+        if not chunk:
+            return
+
+        lines = chunk.splitlines()
+        if not lines:
+            return
+
+        self._desktop_viewer_output_lines.extend(lines)
+        if len(self._desktop_viewer_output_lines) > 250:
+            self._desktop_viewer_output_lines = self._desktop_viewer_output_lines[-250:]
+
+    def _on_viewer_finished(
+        self, exit_code: int, exit_status: QProcess.ExitStatus
+    ) -> None:
         """Handle desktop viewer process exit."""
-        if exit_status == QProcess.ExitStatus.CrashExit:
-            logger.warning(f"Desktop viewer crashed (exit code {exit_code})")
-            if self._desktop_viewer_url.startswith("http") and exit_code != 9:
-                QDesktopServices.openUrl(QUrl(self._desktop_viewer_url))
-        else:
-            logger.info(f"Desktop viewer exited (exit code {exit_code})")
-        
+        try:
+            if exit_status == QProcess.ExitStatus.CrashExit:
+                logger.warning(f"Desktop viewer crashed (exit code {exit_code})")
+                tail = "\n".join(self._desktop_viewer_output_lines[-40:])
+                if tail.strip():
+                    logger.warning(f"Desktop viewer output (tail):\n{tail}")
+                QMessageBox.warning(
+                    self,
+                    "Desktop viewer crashed",
+                    "The desktop viewer process crashed.\n\n"
+                    f"Exit code: {exit_code}\n\n"
+                    "A faulthandler log may be available at:\n"
+                    "~/.midoriai/agents-runner/desktop-viewer-faulthandler.log\n\n"
+                    "Tip: If this is a QtWebEngine/GPU crash, try setting:\n"
+                    "AGENTS_RUNNER_DESKTOP_VIEWER_DISABLE_GPU=1\n"
+                    "AGENTS_RUNNER_DESKTOP_VIEWER_DISABLE_VULKAN=1\n\n"
+                    "If you're on Wayland, try forcing XWayland for the viewer:\n"
+                    "AGENTS_RUNNER_DESKTOP_VIEWER_ALLOW_WAYLAND=0 (default)\n\n"
+                    + (f"Viewer output (tail):\n{tail}" if tail.strip() else ""),
+                )
+                if self._desktop_viewer_url.startswith("http") and exit_code != 9:
+                    QDesktopServices.openUrl(QUrl(self._desktop_viewer_url))
+            elif exit_code != 0:
+                logger.warning(f"Desktop viewer failed (exit code {exit_code})")
+                if self._desktop_viewer_url.startswith("http"):
+                    QDesktopServices.openUrl(QUrl(self._desktop_viewer_url))
+            else:
+                logger.info(f"Desktop viewer exited (exit code {exit_code})")
+        except Exception as exc:
+            logger.exception(f"Viewer exit handler failed: {exc}")
+
         self._desktop_viewer_url = ""
 
     def _sync_container_actions(self, task: Task) -> None:
@@ -441,14 +541,14 @@ class TaskDetailsPage(QWidget):
         self._title.setText(f"Task {task.task_id}")
         self._subtitle.setText(task.prompt_one_line())
         self._prompt.setPlainText(task.prompt)
-        
+
         # Show/hide Host Workdir based on workspace type
         is_cloned = task.workspace_type == WORKSPACE_CLONED
         self._workdir_label.setVisible(not is_cloned)
         self._workdir.setVisible(not is_cloned)
         if not is_cloned:
             self._workdir.setText(task.host_workdir)
-        
+
         self._container.setText(task.container_id or "—")
         self._tabs.setCurrentIndex(self._task_tab_index)
         self._sync_desktop_button(task)
@@ -480,7 +580,7 @@ class TaskDetailsPage(QWidget):
         self._apply_status(task)
         self._tick_uptime()
         self._sync_review_menu(task)
-        
+
         # Notify artifacts tab of status changes
         if self._artifacts_tab_visible:
             self._artifacts_tab.on_task_status_changed(task)
@@ -488,14 +588,10 @@ class TaskDetailsPage(QWidget):
     def _sync_desktop_button(self, task: Task) -> None:
         """Update Desktop button visibility and noVNC URL display."""
         url = str(task.novnc_url or "").strip()
-        
+
         # Show button when desktop is ready
-        should_show = bool(
-            task.is_active() and 
-            task.headless_desktop_enabled and
-            url
-        )
-        
+        should_show = bool(task.is_active() and task.headless_desktop_enabled and url)
+
         self._desktop_btn.setVisible(should_show)
         self._novnc_url.setText(url if url else "—")
         self._desktop_display.setText(str(task.desktop_display or ":1") if url else "—")
@@ -503,11 +599,11 @@ class TaskDetailsPage(QWidget):
     def _sync_artifacts(self, task: Task) -> None:
         """
         Update Artifacts tab visibility based on artifact status.
-        
+
         Shows tab ONLY when artifacts actually exist:
         - file_count > 0 (has files in staging directory), OR
         - task.artifacts is not empty (has encrypted artifacts from completed task)
-        
+
         Does NOT show for:
         - Empty staging directory
         - Active task with no artifacts yet
@@ -515,22 +611,19 @@ class TaskDetailsPage(QWidget):
         """
         # Get single source of truth
         artifact_info = get_artifact_info(task.task_id)
-        
+
         # Check encrypted artifacts (for completed tasks)
         has_encrypted = bool(task.artifacts)
-        
+
         # Show tab ONLY when artifacts actually exist
-        should_show = (
-            artifact_info.file_count > 0 or
-            has_encrypted
-        )
-        
+        should_show = artifact_info.file_count > 0 or has_encrypted
+
         # Debug logging (REQUIRED)
         logger.info(
             f"Artifacts tab: task={task.task_id} dir={artifact_info.host_artifacts_dir} "
             f"exists={artifact_info.exists} count={artifact_info.file_count} shown={should_show}"
         )
-        
+
         if should_show:
             was_visible = self._artifacts_tab_visible
             self._show_artifacts_tab()
@@ -549,7 +642,7 @@ class TaskDetailsPage(QWidget):
         color = _status_color(task.status)
         self._status.setText(status)
         self._status.setStyleSheet(
-            "font-size: 16px; font-weight: 750; " f"color: {_rgba(color, 235)};"
+            f"font-size: 16px; font-weight: 750; color: {_rgba(color, 235)};"
         )
         if task.is_active():
             self._glyph.set_mode("spinner", color)

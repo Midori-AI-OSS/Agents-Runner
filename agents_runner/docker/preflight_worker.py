@@ -11,6 +11,7 @@ from typing import Callable
 from threading import Event
 
 from agents_runner.agent_cli import additional_config_mounts
+from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
@@ -27,50 +28,47 @@ from agents_runner.docker.process import _has_platform_image
 from agents_runner.docker.process import _inspect_state
 from agents_runner.docker.process import _pull_image
 from agents_runner.docker.process import _run_docker
-from agents_runner.docker.utils import _resolve_workspace_mount
+from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
-from agents_runner.ui.shell_templates import git_identity_clause
-from agents_runner.ui.shell_templates import shell_log_statement
+from agents_runner.core.shell_templates import git_identity_clause
+from agents_runner.core.shell_templates import shell_log_statement
 from agents_runner.docker.utils import _write_preflight_script
 from agents_runner.midoriai_template import MidoriAITemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
 
 
 def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
-    """Check if copilot is in the cross-agent allowlist.
-    
-    Returns True if any agent in cross_agent_allowlist uses copilot CLI.
-    """
+    """Check if any cross-agent allowlisted agent requires a GitHub token."""
     if not environment_id:
         return False
-    
+
     # Load environment and validate structure
     try:
         from agents_runner.environments import load_environments
+
         environments = load_environments()
         env = environments.get(str(environment_id))
     except Exception:
         return False
-    
+
     if env is None or not env.cross_agent_allowlist:
         return False
-    
+
     if env.agent_selection is None or not env.agent_selection.agents:
         return False
-    
+
     # Build agent_id → agent_cli mapping for quick lookup
     agent_cli_by_id: dict[str, str] = {
-        agent.agent_id: agent.agent_cli
-        for agent in env.agent_selection.agents
+        agent.agent_id: agent.agent_cli for agent in env.agent_selection.agents
     }
-    
+
     # Check each allowlisted agent_id for copilot
     for agent_id in env.cross_agent_allowlist:
         agent_cli = agent_cli_by_id.get(agent_id)
-        if agent_cli and normalize_agent(agent_cli) == "copilot":
+        if agent_cli and agent_requires_github_token(normalize_agent(agent_cli)):
             return True
-    
+
     return False
 
 
@@ -129,17 +127,31 @@ class DockerPreflightWorker:
                         on_log=self._on_log,
                     )
                     if result.get("branch"):
-                        self._on_log(format_log("gh", "repo", "INFO", f"ready on branch {result['branch']}"))
+                        self._on_log(
+                            format_log(
+                                "gh",
+                                "repo",
+                                "INFO",
+                                f"ready on branch {result['branch']}",
+                            )
+                        )
                 except (GhManagementError, Exception) as exc:
                     self._on_log(format_log("gh", "repo", "ERROR", str(exc)))
                     self._on_done(1, str(exc))
                     return
 
-            os.makedirs(self._config.host_codex_dir, exist_ok=True)
+            os.makedirs(self._config.host_config_dir, exist_ok=True)
             forced_platform = docker_platform_for_pixelarch()
             platform_args = docker_platform_args_for_pixelarch()
             if forced_platform:
-                self._on_log(format_log("host", "none", "INFO", f"forcing Docker platform: {forced_platform}"))
+                self._on_log(
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"forcing Docker platform: {forced_platform}",
+                    )
+                )
                 rosetta = has_rosetta()
                 if rosetta is False:
                     self._on_log(
@@ -151,24 +163,19 @@ class DockerPreflightWorker:
                         )
                     )
             agent_cli = normalize_agent(self._config.agent_cli)
-            config_container_dir = container_config_dir(agent_cli)
+            config_container_dir = str(self._config.container_config_dir or "").strip()
+            if not config_container_dir:
+                config_container_dir = container_config_dir(agent_cli)
             config_extra_mounts = additional_config_mounts(
-                agent_cli, self._config.host_codex_dir
+                agent_cli, self._config.host_config_dir
             )
-            host_mount, container_cwd = _resolve_workspace_mount(
-                self._config.host_workdir, container_mount=self._config.container_workdir
+            host_mount = os.path.abspath(
+                os.path.expanduser(str(self._config.host_workdir or "").strip())
             )
-            if host_mount != self._config.host_workdir:
-                self._on_log(
-                    format_log(
-                        "host",
-                        "none",
-                        "INFO",
-                        f"mounting workspace root: {host_mount} (selected {self._config.host_workdir})",
-                    )
-                )
-            if container_cwd != self._config.container_workdir:
-                self._on_log(format_log("host", "none", "INFO", f"container workdir: {container_cwd}"))
+            container_cwd = (
+                str(self._config.container_workdir or "").strip()
+                or "/home/midori-ai/workspace"
+            )
 
             template_detection = scan_midoriai_agents_template(host_mount)
             if self._config.environment_id:
@@ -249,19 +256,37 @@ class DockerPreflightWorker:
 
             if self._config.pull_before_run:
                 self._on_state({"Status": "pulling"})
-                self._on_log(format_log("host", "none", "INFO", f"docker pull {self._config.image}"))
+                self._on_log(
+                    format_log(
+                        "host", "none", "INFO", f"docker pull {self._config.image}"
+                    )
+                )
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log(format_log("host", "none", "INFO", "pull complete"))
             elif forced_platform and not _has_platform_image(
                 self._config.image, forced_platform
             ):
                 self._on_state({"Status": "pulling"})
-                self._on_log(format_log("host", "none", "INFO", f"image missing; docker pull {self._config.image}"))
+                self._on_log(
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"image missing; docker pull {self._config.image}",
+                    )
+                )
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log(format_log("host", "none", "INFO", "pull complete"))
             elif not forced_platform and not _has_image(self._config.image):
                 self._on_state({"Status": "pulling"})
-                self._on_log(format_log("host", "none", "INFO", f"image missing; docker pull {self._config.image}"))
+                self._on_log(
+                    format_log(
+                        "host",
+                        "none",
+                        "INFO",
+                        f"image missing; docker pull {self._config.image}",
+                    )
+                )
                 _pull_image(self._config.image, platform_args=platform_args)
                 self._on_log(format_log("host", "none", "INFO", "pull complete"))
 
@@ -284,9 +309,9 @@ class DockerPreflightWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                    f'{shell_log_statement("env", "setup", "INFO", "settings: running")}; '
+                    f"{shell_log_statement('env', 'setup', 'INFO', 'settings: running')}; "
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    f'{shell_log_statement("env", "setup", "INFO", "settings: done")}; '
+                    f"{shell_log_statement('env', 'setup', 'INFO', 'settings: done')}; "
                 )
 
             if environment_preflight_tmp_path is not None:
@@ -306,9 +331,9 @@ class DockerPreflightWorker:
                 )
                 preflight_clause += (
                     f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                    f'{shell_log_statement("env", "setup", "INFO", "environment: running")}; '
+                    f"{shell_log_statement('env', 'setup', 'INFO', 'environment: running')}; "
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    f'{shell_log_statement("env", "setup", "INFO", "environment: done")}; '
+                    f"{shell_log_statement('env', 'setup', 'INFO', 'environment: done')}; "
                 )
 
             env_args: list[str] = []
@@ -318,44 +343,61 @@ class DockerPreflightWorker:
                     continue
                 env_args.extend(["-e", f"{k}={value}"])
 
-            if agent_cli == "copilot":
+            needs_token_for_primary = agent_requires_github_token(agent_cli)
+            needs_token_for_cross = (
+                _needs_cross_agent_gh_token(self._config.environment_id)
+                and not needs_token_for_primary
+            )
+            if needs_token_for_primary or needs_token_for_cross:
                 token = resolve_github_token()
                 if (
                     token
                     and "GH_TOKEN" not in (self._config.env_vars or {})
                     and "GITHUB_TOKEN" not in (self._config.env_vars or {})
                 ):
-                    docker_env = dict(os.environ)
-                    docker_env["GH_TOKEN"] = token
-                    docker_env["GITHUB_TOKEN"] = token
-                    env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
-            elif _needs_cross_agent_gh_token(self._config.environment_id) and agent_cli != "copilot":
-                token = resolve_github_token()
-                if (
-                    token
-                    and "GH_TOKEN" not in (self._config.env_vars or {})
-                    and "GITHUB_TOKEN" not in (self._config.env_vars or {})
-                ):
-                    self._on_log(
-                        format_log("docker", "auth", "INFO", "forwarding GitHub token for cross-agent copilot")
-                    )
+                    if needs_token_for_cross:
+                        self._on_log(
+                            format_log(
+                                "docker",
+                                "auth",
+                                "INFO",
+                                "forwarding GitHub token for cross-agent execution",
+                            )
+                        )
                     if docker_env is None:
                         docker_env = dict(os.environ)
                     docker_env["GH_TOKEN"] = token
                     docker_env["GITHUB_TOKEN"] = token
                     env_args.extend(["-e", "GH_TOKEN", "-e", "GITHUB_TOKEN"])
 
-            extra_mount_args: list[str] = []
+            # Build and deduplicate mount arguments
+            all_mounts: list[str] = []
+
+            # Add primary config mount
+            all_mounts.append(f"{self._config.host_config_dir}:{config_container_dir}")
+
+            # Add workspace mount
+            all_mounts.append(f"{host_mount}:{self._config.container_workdir}")
+
+            # Add extra mounts from config
             for mount in self._config.extra_mounts or []:
                 m = str(mount).strip()
-                if not m:
-                    continue
-                extra_mount_args.extend(["-v", m])
+                if m:
+                    all_mounts.append(m)
+
+            # Add config extra mounts (cross-agent configs, etc.)
             for mount in config_extra_mounts:
                 m = str(mount).strip()
-                if not m:
-                    continue
-                extra_mount_args.extend(["-v", m])
+                if m:
+                    all_mounts.append(m)
+
+            # Deduplicate by container path, preserving order
+            deduplicated = deduplicate_mounts(all_mounts)
+
+            # Build mount arguments with -v flags
+            extra_mount_args: list[str] = []
+            for mount in deduplicated:
+                extra_mount_args.extend(["-v", mount])
 
             args = [
                 "run",
@@ -364,10 +406,6 @@ class DockerPreflightWorker:
                 "-t",
                 "--name",
                 container_name,
-                "-v",
-                f"{self._config.host_codex_dir}:{config_container_dir}",
-                "-v",
-                f"{host_mount}:{self._config.container_workdir}",
                 *extra_mount_args,
                 *preflight_mounts,
                 *env_args,
@@ -379,7 +417,7 @@ class DockerPreflightWorker:
                 "set -euo pipefail; "
                 f"{git_identity_clause()}"
                 f"{preflight_clause}"
-                f'{shell_log_statement("docker", "preflight", "INFO", "complete")}; ',
+                f"{shell_log_statement('docker', 'preflight', 'INFO', 'complete')}; ",
             ]
             self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
             try:
@@ -424,8 +462,16 @@ class DockerPreflightWorker:
                         except Exception:
                             chunk = ""
                         if chunk:
-                            stream = "stdout" if key.fileobj == logs_proc.stdout else "stderr"
-                            self._on_log(wrap_container_log(self._container_id, stream, chunk.rstrip("\n")))
+                            stream = (
+                                "stdout"
+                                if key.fileobj == logs_proc.stdout
+                                else "stderr"
+                            )
+                            self._on_log(
+                                wrap_container_log(
+                                    self._container_id, stream, chunk.rstrip("\n")
+                                )
+                            )
             finally:
                 if logs_proc.poll() is None:
                     logs_proc.terminate()

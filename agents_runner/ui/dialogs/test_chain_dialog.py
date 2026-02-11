@@ -14,7 +14,7 @@ from PySide6.QtWidgets import QVBoxLayout
 
 from agents_runner.setup.agent_status import AgentStatus
 from agents_runner.setup.agent_status import detect_all_agents
-from agents_runner.widgets import AgentChainStatusWidget
+from agents_runner.ui.widgets import AgentChainStatusWidget
 
 
 class AgentStatusCheckThread(QThread):
@@ -125,11 +125,9 @@ class TestChainDialog(QDialog):
         # Color the summary
         if "Available:" in summary:
             self._summary.setStyleSheet(
-                "font-weight: 600; margin-top: 8px; "
-                "color: rgba(95, 205, 143, 255);"
+                "font-weight: 600; margin-top: 8px; color: rgba(95, 205, 143, 255);"
             )
         else:
             self._summary.setStyleSheet(
-                "font-weight: 600; margin-top: 8px; "
-                "color: rgba(249, 226, 175, 255);"
+                "font-weight: 600; margin-top: 8px; color: rgba(249, 226, 175, 255);"
             )

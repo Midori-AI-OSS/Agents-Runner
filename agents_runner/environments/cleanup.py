@@ -40,7 +40,9 @@ def cleanup_task_workspace(
 
     # Safety check: reject symlinks to prevent symlink attacks
     if os.path.islink(task_workspace):
-        msg = format_log("cleanup", "safety", "WARN", f"Refusing to remove symlink: {task_workspace}")
+        msg = format_log(
+            "cleanup", "safety", "WARN", f"Refusing to remove symlink: {task_workspace}"
+        )
         logger.warning(msg)
         if on_log:
             on_log(msg)
@@ -48,18 +50,32 @@ def cleanup_task_workspace(
 
     # Safety check: ensure we're removing a task-specific directory
     if "/tasks/" not in task_workspace:
-        msg = format_log("cleanup", "safety", "WARN", f"Refusing to remove non-task directory: {task_workspace}")
+        msg = format_log(
+            "cleanup",
+            "safety",
+            "WARN",
+            f"Refusing to remove non-task directory: {task_workspace}",
+        )
         logger.warning(msg)
         if on_log:
             on_log(msg)
         return False
 
     if not os.path.exists(task_workspace):
-        logger.debug(format_log("cleanup", "task", "DEBUG", f"Task workspace already removed: {task_workspace}"))
+        logger.debug(
+            format_log(
+                "cleanup",
+                "task",
+                "DEBUG",
+                f"Task workspace already removed: {task_workspace}",
+            )
+        )
         return True
 
     try:
-        msg = format_log("cleanup", "task", "INFO", f"Removing task workspace: {task_workspace}")
+        msg = format_log(
+            "cleanup", "task", "INFO", f"Removing task workspace: {task_workspace}"
+        )
         logger.info(msg)
         if on_log:
             on_log(msg)
@@ -67,23 +83,43 @@ def cleanup_task_workspace(
         # Use shutil.rmtree with error handler for better cleanup
         def handle_remove_error(func, path, exc_info):
             """Handle permission errors during removal."""
-            logger.debug(format_log("cleanup", "task", "DEBUG", f"Error removing {path}: {exc_info[1]}"))
+            logger.debug(
+                format_log(
+                    "cleanup", "task", "DEBUG", f"Error removing {path}: {exc_info[1]}"
+                )
+            )
             # Try to make writable and retry
             try:
                 os.chmod(path, 0o700)
                 func(path)
             except Exception as retry_exc:
-                logger.debug(format_log("cleanup", "task", "DEBUG", f"Retry failed for {path}: {retry_exc}"))
+                logger.debug(
+                    format_log(
+                        "cleanup",
+                        "task",
+                        "DEBUG",
+                        f"Retry failed for {path}: {retry_exc}",
+                    )
+                )
 
         shutil.rmtree(task_workspace, onerror=handle_remove_error)
 
-        logger.info(format_log("cleanup", "task", "INFO", f"Successfully removed: {task_workspace}"))
+        logger.info(
+            format_log(
+                "cleanup", "task", "INFO", f"Successfully removed: {task_workspace}"
+            )
+        )
         if on_log:
             on_log(format_log("cleanup", "task", "INFO", "Workspace cleaned up"))
         return True
 
     except Exception as exc:
-        msg = format_log("cleanup", "task", "ERROR", f"Failed to remove task workspace {task_workspace}: {exc}")
+        msg = format_log(
+            "cleanup",
+            "task",
+            "ERROR",
+            f"Failed to remove task workspace {task_workspace}: {exc}",
+        )
         logger.error(msg)
         if on_log:
             on_log(msg)
@@ -113,7 +149,11 @@ def cleanup_old_task_workspaces(
     tasks_dir = os.path.join(base_path, "tasks")
 
     if not os.path.isdir(tasks_dir):
-        logger.debug(format_log("cleanup", "scan", "DEBUG", f"No tasks directory found: {tasks_dir}"))
+        logger.debug(
+            format_log(
+                "cleanup", "scan", "DEBUG", f"No tasks directory found: {tasks_dir}"
+            )
+        )
         return 0
 
     max_age_seconds = max_age_hours * 3600
@@ -136,22 +176,41 @@ def cleanup_old_task_workspaces(
                 if age_seconds > max_age_seconds:
                     age_hours = age_seconds / 3600
                     logger.info(
-                        format_log("cleanup", "old", "INFO", f"Removing old task workspace (age: {age_hours:.1f}h): {task_path}")
+                        format_log(
+                            "cleanup",
+                            "old",
+                            "INFO",
+                            f"Removing old task workspace (age: {age_hours:.1f}h): {task_path}",
+                        )
                     )
                     if on_log:
                         on_log(
-                            format_log("cleanup", "old", "INFO", f"Removing old task {task_id} (age: {age_hours:.1f}h)")
+                            format_log(
+                                "cleanup",
+                                "old",
+                                "INFO",
+                                f"Removing old task {task_id} (age: {age_hours:.1f}h)",
+                            )
                         )
 
                     shutil.rmtree(task_path, ignore_errors=True)
                     removed_count += 1
 
             except Exception as exc:
-                logger.warning(format_log("cleanup", "old", "WARN", f"Error processing {task_path}: {exc}"))
+                logger.warning(
+                    format_log(
+                        "cleanup", "old", "WARN", f"Error processing {task_path}: {exc}"
+                    )
+                )
                 continue
 
         if removed_count > 0:
-            msg = format_log("cleanup", "old", "INFO", f"Removed {removed_count} old task workspace(s)")
+            msg = format_log(
+                "cleanup",
+                "old",
+                "INFO",
+                f"Removed {removed_count} old task workspace(s)",
+            )
             logger.info(msg)
             if on_log:
                 on_log(msg)
@@ -159,7 +218,12 @@ def cleanup_old_task_workspaces(
         return removed_count
 
     except Exception as exc:
-        msg = format_log("cleanup", "scan", "ERROR", f"Error scanning tasks directory {tasks_dir}: {exc}")
+        msg = format_log(
+            "cleanup",
+            "scan",
+            "ERROR",
+            f"Error scanning tasks directory {tasks_dir}: {exc}",
+        )
         logger.error(msg)
         if on_log:
             on_log(msg)
@@ -203,7 +267,12 @@ def get_task_workspace_size(
 
     except Exception as exc:
         logger.warning(
-            format_log("cleanup", "size", "WARN", f"Error calculating size for {task_workspace}: {exc}")
+            format_log(
+                "cleanup",
+                "size",
+                "WARN",
+                f"Error calculating size for {task_workspace}: {exc}",
+            )
         )
         return 0
 
@@ -233,10 +302,19 @@ def cleanup_on_task_completion(
     """
     if keep_on_error:
         logger.debug(
-            format_log("cleanup", "policy", "DEBUG", f"Skipping cleanup for failed task {task_id} (keep_on_error=True)")
+            format_log(
+                "cleanup",
+                "policy",
+                "DEBUG",
+                f"Skipping cleanup for failed task {task_id} (keep_on_error=True)",
+            )
         )
         if on_log:
-            on_log(format_log("cleanup", "policy", "INFO", "Keeping workspace for debugging"))
+            on_log(
+                format_log(
+                    "cleanup", "policy", "INFO", "Keeping workspace for debugging"
+                )
+            )
         return True
 
     return cleanup_task_workspace(

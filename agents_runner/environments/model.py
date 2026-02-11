@@ -67,6 +67,7 @@ class AgentSelection:
     agents: list[AgentInstance] = field(default_factory=list)
     selection_mode: str = "round-robin"
     agent_fallbacks: dict[str, str] = field(default_factory=dict)
+    pinned_agent_id: str = ""
 
 
 @dataclass
@@ -86,6 +87,9 @@ class Environment:
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
+    ports: list[str] = field(default_factory=list)
+    ports_unlocked: bool = False
+    ports_advanced_acknowledged: bool = False
     gh_management_locked: bool = False
     workspace_type: str = WORKSPACE_NONE
     workspace_target: str = ""
@@ -105,13 +109,13 @@ class Environment:
     def normalized_color(self) -> str:
         value = (self.color or "").strip().lower()
         return value if value in ALLOWED_STAINS else "slate"
-    
+
     def detect_git_if_mounted_folder(self) -> bool:
         """Detect if mounted folder environment is a git repository.
-        
+
         This method caches the result to avoid repeated git operations.
         Only applicable for mounted folder (local) environments.
-        
+
         Returns:
             True if folder is a git repo, False otherwise.
             False for non-mounted-folder environments.
@@ -119,19 +123,19 @@ class Environment:
         # Only applies to mounted folders
         if self.workspace_type != WORKSPACE_MOUNTED:
             return False
-        
+
         # Return cached result if available
         if self._cached_is_git_repo is not None:
             return self._cached_is_git_repo
-        
+
         # Detect git
         from agents_runner.environments.git_operations import get_git_info
-        
+
         folder_path = self.workspace_target
         if not folder_path:
             self._cached_is_git_repo = False
             return False
-        
+
         git_info = get_git_info(folder_path)
         self._cached_is_git_repo = git_info is not None
         return self._cached_is_git_repo

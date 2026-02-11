@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from PySide6.QtCore import QPointF, QRect, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QRadialGradient
+from PySide6.QtWidgets import QWidget
 
 
 @dataclass
@@ -197,9 +198,7 @@ def paint_gemini_background(
             # Codex-style soft blob, but locked to Google colors.
             grad = QRadialGradient(QPointF(0.0, 0.0), 1.0)
             grad.setColorAt(0.0, QColor(c.red(), c.green(), c.blue(), 220))
-            grad.setColorAt(
-                0.45, QColor(c.red(), c.green(), c.blue(), int(220 * 0.28))
-            )
+            grad.setColorAt(0.45, QColor(c.red(), c.green(), c.blue(), int(220 * 0.28)))
             grad.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
             painter.setBrush(grad)
             painter.drawEllipse(QPointF(0.0, 0.0), 1.0, 1.0)
@@ -211,3 +210,64 @@ def paint_gemini_background(
     painter.fillRect(rect, vignette)
 
     painter.restore()
+
+
+@dataclass
+class _GeminiRuntime:
+    rng: random.Random = field(default_factory=random.Random)
+    orbs: list[_GeminiChromaOrb] = field(default_factory=list)
+    tick_accum_s: float = 0.0
+
+
+class _GeminiBackground:
+    theme_name = "gemini"
+
+    @staticmethod
+    def base_color() -> QColor:
+        return QColor(18, 20, 28)
+
+    @staticmethod
+    def overlay_alpha() -> int:
+        return 18
+
+    @staticmethod
+    def init_runtime(*, widget: QWidget) -> object:
+        return _GeminiRuntime()
+
+    @staticmethod
+    def on_resize(*, runtime: object, widget: QWidget) -> None:
+        if not isinstance(runtime, _GeminiRuntime):
+            return
+        constrain_gemini_orbs(runtime.orbs, widget.width(), widget.height())
+
+    @staticmethod
+    def tick(*, runtime: object, widget: QWidget, now_s: float, dt_s: float) -> bool:
+        if not isinstance(runtime, _GeminiRuntime):
+            return True
+
+        runtime.tick_accum_s += float(dt_s)
+        step_s = 0.05
+        max_steps = 6
+        steps = 0
+        while runtime.tick_accum_s >= step_s and steps < max_steps:
+            runtime.tick_accum_s -= step_s
+            runtime.orbs = ensure_gemini_orbs(
+                runtime.orbs, runtime.rng, widget.width(), widget.height()
+            )
+            tick_gemini_chroma_orbs(
+                runtime.orbs, runtime.rng, widget.width(), widget.height(), step_s
+            )
+            steps += 1
+
+        return True
+
+    @staticmethod
+    def paint(*, painter: QPainter, rect: QRect, runtime: object) -> None:
+        state = runtime if isinstance(runtime, _GeminiRuntime) else _GeminiRuntime()
+        state.orbs = ensure_gemini_orbs(
+            state.orbs, state.rng, rect.width(), rect.height()
+        )
+        paint_gemini_background(painter, rect, state.orbs)
+
+
+BACKGROUND = _GeminiBackground()

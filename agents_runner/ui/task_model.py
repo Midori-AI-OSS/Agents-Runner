@@ -16,7 +16,7 @@ class Task:
     prompt: str
     image: str
     host_workdir: str
-    host_codex_dir: str
+    host_config_dir: str
     created_at_s: float
     environment_id: str = ""
     status: str = "queued"

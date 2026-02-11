@@ -7,17 +7,23 @@ from __future__ import annotations
 
 import math
 import time
+from dataclasses import dataclass
 
 from PySide6.QtCore import QPointF, QRect, Qt
-from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QRadialGradient
+from PySide6.QtGui import (
+    QColor,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QRadialGradient,
+)
+from PySide6.QtWidgets import QWidget
 
 # Codex theme constant: diagonal boundary angle in degrees
 _CODEX_BOUNDARY_ANGLE_DEG: float = 15.0
 
 
-def blend_colors(
-    color1: QColor | str, color2: QColor | str, t: float
-) -> QColor:
+def blend_colors(color1: QColor | str, color2: QColor | str, t: float) -> QColor:
     """
     Blend between two colors using linear RGB interpolation.
 
@@ -44,7 +50,9 @@ def blend_colors(
     return QColor(r, g, b)
 
 
-def get_top_band_color(phase: float, cached_color: QColor | None, cached_phase: float) -> tuple[QColor, float]:
+def get_top_band_color(
+    phase: float, cached_color: QColor | None, cached_phase: float
+) -> tuple[QColor, float]:
     """
     Get top band color by blending blue and green based on phase.
 
@@ -59,12 +67,14 @@ def get_top_band_color(phase: float, cached_color: QColor | None, cached_phase: 
     # Cache: skip recalculation if phase change < 0.01
     if cached_color is not None and abs(phase - cached_phase) < 0.01:
         return cached_color, cached_phase
-    
+
     color = blend_colors("#60A5FA", "#34D399", phase)
     return color, phase
 
 
-def get_bottom_band_color(phase: float, cached_color: QColor | None, cached_phase: float) -> tuple[QColor, float]:
+def get_bottom_band_color(
+    phase: float, cached_color: QColor | None, cached_phase: float
+) -> tuple[QColor, float]:
     """
     Get bottom band color by blending between violet and orange based on phase.
 
@@ -79,7 +89,7 @@ def get_bottom_band_color(phase: float, cached_color: QColor | None, cached_phas
     # Cache: skip recalculation if phase change < 0.01
     if cached_color is not None and abs(phase - cached_phase) < 0.01:
         return cached_color, cached_phase
-    
+
     color = blend_colors("#A78BFA", "#FDBA74", phase)
     return color, phase
 
@@ -158,8 +168,12 @@ def paint_codex_background(
         Tuple of (top_color, top_phase, bottom_color, bottom_phase) for caching
     """
     # Calculate colors based on phase (with caching)
-    top_color, new_top_phase = get_top_band_color(top_phase, cached_top_color, cached_top_phase)
-    bottom_color, new_bottom_phase = get_bottom_band_color(bottom_phase, cached_bottom_color, cached_bottom_phase)
+    top_color, new_top_phase = get_top_band_color(
+        top_phase, cached_top_color, cached_top_phase
+    )
+    bottom_color, new_bottom_phase = get_bottom_band_color(
+        bottom_phase, cached_bottom_color, cached_bottom_phase
+    )
 
     w = int(rect.width())
     h = int(rect.height())
@@ -415,8 +429,69 @@ def paint_band_boundary(
     gradient_start_y = boundary_y - gradient_extent
 
     # Apply gradient to the boundary region
-    painter.fillRect(
-        0, gradient_start_y, rect.width(), gradient_extent * 2, gradient
-    )
+    painter.fillRect(0, gradient_start_y, rect.width(), gradient_extent * 2, gradient)
 
     return gradient, boundary_y, cached_gradient_top_color, cached_gradient_bottom_color
+
+
+@dataclass
+class _CodexRuntime:
+    split_ratio: float = 0.45
+    top_phase: float = 0.0
+    bottom_phase: float = 0.0
+    cached_top_color: QColor | None = None
+    cached_top_phase: float = -1.0
+    cached_bottom_color: QColor | None = None
+    cached_bottom_phase: float = -1.0
+
+
+class _CodexBackground:
+    theme_name = "codex"
+
+    @staticmethod
+    def base_color() -> QColor:
+        return QColor(12, 13, 15)
+
+    @staticmethod
+    def overlay_alpha() -> int:
+        return 28
+
+    @staticmethod
+    def init_runtime(*, widget: QWidget) -> object:
+        return _CodexRuntime()
+
+    @staticmethod
+    def on_resize(*, runtime: object, widget: QWidget) -> None:
+        return
+
+    @staticmethod
+    def tick(*, runtime: object, widget: QWidget, now_s: float, dt_s: float) -> bool:
+        if not isinstance(runtime, _CodexRuntime):
+            return True
+        runtime.split_ratio = calc_split_ratio()
+        runtime.top_phase = calc_top_phase()
+        runtime.bottom_phase = calc_bottom_phase()
+        return True
+
+    @staticmethod
+    def paint(*, painter: QPainter, rect: QRect, runtime: object) -> None:
+        state = runtime if isinstance(runtime, _CodexRuntime) else _CodexRuntime()
+        (
+            state.cached_top_color,
+            state.cached_top_phase,
+            state.cached_bottom_color,
+            state.cached_bottom_phase,
+        ) = paint_codex_background(
+            painter,
+            rect,
+            state.split_ratio,
+            state.top_phase,
+            state.bottom_phase,
+            state.cached_top_color,
+            state.cached_top_phase,
+            state.cached_bottom_color,
+            state.cached_bottom_phase,
+        )
+
+
+BACKGROUND = _CodexBackground()

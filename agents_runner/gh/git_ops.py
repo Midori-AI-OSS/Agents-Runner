@@ -125,7 +125,7 @@ def git_list_remote_heads(repo: str) -> list[str]:
 
 def git_head_commit(repo_root: str) -> str | None:
     """Get HEAD commit SHA.
-    
+
     Returns full 40-character SHA if successful, None on error.
     Timeout: 8 seconds.
     """
@@ -139,15 +139,12 @@ def git_head_commit(repo_root: str) -> str | None:
 
 def git_remote_url(repo_root: str, remote: str = "origin") -> str | None:
     """Get remote URL for a given remote name.
-    
+
     Returns URL string if remote exists, None otherwise.
     Timeout: 8 seconds.
     """
     repo_root = _expand_dir(repo_root)
-    proc = _run(
-        ["git", "-C", repo_root, "remote", "get-url", remote],
-        timeout_s=8.0
-    )
+    proc = _run(["git", "-C", repo_root, "remote", "get-url", remote], timeout_s=8.0)
     if proc.returncode != 0:
         return None
     url = (proc.stdout or "").strip()
@@ -156,39 +153,39 @@ def git_remote_url(repo_root: str, remote: str = "origin") -> str | None:
 
 def parse_github_url(url: str) -> tuple[str | None, str | None]:
     """Parse owner and repo name from GitHub URL.
-    
+
     Supports multiple URL formats:
         - https://github.com/owner/repo
         - https://github.com/owner/repo.git
         - git@github.com:owner/repo.git
         - ssh://git@github.com/owner/repo
-    
+
     Returns (owner, repo_name) tuple, or (None, None) if parsing fails.
     """
     import re
-    
+
     url = (url or "").strip()
     if not url:
         return None, None
-    
+
     # HTTPS pattern: https://github.com/owner/repo or https://github.com/owner/repo.git
-    https_match = re.search(r'github\.com[:/]([^/]+)/([^/\.]+)', url)
+    https_match = re.search(r"github\.com[:/]([^/]+)/([^/\.]+)", url)
     if https_match:
         owner = https_match.group(1).strip()
         repo = https_match.group(2).strip()
         # Remove .git suffix if present
-        if repo.endswith('.git'):
+        if repo.endswith(".git"):
             repo = repo[:-4]
         return owner if owner else None, repo if repo else None
-    
+
     # SSH pattern: git@github.com:owner/repo.git
-    ssh_match = re.search(r'github\.com:([^/]+)/([^/\.]+)', url)
+    ssh_match = re.search(r"github\.com:([^/]+)/([^/\.]+)", url)
     if ssh_match:
         owner = ssh_match.group(1).strip()
         repo = ssh_match.group(2).strip()
         # Remove .git suffix if present
-        if repo.endswith('.git'):
+        if repo.endswith(".git"):
             repo = repo[:-4]
         return owner if owner else None, repo if repo else None
-    
+
     return None, None

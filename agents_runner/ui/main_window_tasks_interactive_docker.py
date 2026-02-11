@@ -16,6 +16,8 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox
 
+from agents_runner.agent_cli import agent_requires_github_token
+from agents_runner.agent_cli import available_agents
 from agents_runner.agent_cli import verify_cli_clause
 from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
@@ -24,11 +26,30 @@ from agents_runner.environments import Environment
 from agents_runner.github_token import resolve_github_token
 from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
-from agents_runner.ui.shell_templates import build_git_clone_or_update_snippet
-from agents_runner.ui.shell_templates import git_identity_clause
-from agents_runner.ui.shell_templates import shell_log_statement
+from agents_runner.core.shell_templates import git_identity_clause
+from agents_runner.core.shell_templates import shell_log_statement
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import _safe_str
+
+
+def _publishes_container_port(spec: str, port: int) -> bool:
+    base = str(spec or "").strip()
+    if not base:
+        return False
+    base = base.split("/", 1)[0]
+    container_part = base.rsplit(":", 1)[-1].strip()
+    if not container_part:
+        return False
+    if container_part.isdigit():
+        return int(container_part) == int(port)
+    if "-" in container_part:
+        left, right = (p.strip() for p in container_part.split("-", 1))
+        if left.isdigit() and right.isdigit():
+            start = int(left)
+            end = int(right)
+            p = int(port)
+            return start <= p <= end
+    return False
 
 
 def launch_docker_terminal_task(
@@ -56,8 +77,7 @@ def launch_docker_terminal_task(
     stain: str | None,
     spinner: str | None,
     desired_base: str = "",
-    gh_repo: str = "",
-    gh_prefer_gh_cli: bool = True,
+    skip_image_pull: bool = False,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
 
@@ -65,7 +85,6 @@ def launch_docker_terminal_task(
     - Preflight script preparation and mounting
     - Docker run command construction
     - Environment variables and port mapping
-    - Git clone/update script generation
     - Terminal launcher invocation
     - Error handling and cleanup
 
@@ -94,8 +113,7 @@ def launch_docker_terminal_task(
         stain: Task color stain
         spinner: Task spinner color
         desired_base: Desired base branch for git
-        gh_repo: GitHub repository (owner/repo)
-        gh_prefer_gh_cli: Prefer gh CLI over git for cloning
+        skip_image_pull: If True, skip docker pull in host launcher script
     """
     # Prepare preflight scripts and get mounts
     preflight_clause, preflight_mounts, tmp_paths = _prepare_preflight_scripts(
@@ -108,8 +126,12 @@ def launch_docker_terminal_task(
     if preflight_clause is None:
         # Error during preflight preparation
         _handle_launch_error(
-            main_window, task, tmp_paths, stain, spinner,
-            "Failed to prepare preflight scripts"
+            main_window,
+            task,
+            tmp_paths,
+            stain,
+            spinner,
+            "Failed to prepare preflight scripts",
         )
         return
 
@@ -124,13 +146,15 @@ def launch_docker_terminal_task(
 
         # Check if we need to forward GH_TOKEN
         forward_gh_token = bool(
-            (cmd_parts and cmd_parts[0] == "copilot")
+            (cmd_parts and agent_requires_github_token(cmd_parts[0]))
             or (env and getattr(env, "gh_context_enabled", False))
         )
         if forward_gh_token:
             gh_token = resolve_github_token()
             if gh_token:
-                env_args.extend(["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"])
+                env_args.extend(
+                    ["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"]
+                )
 
         # Check if desktop mode is enabled
         desktop_enabled = (
@@ -157,15 +181,24 @@ def launch_docker_terminal_task(
             main_window._details.update_task(task)
             main_window._schedule_save()
 
+        # Apply environment-specified ports (if any)
+        for port_spec in (getattr(env, "ports", None) or []) if env else []:
+            spec = str(port_spec or "").strip()
+            if not spec:
+                continue
+            if desktop_enabled and _publishes_container_port(spec, 6080):
+                continue
+            port_args.extend(["-p", spec])
+
         # Prepare extra mounts
         extra_mount_args: list[str] = []
-        
+
         # Add host cache mount if enabled in settings
         if main_window._settings_data.get("mount_host_cache", False):
             host_cache = os.path.expanduser("~/.cache")
             container_cache = "/home/midori-ai/.cache"
             extra_mount_args.extend(["-v", f"{host_cache}:{container_cache}:rw"])
-        
+
         # Add environment-specific mounts
         for mount in (env.extra_mounts or []) if env else []:
             m = str(mount).strip()
@@ -181,11 +214,12 @@ def launch_docker_terminal_task(
         # Build container script with preflight and command
         target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
         verify_clause = ""
-        if cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
+        if cmd_parts and cmd_parts[0] in set(available_agents()):
             verify_clause = verify_cli_clause(cmd_parts[0])
 
         container_script = (
-            "set -euo pipefail; " f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
+            "set -euo pipefail; "
+            f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
         )
 
         # Build Docker command
@@ -218,32 +252,19 @@ def launch_docker_terminal_task(
         # Build Rosetta warning snippet
         rosetta_snippet = ""
         if has_rosetta() is False:
-            rosetta_snippet = shell_log_statement("host", "docker", "WARN", f"Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}")
-
-        # Build git clone snippet if gh_repo is specified
-        gh_clone_snippet = ""
-        if gh_repo:
-            quoted_dest = shlex.quote(host_workdir)
-            gh_clone_snippet = build_git_clone_or_update_snippet(
-                gh_repo=gh_repo,
-                host_workdir=host_workdir,
-                quoted_dest=quoted_dest,
-                prefer_gh_cli=gh_prefer_gh_cli,
-                task_id=task_id,
-                desired_base=desired_base,
-                is_locked_env=False,
+            rosetta_snippet = shell_log_statement(
+                "host",
+                "docker",
+                "WARN",
+                f"Rosetta 2 not detected; install with: {ROSETTA_INSTALL_COMMAND}",
             )
-            # Update task with branch info
-            branch_name = f"agents-runner-{task_id}"
-            task.gh_repo_root = host_workdir
-            task.gh_branch = branch_name
-            task.gh_base_branch = desired_base
-            main_window._schedule_save()
 
         # Build docker pull command
-        docker_platform_args = docker_platform_args_for_pixelarch()
-        docker_pull_parts = ["docker", "pull", *docker_platform_args, image]
-        docker_pull_cmd = " ".join(shlex.quote(part) for part in docker_pull_parts)
+        docker_pull_cmd = ":"
+        if not skip_image_pull:
+            docker_platform_args = docker_platform_args_for_pixelarch()
+            docker_pull_parts = ["docker", "pull", *docker_platform_args, image]
+            docker_pull_cmd = " ".join(shlex.quote(part) for part in docker_pull_parts)
 
         # Build host shell script
         host_script = _build_host_shell_script(
@@ -253,7 +274,6 @@ def launch_docker_terminal_task(
             finish_path=finish_path,
             gh_token_snippet="",
             rosetta_snippet=rosetta_snippet,
-            gh_clone_snippet=gh_clone_snippet,
             docker_pull_cmd=docker_pull_cmd,
             docker_cmd=docker_cmd,
         )
@@ -261,12 +281,15 @@ def launch_docker_terminal_task(
         # Log base branch if specified
         if (desired_base or "").strip():
             main_window._on_task_log(
-                task_id, format_log("gh", "branch", "INFO", f"base branch: {desired_base}")
+                task_id,
+                format_log("gh", "branch", "INFO", f"base branch: {desired_base}"),
             )
 
         # Update settings
         main_window._settings_data["host_workdir"] = host_workdir
-        main_window._settings_data[main_window._host_config_dir_key(agent_cli)] = host_codex
+        main_window._settings_data[main_window._host_config_dir_key(agent_cli)] = (
+            host_codex
+        )
         main_window._settings_data["active_environment_id"] = env_id
         main_window._settings_data["interactive_terminal_id"] = str(
             getattr(terminal_opt, "terminal_id", "")
@@ -276,7 +299,9 @@ def launch_docker_terminal_task(
             prompt=prompt, command=command
         ):
             main_window._settings_data[interactive_key] = (
-                main_window._sanitize_interactive_command_value(interactive_key, command)
+                main_window._sanitize_interactive_command_value(
+                    interactive_key, command
+                )
             )
         main_window._apply_active_environment_to_new_task()
         main_window._schedule_save()
@@ -295,8 +320,10 @@ def launch_docker_terminal_task(
         main_window._on_task_log(
             task_id,
             format_log(
-                "ui", "launch", "INFO",
-                f"launched in {_safe_str(getattr(terminal_opt, 'label', 'Terminal'))}"
+                "ui",
+                "launch",
+                "INFO",
+                f"launched in {_safe_str(getattr(terminal_opt, 'label', 'Terminal'))}",
             ),
         )
 
@@ -306,9 +333,7 @@ def launch_docker_terminal_task(
         main_window._new_task.reset_for_new_run()
 
     except Exception as exc:
-        _handle_launch_error(
-            main_window, task, tmp_paths, stain, spinner, str(exc)
-        )
+        _handle_launch_error(main_window, task, tmp_paths, stain, spinner, str(exc))
 
 
 def _prepare_preflight_scripts(
@@ -342,10 +367,14 @@ def _prepare_preflight_scripts(
     }
 
     settings_container_path = f"/tmp/agents-runner-preflight-settings-{task_token}.sh"
-    environment_container_path = f"/tmp/agents-runner-preflight-environment-{task_token}.sh"
+    environment_container_path = (
+        f"/tmp/agents-runner-preflight-environment-{task_token}.sh"
+    )
     extra_container_path = f"/tmp/agents-runner-preflight-extra-{task_token}.sh"
 
-    preflights_host_dir = (Path(__file__).resolve().parent.parent / "preflights").resolve()
+    preflights_host_dir = (
+        Path(__file__).resolve().parent.parent / "preflights"
+    ).resolve()
     preflights_container_dir = "/tmp/agents-runner-preflights"
 
     def _write_preflight_script(script: str, label: str) -> str:
@@ -384,9 +413,9 @@ def _prepare_preflight_scripts(
             f"PREFLIGHTS_DIR={shlex.quote(preflights_container_dir)}; "
             'export AGENTS_RUNNER_PREFLIGHTS_DIR="${PREFLIGHTS_DIR}"; '
             'PREFLIGHT_SYSTEM="${PREFLIGHTS_DIR}/pixelarch_yay.sh"; '
-            f'{shell_log_statement("docker", "preflight", "INFO", "system: starting")}; '
+            f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: starting')}; "
             '/bin/bash "${PREFLIGHT_SYSTEM}"; '
-            f'{shell_log_statement("docker", "preflight", "INFO", "system: done")}; '
+            f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: done')}; "
         )
 
         # Settings preflight (optional)
@@ -394,7 +423,9 @@ def _prepare_preflight_scripts(
             preflights_scripts: dict[str, str] = {}
             try:
                 for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                    preflights_scripts[candidate.name] = candidate.read_text(encoding="utf-8").strip()
+                    preflights_scripts[candidate.name] = candidate.read_text(
+                        encoding="utf-8"
+                    ).strip()
             except Exception:
                 preflights_scripts = {}
 
@@ -410,9 +441,9 @@ def _prepare_preflight_scripts(
             if matched:
                 preflight_clause += (
                     f'PREFLIGHT_SETTINGS="${{PREFLIGHTS_DIR}}/{matched}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "settings: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: running')}; "
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "settings: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: done')}; "
                 )
             else:
                 tmp_paths["settings"] = _write_preflight_script(
@@ -423,9 +454,9 @@ def _prepare_preflight_scripts(
                 )
                 preflight_clause += (
                     f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                    f'{shell_log_statement("docker", "preflight", "INFO", "settings: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: running')}; "
                     '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "settings: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: done')}; "
                 )
 
         # Environment preflight (optional)
@@ -433,7 +464,9 @@ def _prepare_preflight_scripts(
             preflights_scripts = {}
             try:
                 for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                    preflights_scripts[candidate.name] = candidate.read_text(encoding="utf-8").strip()
+                    preflights_scripts[candidate.name] = candidate.read_text(
+                        encoding="utf-8"
+                    ).strip()
             except Exception:
                 preflights_scripts = {}
 
@@ -449,22 +482,25 @@ def _prepare_preflight_scripts(
             if matched:
                 preflight_clause += (
                     f'PREFLIGHT_ENV="${{PREFLIGHTS_DIR}}/{matched}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "environment: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: running')}; "
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "environment: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: done')}; "
                 )
             else:
                 tmp_paths["environment"] = _write_preflight_script(
                     str(environment_preflight_script or ""), "environment"
                 )
                 preflight_mounts.extend(
-                    ["-v", f"{tmp_paths['environment']}:{environment_container_path}:ro"]
+                    [
+                        "-v",
+                        f"{tmp_paths['environment']}:{environment_container_path}:ro",
+                    ]
                 )
                 preflight_clause += (
                     f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                    f'{shell_log_statement("docker", "preflight", "INFO", "environment: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: running')}; "
                     '/bin/bash "${PREFLIGHT_ENV}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "environment: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: done')}; "
                 )
 
         # Extra preflight (optional, help mode, etc.)
@@ -472,7 +508,9 @@ def _prepare_preflight_scripts(
             preflights_scripts = {}
             try:
                 for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                    preflights_scripts[candidate.name] = candidate.read_text(encoding="utf-8").strip()
+                    preflights_scripts[candidate.name] = candidate.read_text(
+                        encoding="utf-8"
+                    ).strip()
             except Exception:
                 preflights_scripts = {}
 
@@ -488,9 +526,9 @@ def _prepare_preflight_scripts(
             if matched:
                 preflight_clause += (
                     f'PREFLIGHT_EXTRA="${{PREFLIGHTS_DIR}}/{matched}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "extra: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: running')}; "
                     '/bin/bash "${PREFLIGHT_EXTRA}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "extra: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: done')}; "
                 )
             else:
                 tmp_paths["helpme"] = _write_preflight_script(
@@ -501,9 +539,9 @@ def _prepare_preflight_scripts(
                 )
                 preflight_clause += (
                     f"PREFLIGHT_EXTRA={shlex.quote(extra_container_path)}; "
-                    f'{shell_log_statement("docker", "preflight", "INFO", "extra: running")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: running')}; "
                     '/bin/bash "${PREFLIGHT_EXTRA}"; '
-                    f'{shell_log_statement("docker", "preflight", "INFO", "extra: done")}; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: done')}; "
                 )
 
         return preflight_clause, preflight_mounts, tmp_paths
@@ -581,7 +619,6 @@ def _build_host_shell_script(
     finish_path: str,
     gh_token_snippet: str,
     rosetta_snippet: str,
-    gh_clone_snippet: str,
     docker_pull_cmd: str,
     docker_cmd: str,
 ) -> str:
@@ -594,7 +631,6 @@ def _build_host_shell_script(
         finish_path: Path to finish file
         gh_token_snippet: GH token setup snippet
         rosetta_snippet: Rosetta warning snippet
-        gh_clone_snippet: Git clone/update snippet
         docker_pull_cmd: Docker pull command
         docker_cmd: Docker run command
 
@@ -620,8 +656,6 @@ def _build_host_shell_script(
 
     if rosetta_snippet:
         host_script_parts.append(rosetta_snippet)
-    if gh_clone_snippet:
-        host_script_parts.append(gh_clone_snippet)
 
     host_script_parts.extend(
         [

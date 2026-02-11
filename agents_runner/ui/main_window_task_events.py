@@ -80,7 +80,12 @@ class _MainWindowTaskEventsMixin:
 
             self._on_task_log(
                 task_id,
-                format_log("host", "action", "INFO", "user_kill requested" if is_kill else "user_cancel requested"),
+                format_log(
+                    "host",
+                    "action",
+                    "INFO",
+                    "user_kill requested" if is_kill else "user_cancel requested",
+                ),
             )
 
             watch = self._interactive_watch.get(task_id)
@@ -103,7 +108,12 @@ class _MainWindowTaskEventsMixin:
                     if is_kill
                     else ["stop", "-t", "1", container_id]
                 )
-                self._on_task_log(task_id, format_log("docker", "cmd", "INFO", f"docker {' '.join(docker_args)}"))
+                self._on_task_log(
+                    task_id,
+                    format_log(
+                        "docker", "cmd", "INFO", f"docker {' '.join(docker_args)}"
+                    ),
+                )
                 try:
                     completed = subprocess.run(
                         ["docker", *docker_args],
@@ -113,13 +123,17 @@ class _MainWindowTaskEventsMixin:
                         timeout=10.0 if is_kill else 20.0,
                     )
                 except Exception as exc:
-                    self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", str(exc)))
+                    self._on_task_log(
+                        task_id, format_log("docker", "cmd", "ERROR", str(exc))
+                    )
                     completed = None
 
                 if completed is not None and completed.returncode != 0:
                     detail = (completed.stderr or completed.stdout or "").strip()
                     if detail:
-                        self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", detail))
+                        self._on_task_log(
+                            task_id, format_log("docker", "cmd", "ERROR", detail)
+                        )
 
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
@@ -128,9 +142,21 @@ class _MainWindowTaskEventsMixin:
             self._details.update_task(task)
             self._schedule_save()
 
+            # SYNCHRONIZATION: Set finalization_state to "pending" BEFORE calling _queue_task_finalization().
+            # This atomic state transition ensures recovery_tick sees the state change and avoids
+            # duplicate finalization work. Same pattern as task_done path for consistency.
             task.finalization_state = "pending"
             task.finalization_error = ""
             self._schedule_save()
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"Task {task_id}: queueing finalization (reason=user_stop, state={task.status})",
+                ),
+            )
             self._queue_task_finalization(task_id, reason="user_stop")
 
             return
@@ -144,7 +170,10 @@ class _MainWindowTaskEventsMixin:
         else:
             return
 
-        self._on_task_log(task_id, format_log("docker", "cmd", "INFO", f"docker {' '.join(docker_args)}"))
+        self._on_task_log(
+            task_id,
+            format_log("docker", "cmd", "INFO", f"docker {' '.join(docker_args)}"),
+        )
         try:
             completed = subprocess.run(
                 ["docker", *docker_args],
@@ -199,6 +228,13 @@ class _MainWindowTaskEventsMixin:
 
         bridge = self._bridges.get(task_id)
         thread = self._threads.get(task_id)
+        prep_workers = getattr(self, "_interactive_prep_workers", {})
+        prep_threads = getattr(self, "_interactive_prep_threads", {})
+        prep_bridges = getattr(self, "_interactive_prep_bridges", {})
+        prep_context = getattr(self, "_interactive_prep_context", {})
+        prep_worker = prep_workers.get(task_id)
+        prep_thread = prep_threads.get(task_id)
+        prep_bridge = prep_bridges.get(task_id)
         container_id = task.container_id or (
             bridge.container_id if bridge is not None else None
         )
@@ -212,9 +248,25 @@ class _MainWindowTaskEventsMixin:
                 bridge.request_user_cancel()
             except Exception:
                 pass
+        if prep_worker is not None:
+            try:
+                prep_worker.request_stop()
+            except Exception:
+                pass
         if thread is not None:
             try:
                 thread.quit()
+            except Exception:
+                pass
+        if prep_thread is not None:
+            try:
+                prep_thread.quit()
+                prep_thread.wait(200)
+            except Exception:
+                pass
+        if prep_bridge is not None:
+            try:
+                prep_bridge.deleteLater()
             except Exception:
                 pass
 
@@ -222,6 +274,10 @@ class _MainWindowTaskEventsMixin:
         self._tasks.pop(task_id, None)
         self._threads.pop(task_id, None)
         self._bridges.pop(task_id, None)
+        prep_threads.pop(task_id, None)
+        prep_workers.pop(task_id, None)
+        prep_bridges.pop(task_id, None)
+        prep_context.pop(task_id, None)
         self._run_started_s.pop(task_id, None)
         self._dashboard_log_refresh_s.pop(task_id, None)
         self._interactive_watch.pop(task_id, None)
@@ -290,7 +346,12 @@ class _MainWindowTaskEventsMixin:
 
         self._on_task_log(
             task_id,
-            format_log("supervisor", "retry", "INFO", f"starting attempt {attempt_number} with {agent} (fallback)"),
+            format_log(
+                "supervisor",
+                "retry",
+                "INFO",
+                f"starting attempt {attempt_number} with {agent} (fallback)",
+            ),
         )
         task.status = f"retrying (attempt {attempt_number})"
         env = self._environments.get(task.environment_id)
@@ -298,7 +359,9 @@ class _MainWindowTaskEventsMixin:
         spinner = _stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
-    def _on_bridge_agent_switched(self, task_id: str, from_agent: str, to_agent: str) -> None:
+    def _on_bridge_agent_switched(
+        self, task_id: str, from_agent: str, to_agent: str
+    ) -> None:
         """Handle agent switch signal from supervisor."""
         task = self._tasks.get(task_id)
         if task is None:
@@ -308,7 +371,12 @@ class _MainWindowTaskEventsMixin:
 
         self._on_task_log(
             task_id,
-            format_log("supervisor", "fallback", "INFO", f"switching from {from_agent} to {to_agent} (fallback)"),
+            format_log(
+                "supervisor",
+                "fallback",
+                "INFO",
+                f"switching from {from_agent} to {to_agent} (fallback)",
+            ),
         )
         task.agent_cli = to_agent
         env = self._environments.get(task.environment_id)
@@ -317,7 +385,12 @@ class _MainWindowTaskEventsMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
     def _on_bridge_done(
-        self, task_id: str, exit_code: int, error: object, artifacts: list, metadata: dict | None = None
+        self,
+        task_id: str,
+        exit_code: int,
+        error: object,
+        artifacts: list,
+        metadata: dict | None = None,
     ) -> None:
         bridge = self._bridges.get(task_id)
         task = self._tasks.get(task_id)
@@ -358,7 +431,12 @@ class _MainWindowTaskEventsMixin:
             if retry_count > 0:
                 self._on_task_log(
                     task_id,
-                    format_log("supervisor", "retry", "INFO", f"completed after {retry_count} retries"),
+                    format_log(
+                        "supervisor",
+                        "retry",
+                        "INFO",
+                        f"completed after {retry_count} retries",
+                    ),
                 )
 
         self._on_task_done(task_id, exit_code, error, metadata=metadata)
@@ -496,14 +574,25 @@ class _MainWindowTaskEventsMixin:
         self._schedule_save()
 
     def _on_task_done(
-        self, task_id: str, exit_code: int, error: object, *, metadata: dict | None = None
+        self,
+        task_id: str,
+        exit_code: int,
+        error: object,
+        *,
+        metadata: dict | None = None,
     ) -> None:
         task = self._tasks.get(task_id)
         if task is None:
             return
         try:
-            self._on_task_log(
-                task_id, format_log("host", "finalize", "INFO", "finalization queued")
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"Task {task_id}: task completed, preparing finalization (state={task.status}, exit_code={exit_code})",
+                ),
             )
 
             if task.started_at is None:
@@ -537,12 +626,17 @@ class _MainWindowTaskEventsMixin:
             # Validate git metadata for cloned repo tasks
             if task.requires_git_metadata():
                 from agents_runner.ui.task_git_metadata import validate_git_metadata
+
                 is_valid, error_msg = validate_git_metadata(task.git)
                 if not is_valid:
                     self._on_task_log(
                         task_id,
-                        format_log("host", "metadata", "WARN", 
-                                   f"git metadata validation failed: {error_msg}")
+                        format_log(
+                            "host",
+                            "metadata",
+                            "WARN",
+                            f"git metadata validation failed: {error_msg}",
+                        ),
                     )
                     # Note: We don't fail the task itself, as the code execution may have succeeded
                     # The metadata issue will be flagged but won't affect task completion status
@@ -558,13 +652,41 @@ class _MainWindowTaskEventsMixin:
 
             self._on_task_log(
                 task_id,
-                format_log("host", "finalize", "INFO", f"task marked complete: status={task.status} exit_code={task.exit_code}"),
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"task marked complete: status={task.status} exit_code={task.exit_code}",
+                ),
             )
             self._try_start_queued_tasks()
 
-            if (task.finalization_state or "").lower() == "done":
+            if (task.finalization_state or "").lower().strip() == "done":
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "finalize",
+                        "DEBUG",
+                        f"Task {task_id}: skipping finalization (reason=already done, state=done)",
+                    ),
+                )
                 return
 
+            # SYNCHRONIZATION: Set finalization_state to "pending" BEFORE calling _queue_task_finalization().
+            # This atomic state change prevents recovery_tick from queuing duplicate finalization work.
+            # The recovery_tick checks finalization_state and skips tasks that are "pending" or "running".
+            # Combined with thread existence checks in _queue_task_finalization(), this provides
+            # race-free coordination between task_done and recovery_tick finalization triggers.
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "host",
+                    "finalize",
+                    "INFO",
+                    f"Task {task_id}: state transition (state=None→pending, reason=task_done)",
+                ),
+            )
             task.finalization_state = "pending"
             task.finalization_error = ""
             self._schedule_save()
@@ -574,21 +696,30 @@ class _MainWindowTaskEventsMixin:
 
     def _cleanup_cloned_repo_workspace_async(self, task_id: str, env_id: str) -> None:
         """Clean up cloned repo workspace for a task asynchronously.
-        
+
         This is used when PR creation is skipped (otherwise the PR worker
         performs cleanup after finishing).
         """
         import os
+
         try:
             state_path = getattr(self, "_state_path", "")
             if not state_path:
                 self._on_task_log(
                     task_id,
-                    format_log("gh", "cleanup", "WARN", "cleanup skipped: state path not available")
+                    format_log(
+                        "gh",
+                        "cleanup",
+                        "WARN",
+                        "cleanup skipped: state path not available",
+                    ),
                 )
                 return
-            
-            self._on_task_log(task_id, format_log("gh", "cleanup", "INFO", "cleaning up task workspace"))
+
+            self._on_task_log(
+                task_id,
+                format_log("gh", "cleanup", "INFO", "cleaning up task workspace"),
+            )
             data_dir = os.path.dirname(state_path)
             cleanup_success = cleanup_task_workspace(
                 env_id=env_id,
@@ -597,11 +728,14 @@ class _MainWindowTaskEventsMixin:
                 on_log=lambda msg: self._on_task_log(task_id, msg),
             )
             if cleanup_success:
-                self._on_task_log(task_id, format_log("gh", "cleanup", "INFO", "task workspace cleaned"))
+                self._on_task_log(
+                    task_id,
+                    format_log("gh", "cleanup", "INFO", "task workspace cleaned"),
+                )
         except Exception as cleanup_exc:
             self._on_task_log(
                 task_id,
-                format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}")
+                format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}"),
             )
 
     def _start_artifact_finalization(self, task: Task) -> None:
@@ -616,7 +750,9 @@ class _MainWindowTaskEventsMixin:
         timeout_s = 30.0
         if runner_config is not None:
             try:
-                timeout_s = float(getattr(runner_config, "artifact_collection_timeout_s"))
+                timeout_s = float(
+                    getattr(runner_config, "artifact_collection_timeout_s")
+                )
             except Exception:
                 timeout_s = 30.0
         if timeout_s <= 0.0:
@@ -633,7 +769,15 @@ class _MainWindowTaskEventsMixin:
 
         def _worker() -> None:
             start = time.monotonic()
-            self.host_log.emit(task.task_id, format_log("host", "artifacts", "INFO", "collecting artifacts from container..."))
+            self.host_log.emit(
+                task.task_id,
+                format_log(
+                    "host",
+                    "artifacts",
+                    "INFO",
+                    "collecting artifacts from container...",
+                ),
+            )
             try:
                 artifact_uuids = collect_artifacts_from_container_with_timeout(
                     container_id,
@@ -644,7 +788,12 @@ class _MainWindowTaskEventsMixin:
                 elapsed_s = time.monotonic() - start
                 self.host_log.emit(
                     task.task_id,
-                    format_log("host", "finalize", "INFO", f"artifact collection finished in {elapsed_s:.1f}s ({len(artifact_uuids)} artifact(s))"),
+                    format_log(
+                        "host",
+                        "finalize",
+                        "INFO",
+                        f"artifact collection finished in {elapsed_s:.1f}s ({len(artifact_uuids)} artifact(s))",
+                    ),
                 )
                 if artifact_uuids:
                     self.host_artifacts.emit(task.task_id, artifact_uuids)
@@ -652,7 +801,12 @@ class _MainWindowTaskEventsMixin:
                 elapsed_s = time.monotonic() - start
                 self.host_log.emit(
                     task.task_id,
-                    format_log("host", "artifacts", "ERROR", f"artifact collection failed/timeout: {exc} (elapsed {elapsed_s:.1f}s)"),
+                    format_log(
+                        "host",
+                        "artifacts",
+                        "ERROR",
+                        f"artifact collection failed/timeout: {exc} (elapsed {elapsed_s:.1f}s)",
+                    ),
                 )
 
         threading.Thread(target=_worker, daemon=True).start()

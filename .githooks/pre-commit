@@ -119,6 +119,7 @@ tasks_required=(
   ".agents/tasks/wip/AGENTS.md"
   ".agents/tasks/done/AGENTS.md"
   ".agents/tasks/taskmaster/AGENTS.md"
+  ".agents/tasks/not-ready/AGENTS.md"
 )
 
 declare -A tasks_required_set=()
@@ -139,6 +140,9 @@ for path in "${tasks_tracked[@]}"; do
   if [[ -n "${tasks_required_set["$path"]+x}" ]]; then
     continue
   fi
+  if [[ "${path}" =~ ^\.agents/tasks/not-ready/[^/]+\.(md|txt)$ ]]; then
+    continue
+  fi
   if [[ "${path}" =~ ^\.agents/tasks/(wip|done|taskmaster)/[^/]+\.(md|txt)$ ]]; then
     tasks_has_task_files=1
     continue
@@ -156,9 +160,9 @@ if ((${#tasks_missing[@]} > 0 || ${#tasks_invalid[@]} > 0)); then
   fi
   log "How to fix:"
   log "  - Ensure required AGENTS.md files exist:"
-  log "      mkdir -p .agents/tasks/{wip,done,taskmaster} \\"
-  log "        && touch .agents/tasks/AGENTS.md .agents/tasks/wip/AGENTS.md .agents/tasks/done/AGENTS.md .agents/tasks/taskmaster/AGENTS.md \\"
-  log "        && git add -- .agents/tasks/AGENTS.md .agents/tasks/wip/AGENTS.md .agents/tasks/done/AGENTS.md .agents/tasks/taskmaster/AGENTS.md"
+  log "      mkdir -p .agents/tasks/{wip,done,taskmaster,not-ready} \\"
+  log "        && touch .agents/tasks/AGENTS.md .agents/tasks/wip/AGENTS.md .agents/tasks/done/AGENTS.md .agents/tasks/taskmaster/AGENTS.md .agents/tasks/not-ready/AGENTS.md \\"
+  log "        && git add -- .agents/tasks/AGENTS.md .agents/tasks/wip/AGENTS.md .agents/tasks/done/AGENTS.md .agents/tasks/taskmaster/AGENTS.md .agents/tasks/not-ready/AGENTS.md"
   log "  - Remove/move invalid paths (no files directly under .agents/tasks except AGENTS.md; no deeper nesting; only .md/.txt task files at depth 2):"
   log "      git rm -r --cached -- <invalid-paths>...   # or move then git add"
   had_structure_error=1
@@ -178,19 +182,19 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 uv_project_env="${UV_PROJECT_ENVIRONMENT:-/tmp/agents-runner-precommit-uv-env}"
-log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run --no-sync python -m compileall -q agents_runner main.py"
-if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run --no-sync python -m compileall -q agents_runner main.py; then
+log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run python -m compileall -q agents_runner main.py"
+if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run python -m compileall -q agents_runner main.py; then
   die "Compile check failed. Fix by running the command above and addressing the reported issues."
 fi
 
 log "Running import smoke test"
-log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run --no-sync python -"
-if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run --no-sync python - <<'PY'
+log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run python -"
+if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run python - <<'PY'
 import importlib
 
 modules = [
     "agents_runner",
-    "agents_runner.app",
+    "agents_runner.ui.runtime.app",
     "agents_runner.ui.main_window",
 ]
 

@@ -1,1 +1,1 @@
-"""Codex Local Containerd GUI."""
+"""Agents Runner Local Containerd GUI."""

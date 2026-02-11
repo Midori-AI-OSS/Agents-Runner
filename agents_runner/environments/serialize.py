@@ -34,30 +34,30 @@ def _validate_cross_agent_allowlist(
     raw_allowlist: Any, agents: list[AgentInstance]
 ) -> list[str]:
     """Validate and sanitize cross-agent allowlist.
-    
+
     Validation rules:
     1. Coerce to list[str], strip empties, de-dupe
     2. If agents list is empty, return empty list
     3. Filter unknown agent_ids (must exist in agents list)
     4. Enforce max 1 allowlisted per agent_cli (keep first occurrence)
-    
+
     Args:
         raw_allowlist: Raw allowlist data from JSON
         agents: List of AgentInstance objects
-    
+
     Returns:
         Validated list of agent_ids
     """
     # Coerce to list[str]
     if not isinstance(raw_allowlist, list):
         return []
-    
+
     allowlist = [str(item).strip() for item in raw_allowlist if str(item).strip()]
-    
+
     # If no agents configured, return empty list
     if not agents:
         return []
-    
+
     # Build lookups for validation
     known_ids = {a.agent_id for a in agents}
     cli_to_id: dict[str, str] = {}  # Normalized CLI -> first matching agent_id
@@ -65,50 +65,50 @@ def _validate_cross_agent_allowlist(
         normalized_cli = a.agent_cli.strip().lower()
         if normalized_cli not in cli_to_id:
             cli_to_id[normalized_cli] = a.agent_id
-    
+
     # Filter and deduplicate
     seen_ids: set[str] = set()
     seen_clis: set[str] = set()
     validated: list[str] = []
-    
+
     for agent_id in allowlist:
         # Skip if not in known agents
         if agent_id not in known_ids:
             continue
-        
+
         # Skip if already added
         if agent_id in seen_ids:
             continue
-        
+
         # Find the agent and check CLI uniqueness
         agent = next((a for a in agents if a.agent_id == agent_id), None)
         if not agent:
             continue
-        
+
         normalized_cli = agent.agent_cli.strip().lower()
-        
+
         # Enforce max 1 per CLI (keep first occurrence)
         if normalized_cli in seen_clis:
             continue
-        
+
         validated.append(agent_id)
         seen_ids.add(agent_id)
         seen_clis.add(normalized_cli)
-    
+
     return validated
 
 
 def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
     """Serialize prompts, managing external files.
-    
+
     Handles three cases:
     1. Empty text with existing file -> DELETE the file
     2. Non-empty text -> SAVE/UPDATE the file
     3. Empty text with no file -> No action needed
-    
+
     Args:
         prompts: List of PromptConfig objects to serialize
-    
+
     Returns:
         List of serialized prompt dictionaries
     """
@@ -116,7 +116,7 @@ def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
     for p in prompts:
         prompt_path = p.prompt_path or ""
         text = p.text or ""
-        
+
         # Case 1: Text is empty and we have a file -> DELETE the file
         if not text and prompt_path:
             try:
@@ -125,7 +125,7 @@ def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
                 # File might not exist, or deletion failed
                 pass
             prompt_path = ""  # Clear the path reference
-        
+
         # Case 2: Text exists -> SAVE/UPDATE the file
         elif text:
             try:
@@ -139,16 +139,18 @@ def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
             except Exception:
                 # If save fails, keep inline text as fallback
                 pass
-        
+
         # Case 3: Empty text with no file -> No action needed
-        
-        prompts_data.append({
-            "enabled": p.enabled,
-            "prompt_path": prompt_path,
-            # Keep text inline only if no file exists
-            "text": "" if prompt_path else text,
-        })
-    
+
+        prompts_data.append(
+            {
+                "enabled": p.enabled,
+                "prompt_path": prompt_path,
+                # Keep text inline only if no file exists
+                "text": "" if prompt_path else text,
+            }
+        )
+
     return prompts_data
 
 
@@ -190,15 +192,21 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     extra_mounts = payload.get("extra_mounts", [])
     extra_mounts = extra_mounts if isinstance(extra_mounts, list) else []
 
+    ports = payload.get("ports", [])
+    ports = ports if isinstance(ports, list) else []
+    ports_unlocked = bool(payload.get("ports_unlocked", False))
+    ports_advanced_acknowledged = bool(
+        payload.get("ports_advanced_acknowledged", False)
+    ) or bool(ports_unlocked)
+
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
-    
+
     # Migration: Rename gh_pr_metadata_enabled to gh_context_enabled
     # Check both old and new field names for backward compatibility
     gh_context_enabled = bool(
-        payload.get("gh_context_enabled", 
-                    payload.get("gh_pr_metadata_enabled", False))
+        payload.get("gh_context_enabled", payload.get("gh_pr_metadata_enabled", False))
     )
 
     # Migration: workspace_type from gh_management_mode
@@ -214,13 +222,13 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
             workspace_type = "none"
     else:
         workspace_type = workspace_type or "none"
-    
+
     # Migration: workspace_target from gh_management_target
     # Prefer new key, fallback to old key for backward compatibility
     workspace_target = str(
         payload.get("workspace_target") or payload.get("gh_management_target") or ""
     ).strip()
-    
+
     # Normalize using the new function
     workspace_type = normalize_workspace_type(workspace_type)
 
@@ -247,7 +255,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
             if isinstance(p, dict):
                 prompt_path = str(p.get("prompt_path", "")).strip()
                 text = str(p.get("text", ""))
-                
+
                 # If we have a prompt_path, load from file (migration case)
                 if prompt_path:
                     try:
@@ -255,7 +263,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
                     except Exception:
                         # If file doesn't exist, keep inline text as fallback
                         pass
-                
+
                 # Migration: If we have inline text but no path, save to file
                 if text and not prompt_path:
                     try:
@@ -263,7 +271,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
                     except Exception:
                         # If save fails, keep inline text
                         pass
-                
+
                 prompts.append(
                     PromptConfig(
                         enabled=bool(p.get("enabled", False)),
@@ -278,6 +286,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     agents: list[AgentInstance] = []
     if isinstance(agent_selection_data, dict):
         selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
+        pinned_agent_id = str(
+            agent_selection_data.get("pinned_agent_id", "") or ""
+        ).strip()
 
         agents_payload = agent_selection_data.get("agents")
         seen_ids: set[str] = set()
@@ -372,6 +383,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
                 agents=agents,
                 selection_mode=selection_mode,
                 agent_fallbacks=cleaned_fallbacks,
+                pinned_agent_id=pinned_agent_id,
             )
 
     # Cross-agent delegation settings
@@ -397,6 +409,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         preflight_script=preflight_script,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
+        ports=[str(item) for item in ports if str(item).strip()],
+        ports_unlocked=ports_unlocked,
+        ports_advanced_acknowledged=ports_advanced_acknowledged,
         gh_management_locked=gh_management_locked,
         workspace_type=workspace_type,
         workspace_target=workspace_target,
@@ -417,7 +432,7 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 def serialize_environment(env: Environment) -> dict[str, Any]:
     selection_payload: dict[str, Any] | None = None
     agents_list_for_validation: list[AgentInstance] = []
-    
+
     if env.agent_selection and env.agent_selection.agents:
         agents_list_for_validation = env.agent_selection.agents
         agents_list = [
@@ -447,6 +462,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
             "agents": agents_list,
             "enabled_agents": enabled_agents,
             "selection_mode": env.agent_selection.selection_mode,
+            "pinned_agent_id": str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip(),
             "agent_config_dirs": legacy_config_dirs,
             "agent_fallbacks": dict(env.agent_selection.agent_fallbacks),
         }
@@ -475,11 +493,18 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "container_caching_enabled": bool(
             getattr(env, "container_caching_enabled", False)
         ),
-        "cached_preflight_script": str(getattr(env, "cached_preflight_script", "") or ""),
+        "cached_preflight_script": str(
+            getattr(env, "cached_preflight_script", "") or ""
+        ),
         "preflight_enabled": bool(env.preflight_enabled),
         "preflight_script": env.preflight_script,
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),
+        "ports": list(getattr(env, "ports", [])),
+        "ports_unlocked": bool(getattr(env, "ports_unlocked", False)),
+        "ports_advanced_acknowledged": bool(
+            getattr(env, "ports_advanced_acknowledged", False)
+        ),
         "gh_management_locked": bool(env.gh_management_locked),
         "workspace_type": env.workspace_type,
         "workspace_target": str(env.workspace_target or "").strip(),
