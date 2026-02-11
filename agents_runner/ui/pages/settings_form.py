@@ -212,6 +212,15 @@ class _SettingsFormMixin:
         )
         self._radio_autostart.setEnabled(False)
 
+        self._radio_channel_values: list[str] = []
+        self._radio_channel_enabled = False
+        self._radio_channel = QComboBox()
+        self._radio_channel.setToolTip(
+            "Select a radio channel. All channels uses the server default behavior."
+        )
+        self._radio_channel.setEnabled(False)
+        self.set_radio_channel_options([], selected="", enabled=False)
+
         self._radio_quality = QComboBox()
         self._radio_quality.addItem("Low (96 kbps)", "low")
         self._radio_quality.addItem("Medium (160 kbps)", "medium")
@@ -359,22 +368,24 @@ class _SettingsFormMixin:
             radio_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
             radio_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
             radio_grid.setColumnStretch(1, 1)
-            radio_grid.addWidget(QLabel("Stream quality"), 0, 0)
-            radio_grid.addWidget(self._radio_quality, 0, 1)
-            radio_grid.addWidget(QLabel("Volume"), 1, 0)
+            radio_grid.addWidget(QLabel("Channel"), 0, 0)
+            radio_grid.addWidget(self._radio_channel, 0, 1)
+            radio_grid.addWidget(QLabel("Stream quality"), 1, 0)
+            radio_grid.addWidget(self._radio_quality, 1, 1)
+            radio_grid.addWidget(QLabel("Volume"), 2, 0)
             volume_row = QHBoxLayout()
             volume_row.setSpacing(8)
             volume_row.addWidget(self._radio_volume, 1)
             volume_row.addWidget(self._radio_volume_value, 0, Qt.AlignRight)
-            radio_grid.addLayout(volume_row, 1, 1)
-            radio_grid.addWidget(QLabel("Loudness"), 2, 0)
+            radio_grid.addLayout(volume_row, 2, 1)
+            radio_grid.addWidget(QLabel("Loudness"), 3, 0)
 
             boost_row = QHBoxLayout()
             boost_row.setSpacing(8)
             boost_row.addWidget(self._radio_loudness_boost_enabled)
             boost_row.addWidget(self._radio_loudness_boost_factor)
             boost_row.addStretch(1)
-            radio_grid.addLayout(boost_row, 2, 1)
+            radio_grid.addLayout(boost_row, 3, 1)
 
             radio_body.addLayout(radio_grid)
             radio_body.addStretch(1)
@@ -587,6 +598,38 @@ class _SettingsFormMixin:
     def _on_radio_loudness_boost_factor_changed(self, _value: float) -> None:
         self._refresh_radio_volume_label()
 
+    def set_radio_channel_options(
+        self,
+        channels: list[str],
+        *,
+        selected: object,
+        enabled: bool,
+    ) -> None:
+        normalized_selected = RadioController.normalize_channel(selected)
+        normalized_channels: list[str] = []
+        for raw in channels:
+            channel = RadioController.normalize_channel(raw)
+            if not channel or channel in normalized_channels:
+                continue
+            normalized_channels.append(channel)
+        normalized_channels.sort()
+
+        self._radio_channel_values = normalized_channels
+        self._radio_channel_enabled = bool(enabled)
+
+        with QSignalBlocker(self._radio_channel):
+            self._radio_channel.clear()
+            self._radio_channel.addItem("All channels", "")
+            for channel in normalized_channels:
+                self._radio_channel.addItem(channel, channel)
+            if normalized_selected and normalized_selected not in normalized_channels:
+                self._radio_channel.addItem(
+                    f"Custom: {normalized_selected}",
+                    normalized_selected,
+                )
+            self._set_combo_value(self._radio_channel, normalized_selected, fallback="")
+        self._radio_channel.setEnabled(self._radio_channel_enabled)
+
     def _refresh_radio_volume_label(self) -> None:
         raw = max(0, min(100, int(self._radio_volume.value())))
         effective = self._effective_radio_volume_percent(raw)
@@ -681,6 +724,14 @@ class _SettingsFormMixin:
                 bool(settings.get("radio_autostart") or False)
             )
             self._radio_autostart.setEnabled(radio_enabled)
+            radio_channel = RadioController.normalize_channel(
+                settings.get("radio_channel")
+            )
+            self.set_radio_channel_options(
+                self._radio_channel_values,
+                selected=radio_channel,
+                enabled=self._radio_channel_enabled,
+            )
             radio_quality = RadioController.normalize_quality(
                 settings.get("radio_quality")
             )
@@ -734,6 +785,9 @@ class _SettingsFormMixin:
             "mount_host_cache": bool(self._mount_host_cache.isChecked()),
             "radio_enabled": bool(self._radio_enabled.isChecked()),
             "radio_autostart": bool(self._radio_autostart.isChecked()),
+            "radio_channel": RadioController.normalize_channel(
+                str(self._radio_channel.currentData() or "")
+            ),
             "radio_quality": RadioController.normalize_quality(
                 str(self._radio_quality.currentData() or "medium")
             ),

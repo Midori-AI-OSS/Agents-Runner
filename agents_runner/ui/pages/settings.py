@@ -140,7 +140,13 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         QTimer.singleShot(0, self._sync_nav_button_sizes)
 
     def _connect_autosave_signals(self) -> None:
-        for combo in (self._use, self._shell, self._ui_theme, self._radio_quality):
+        for combo in (
+            self._use,
+            self._shell,
+            self._ui_theme,
+            self._radio_channel,
+            self._radio_quality,
+        ):
             combo.currentIndexChanged.connect(self._trigger_immediate_autosave)
 
         for checkbox in (

@@ -102,6 +102,7 @@ class MainWindow(
             "headless_desktop_enabled": False,
             "ui_theme": "auto",
             "radio_enabled": False,
+            "radio_channel": "",
             "radio_quality": "medium",
             "radio_volume": 70,
             "radio_autostart": False,
@@ -149,6 +150,7 @@ class MainWindow(
 
         self._recovery_log_stop: dict[str, threading.Event] = {}
         self._finalization_threads: dict[str, threading.Thread] = {}
+        self._radio_channel_options: list[str] = []
         self._recovery_ticker = QTimer(self)
         # Recovery tick interval: 5 seconds (reduced from 1 second)
         # Rationale: Event-driven paths handle normal operation immediately.
@@ -270,6 +272,7 @@ class MainWindow(
         self._apply_window_prefs()
         self._reload_environments()
         self._apply_settings_to_pages()
+        self._refresh_radio_channel_options(disable_on_failure=True)
         self._on_radio_state_changed(self._radio_controller.state_snapshot())
         self._try_start_queued_tasks()
 
@@ -299,6 +302,9 @@ class MainWindow(
         previous_enabled: bool | None = None,
     ) -> None:
         enabled = bool(self._settings_data.get("radio_enabled") or False)
+        channel = RadioController.normalize_channel(
+            self._settings_data.get("radio_channel")
+        )
         quality = RadioController.normalize_quality(
             self._settings_data.get("radio_quality")
         )
@@ -312,6 +318,7 @@ class MainWindow(
         )
 
         self._settings_data["radio_enabled"] = enabled
+        self._settings_data["radio_channel"] = channel
         self._settings_data["radio_quality"] = quality
         self._settings_data["radio_volume"] = volume
         self._settings_data["radio_autostart"] = autostart
@@ -324,6 +331,7 @@ class MainWindow(
             )
             return
 
+        self._radio_controller.set_channel(channel)
         self._radio_controller.set_quality(quality)
         self._radio_controller.set_loudness_boost(
             loudness_boost_enabled,
@@ -397,6 +405,7 @@ class MainWindow(
             self.setWindowTitle(APP_TITLE)
             return
 
+        channel_label = str(state.get("channel_label") or "all").strip() or "all"
         current_track = self._normalize_radio_window_track_title(
             state.get("current_track")
         )
@@ -405,14 +414,56 @@ class MainWindow(
         degraded_from_playback = bool(state.get("degraded_from_playback"))
 
         if degraded_from_playback and (not service_available) and last_track:
-            self.setWindowTitle(f"{last_track} [Radio unavailable]")
+            self.setWindowTitle(f"{last_track} [{channel_label}] [Radio unavailable]")
             return
 
         if current_track:
-            self.setWindowTitle(current_track)
+            self.setWindowTitle(f"{current_track} [{channel_label}]")
             return
 
-        self.setWindowTitle(APP_TITLE)
+        self.setWindowTitle(f"{APP_TITLE} [{channel_label}]")
+
+    def _refresh_radio_channel_options(self, *, disable_on_failure: bool) -> None:
+        selected_channel = RadioController.normalize_channel(
+            self._settings_data.get("radio_channel")
+        )
+        if not self._radio_controller.qt_available:
+            self._settings.set_radio_channel_options(
+                self._radio_channel_options,
+                selected=selected_channel,
+                enabled=False,
+            )
+            return
+
+        def _handle_channels(channels: object, error_text: str) -> None:
+            current_selected = RadioController.normalize_channel(
+                self._settings_data.get("radio_channel")
+            )
+
+            if error_text or not isinstance(channels, list):
+                if disable_on_failure:
+                    self._settings.set_radio_channel_options(
+                        self._radio_channel_options,
+                        selected=current_selected,
+                        enabled=False,
+                    )
+                return
+
+            normalized: list[str] = []
+            for raw in channels:
+                channel = RadioController.normalize_channel(raw)
+                if not channel or channel in normalized:
+                    continue
+                normalized.append(channel)
+            normalized.sort()
+            self._radio_channel_options = normalized
+            self._settings.set_radio_channel_options(
+                normalized,
+                selected=current_selected,
+                enabled=True,
+            )
+
+        self._radio_controller.fetch_channels(_handle_channels)
 
     @staticmethod
     def _normalize_radio_window_track_title(value: object) -> str:

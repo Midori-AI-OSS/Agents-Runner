@@ -120,6 +120,8 @@ class _MainWindowNavigationMixin:
         if not self._try_autosave_before_navigation():
             return
         self._settings.set_settings(self._settings_data)
+        if hasattr(self, "_refresh_radio_channel_options"):
+            self._refresh_radio_channel_options(disable_on_failure=True)
         self._transition_to_page(self._settings)
 
     def _try_autosave_before_navigation(self) -> bool:
