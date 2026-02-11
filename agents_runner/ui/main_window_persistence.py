@@ -178,6 +178,7 @@ class _MainWindowPersistenceMixin:
         self._settings_data.setdefault("spellcheck_enabled", True)
         self._settings_data.setdefault("ui_theme", "auto")
         self._settings_data.setdefault("radio_enabled", False)
+        self._settings_data.setdefault("radio_channel", "")
         self._settings_data.setdefault("radio_quality", "medium")
         self._settings_data.setdefault("radio_volume", 70)
         self._settings_data.setdefault("radio_autostart", False)
@@ -226,6 +227,9 @@ class _MainWindowPersistenceMixin:
         )
         self._settings_data["radio_autostart"] = bool(
             self._settings_data.get("radio_autostart") or False
+        )
+        self._settings_data["radio_channel"] = RadioController.normalize_channel(
+            self._settings_data.get("radio_channel")
         )
         self._settings_data["radio_quality"] = RadioController.normalize_quality(
             self._settings_data.get("radio_quality")
