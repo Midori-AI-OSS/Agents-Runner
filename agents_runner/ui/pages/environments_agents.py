@@ -20,7 +20,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
-from agents_runner.agent_cli import SUPPORTED_AGENTS
+from agents_runner.agent_cli import available_agents
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.constants import (
@@ -53,6 +53,7 @@ class AgentsTabWidget(QWidget):
 
         self._rows: list[AgentInstance] = []
         self._fallbacks: dict[str, str] = {}
+        self._pinned_agent_id: str = ""
         self._cross_agents_enabled: bool = False
         self._cross_agent_allowlist: set[str] = set()
         self._allowlist_checkboxes: dict[str, QCheckBox] = {}
@@ -71,7 +72,16 @@ class AgentsTabWidget(QWidget):
         self._agent_table = QTableWidget()
         self._agent_table.setColumnCount(8)
         self._agent_table.setHorizontalHeaderLabels(
-            ["Priority", "Agent", "ID", "Config folder", "CLI Flags", "Fallback", "Cross", ""]
+            [
+                "Priority",
+                "Agent",
+                "ID",
+                "Config folder",
+                "CLI Flags",
+                "Fallback",
+                "Cross",
+                "",
+            ]
         )
         self._agent_table.horizontalHeader().setSectionResizeMode(
             self._COL_PRIORITY, QHeaderView.ResizeToContents
@@ -116,7 +126,7 @@ class AgentsTabWidget(QWidget):
         # Add agent controls
         controls_row.addWidget(QLabel("Add agent"))
         self._add_agent_cli = QComboBox()
-        for agent in SUPPORTED_AGENTS:
+        for agent in available_agents():
             self._add_agent_cli.addItem(agent.title(), agent)
         controls_row.addWidget(self._add_agent_cli)
 
@@ -128,7 +138,9 @@ class AgentsTabWidget(QWidget):
 
         # Separator
         sep1 = QLabel("::")
-        sep1.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
+        sep1.setStyleSheet(
+            "color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;"
+        )
         controls_row.addWidget(sep1)
 
         # Selection mode controls
@@ -137,15 +149,26 @@ class AgentsTabWidget(QWidget):
         self._selection_mode.addItem("Round-robin", "round-robin")
         self._selection_mode.addItem("Least used (active tasks)", "least-used")
         self._selection_mode.addItem("Fallback (show mapping)", "fallback")
+        self._selection_mode.addItem("Pinned (use one agent)", "pinned")
         self._selection_mode.setMaximumWidth(340)
         self._selection_mode.currentIndexChanged.connect(
             self._on_selection_mode_changed
         )
         controls_row.addWidget(self._selection_mode)
 
+        self._pinned_agent_label = QLabel("Pinned agent")
+        controls_row.addWidget(self._pinned_agent_label)
+
+        self._pinned_agent = QComboBox()
+        self._pinned_agent.setMaximumWidth(320)
+        self._pinned_agent.currentIndexChanged.connect(self._on_pinned_agent_changed)
+        controls_row.addWidget(self._pinned_agent)
+
         # Separator
         sep2 = QLabel("::")
-        sep2.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
+        sep2.setStyleSheet(
+            "color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;"
+        )
         controls_row.addWidget(sep2)
 
         # Test Chain button
@@ -159,6 +182,7 @@ class AgentsTabWidget(QWidget):
         layout.addWidget(controls_container, 0)
 
         self._refresh_fallback_visibility()
+        self._refresh_pinned_visibility()
         self._refresh_cross_agent_visibility()
         self._render_table()
 
@@ -193,6 +217,8 @@ class AgentsTabWidget(QWidget):
 
     def _on_selection_mode_changed(self, _index: int) -> None:
         self._refresh_fallback_visibility()
+        self._refresh_pinned_visibility()
+        self._ensure_pinned_default()
         self.agents_changed.emit()
 
     def _refresh_fallback_visibility(self) -> None:
@@ -200,6 +226,23 @@ class AgentsTabWidget(QWidget):
             str(self._selection_mode.currentData() or "round-robin") == "fallback"
         )
         self._agent_table.setColumnHidden(self._COL_FALLBACK, not is_fallback_mode)
+
+    def _refresh_pinned_visibility(self) -> None:
+        is_pinned_mode = str(self._selection_mode.currentData() or "") == "pinned"
+        self._pinned_agent_label.setVisible(is_pinned_mode)
+        self._pinned_agent.setVisible(is_pinned_mode)
+
+    def _ensure_pinned_default(self) -> None:
+        if str(self._selection_mode.currentData() or "") != "pinned":
+            return
+        ids = [a.agent_id for a in self._rows]
+        if not ids:
+            self._pinned_agent_id = ""
+            return
+        if self._pinned_agent_id and self._pinned_agent_id in ids:
+            return
+        self._pinned_agent_id = ids[0]
+        self._update_pinned_options()
 
     def _refresh_priority_visibility(self) -> None:
         self._agent_table.setColumnHidden(self._COL_PRIORITY, len(self._rows) <= 1)
@@ -242,8 +285,10 @@ class AgentsTabWidget(QWidget):
             )
 
         self._update_fallback_options()
+        self._update_pinned_options()
         self._refresh_priority_visibility()
         self._refresh_fallback_visibility()
+        self._refresh_pinned_visibility()
         self._refresh_cross_agent_visibility()
         if self._cross_agents_enabled:
             self._update_allowlist_validation()
@@ -259,7 +304,7 @@ class AgentsTabWidget(QWidget):
                 "Add at least one agent to test the chain.",
             )
             return
-        
+
         # Show test dialog
         dialog = TestChainDialog(agent_names, cooldown_manager=None, parent=self)
         dialog.exec()
@@ -356,12 +401,15 @@ class AgentsTabWidget(QWidget):
             if kk and vv and kk != vv:
                 updated_fallbacks[kk] = vv
         self._fallbacks = updated_fallbacks
-        
+
         # Update cross-agent allowlist
         if old_id in self._cross_agent_allowlist:
             self._cross_agent_allowlist.discard(old_id)
             self._cross_agent_allowlist.add(new_id)
-        
+
+        if self._pinned_agent_id == old_id:
+            self._pinned_agent_id = new_id
+
         self._rows[row_index] = AgentInstance(
             agent_id=new_id,
             agent_cli=current.agent_cli,
@@ -497,14 +545,53 @@ class AgentsTabWidget(QWidget):
         removed_id = self._rows[row_index].agent_id
         self._rows.pop(row_index)
         self._fallbacks.pop(removed_id, None)
+        if self._pinned_agent_id == removed_id:
+            self._pinned_agent_id = ""
         for k, v in list(self._fallbacks.items()):
             if v == removed_id:
                 self._fallbacks.pop(k, None)
-        
+
         # Remove from cross-agent allowlist
         self._cross_agent_allowlist.discard(removed_id)
-        
+
         self._render_table()
+        self.agents_changed.emit()
+
+    def _update_pinned_options(self) -> None:
+        ids = [a.agent_id for a in self._rows]
+        pinned = str(self._pinned_agent_id or "").strip()
+        if pinned not in ids:
+            pinned = ""
+
+        self._pinned_agent.blockSignals(True)
+        try:
+            self._pinned_agent.clear()
+            for inst in self._rows:
+                self._pinned_agent.addItem(
+                    f"{inst.agent_id} ({normalize_agent(inst.agent_cli)})",
+                    inst.agent_id,
+                )
+            if (
+                not pinned
+                and ids
+                and str(self._selection_mode.currentData() or "") == "pinned"
+            ):
+                pinned = ids[0]
+            if pinned:
+                idx = self._pinned_agent.findData(pinned)
+                if idx >= 0:
+                    self._pinned_agent.setCurrentIndex(idx)
+        finally:
+            self._pinned_agent.blockSignals(False)
+
+        self._pinned_agent_id = pinned
+        self._pinned_agent.setEnabled(bool(self._rows))
+
+    def _on_pinned_agent_changed(self, _index: int) -> None:
+        pinned = str(self._pinned_agent.currentData() or "").strip()
+        if pinned == self._pinned_agent_id:
+            return
+        self._pinned_agent_id = pinned
         self.agents_changed.emit()
 
     def _update_fallback_options(self) -> None:
@@ -536,6 +623,7 @@ class AgentsTabWidget(QWidget):
             if agent_selection is None:
                 self._rows = []
                 self._fallbacks = {}
+                self._pinned_agent_id = ""
                 self._selection_mode.setCurrentIndex(0)
             else:
                 self._rows = [
@@ -549,6 +637,9 @@ class AgentsTabWidget(QWidget):
                     if str(getattr(a, "agent_id", "") or "").strip()
                 ]
                 self._fallbacks = dict(agent_selection.agent_fallbacks or {})
+                self._pinned_agent_id = str(
+                    getattr(agent_selection, "pinned_agent_id", "") or ""
+                ).strip()
                 idx = self._selection_mode.findData(
                     str(agent_selection.selection_mode or "round-robin")
                 )
@@ -558,7 +649,9 @@ class AgentsTabWidget(QWidget):
 
         self._render_table()
         self._refresh_fallback_visibility()
+        self._refresh_pinned_visibility()
         self._refresh_priority_visibility()
+        self._ensure_pinned_default()
 
     def get_agent_selection(self) -> AgentSelection | None:
         agents: list[AgentInstance] = []
@@ -588,10 +681,17 @@ class AgentsTabWidget(QWidget):
             if kk in known_ids and vv in known_ids and kk != vv:
                 cleaned_fallbacks[kk] = vv
 
+        mode = str(self._selection_mode.currentData() or "round-robin")
+        pinned_id = str(self._pinned_agent_id or "").strip()
+        if mode == "pinned":
+            if pinned_id not in known_ids:
+                pinned_id = agents[0].agent_id if agents else ""
+
         return AgentSelection(
             agents=agents,
-            selection_mode=str(self._selection_mode.currentData() or "round-robin"),
+            selection_mode=mode,
             agent_fallbacks=cleaned_fallbacks,
+            pinned_agent_id=pinned_id,
         )
 
     def set_cross_agents_enabled(self, enabled: bool) -> None:
@@ -623,12 +723,12 @@ class AgentsTabWidget(QWidget):
     def _on_allowlist_checkbox_changed(self, agent_id: str, state: int) -> None:
         """Handle allowlist checkbox state change."""
         is_checked = state == Qt.CheckState.Checked.value
-        
+
         if is_checked:
             self._cross_agent_allowlist.add(agent_id)
         else:
             self._cross_agent_allowlist.discard(agent_id)
-        
+
         # Update validation to enforce "one instance per CLI"
         self._update_allowlist_validation()
 
@@ -642,16 +742,16 @@ class AgentsTabWidget(QWidget):
                 if cli not in cli_to_checked:
                     cli_to_checked[cli] = []
                 cli_to_checked[cli].append(inst.agent_id)
-        
+
         # Disable/enable checkboxes based on validation
         for inst in self._rows:
             checkbox = self._allowlist_checkboxes.get(inst.agent_id)
             if not checkbox:
                 continue
-            
+
             cli = normalize_agent(inst.agent_cli)
             checked_for_cli = cli_to_checked.get(cli, [])
-            
+
             if inst.agent_id in self._cross_agent_allowlist:
                 # This checkbox is checked, keep it enabled
                 checkbox.setEnabled(True)

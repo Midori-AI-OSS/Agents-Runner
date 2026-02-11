@@ -1,47 +1,82 @@
 import os
 import shlex
-import subprocess
 
 from pathlib import Path
 
 
-SUPPORTED_AGENTS = ("codex", "claude", "copilot", "gemini")
 CONTAINER_HOME = "/home/midori-ai"
 CONTAINER_WORKDIR = "/home/midori-ai/workspace"
 
-DEFAULT_HOST_CONFIG_DIRS: dict[str, str] = {
-    "claude": "~/.claude",
-    "copilot": "~/.copilot",
-    "gemini": "~/.gemini",
-}
-
 
 def normalize_agent(value: str | None) -> str:
-    agent = str(value or "").strip().lower()
-    return agent if agent in SUPPORTED_AGENTS else "codex"
+    from agents_runner.agent_systems import normalize_agent_system_name
+
+    return normalize_agent_system_name(value)
+
+
+def available_agents() -> list[str]:
+    from agents_runner.agent_systems import available_agent_system_names
+
+    return available_agent_system_names()
+
+
+def _safe_agent_token(value: str) -> str:
+    raw = str(value or "").strip().lower()
+    safe = "".join(ch for ch in raw if ch.isalnum() or ch in {"-", "_"})
+    return safe
 
 
 def container_config_dir(agent: str) -> str:
-    agent = normalize_agent(agent)
-    if agent == "claude":
-        return f"{CONTAINER_HOME}/.claude"
-    if agent == "copilot":
-        return f"{CONTAINER_HOME}/.copilot"
-    if agent == "gemini":
-        return f"{CONTAINER_HOME}/.gemini"
-    return f"{CONTAINER_HOME}/.codex"
+    from agents_runner.agent_systems import get_agent_system
+    from agents_runner.agent_systems import get_default_agent_system_name
+
+    raw = str(agent or "").strip().lower()
+    if not raw:
+        raw = get_default_agent_system_name()
+
+    try:
+        return str(get_agent_system(raw).container_config_dir())
+    except KeyError:
+        safe = _safe_agent_token(raw)
+        if safe:
+            return f"{CONTAINER_HOME}/.{safe}"
+        return f"{CONTAINER_HOME}/.midoriai"
 
 
 def default_host_config_dir(agent: str, *, codex_default: str | None = None) -> str:
-    agent = normalize_agent(agent)
-    if agent == "codex":
+    raw = str(agent or "").strip().lower()
+    if not raw:
+        from agents_runner.agent_systems import get_default_agent_system_name
+
+        raw = get_default_agent_system_name()
+
+    if raw == "codex":
         fallback = (
             str(codex_default or "").strip()
             or os.environ.get("CODEX_HOST_CODEX_DIR", "").strip()
             or "~/.codex"
         )
         return os.path.expanduser(fallback)
-    return os.path.expanduser(DEFAULT_HOST_CONFIG_DIRS.get(agent, "~/.codex"))
+    from agents_runner.agent_systems import get_agent_system
+
+    try:
+        return os.path.expanduser(get_agent_system(raw).default_host_config_dir())
+    except KeyError:
+        safe = _safe_agent_token(raw)
+        if safe:
+            return os.path.expanduser(f"~/.midoriai/.{safe}_config")
+        return os.path.expanduser("~/.midoriai/.agent_config")
+
+
+def agent_requires_github_token(agent: str) -> bool:
+    agent = normalize_agent(agent)
+    from agents_runner.agent_systems import get_agent_system
+
+    try:
+        plugin = get_agent_system(agent)
+    except KeyError:
+        return False
+    return bool(getattr(plugin.capabilities, "requires_github_token", False))
 
 
 def additional_config_mounts(agent: str, host_config_dir: str) -> list[str]:
@@ -49,21 +84,44 @@ def additional_config_mounts(agent: str, host_config_dir: str) -> list[str]:
     host = str(host_config_dir or "").strip()
     if not host:
         return []
-    if agent != "claude":
+
+    from agents_runner.agent_systems import get_agent_system
+
+    try:
+        plugin = get_agent_system(agent)
+    except KeyError:
         return []
 
-    # Claude Code stores user-level settings in ~/.claude.json alongside the
-    # ~/.claude directory. If the user provided ~/.claude as the config folder,
-    # mount the sibling file into the container when present.
-    host_dir = Path(os.path.expanduser(host))
-    settings_path = host_dir.parent / ".claude.json"
-    if settings_path.is_file():
-        return [f"{str(settings_path)}:{CONTAINER_HOME}/.claude.json"]
-    return []
+    mounts = plugin.additional_config_mounts(
+        host_config_dir=Path(os.path.expanduser(host))
+    )
+    rendered: list[str] = []
+    for mount in mounts:
+        docker_mount = mount.to_docker_mount()
+        if docker_mount.endswith(":rw"):
+            docker_mount = docker_mount[:-3]
+        rendered.append(docker_mount)
+    return rendered
 
 
 def verify_cli_clause(agent: str) -> str:
-    agent = normalize_agent(agent)
+    agent_raw = str(agent or "").strip().lower()
+    # For test commands, verify the raw command name
+    # Handle both relative (sh, bash) and absolute paths (/bin/sh, /bin/bash)
+    if agent_raw in (
+        "echo",
+        "sh",
+        "bash",
+        "true",
+        "false",
+        "/bin/sh",
+        "/bin/bash",
+        "/usr/bin/sh",
+        "/usr/bin/bash",
+    ):
+        agent = agent_raw
+    else:
+        agent = normalize_agent(agent_raw)
     quoted = shlex.quote(agent)
     return (
         f"command -v {quoted} >/dev/null 2>&1 || "
@@ -79,84 +137,56 @@ def build_noninteractive_cmd(
     agent: str,
     prompt: str,
     host_workdir: str,
+    host_config_dir: str | None = None,
     container_workdir: str = CONTAINER_WORKDIR,
     agent_cli_args: list[str] | None = None,
 ) -> list[str]:
-    agent = normalize_agent(agent)
+    agent_raw = str(agent or "").strip().lower()
+    agent = normalize_agent(agent_raw)
     extra_args = list(agent_cli_args or [])
     prompt = str(prompt or "").strip()
 
-    if agent == "claude":
-        args = [
-            "claude",
-            "--print",
-            "--output-format",
-            "text",
-            "--permission-mode",
-            "bypassPermissions",
-            "--add-dir",
-            container_workdir,
-            *extra_args,
-            prompt,
-        ]
-        return args
-
-    if agent == "copilot":
-        args = [
-            "copilot",
-            "--allow-all-tools",
-            "--allow-all-paths",
-            "--add-dir",
-            container_workdir,
-            *extra_args,
-            "-p",
-            prompt,
-        ]
-        return args
-
-    if agent == "gemini":
-        args = [
-            "gemini",
-            "--no-sandbox",
-            "--approval-mode",
-            "yolo",
-            "--include-directories",
-            container_workdir,
-            "--include-directories",
-            "/tmp",
-            *extra_args,
-        ]
-        if prompt:
+    # Support test/debug commands as pass-through (for testing only)
+    # Handle both relative (sh, bash) and absolute paths (/bin/sh, /bin/bash)
+    if agent_raw in (
+        "echo",
+        "sh",
+        "bash",
+        "true",
+        "false",
+        "/bin/sh",
+        "/bin/bash",
+        "/usr/bin/sh",
+        "/usr/bin/bash",
+    ):
+        args = [agent_raw, *extra_args]
+        # For sh/bash with -c, the command is already in extra_args, don't append prompt
+        # For echo/true/false without -c, conditionally append prompt
+        has_c_flag = "-c" in extra_args
+        if prompt and agent_raw not in ("true", "false") and not has_c_flag:
             args.append(prompt)
         return args
 
-    # codex
-    args = [
-        "codex",
-        "exec",
-        "--sandbox",
-        "danger-full-access",
-    ]
-    if not _is_git_repo_root(host_workdir):
-        args.append("--skip-git-repo-check")
-    args.extend(extra_args)
-    args.append(prompt)
-    return args
+    from agents_runner.agent_systems import get_agent_system
+    from agents_runner.agent_systems.models import (
+        AgentSystemContext,
+        AgentSystemRequest,
+    )
 
-
-def _is_git_repo_root(path: str) -> bool:
-    path = os.path.abspath(os.path.expanduser(str(path or "").strip() or "."))
-    if not os.path.isdir(path):
-        return False
-    try:
-        proc = subprocess.run(
-            ["git", "-C", path, "rev-parse", "--is-inside-work-tree"],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=2.0,
-            stdin=subprocess.DEVNULL,
+    config_dir = str(host_config_dir or "").strip() or default_host_config_dir(agent)
+    context = AgentSystemContext(
+        workspace_host=Path(os.path.expanduser(host_workdir or ".")),
+        workspace_container=Path(str(container_workdir)),
+        config_host=Path(os.path.expanduser(config_dir)),
+        config_container=get_agent_system(agent).container_config_dir(),
+        extra_cli_args=extra_args,
+    )
+    plan = get_agent_system(agent).plan(
+        AgentSystemRequest(
+            system_name=agent,
+            interactive=False,
+            prompt=prompt,
+            context=context,
         )
-    except Exception:
-        return False
-    return proc.returncode == 0 and (proc.stdout or "").strip().lower() == "true"
+    )
+    return list(plan.exec_spec.argv)

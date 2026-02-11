@@ -11,6 +11,7 @@ from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import save_state
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
+from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import _parse_docker_time
 from agents_runner.ui.utils import _stain_color
 
@@ -32,7 +33,7 @@ class _MainWindowPersistenceMixin:
             return True
         if not (task.is_done() or task.is_failed()):
             return False
-        return (str(getattr(task, "finalization_state", "") or "").lower() == "done")
+        return str(getattr(task, "finalization_state", "") or "").lower() == "done"
 
     @staticmethod
     def _try_sync_container_state(task: Task) -> bool:
@@ -50,7 +51,14 @@ class _MainWindowPersistenceMixin:
                 status = (task.status or "").lower()
                 # Interactive tasks can briefly lack a container during launch; avoid
                 # marking them failed while they are still starting/running.
-                if task.is_interactive_run() and status in {"starting", "running", "created"}:
+                if task.is_interactive_run() and status in {
+                    "starting",
+                    "running",
+                    "created",
+                    "pulling",
+                    "cloning",
+                    "cleaning",
+                }:
                     return True
                 if status not in {"cancelled", "killed"}:
                     task.status = "failed"
@@ -93,7 +101,9 @@ class _MainWindowPersistenceMixin:
             and task.exit_code is not None
             and (task.status or "").lower() not in {"cancelled", "killed"}
         ):
-            task.status = "done" if status == "exited" and task.exit_code == 0 else "failed"
+            task.status = (
+                "done" if status == "exited" and task.exit_code == 0 else "failed"
+            )
             if task.finished_at is None:
                 from datetime import datetime
                 from datetime import timezone
@@ -166,6 +176,14 @@ class _MainWindowPersistenceMixin:
         )
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("spellcheck_enabled", True)
+        self._settings_data.setdefault("ui_theme", "auto")
+        self._settings_data.setdefault("radio_enabled", False)
+        self._settings_data.setdefault("radio_channel", "")
+        self._settings_data.setdefault("radio_quality", "medium")
+        self._settings_data.setdefault("radio_volume", 70)
+        self._settings_data.setdefault("radio_autostart", False)
+        self._settings_data.setdefault("radio_loudness_boost_enabled", False)
+        self._settings_data.setdefault("radio_loudness_boost_factor", 2.2)
         host_codex_dir = os.path.normpath(
             os.path.expanduser(
                 str(self._settings_data.get("host_codex_dir") or "").strip()
@@ -195,6 +213,38 @@ class _MainWindowPersistenceMixin:
             self._settings_data[key] = self._sanitize_interactive_command_value(
                 key, raw
             )
+        try:
+            from agents_runner.ui.graphics import normalize_ui_theme_name
+
+            self._settings_data["ui_theme"] = normalize_ui_theme_name(
+                self._settings_data.get("ui_theme"), allow_auto=True
+            )
+        except Exception:
+            self._settings_data["ui_theme"] = "auto"
+
+        self._settings_data["radio_enabled"] = bool(
+            self._settings_data.get("radio_enabled") or False
+        )
+        self._settings_data["radio_autostart"] = bool(
+            self._settings_data.get("radio_autostart") or False
+        )
+        self._settings_data["radio_channel"] = RadioController.normalize_channel(
+            self._settings_data.get("radio_channel")
+        )
+        self._settings_data["radio_quality"] = RadioController.normalize_quality(
+            self._settings_data.get("radio_quality")
+        )
+        self._settings_data["radio_volume"] = RadioController.clamp_volume(
+            self._settings_data.get("radio_volume")
+        )
+        self._settings_data["radio_loudness_boost_enabled"] = bool(
+            self._settings_data.get("radio_loudness_boost_enabled") or False
+        )
+        self._settings_data["radio_loudness_boost_factor"] = (
+            RadioController.normalize_loudness_boost_factor(
+                self._settings_data.get("radio_loudness_boost_factor")
+            )
+        )
 
         items = load_active_task_payloads(self._state_path)
         loaded: list[Task] = []
@@ -222,12 +272,13 @@ class _MainWindowPersistenceMixin:
                 task.status = "unknown"
             loaded.append(task)
         loaded.sort(key=lambda t: t.created_at_s)
-        
+
         # Repair missing git metadata for cloned repo tasks
         repair_count = 0
         for task in loaded:
             if task.requires_git_metadata() and not task.git:
                 from agents_runner.ui.task_repair import repair_task_git_metadata
+
                 success, msg = repair_task_git_metadata(
                     task,
                     state_path=self._state_path,
@@ -241,12 +292,13 @@ class _MainWindowPersistenceMixin:
                         serialize_task(task),
                         archived=self._should_archive_task(task),
                     )
-        
+
         if repair_count > 0:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.info(f"Repaired git metadata for {repair_count} tasks")
-        
+
         for task in loaded:
             self._tasks[task.task_id] = task
             env = self._environments.get(task.environment_id)
@@ -254,7 +306,11 @@ class _MainWindowPersistenceMixin:
             spinner = _stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
+        # Run startup reconciliation once
+        # Guard prevents accidental re-runs if _load_state() is called multiple times
         try:
-            self._reconcile_tasks_after_restart()
+            if not getattr(self, "_reconcile_has_run", False):
+                self._reconcile_has_run = True
+                self._reconcile_tasks_after_restart()
         except Exception:
             pass

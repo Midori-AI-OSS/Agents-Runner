@@ -28,11 +28,11 @@ class _EnvironmentsPageActionsMixin:
         gh_available = bool(is_gh_available())
         workspace_type = str(self._workspace_type_combo.currentData() or WORKSPACE_NONE)
         locked = env is not None
-        
+
         if locked and env is not None:
             # Sync UI to match environment's workspace_type
             desired_workspace_type = env.workspace_type or WORKSPACE_NONE
-            
+
             if desired_workspace_type != workspace_type:
                 idx = self._workspace_type_combo.findData(desired_workspace_type)
                 if idx >= 0:
@@ -42,7 +42,7 @@ class _EnvironmentsPageActionsMixin:
                     finally:
                         self._workspace_type_combo.blockSignals(False)
                 workspace_type = desired_workspace_type
-            
+
             desired_target = str(env.workspace_target or "")
             if (self._workspace_target.text() or "") != desired_target:
                 self._workspace_target.blockSignals(True)
@@ -50,7 +50,7 @@ class _EnvironmentsPageActionsMixin:
                     self._workspace_target.setText(desired_target)
                 finally:
                     self._workspace_target.blockSignals(False)
-            
+
             desired_gh = bool(getattr(env, "gh_use_host_cli", True))
             if bool(self._gh_use_host_cli.isChecked()) != desired_gh:
                 self._gh_use_host_cli.blockSignals(True)
@@ -72,9 +72,7 @@ class _EnvironmentsPageActionsMixin:
 
     def _on_new(self) -> None:
         wizard = NewEnvironmentWizard(self)
-        wizard.environment_created.connect(
-            lambda env: self.updated.emit(env.env_id)
-        )
+        wizard.environment_created.connect(lambda env: self.updated.emit(env.env_id))
         wizard.exec()
 
     def _on_delete(self) -> None:
@@ -94,18 +92,28 @@ class _EnvironmentsPageActionsMixin:
         delete_environment(env.env_id)
         self.updated.emit("")
 
-    def _on_save(self) -> None:
-        self.try_autosave()
+    def try_autosave(
+        self,
+        *,
+        preferred_env_id: str | None = None,
+        show_validation_errors: bool = True,
+    ) -> bool:
+        autosave_timer = getattr(self, "_autosave_timer", None)
+        if autosave_timer is not None and autosave_timer.isActive():
+            autosave_timer.stop()
 
-    def try_autosave(self, *, preferred_env_id: str | None = None) -> bool:
+        if bool(getattr(self, "_suppress_autosave", False)):
+            return True
+
         env_id = self._current_env_id
         if not env_id:
             return True
         name = (self._name.text() or "").strip()
         if not name:
-            QMessageBox.warning(
-                self, "Missing name", "Enter an environment name first."
-            )
+            if show_validation_errors:
+                QMessageBox.warning(
+                    self, "Missing name", "Enter an environment name first."
+                )
             return False
 
         existing = self._environments.get(env_id)
@@ -118,16 +126,18 @@ class _EnvironmentsPageActionsMixin:
             max_agents_running = -1
 
         # Get workspace type and target from existing environment
-        workspace_type = existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
-        workspace_target = str(existing.workspace_target or "").strip() if existing else ""
+        workspace_type = (
+            existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
+        )
+        workspace_target = (
+            str(existing.workspace_target or "").strip() if existing else ""
+        )
         gh_locked = True
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
         )
         gh_context_enabled = (
-            bool(getattr(existing, "gh_context_enabled", False))
-            if existing
-            else False
+            bool(getattr(existing, "gh_context_enabled", False)) if existing else False
         )
 
         if existing and workspace_type == WORKSPACE_CLONED:
@@ -144,22 +154,32 @@ class _EnvironmentsPageActionsMixin:
 
         env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
         if errors:
-            QMessageBox.warning(
-                self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
-            )
+            if show_validation_errors:
+                QMessageBox.warning(
+                    self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
+                )
             return False
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
+            self._ports_tab.get_ports()
+        )
+        if port_errors:
+            if show_validation_errors:
+                QMessageBox.warning(
+                    self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
+                )
+            return False
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
-        
+
         # Read cross-agents configuration
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
         # Read preflight scripts based on container caching state
         container_caching_enabled = bool(self._container_caching_enabled.isChecked())
-        
+
         if container_caching_enabled:
             # Dual-editor mode: read from both editors
             cached_preflight_script = (
@@ -194,6 +214,9 @@ class _EnvironmentsPageActionsMixin:
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                ports=ports,
+                ports_unlocked=ports_unlocked,
+                ports_advanced_acknowledged=ports_advanced_acknowledged,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -223,6 +246,9 @@ class _EnvironmentsPageActionsMixin:
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                ports=ports,
+                ports_unlocked=ports_unlocked,
+                ports_advanced_acknowledged=ports_advanced_acknowledged,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -254,16 +280,18 @@ class _EnvironmentsPageActionsMixin:
             max_agents_running = -1
 
         # Get workspace type and target from existing environment
-        workspace_type = existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
-        workspace_target = str(existing.workspace_target or "").strip() if existing else ""
+        workspace_type = (
+            existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
+        )
+        workspace_target = (
+            str(existing.workspace_target or "").strip() if existing else ""
+        )
         gh_locked = True
         gh_use_host_cli = (
             bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
         )
         gh_context_enabled = (
-            bool(getattr(existing, "gh_context_enabled", False))
-            if existing
-            else False
+            bool(getattr(existing, "gh_context_enabled", False)) if existing else False
         )
 
         if existing and workspace_type == WORKSPACE_CLONED:
@@ -286,17 +314,25 @@ class _EnvironmentsPageActionsMixin:
             return None
 
         mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
+            self._ports_tab.get_ports()
+        )
+        if port_errors:
+            QMessageBox.warning(
+                self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
+            )
+            return None
         name = (self._name.text() or "").strip() or env_id
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
-        
+
         # Read cross-agents configuration
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
         # Read preflight scripts based on container caching state
         container_caching_enabled = bool(self._container_caching_enabled.isChecked())
-        
+
         if container_caching_enabled:
             # Dual-editor mode: read from both editors
             cached_preflight_script = (
@@ -331,6 +367,9 @@ class _EnvironmentsPageActionsMixin:
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                ports=ports,
+                ports_unlocked=ports_unlocked,
+                ports_advanced_acknowledged=ports_advanced_acknowledged,
                 gh_management_locked=gh_locked,
                 workspace_type=workspace_type,
                 workspace_target=workspace_target,
@@ -348,9 +387,7 @@ class _EnvironmentsPageActionsMixin:
             name=name,
             color=str(self._color.currentData() or "slate"),
             max_agents_running=max_agents_running,
-            headless_desktop_enabled=bool(
-                self._headless_desktop_enabled.isChecked()
-            ),
+            headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
             cached_preflight_script=cached_preflight_script,
@@ -358,6 +395,9 @@ class _EnvironmentsPageActionsMixin:
             preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
+            ports=ports,
+            ports_unlocked=ports_unlocked,
+            ports_advanced_acknowledged=ports_advanced_acknowledged,
             gh_management_locked=gh_locked,
             workspace_type=workspace_type,
             workspace_target=workspace_target,

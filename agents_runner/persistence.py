@@ -1,7 +1,9 @@
-import json
 import os
 import tempfile
 import time
+
+import tomli
+import tomli_w
 
 from datetime import datetime
 from typing import Any
@@ -14,17 +16,41 @@ TASKS_DIR_NAME = "tasks"
 TASKS_DONE_DIR_NAME = "done"
 
 
+def _strip_none_for_toml(value: Any) -> Any:
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for key, item in value.items():
+            if item is None:
+                continue
+            cleaned_item = _strip_none_for_toml(item)
+            if cleaned_item is None:
+                continue
+            cleaned[str(key)] = cleaned_item
+        return cleaned
+    if isinstance(value, (list, tuple)):
+        cleaned_list: list[Any] = []
+        for item in value:
+            if item is None:
+                continue
+            cleaned_item = _strip_none_for_toml(item)
+            if cleaned_item is None:
+                continue
+            cleaned_list.append(cleaned_item)
+        return cleaned_list
+    return value
+
+
 def default_state_path() -> str:
     override = str(os.environ.get("AGENTS_RUNNER_STATE_PATH") or "").strip()
     if override:
         override = os.path.expanduser(override)
-        # Treat overrides as a directory unless the path clearly points to a JSON file.
+        # Treat overrides as a directory unless the path clearly points to a TOML file.
         # This is intentionally permissive so callers can pass a non-existent directory path.
-        if override.lower().endswith(".json"):
+        if override.lower().endswith(".toml"):
             return override
-        return os.path.join(override, "state.json")
+        return os.path.join(override, "state.toml")
     base = os.path.expanduser("~/.midoriai/agents-runner")
-    return os.path.join(base, "state.json")
+    return os.path.join(base, "state.toml")
 
 
 def _dt_to_str(value: datetime | None) -> str | None:
@@ -55,8 +81,8 @@ def load_state(path: str) -> dict[str, Any]:
             "settings": {},
             "environments": [],
         }
-    with open(path, "r", encoding="utf-8") as f:
-        payload = json.load(f)
+    with open(path, "rb") as f:
+        payload = tomli.load(f)
     if not isinstance(payload, dict):
         return {
             "version": STATE_VERSION,
@@ -91,11 +117,11 @@ def save_state(path: str, payload: dict[str, Any]) -> None:
     payload["version"] = STATE_VERSION
 
     fd, tmp_path = tempfile.mkstemp(
-        prefix="state-", suffix=".json", dir=os.path.dirname(path)
+        prefix="state-", suffix=".toml", dir=os.path.dirname(path)
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
+        with os.fdopen(fd, "wb") as f:
+            tomli_w.dump(_strip_none_for_toml(payload), f)
         os.replace(tmp_path, path)
     finally:
         try:
@@ -127,7 +153,7 @@ def _safe_task_filename(task_id: str) -> str:
     ).strip()
     if not cleaned:
         cleaned = f"task-{time.time_ns()}"
-    return f"{cleaned}.json"
+    return f"{cleaned}.toml"
 
 
 def task_path(state_path: str, task_id: str, *, archived: bool = False) -> str:
@@ -143,8 +169,8 @@ def _atomic_write_json(path: str, payload: dict[str, Any]) -> None:
         dir=os.path.dirname(path),
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2, sort_keys=True)
+        with os.fdopen(fd, "wb") as f:
+            tomli_w.dump(_strip_none_for_toml(payload), f)
         os.replace(tmp_path, path)
     finally:
         try:
@@ -163,7 +189,7 @@ def _archive_active_task_file_if_present(state_path: str, task_id: str) -> None:
     if os.path.exists(done_path):
         dedup_path = os.path.join(
             tasks_done_dir(state_path),
-            f"{os.path.splitext(os.path.basename(done_path))[0]}.dup-{time.time_ns()}.json",
+            f"{os.path.splitext(os.path.basename(done_path))[0]}.dup-{time.time_ns()}.toml",
         )
         try:
             os.replace(active_path, dedup_path)
@@ -194,14 +220,14 @@ def load_active_task_payloads(state_path: str) -> list[dict[str, Any]]:
         return []
     payloads: list[dict[str, Any]] = []
     for name in sorted(os.listdir(root)):
-        if not name.endswith(".json"):
+        if not name.endswith(".toml"):
             continue
         path = os.path.join(root, name)
         if not os.path.isfile(path):
             continue
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                payload = json.load(f)
+            with open(path, "rb") as f:
+                payload = tomli.load(f)
         except Exception:
             continue
         if isinstance(payload, dict):
@@ -219,8 +245,8 @@ def load_task_payload(
     if not os.path.isfile(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
+        with open(path, "rb") as f:
+            payload = tomli.load(f)
     except Exception:
         return None
     return payload if isinstance(payload, dict) else None
@@ -245,7 +271,7 @@ def load_done_task_payloads(
     names: list[str] = []
     try:
         for name in os.listdir(done):
-            if name.endswith(".json"):
+            if name.endswith(".toml"):
                 names.append(name)
     except OSError:
         return []
@@ -264,8 +290,8 @@ def load_done_task_payloads(
         if not os.path.isfile(path):
             continue
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                payload = json.load(f)
+            with open(path, "rb") as f:
+                payload = tomli.load(f)
         except Exception:
             continue
         if isinstance(payload, dict):
@@ -293,7 +319,7 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "prompt": task.prompt,
         "image": task.image,
         "host_workdir": task.host_workdir,
-        "host_codex_dir": task.host_codex_dir,
+        "host_config_dir": task.host_config_dir,
         "environment_id": getattr(task, "environment_id", ""),
         "created_at_s": task.created_at_s,
         "status": task.status,
@@ -321,7 +347,9 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "desktop_display": getattr(task, "desktop_display", ""),
         "artifacts": list(getattr(task, "artifacts", [])),
         "attempt_history": list(getattr(task, "attempt_history", [])),
-        "finalization_state": str(getattr(task, "finalization_state", "pending") or "pending"),
+        "finalization_state": str(
+            getattr(task, "finalization_state", "pending") or "pending"
+        ),
         "finalization_error": str(getattr(task, "finalization_error", "") or ""),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
@@ -333,7 +361,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
     git_payload = data.get("git")
     if not isinstance(git_payload, dict) or not git_payload:
         git_payload = None
-    
+
     # Migration: workspace_type from gh_management_mode
     # Prefer new key, fallback to old key
     workspace_type = data.get("workspace_type")
@@ -347,13 +375,15 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
             workspace_type = "none"
 
     workspace_type = workspace_type or "none"
-    
+
     task = task_cls(
         task_id=str(data.get("task_id") or ""),
         prompt=sanitize_prompt(str(data.get("prompt") or "")),
         image=str(data.get("image") or ""),
         host_workdir=str(data.get("host_workdir") or ""),
-        host_codex_dir=str(data.get("host_codex_dir") or ""),
+        host_config_dir=str(
+            data.get("host_config_dir") or data.get("host_codex_dir") or ""
+        ),
         environment_id=str(data.get("environment_id") or ""),
         created_at_s=float(data.get("created_at_s") or 0.0),
         status=str(data.get("status") or "queued"),
@@ -405,9 +435,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
     return task
 
 
-def _deserialize_runner_config(
-    payload: dict[str, Any], *, task_id: str
-) -> Any:
+def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
     try:
         from agents_runner.docker_runner import DockerRunnerConfig
     except Exception:
@@ -427,6 +455,11 @@ def _deserialize_runner_config(
         if isinstance(raw_mounts, list):
             extra_mounts = [str(item) for item in raw_mounts if str(item).strip()]
 
+        ports: list[str] = []
+        raw_ports = payload.get("ports")
+        if isinstance(raw_ports, list):
+            ports = [str(item) for item in raw_ports if str(item).strip()]
+
         agent_cli_args: list[str] = []
         raw_args = payload.get("agent_cli_args")
         if isinstance(raw_args, list):
@@ -442,15 +475,21 @@ def _deserialize_runner_config(
         if artifact_collection_timeout_s <= 0.0:
             artifact_collection_timeout_s = 30.0
 
+        agent_cli = str(payload.get("agent_cli") or "codex")
+        agent_cli_lower = agent_cli.strip().lower()
+        container_config_dir = str(payload.get("container_config_dir") or "").strip()
+        if not container_config_dir and agent_cli_lower == "codex":
+            container_config_dir = str(payload.get("container_codex_dir") or "").strip()
+
         return DockerRunnerConfig(
             task_id=str(payload.get("task_id") or task_id),
             image=str(payload.get("image") or ""),
-            host_codex_dir=str(payload.get("host_codex_dir") or ""),
-            host_workdir=str(payload.get("host_workdir") or ""),
-            agent_cli=str(payload.get("agent_cli") or "codex"),
-            container_codex_dir=str(
-                payload.get("container_codex_dir") or "/home/midori-ai/.codex"
+            host_config_dir=str(
+                payload.get("host_config_dir") or payload.get("host_codex_dir") or ""
             ),
+            host_workdir=str(payload.get("host_workdir") or ""),
+            agent_cli=agent_cli,
+            container_config_dir=container_config_dir,
             container_workdir=str(
                 payload.get("container_workdir") or "/home/midori-ai/workspace"
             ),
@@ -481,6 +520,7 @@ def _deserialize_runner_config(
             ),
             env_vars=env_vars,
             extra_mounts=extra_mounts,
+            ports=ports,
             agent_cli_args=agent_cli_args,
             artifact_collection_timeout_s=artifact_collection_timeout_s,
         )
@@ -547,9 +587,7 @@ def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
 
         result[provider_name] = AgentWatchState(
             provider_name=provider_name,
-            support_level=SupportLevel(
-                data.get("support_level", "unknown")
-            ),
+            support_level=SupportLevel(data.get("support_level", "unknown")),
             status=AgentStatus(data.get("status", "ready")),
             windows=windows,
             last_rate_limited_at=last_rate_limited_at,
@@ -563,9 +601,7 @@ def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-def save_watch_state(
-    state: dict[str, Any], watch_states: dict[str, Any]
-) -> None:
+def save_watch_state(state: dict[str, Any], watch_states: dict[str, Any]) -> None:
     """Save agent watch state to persistence.
 
     Args:

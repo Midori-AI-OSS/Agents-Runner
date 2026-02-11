@@ -52,13 +52,16 @@ class _MainWindowTasksAgentMixin:
             if (
                 status in {"done", "failed", "error"}
                 and not task.is_active()
-                and (str(getattr(task, "finalization_state", "") or "").lower() == "done")
+                and (
+                    str(getattr(task, "finalization_state", "") or "").lower() == "done"
+                )
             ):
                 to_remove.add(task_id)
         if not to_remove:
             return
 
         # Archive tasks and clean up workspaces
+        archived_tasks: list[Task] = []
         data_dir = os.path.dirname(self._state_path)
         for task_id in sorted(to_remove):
             task = self._tasks.get(task_id)
@@ -66,6 +69,7 @@ class _MainWindowTasksAgentMixin:
                 continue
             status = (task.status or "").lower()
             save_task_payload(self._state_path, serialize_task(task), archived=True)
+            archived_tasks.append(task)
 
             # Clean up task workspace (if using cloned GitHub repo)
             if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
@@ -86,6 +90,10 @@ class _MainWindowTasksAgentMixin:
             self._bridges.pop(task_id, None)
             self._run_started_s.pop(task_id, None)
             self._dashboard_log_refresh_s.pop(task_id, None)
+        for task in archived_tasks:
+            env = self._environments.get(task.environment_id)
+            stain = env.color if env else None
+            self._dashboard.upsert_past_task(task, stain=stain)
         self._schedule_save()
 
     def _start_task_from_ui(
@@ -111,6 +119,42 @@ class _MainWindowTasksAgentMixin:
             return
         self._settings_data["active_environment_id"] = env_id
         env = self._environments.get(env_id)
+
+        if (
+            env
+            and env.agent_selection
+            and str(getattr(env.agent_selection, "selection_mode", "") or "")
+            .strip()
+            .lower()
+            == "pinned"
+        ):
+            pinned_id = str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip()
+            pinned_lower = pinned_id.lower()
+            pinned_inst = next(
+                (
+                    inst
+                    for inst in list(getattr(env.agent_selection, "agents", []) or [])
+                    if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
+                ),
+                None,
+            ) or next(
+                (
+                    inst
+                    for inst in list(getattr(env.agent_selection, "agents", []) or [])
+                    if str(getattr(inst, "agent_id", "") or "").strip().lower()
+                    == pinned_lower
+                ),
+                None,
+            )
+            if pinned_inst is None:
+                QMessageBox.warning(
+                    self,
+                    "Pinned agent missing",
+                    "This environment is set to Pinned mode, but the pinned agent ID is missing or invalid.",
+                )
+                return
 
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
@@ -142,11 +186,14 @@ class _MainWindowTasksAgentMixin:
                 (
                     a
                     for a in (env.agent_selection.agents or [])
-                    if str(getattr(a, "agent_id", "") or "").strip() == agent_instance_id
+                    if str(getattr(a, "agent_id", "") or "").strip()
+                    == agent_instance_id
                 ),
                 None,
             )
-            selected_cli_flags = str(getattr(inst, "cli_flags", "") or "").strip() if inst else ""
+            selected_cli_flags = (
+                str(getattr(inst, "cli_flags", "") or "").strip() if inst else ""
+            )
 
         cooldown_args: list[str] = []
         if selected_cli_flags:
@@ -176,6 +223,10 @@ class _MainWindowTasksAgentMixin:
                 env
                 and env.agent_selection
                 and env.agent_selection.agent_fallbacks
+                and str(getattr(env.agent_selection, "selection_mode", "") or "")
+                .strip()
+                .lower()
+                == "fallback"
             ):
                 # Find primary agent
                 primary_agent = None
@@ -237,12 +288,7 @@ class _MainWindowTasksAgentMixin:
                     agent_instance_id = fallback_agent.agent_id
                     # Don't modify environment, just use fallback for this task
 
-
-        workspace_type = (
-            env.workspace_type
-            if env
-            else "none"
-        )
+        workspace_type = env.workspace_type if env else "none"
         effective_workdir, ready, message = self._new_task_workspace(
             env, task_id=task_id
         )
@@ -253,7 +299,14 @@ class _MainWindowTasksAgentMixin:
             try:
                 os.makedirs(effective_workdir, exist_ok=True)
             except Exception as exc:
-                logger.error(format_log("host", "workspace", "ERROR", f"Failed to create directory {effective_workdir}: {exc}"))
+                logger.error(
+                    format_log(
+                        "host",
+                        "workspace",
+                        "ERROR",
+                        f"Failed to create directory {effective_workdir}: {exc}",
+                    )
+                )
                 QMessageBox.warning(
                     self,
                     "Directory Creation Failed",
@@ -268,10 +321,28 @@ class _MainWindowTasksAgentMixin:
 
         resolved_agent_selection: AgentSelection | None = None
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            selection_mode = str(
+                getattr(env.agent_selection, "selection_mode", "") or "round-robin"
+            ).strip()
+            pinned_agent_id = str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip()
+            pinned_lower = pinned_agent_id.lower()
             resolved_agents: list[AgentInstance] = []
             for inst in list(env.agent_selection.agents or []):
+                if (
+                    selection_mode.lower() == "pinned"
+                    and pinned_agent_id
+                    and str(getattr(inst, "agent_id", "") or "").strip()
+                    != pinned_agent_id
+                    and str(getattr(inst, "agent_id", "") or "").strip().lower()
+                    != pinned_lower
+                ):
+                    continue
                 inst_cli = str(getattr(inst, "agent_cli", "") or "").strip()
-                inst_dir = os.path.expanduser(str(getattr(inst, "config_dir", "") or "").strip())
+                inst_dir = os.path.expanduser(
+                    str(getattr(inst, "config_dir", "") or "").strip()
+                )
                 if not inst_dir:
                     inst_dir = self._resolve_config_dir_for_agent(
                         agent_cli=inst_cli,
@@ -280,7 +351,8 @@ class _MainWindowTasksAgentMixin:
                     )
                 resolved_agents.append(
                     AgentInstance(
-                        agent_id=str(getattr(inst, "agent_id", "") or "").strip() or inst_cli,
+                        agent_id=str(getattr(inst, "agent_id", "") or "").strip()
+                        or inst_cli,
                         agent_cli=inst_cli,
                         config_dir=inst_dir,
                         cli_flags=str(getattr(inst, "cli_flags", "") or "").strip(),
@@ -288,8 +360,13 @@ class _MainWindowTasksAgentMixin:
                 )
             resolved_agent_selection = AgentSelection(
                 agents=resolved_agents,
-                selection_mode=str(getattr(env.agent_selection, "selection_mode", "") or "round-robin"),
-                agent_fallbacks=dict(getattr(env.agent_selection, "agent_fallbacks", {}) or {}),
+                selection_mode=selection_mode,
+                agent_fallbacks=(
+                    {}
+                    if selection_mode.lower() == "pinned"
+                    else dict(getattr(env.agent_selection, "agent_fallbacks", {}) or {})
+                ),
+                pinned_agent_id=pinned_agent_id,
             )
 
         host_codex = os.path.expanduser(str(host_codex or "").strip())
@@ -340,7 +417,9 @@ class _MainWindowTasksAgentMixin:
             bool(getattr(env, "container_caching_enabled", False)) if env else False
         )
         cached_preflight_script = (
-            str(getattr(env, "cached_preflight_script", "") or "").strip() if env else ""
+            str(getattr(env, "cached_preflight_script", "") or "").strip()
+            if env
+            else ""
         )
         # Only enable cache if desktop is enabled
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
@@ -350,7 +429,7 @@ class _MainWindowTasksAgentMixin:
             prompt=prompt,
             image=image,
             host_workdir=effective_workdir,
-            host_codex_dir=host_config_dir,
+            host_config_dir=host_config_dir,
             environment_id=env_id,
             created_at_s=time.time(),
             status="queued",
@@ -373,11 +452,7 @@ class _MainWindowTasksAgentMixin:
         desired_base = str(base_branch or "").strip()
 
         # Save the selected branch for cloned environments
-        if (
-            env
-            and env.workspace_type == WORKSPACE_CLONED
-            and desired_base
-        ):
+        if env and env.workspace_type == WORKSPACE_CLONED and desired_base:
             env.gh_last_base_branch = desired_base
             save_environment(env)
             # Update in-memory copy to persist across tab changes and reloads
@@ -405,11 +480,17 @@ class _MainWindowTasksAgentMixin:
             )
             self._on_task_log(
                 task_id,
-                format_log("env", "prompts", "INFO", f"appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)"),
+                format_log(
+                    "env",
+                    "prompts",
+                    "INFO",
+                    f"appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)",
+                ),
             )
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
-        
+        ports_for_task = list(getattr(env, "ports", []) or []) if env else []
+
         # Add host cache mount if enabled in settings
         if self._settings_data.get("mount_host_cache", False):
             host_cache = os.path.expanduser("~/.cache")
@@ -433,7 +514,7 @@ class _MainWindowTasksAgentMixin:
             # Detect git for mounted environments
             should_generate = False
             github_context = None
-            
+
             if env.workspace_type == WORKSPACE_MOUNTED:
                 # Mounted: Try to detect git repo
                 folder_path = str(env.workspace_target or "").strip()
@@ -463,21 +544,43 @@ class _MainWindowTasksAgentMixin:
                             if folder_path and os.path.isdir(folder_path):
                                 task.gh_repo_root = folder_path
                             self._on_task_log(
-                                task_id, format_log("gh", "context", "INFO", f"detected git repo: {git_info.repo_url}")
+                                task_id,
+                                format_log(
+                                    "gh",
+                                    "context",
+                                    "INFO",
+                                    f"detected git repo: {git_info.repo_url}",
+                                ),
                             )
                         else:
                             self._on_task_log(
-                                task_id, format_log("gh", "context", "INFO", "folder is not a git repository; skipping context")
+                                task_id,
+                                format_log(
+                                    "gh",
+                                    "context",
+                                    "INFO",
+                                    "folder is not a git repository; skipping context",
+                                ),
                             )
                     except Exception as exc:
-                        logger.warning(format_log("gh", "context", "WARN", f"git detection failed: {exc}"))
+                        logger.warning(
+                            format_log(
+                                "gh", "context", "WARN", f"git detection failed: {exc}"
+                            )
+                        )
                         self._on_task_log(
-                            task_id, format_log("gh", "context", "WARN", f"git detection failed: {exc}; continuing without context")
+                            task_id,
+                            format_log(
+                                "gh",
+                                "context",
+                                "WARN",
+                                f"git detection failed: {exc}; continuing without context",
+                            ),
                         )
             elif env.workspace_type == WORKSPACE_CLONED:
                 # Cloned: Will populate after clone
                 should_generate = True
-            
+
             # Create GitHub context file
             if should_generate:
                 host_context_path = github_context_host_path(
@@ -498,20 +601,33 @@ class _MainWindowTasksAgentMixin:
                         task_id=task_id,
                     )
                 except Exception as exc:
-                    logger.error(format_log("gh", "context", "ERROR", f"failed to create GitHub context file: {exc}"))
+                    logger.error(
+                        format_log(
+                            "gh",
+                            "context",
+                            "ERROR",
+                            f"failed to create GitHub context file: {exc}",
+                        )
+                    )
                     self._on_task_log(
-                        task_id, format_log("gh", "context", "ERROR", f"failed to create GitHub context file: {exc}; continuing without context")
+                        task_id,
+                        format_log(
+                            "gh",
+                            "context",
+                            "ERROR",
+                            f"failed to create GitHub context file: {exc}; continuing without context",
+                        ),
                     )
                 else:
                     task.gh_context_path = host_context_path
                     task.gh_pr_metadata_path = pr_host_path
 
-                    # Only mount the PR title/body JSON into the container (agents edit this).
+                    # Only mount the PR title/body TOML into the container (agents edit this).
                     extra_mounts_for_task.append(
                         f"{pr_host_path}:{pr_container_path}:rw"
                     )
 
-                    # Provide read-only repo context inline; do not mount the repo metadata JSON.
+                    # Provide read-only repo context inline; do not mount the repo metadata file.
                     repo_url = ""
                     repo_owner = ""
                     repo_name = ""
@@ -527,7 +643,9 @@ class _MainWindowTasksAgentMixin:
                         head_commit = github_context.head_commit
                     else:
                         # For cloned repos, we may not know branch/commit until after clone.
-                        repo_url = str(getattr(env, "workspace_target", "") or "").strip()
+                        repo_url = str(
+                            getattr(env, "workspace_target", "") or ""
+                        ).strip()
                         base_branch = str(desired_base or "").strip() or "auto"
                         task_branch = "(already created by runner)"
                         head_commit = "(set after clone)"
@@ -540,14 +658,32 @@ class _MainWindowTasksAgentMixin:
                     # Clarify two-phase process for cloned repo environments
                     if workspace_type == WORKSPACE_CLONED:
                         self._on_task_log(
-                            task_id, format_log("gh", "context", "INFO", "GitHub context enabled (host-only) and PR metadata file mounted")
+                            task_id,
+                            format_log(
+                                "gh",
+                                "context",
+                                "INFO",
+                                "GitHub context enabled (host-only) and PR metadata file mounted",
+                            ),
                         )
                         self._on_task_log(
-                            task_id, format_log("gh", "context", "INFO", "Repository metadata will be populated after clone completes")
+                            task_id,
+                            format_log(
+                                "gh",
+                                "context",
+                                "INFO",
+                                "Repository metadata will be populated after clone completes",
+                            ),
                         )
                     else:
                         self._on_task_log(
-                            task_id, format_log("gh", "context", "INFO", "GitHub context enabled (host-only) and PR metadata file mounted")
+                            task_id,
+                            format_log(
+                                "gh",
+                                "context",
+                                "INFO",
+                                "GitHub context enabled (host-only) and PR metadata file mounted",
+                            ),
                         )
 
         # Build config with GitHub repo info if needed
@@ -560,7 +696,7 @@ class _MainWindowTasksAgentMixin:
         config = DockerRunnerConfig(
             task_id=task_id,
             image=image,
-            host_codex_dir=host_config_dir,
+            host_config_dir=host_config_dir,
             host_workdir=effective_workdir,
             agent_cli=agent_cli,
             environment_id=env_id,
@@ -574,6 +710,7 @@ class _MainWindowTasksAgentMixin:
             cached_preflight_script=cached_preflight_script or None,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
+            ports=ports_for_task,
             agent_cli_args=agent_cli_args,
             gh_repo=gh_repo,
             gh_prefer_gh_cli=use_host_gh,
@@ -583,12 +720,17 @@ class _MainWindowTasksAgentMixin:
         )
         task._runner_config = config
         task._runner_prompt = runner_prompt
-        task._agent_selection = resolved_agent_selection or (env.agent_selection if env else None)
+        task._agent_selection = resolved_agent_selection or (
+            env.agent_selection if env else None
+        )
 
         if self._can_start_new_agent_for_env(env_id):
             self._actually_start_task(task)
         else:
-            self._on_task_log(task_id, format_log("queue", "slot", "INFO", "Waiting for available slot..."))
+            self._on_task_log(
+                task_id,
+                format_log("queue", "slot", "INFO", "Waiting for available slot..."),
+            )
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
 
@@ -655,7 +797,9 @@ class _MainWindowTasksAgentMixin:
         bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
         bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
         bridge.retry_attempt.connect(self._on_bridge_retry_attempt, Qt.QueuedConnection)
-        bridge.agent_switched.connect(self._on_bridge_agent_switched, Qt.QueuedConnection)
+        bridge.agent_switched.connect(
+            self._on_bridge_agent_switched, Qt.QueuedConnection
+        )
 
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)

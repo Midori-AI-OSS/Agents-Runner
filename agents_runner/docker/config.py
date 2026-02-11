@@ -6,10 +6,10 @@ from dataclasses import field
 class DockerRunnerConfig:
     task_id: str
     image: str
-    host_codex_dir: str
+    host_config_dir: str
     host_workdir: str
     agent_cli: str = "codex"
-    container_codex_dir: str = "/home/midori-ai/.codex"
+    container_config_dir: str = ""
     container_workdir: str = "/home/midori-ai/workspace"
     auto_remove: bool = True
     pull_before_run: bool = True
@@ -30,6 +30,7 @@ class DockerRunnerConfig:
     )
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
+    ports: list[str] = field(default_factory=list)
     agent_cli_args: list[str] = field(default_factory=list)
     # GitHub repo preparation
     gh_repo: str | None = None
@@ -39,3 +40,5 @@ class DockerRunnerConfig:
     gh_context_file_path: str | None = None  # Host path to GitHub context file
     # Hard timeout for post-run artifact collection/finalization (best-effort).
     artifact_collection_timeout_s: float = 30.0
+    # Optional override for container name (for testing or custom naming)
+    container_name: str | None = None

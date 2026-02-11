@@ -207,18 +207,18 @@ class FirstRunSetupDialog(QDialog):
         """Handle Docker check button click."""
         if self._docker_validator is None:
             self._docker_validator = DockerValidator(self)
-        
+
         # Update UI callback
         def update_status(message: str, color: str) -> None:
             self._docker_status_label.setText(message)
             self._docker_status_label.setStyleSheet(f"color: {color}; font-size: 11px;")
-        
+
         # Completion callback
         def on_complete(success: bool) -> None:
             self._docker_check_button.setEnabled(True)
             if not success:
                 self._docker_check_button.setText("Try Again")
-        
+
         self._docker_check_button.setEnabled(False)
         self._docker_check_button.setText("Check Docker")
         self._docker_validator.start_validation(update_status, on_complete)
@@ -232,7 +232,9 @@ class FirstRunSetupDialog(QDialog):
         """Handle begin setup button click."""
         # Get selected agents
         selected_agents = [
-            agent for agent, checkbox in self._checkboxes.items() if checkbox.isChecked()
+            agent
+            for agent, checkbox in self._checkboxes.items()
+            if checkbox.isChecked()
         ]
 
         if not selected_agents:
@@ -365,14 +367,20 @@ class SetupProgressDialog(QDialog):
         self._title_label.setText(f"Setting up agent {current} of {total}")
         self._current_label.setText(f"Current: {agent.capitalize()}")
         self._status_label.setText(status_message)
-        self._progress_bar.setValue(current - 1 if "Starting in" in status_message else current)
+        self._progress_bar.setValue(
+            current - 1 if "Starting in" in status_message else current
+        )
 
         # Update completed/remaining lists
         completed = [a for a in self._agents[: current - 1]]
         remaining = [a for a in self._agents[current:]]
 
-        completed_text = ", ".join([a.capitalize() for a in completed]) if completed else "None"
-        remaining_text = ", ".join([a.capitalize() for a in remaining]) if remaining else "None"
+        completed_text = (
+            ", ".join([a.capitalize() for a in completed]) if completed else "None"
+        )
+        remaining_text = (
+            ", ".join([a.capitalize() for a in remaining]) if remaining else "None"
+        )
 
         self._completed_label.setText(f"Completed: {completed_text}")
         self._remaining_label.setText(f"Remaining: {remaining_text}")

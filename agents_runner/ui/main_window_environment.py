@@ -97,11 +97,7 @@ class _MainWindowEnvironmentMixin:
             self._new_task.set_repo_branches([])
             return
 
-        workspace_type = (
-            env.workspace_type or WORKSPACE_NONE
-            if env
-            else WORKSPACE_NONE
-        )
+        workspace_type = env.workspace_type or WORKSPACE_NONE if env else WORKSPACE_NONE
         has_repo = bool(workspace_type == WORKSPACE_CLONED)
         if workspace_type == WORKSPACE_NONE or not has_repo:
             self._new_task.set_repo_controls_visible(False)
@@ -135,11 +131,7 @@ class _MainWindowEnvironmentMixin:
         if request_id != int(getattr(self, "_repo_branches_request_id", 0)):
             return
         env = self._environments.get(self._active_environment_id())
-        workspace_type = (
-            env.workspace_type or WORKSPACE_NONE
-            if env
-            else WORKSPACE_NONE
-        )
+        workspace_type = env.workspace_type or WORKSPACE_NONE if env else WORKSPACE_NONE
         if workspace_type != WORKSPACE_CLONED:
             return
         if not isinstance(branches, list):
@@ -165,7 +157,9 @@ class _MainWindowEnvironmentMixin:
         workspace_types = {e.env_id: e.workspace_type or WORKSPACE_NONE for e in envs}
         template_statuses = {
             e.env_id: bool(
-                getattr(disk_envs.get(e.env_id) or e, "midoriai_template_detected", False)
+                getattr(
+                    disk_envs.get(e.env_id) or e, "midoriai_template_detected", False
+                )
             )
             for e in envs
         }
@@ -200,18 +194,27 @@ class _MainWindowEnvironmentMixin:
         agent_cli, host_codex = self._effective_agent_and_config(env=env)
         if hasattr(self, "_root"):
             try:
-                self._root.set_agent_theme(agent_cli)
+                from agents_runner.ui.graphics import normalize_ui_theme_name
+
+                ui_theme = normalize_ui_theme_name(
+                    self._settings_data.get("ui_theme"), allow_auto=True
+                )
+                if ui_theme == "auto":
+                    self._root.set_agent_theme(agent_cli)
+                else:
+                    self._root.set_theme_name(ui_theme)
             except Exception:
                 pass
         current_agent, next_agent = self._get_next_agent_info(env=env)
         workdir, ready, message = self._new_task_workspace(env)
 
-        workspace_type = (
-            env.workspace_type or WORKSPACE_NONE
-            if env
-            else WORKSPACE_NONE
-        )
-        if env and ready and workspace_type == WORKSPACE_MOUNTED and os.path.isdir(workdir):
+        workspace_type = env.workspace_type or WORKSPACE_NONE if env else WORKSPACE_NONE
+        if (
+            env
+            and ready
+            and workspace_type == WORKSPACE_MOUNTED
+            and os.path.isdir(workdir)
+        ):
             try:
                 from agents_runner.environments.midoriai_template import (
                     apply_midoriai_template_detection,
@@ -228,15 +231,9 @@ class _MainWindowEnvironmentMixin:
         self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)
         self._update_new_task_agent_chain(env)
         self._sync_new_task_repo_controls(env)
-        interactive_key = self._interactive_command_key(agent_cli)
-        interactive_command = str(
-            self._settings_data.get(interactive_key) or ""
-        ).strip()
-        if not interactive_command:
-            interactive_command = self._default_interactive_command(agent_cli)
         self._new_task.set_interactive_defaults(
             terminal_id=str(self._settings_data.get("interactive_terminal_id") or ""),
-            command=interactive_command,
+            command=self._default_interactive_command(agent_cli),
         )
         self._populate_environment_pickers()
 
@@ -249,10 +246,12 @@ class _MainWindowEnvironmentMixin:
         from agents_runner.agent_cli import normalize_agent
 
         # Get agent chain from environment or settings
+        selection_mode = ""
         if env and env.agent_selection and env.agent_selection.agents:
             # Environment has custom agent configuration
             selection = env.agent_selection
             mode = str(selection.selection_mode or "round-robin")
+            selection_mode = mode
 
             if mode == "fallback":
                 # Build fallback chain
@@ -284,18 +283,36 @@ class _MainWindowEnvironmentMixin:
                     ]
                 else:
                     agent_names = []
+            elif mode == "pinned":
+                pinned_id = str(getattr(selection, "pinned_agent_id", "") or "").strip()
+                pinned_inst = None
+                if pinned_id:
+                    pinned_lower = pinned_id.lower()
+                    pinned_inst = next(
+                        (a for a in selection.agents if a.agent_id == pinned_id), None
+                    ) or next(
+                        (
+                            a
+                            for a in selection.agents
+                            if str(a.agent_id or "").lower() == pinned_lower
+                        ),
+                        None,
+                    )
+                if pinned_inst is not None:
+                    agent_names = [normalize_agent(pinned_inst.agent_cli)]
+                else:
+                    agent_names = []
             else:
                 # Round-robin or least-used: show all agents in priority order
-                agent_names = [
-                    normalize_agent(a.agent_cli) for a in selection.agents
-                ]
-            
+                agent_names = [normalize_agent(a.agent_cli) for a in selection.agents]
+
             # If environment config produced no agents, fall back to default
             if not agent_names:
                 default_agent = normalize_agent(
                     str(self._settings_data.get("agent_cli") or "codex")
                 )
                 agent_names = [default_agent]
+                selection_mode = ""  # Reset mode for default agent
         else:
             # No environment or no agents configured: use global default
             default_agent = normalize_agent(
@@ -303,7 +320,7 @@ class _MainWindowEnvironmentMixin:
             )
             agent_names = [default_agent]
 
-        self._new_task.set_agent_chain(agent_names)
+        self._new_task.set_agent_chain(agent_names, selection_mode)
 
     def _on_new_task_env_changed(self, env_id: str) -> None:
         if self._syncing_environment:

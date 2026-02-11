@@ -9,6 +9,8 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
+from agents_runner.agent_cli import available_agents
+from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import _looks_like_agent_help_command
 from agents_runner.environments import Environment
 
@@ -18,15 +20,18 @@ logger = logging.getLogger(__name__)
 class _MainWindowSettingsMixin:
     def _apply_settings_to_pages(self) -> None:
         self._settings.set_settings(self._settings_data)
-        self._envs_page.set_settings_data(self._settings_data)  # Pass settings to environments page
+        self._envs_page.set_settings_data(
+            self._settings_data
+        )  # Pass settings to environments page
         self._apply_active_environment_to_new_task()
-        
+
         # Apply spellcheck setting to new task page
         spellcheck_enabled = bool(self._settings_data.get("spellcheck_enabled", True))
         self._new_task.set_spellcheck_enabled(spellcheck_enabled)
         self._new_task.set_stt_mode("offline")
 
     def _apply_settings(self, settings: dict) -> None:
+        previous_radio_enabled = bool(self._settings_data.get("radio_enabled") or False)
         merged = dict(self._settings_data)
         merged.update(settings or {})
         merged.pop("stt_mode", None)
@@ -92,6 +97,33 @@ class _MainWindowSettingsMixin:
         merged["headless_desktop_enabled"] = bool(
             merged.get("headless_desktop_enabled") or False
         )
+        merged["radio_enabled"] = bool(merged.get("radio_enabled") or False)
+        merged["radio_autostart"] = bool(merged.get("radio_autostart") or False)
+        merged["radio_channel"] = RadioController.normalize_channel(
+            merged.get("radio_channel")
+        )
+        merged["radio_quality"] = RadioController.normalize_quality(
+            merged.get("radio_quality")
+        )
+        merged["radio_volume"] = RadioController.clamp_volume(
+            merged.get("radio_volume")
+        )
+        merged["radio_loudness_boost_enabled"] = bool(
+            merged.get("radio_loudness_boost_enabled") or False
+        )
+        merged["radio_loudness_boost_factor"] = (
+            RadioController.normalize_loudness_boost_factor(
+                merged.get("radio_loudness_boost_factor")
+            )
+        )
+        try:
+            from agents_runner.ui.graphics import normalize_ui_theme_name
+
+            merged["ui_theme"] = normalize_ui_theme_name(
+                merged.get("ui_theme"), allow_auto=True
+            )
+        except Exception:
+            merged["ui_theme"] = "auto"
 
         try:
             merged["max_agents_running"] = int(
@@ -100,6 +132,10 @@ class _MainWindowSettingsMixin:
         except Exception:
             merged["max_agents_running"] = -1
         self._settings_data = merged
+        self._sync_radio_controller_from_settings(
+            user_initiated=True,
+            previous_enabled=previous_radio_enabled,
+        )
         self._apply_settings_to_pages()
         self._schedule_save()
 
@@ -142,14 +178,22 @@ class _MainWindowSettingsMixin:
             cmd_parts = shlex.split(value)
         except ValueError:
             cmd_parts = []
-        if cmd_parts and cmd_parts[0] in {"codex", "claude", "copilot", "gemini"}:
+        if cmd_parts and cmd_parts[0] in set(available_agents()):
             head = cmd_parts.pop(0)
-            if head == "codex" and cmd_parts and cmd_parts[0] == "exec":
-                cmd_parts.pop(0)
+            try:
+                from agents_runner.agent_systems import get_agent_system
+
+                cmd_parts = get_agent_system(head).sanitize_interactive_command_parts(
+                    cmd_parts=cmd_parts
+                )
+            except Exception:
+                pass
             value = " ".join(shlex.quote(part) for part in cmd_parts)
 
         if _looks_like_agent_help_command(value):
-            agent_cli = "codex"
+            from agents_runner.agent_systems import get_default_agent_system_name
+
+            agent_cli = get_default_agent_system_name()
             if str(key or "").endswith("_claude"):
                 agent_cli = "claude"
             elif str(key or "").endswith("_copilot"):
@@ -271,6 +315,30 @@ class _MainWindowSettingsMixin:
                 return counts.get(inst_id, 0), agents.index(inst)
 
             chosen = min(agents, key=_score)
+        elif mode == "pinned":
+            pinned_id = str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip()
+            if pinned_id:
+                pinned_lower = pinned_id.lower()
+                pinned_inst = next(
+                    (
+                        inst
+                        for inst in agents
+                        if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
+                    ),
+                    None,
+                ) or next(
+                    (
+                        inst
+                        for inst in agents
+                        if str(getattr(inst, "agent_id", "") or "").strip().lower()
+                        == pinned_lower
+                    ),
+                    None,
+                )
+                if pinned_inst is not None:
+                    chosen = pinned_inst
 
         agent_cli = normalize_agent(str(getattr(chosen, "agent_cli", "") or "codex"))
         agent_id = str(getattr(chosen, "agent_id", "") or "").strip()
@@ -452,6 +520,34 @@ class _MainWindowSettingsMixin:
             .lower()
         )
         env_id = str(getattr(env, "env_id", "") or "")
+
+        if mode == "pinned":
+            pinned_id = str(
+                getattr(env.agent_selection, "pinned_agent_id", "") or ""
+            ).strip()
+            if pinned_id:
+                pinned_lower = pinned_id.lower()
+                pinned_inst = next(
+                    (
+                        inst
+                        for inst in agents
+                        if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
+                    ),
+                    None,
+                ) or next(
+                    (
+                        inst
+                        for inst in agents
+                        if str(getattr(inst, "agent_id", "") or "").strip().lower()
+                        == pinned_lower
+                    ),
+                    None,
+                )
+                if pinned_inst is not None:
+                    return self._format_agent_label(pinned_inst), ""
+            current = agents[0]
+            return self._format_agent_label(current), ""
+
         cursor_map = (
             getattr(self, "_agent_selection_round_robin_cursor", {})
             if hasattr(self, "_agent_selection_round_robin_cursor")
@@ -543,42 +639,45 @@ class _MainWindowSettingsMixin:
             List of mount strings in Docker -v format (host:container:rw)
         """
         settings = settings or self._settings_data
-        
+
         # Early return if cross-agents not enabled or no environment
         if not env or not getattr(env, "use_cross_agents", False):
             return []
-        
+
         allowlist = list(getattr(env, "cross_agent_allowlist", []) or [])
         if not allowlist:
             return []
-        
+
         # Get agent instances from environment
         agent_selection = getattr(env, "agent_selection", None)
         if not agent_selection or not getattr(agent_selection, "agents", None):
             return []
-        
+
         agents = list(agent_selection.agents or [])
         if not agents:
             return []
-        
+
         # Build map of agent_id -> AgentInstance
         agents_by_id = {
             str(getattr(inst, "agent_id", "") or "").strip(): inst
             for inst in agents
             if str(getattr(inst, "agent_id", "") or "").strip()
         }
-        
+
         # Track which CLIs we've already mounted (including primary)
         mounted_clis: set[str] = {normalize_agent(primary_agent_cli)}
         mounted_dirs: set[str] = {os.path.expanduser(primary_config_dir)}
-        
+        mounted_container_paths: set[str] = {
+            container_config_dir(normalize_agent(primary_agent_cli))
+        }
+
         mounts: list[str] = []
-        
+
         for agent_id in allowlist:
             agent_id = str(agent_id or "").strip()
             if not agent_id:
                 continue
-            
+
             # Look up agent instance
             inst = agents_by_id.get(agent_id)
             if inst is None:
@@ -586,10 +685,10 @@ class _MainWindowSettingsMixin:
                     f"Cross-agent allowlist references unknown agent_id: {agent_id}"
                 )
                 continue
-            
+
             # Get agent CLI and normalize
             inst_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or ""))
-            
+
             # Enforce one-per-CLI constraint
             if inst_cli in mounted_clis:
                 logger.debug(
@@ -597,7 +696,7 @@ class _MainWindowSettingsMixin:
                     f"already mounted config for this CLI"
                 )
                 continue
-            
+
             # Resolve config directory
             inst_dir = os.path.expanduser(
                 str(getattr(inst, "config_dir", "") or "").strip()
@@ -608,12 +707,12 @@ class _MainWindowSettingsMixin:
                     env=env,
                     settings=settings,
                 )
-            
+
             # Validate config directory exists
             if not self._ensure_agent_config_dir(inst_cli, inst_dir):
                 # Error already shown to user
                 continue
-            
+
             # Check for duplicate mount (same dir as primary or already mounted)
             inst_dir_expanded = os.path.expanduser(inst_dir)
             if inst_dir_expanded in mounted_dirs:
@@ -622,20 +721,28 @@ class _MainWindowSettingsMixin:
                     f"config dir already mounted"
                 )
                 continue
-            
-            # Build mount string
+
+            # Build mount string and check for duplicate container path
             container_dir = container_config_dir(inst_cli)
+            if container_dir in mounted_container_paths:
+                logger.debug(
+                    f"Skipping allowlisted agent {agent_id} ({inst_cli}): "
+                    f"container path {container_dir} already mounted"
+                )
+                continue
+
             mount_str = f"{inst_dir_expanded}:{container_dir}:rw"
             mounts.append(mount_str)
-            
-            # Track mounted CLI and dir
+
+            # Track mounted CLI, dir, and container path
             mounted_clis.add(inst_cli)
             mounted_dirs.add(inst_dir_expanded)
-            
+            mounted_container_paths.add(container_dir)
+
             # Add additional config mounts (e.g., ~/.claude.json)
             extra_mounts = additional_config_mounts(inst_cli, inst_dir_expanded)
             for extra in extra_mounts:
                 if extra and extra not in mounts:
                     mounts.append(extra)
-        
+
         return mounts

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import threading
 
 from PySide6.QtCore import Qt
@@ -19,13 +20,15 @@ from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import APP_TITLE
 from agents_runner.ui.graphics import GlassRoot
 from agents_runner.ui.lucide_icons import lucide_icon
+from agents_runner.ui.radio import RadioController
 from agents_runner.ui.pages import DashboardPage
 from agents_runner.ui.pages import EnvironmentsPage
 from agents_runner.ui.pages import NewTaskPage
 from agents_runner.ui.pages import SettingsPage
 from agents_runner.ui.pages import TaskDetailsPage
 from agents_runner.ui.task_model import Task
-from agents_runner.widgets import GlassCard
+from agents_runner.ui.widgets import GlassCard
+from agents_runner.ui.widgets.radio_control import RadioControlWidget
 
 from agents_runner.ui.main_window_capacity import _MainWindowCapacityMixin
 from agents_runner.ui.main_window_dashboard import _MainWindowDashboardMixin
@@ -97,12 +100,24 @@ class MainWindow(
             "max_agents_running": -1,
             "append_pixelarch_context": False,
             "headless_desktop_enabled": False,
+            "ui_theme": "auto",
+            "radio_enabled": False,
+            "radio_channel": "",
+            "radio_quality": "medium",
+            "radio_volume": 70,
+            "radio_autostart": False,
+            "radio_loudness_boost_enabled": False,
+            "radio_loudness_boost_factor": 2.2,
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False
         self._tasks: dict[str, Task] = {}
         self._threads: dict[str, QThread] = {}
         self._bridges: dict[str, TaskRunnerBridge] = {}
+        self._interactive_prep_threads: dict[str, QThread] = {}
+        self._interactive_prep_workers: dict[str, object] = {}
+        self._interactive_prep_bridges: dict[str, object] = {}
+        self._interactive_prep_context: dict[str, dict[str, object]] = {}
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}
@@ -135,10 +150,18 @@ class MainWindow(
 
         self._recovery_log_stop: dict[str, threading.Event] = {}
         self._finalization_threads: dict[str, threading.Thread] = {}
+        self._radio_channel_options: list[str] = []
         self._recovery_ticker = QTimer(self)
-        self._recovery_ticker.setInterval(1000)
+        # Recovery tick interval: 5 seconds (reduced from 1 second)
+        # Rationale: Event-driven paths handle normal operation immediately.
+        # Recovery tick is a safety net for edge cases (app restart, missed events,
+        # container state sync). 5 seconds provides fast recovery while reducing
+        # check frequency by 80%. See .agents/implementation/recovery-tick-timing-analysis.md
+        self._recovery_ticker.setInterval(5000)
         self._recovery_ticker.timeout.connect(self._tick_recovery)
         self._recovery_ticker.start()
+
+        self._radio_controller = RadioController(self)
 
         self._root = GlassRoot()
         self.setCentralWidget(self._root)
@@ -181,6 +204,19 @@ class MainWindow(
         top_layout.addWidget(self._btn_envs)
         top_layout.addWidget(self._btn_settings)
         top_layout.addStretch(1)
+        self._radio_control = RadioControlWidget(top)
+        self._radio_control.setVisible(self._radio_controller.qt_available)
+        top_layout.addWidget(self._radio_control, 0, Qt.AlignRight | Qt.AlignVCenter)
+
+        self._radio_control.play_requested.connect(
+            self._on_radio_control_play_requested
+        )
+        self._radio_control.volume_changed.connect(
+            self._on_radio_control_volume_changed
+        )
+        self._radio_controller.state_changed.connect(
+            self._on_radio_state_changed, Qt.QueuedConnection
+        )
 
         outer.addWidget(top)
 
@@ -206,7 +242,9 @@ class MainWindow(
         self._envs_page.test_preflight_requested.connect(
             self._on_environment_test_preflight, Qt.QueuedConnection
         )
-        self._settings = SettingsPage()
+        self._settings = SettingsPage(
+            radio_supported=self._radio_controller.qt_available
+        )
         self._settings.back_requested.connect(self._show_dashboard)
         self._settings.saved.connect(self._apply_settings, Qt.QueuedConnection)
         self._settings.test_preflight_requested.connect(
@@ -230,9 +268,12 @@ class MainWindow(
         outer.addWidget(self._stack, 1)
 
         self._load_state()
+        self._sync_radio_controller_from_settings(user_initiated=False)
         self._apply_window_prefs()
         self._reload_environments()
         self._apply_settings_to_pages()
+        self._refresh_radio_channel_options(disable_on_failure=True)
+        self._on_radio_state_changed(self._radio_controller.state_snapshot())
         self._try_start_queued_tasks()
 
     def resizeEvent(self, event) -> None:
@@ -243,6 +284,8 @@ class MainWindow(
             self._schedule_save()
 
     def closeEvent(self, event) -> None:
+        if hasattr(self, "_radio_controller"):
+            self._radio_controller.shutdown()
         try:
             self._save_state()
         except Exception:
@@ -251,3 +294,199 @@ class MainWindow(
         if hasattr(self, "_details"):
             self._details.cleanup()
         super().closeEvent(event)
+
+    def _sync_radio_controller_from_settings(
+        self,
+        *,
+        user_initiated: bool,
+        previous_enabled: bool | None = None,
+    ) -> None:
+        enabled = bool(self._settings_data.get("radio_enabled") or False)
+        channel = RadioController.normalize_channel(
+            self._settings_data.get("radio_channel")
+        )
+        quality = RadioController.normalize_quality(
+            self._settings_data.get("radio_quality")
+        )
+        volume = RadioController.clamp_volume(self._settings_data.get("radio_volume"))
+        autostart = bool(self._settings_data.get("radio_autostart") or False)
+        loudness_boost_enabled = bool(
+            self._settings_data.get("radio_loudness_boost_enabled") or False
+        )
+        loudness_boost_factor = RadioController.normalize_loudness_boost_factor(
+            self._settings_data.get("radio_loudness_boost_factor")
+        )
+
+        self._settings_data["radio_enabled"] = enabled
+        self._settings_data["radio_channel"] = channel
+        self._settings_data["radio_quality"] = quality
+        self._settings_data["radio_volume"] = volume
+        self._settings_data["radio_autostart"] = autostart
+        self._settings_data["radio_loudness_boost_enabled"] = loudness_boost_enabled
+        self._settings_data["radio_loudness_boost_factor"] = loudness_boost_factor
+
+        if not self._radio_controller.qt_available:
+            self._update_window_title_from_radio_state(
+                self._radio_controller.state_snapshot()
+            )
+            return
+
+        self._radio_controller.set_channel(channel)
+        self._radio_controller.set_quality(quality)
+        self._radio_controller.set_loudness_boost(
+            loudness_boost_enabled,
+            loudness_boost_factor,
+        )
+        self._radio_controller.set_volume(volume)
+
+        start_when_enabled = bool(
+            user_initiated and enabled and previous_enabled is False
+        )
+        self._radio_controller.set_enabled(
+            enabled,
+            start_when_enabled=start_when_enabled,
+        )
+
+        if user_initiated:
+            self._radio_controller.cancel_start_when_service_ready()
+        elif enabled and autostart:
+            self._radio_controller.request_start_when_service_ready()
+        else:
+            self._radio_controller.cancel_start_when_service_ready()
+
+    def _on_radio_control_play_requested(self) -> None:
+        if not self._radio_controller.qt_available:
+            return
+
+        if not bool(self._settings_data.get("radio_enabled") or False):
+            self._settings_data["radio_enabled"] = True
+            self._radio_controller.set_enabled(True, start_when_enabled=False)
+            self._settings.set_settings(self._settings_data)
+
+        self._radio_controller.toggle_playback()
+        self._schedule_save()
+
+    def _on_radio_control_volume_changed(self, value: int) -> None:
+        clamped = RadioController.clamp_volume(value)
+        self._settings_data["radio_volume"] = clamped
+        self._radio_controller.set_volume(clamped)
+        self._schedule_save()
+
+    def _on_radio_state_changed(self, state: object) -> None:
+        snapshot = (
+            dict(state)
+            if isinstance(state, dict)
+            else self._radio_controller.state_snapshot()
+        )
+        qt_available = bool(snapshot.get("qt_available"))
+        self._radio_control.setVisible(qt_available)
+        if qt_available:
+            self._radio_control.set_service_available(
+                bool(snapshot.get("service_available"))
+            )
+            self._radio_control.set_playing(bool(snapshot.get("is_playing")))
+            self._radio_control.set_connection_state(
+                str(snapshot.get("connection_state") or "")
+            )
+            self._radio_control.set_radio_enabled(bool(snapshot.get("enabled")))
+            try:
+                volume_value = int(snapshot.get("volume") or 70)
+            except Exception:
+                volume_value = 70
+            self._radio_control.set_volume(volume_value)
+            self._radio_control.set_status_tooltip(
+                str(snapshot.get("status_text") or "")
+            )
+
+        self._update_window_title_from_radio_state(snapshot)
+
+    def _update_window_title_from_radio_state(self, state: dict[str, object]) -> None:
+        if not bool(state.get("qt_available")):
+            self.setWindowTitle(APP_TITLE)
+            return
+
+        channel_label = str(state.get("channel_label") or "all").strip() or "all"
+        current_track = self._normalize_radio_window_track_title(
+            state.get("current_track")
+        )
+        last_track = self._normalize_radio_window_track_title(state.get("last_track"))
+        service_available = bool(state.get("service_available"))
+        degraded_from_playback = bool(state.get("degraded_from_playback"))
+
+        if degraded_from_playback and (not service_available) and last_track:
+            self.setWindowTitle(f"{last_track} [{channel_label}] [Radio unavailable]")
+            return
+
+        if current_track:
+            self.setWindowTitle(f"{current_track} [{channel_label}]")
+            return
+
+        self.setWindowTitle(f"{APP_TITLE} [{channel_label}]")
+
+    def _refresh_radio_channel_options(self, *, disable_on_failure: bool) -> None:
+        selected_channel = RadioController.normalize_channel(
+            self._settings_data.get("radio_channel")
+        )
+        if not self._radio_controller.qt_available:
+            self._settings.set_radio_channel_options(
+                self._radio_channel_options,
+                selected=selected_channel,
+                enabled=False,
+            )
+            return
+
+        def _handle_channels(channels: object, error_text: str) -> None:
+            current_selected = RadioController.normalize_channel(
+                self._settings_data.get("radio_channel")
+            )
+
+            if error_text or not isinstance(channels, list):
+                if disable_on_failure:
+                    self._settings.set_radio_channel_options(
+                        self._radio_channel_options,
+                        selected=current_selected,
+                        enabled=False,
+                    )
+                return
+
+            normalized: list[str] = []
+            for raw in channels:
+                channel = RadioController.normalize_channel(raw)
+                if not channel or channel in normalized:
+                    continue
+                normalized.append(channel)
+            normalized.sort()
+            self._radio_channel_options = normalized
+            self._settings.set_radio_channel_options(
+                normalized,
+                selected=current_selected,
+                enabled=True,
+            )
+
+        self._radio_controller.fetch_channels(_handle_channels)
+
+    @staticmethod
+    def _normalize_radio_window_track_title(value: object) -> str:
+        track = " ".join(str(value or "").split())
+        if not track:
+            return ""
+
+        parts = [
+            part.strip() for part in re.split(r"\s+[—–-]\s+", track) if part.strip()
+        ]
+        if not parts:
+            return ""
+
+        app_title = APP_TITLE.casefold()
+        while parts and parts[0].casefold() == app_title:
+            parts.pop(0)
+        while len(parts) >= 2 and parts[-1].casefold() == parts[-2].casefold():
+            parts.pop()
+        while len(parts) >= 2 and parts[0].casefold() == parts[-1].casefold():
+            parts.pop()
+        while parts and parts[-1].casefold() == app_title:
+            parts.pop()
+
+        if not parts:
+            return ""
+        return " - ".join(parts)
