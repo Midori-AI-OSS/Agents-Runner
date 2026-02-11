@@ -10,6 +10,8 @@ from midori_ai_logger import MidoriAiLogger
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import QUrl
+from PySide6.QtCore import QUrlQuery
+from PySide6.QtCore import QVariantAnimation
 from PySide6.QtCore import Signal
 from PySide6.QtNetwork import QNetworkAccessManager
 from PySide6.QtNetwork import QNetworkReply
@@ -33,10 +35,13 @@ class RadioController(QObject):
     BASE_URL = "https://radio.midori-ai.xyz"
     HEALTH_ENDPOINT = "/health"
     CURRENT_ENDPOINT = "/radio/v1/current"
+    CHANNELS_ENDPOINT = "/radio/v1/channels"
     STREAM_ENDPOINT = "/radio/v1/stream"
     HEALTH_INTERVAL_MS = 30_000
     CURRENT_INTERVAL_MS = 10_000
     QUALITY_VALUES = ("low", "medium", "high")
+    CHANNEL_SWITCH_FADE_OUT_MS = 900
+    CHANNEL_SWITCH_FADE_IN_MS = 900
     LOUDNESS_BOOST_MIN = 0.1
     LOUDNESS_BOOST_MAX = 5.0
     LOUDNESS_BOOST_STEP = 0.05
@@ -58,10 +63,16 @@ class RadioController(QObject):
         self._quality = "medium"
         self._active_quality = "medium"
         self._pending_quality: str | None = None
+        self._channel = ""
+        self._active_channel = ""
+        self._pending_channel: str | None = None
+        self._resolved_channel = ""
         self._volume = 70
         self._loudness_boost_enabled = False
         self._loudness_boost_factor = self.LOUDNESS_BOOST_DEFAULT
         self._effective_volume_percent = self._volume
+        self._fade_gain = 1.0
+        self._fade_switch_channel: str | None = None
         self._is_playing = False
         self._status_text = "Radio unavailable."
         self._current_track_title = ""
@@ -87,6 +98,8 @@ class RadioController(QObject):
         self._current_timer: QTimer | None = None
         self._reconnect_timer: QTimer | None = None
         self._watchdog_timer: QTimer | None = None
+        self._channel_fade_out: QVariantAnimation | None = None
+        self._channel_fade_in: QVariantAnimation | None = None
 
         if not self._qt_available:
             self._status_text = (
@@ -109,6 +122,19 @@ class RadioController(QObject):
         self._watchdog_timer = QTimer(self)
         self._watchdog_timer.setInterval(self.WATCHDOG_INTERVAL_MS)
         self._watchdog_timer.timeout.connect(self._watchdog_tick)
+        self._channel_fade_out = QVariantAnimation(self)
+        self._channel_fade_out.setDuration(self.CHANNEL_SWITCH_FADE_OUT_MS)
+        self._channel_fade_out.setStartValue(1.0)
+        self._channel_fade_out.setEndValue(0.0)
+        self._channel_fade_out.valueChanged.connect(self._on_fade_animation_value)
+        self._channel_fade_out.finished.connect(self._on_channel_fade_out_finished)
+
+        self._channel_fade_in = QVariantAnimation(self)
+        self._channel_fade_in.setDuration(self.CHANNEL_SWITCH_FADE_IN_MS)
+        self._channel_fade_in.setStartValue(0.0)
+        self._channel_fade_in.setEndValue(1.0)
+        self._channel_fade_in.valueChanged.connect(self._on_fade_animation_value)
+        self._channel_fade_in.finished.connect(self._on_channel_fade_in_finished)
 
         try:
             self._audio_output = QAudioOutput(self)
@@ -142,6 +168,13 @@ class RadioController(QObject):
         raw = str(value or "medium").strip().lower()
         if raw not in cls.QUALITY_VALUES:
             return "medium"
+        return raw
+
+    @classmethod
+    def normalize_channel(cls, value: object) -> str:
+        raw = str(value or "").strip().lower()
+        if raw == "all":
+            return ""
         return raw
 
     @staticmethod
@@ -191,6 +224,11 @@ class RadioController(QObject):
         return self._qt_available
 
     def state_snapshot(self) -> dict[str, object]:
+        selected_channel = self.normalize_channel(self._channel)
+        active_channel = self.normalize_channel(self._active_channel)
+        resolved_channel = self.normalize_channel(
+            self._resolved_channel or active_channel or selected_channel
+        )
         return {
             "qt_available": self._qt_available,
             "service_available": self._service_available,
@@ -199,12 +237,17 @@ class RadioController(QObject):
             "quality": self._quality,
             "active_quality": self._active_quality,
             "pending_quality": self._pending_quality,
+            "channel": selected_channel,
+            "active_channel": active_channel,
+            "pending_channel": self._pending_channel,
+            "resolved_channel": resolved_channel,
+            "channel_label": self._channel_label(resolved_channel),
             "volume": self._volume,
             "loudness_boost_enabled": self._loudness_boost_enabled,
             "loudness_boost_factor": self._loudness_boost_factor,
             "effective_volume_percent": self._effective_volume_percent,
             "is_playing": self._is_playing,
-            "status_text": self._status_text,
+            "status_text": self._status_text_with_channel(),
             "current_track": self._current_track_title,
             "last_track": self._last_track_title,
             "degraded_from_playback": self._degraded_from_playback,
@@ -243,6 +286,7 @@ class RadioController(QObject):
             self._current_timer.stop()
         if self._watchdog_timer is not None:
             self._watchdog_timer.stop()
+        self._stop_channel_fades()
         self._cancel_reconnect(reset_attempts=True)
         try:
             self.stop_playback()
@@ -288,6 +332,57 @@ class RadioController(QObject):
         self._status_text = f"Quality set to {normalized}."
         self._emit_state()
 
+    def set_channel(self, channel: str) -> None:
+        normalized = self.normalize_channel(channel)
+        if normalized == self._channel and not self._pending_channel:
+            return
+        self._channel = normalized
+
+        if self._is_playing and self._enabled and self._desired_playing:
+            self._pending_channel = normalized
+            self._status_text = (
+                f"Switching channel to {self._channel_label(normalized)}..."
+            )
+            self._emit_state()
+            self._restart_with_channel_fade()
+            return
+
+        self._active_channel = normalized
+        self._pending_channel = None
+        self._resolved_channel = normalized
+        self._status_text = f"Channel set to {self._channel_label(normalized)}."
+        self._emit_state()
+
+    def fetch_channels(self, callback: Any) -> None:
+        def _handle(payload: dict[str, Any] | None, error_text: str) -> None:
+            if error_text or payload is None:
+                callback(None, error_text or "channels unavailable")
+                return
+
+            data = payload.get("data")
+            if not isinstance(data, dict):
+                callback(None, "channels payload missing data")
+                return
+
+            raw_channels = data.get("channels")
+            if not isinstance(raw_channels, list):
+                callback(None, "channels payload missing channels")
+                return
+
+            names: list[str] = []
+            for item in raw_channels:
+                if not isinstance(item, dict):
+                    continue
+                name = self.normalize_channel(item.get("name"))
+                if not name or name in names:
+                    continue
+                names.append(name)
+
+            names.sort()
+            callback(names, "")
+
+        self._request_json(self.CHANNELS_ENDPOINT, _handle, include_channel=False)
+
     def set_volume(self, percent: int) -> None:
         clamped = self.clamp_volume(percent)
         if clamped == self._volume:
@@ -317,6 +412,7 @@ class RadioController(QObject):
     def _apply_audio_output_volume(self) -> None:
         self._effective_volume_percent = self._compute_effective_volume_percent()
         qt_volume = max(0.0, min(1.0, float(self._effective_volume_percent) / 100.0))
+        qt_volume = max(0.0, min(1.0, qt_volume * float(self._fade_gain)))
         if self._audio_output is not None:
             self._audio_output.setVolume(qt_volume)
 
@@ -365,9 +461,19 @@ class RadioController(QObject):
         quality_to_use = self._pending_quality or self._quality
         self._active_quality = self.normalize_quality(quality_to_use)
         self._pending_quality = None
-        stream_url = self._build_stream_url(self._active_quality)
+        channel_to_use = self.normalize_channel(
+            self._pending_channel or self._active_channel or self._channel
+        )
+        self._active_channel = channel_to_use
+        self._pending_channel = None
+        stream_url = self._build_stream_url(
+            self._active_quality,
+            channel=channel_to_use,
+        )
 
         try:
+            self._stop_channel_fades()
+            self._reset_fade_gain()
             self._cancel_reconnect(reset_attempts=True)
             self._suppress_reconnect_until_s = 0.0
             self._player.setSource(QUrl(stream_url))
@@ -393,30 +499,72 @@ class RadioController(QObject):
                 self._player.stop()
             except Exception:
                 pass
+        self._stop_channel_fades()
+        self._reset_fade_gain()
         self._is_playing = False
         self._degraded_from_playback = False
         if self._enabled:
             self._status_text = "Radio stopped."
         self._emit_state()
 
-    def _build_stream_url(self, quality: str) -> str:
+    def _build_stream_url(self, quality: str, *, channel: str | None = None) -> str:
         quality_value = self.normalize_quality(quality)
-        return f"{self.BASE_URL}{self.STREAM_ENDPOINT}?q={quality_value}"
+        channel_value = self.normalize_channel(channel)
+        url = QUrl(f"{self.BASE_URL}{self.STREAM_ENDPOINT}")
+        query = QUrlQuery()
+        query.addQueryItem("q", quality_value)
+        if channel_value:
+            query.addQueryItem("channel", channel_value)
+        url.setQuery(query)
+        return url.toString()
+
+    def _build_json_url(
+        self,
+        endpoint: str,
+        *,
+        include_channel: bool,
+        channel: str | None = None,
+    ) -> QUrl:
+        url = QUrl(f"{self.BASE_URL}{endpoint}")
+        query = QUrlQuery()
+        if include_channel:
+            channel_value = self.normalize_channel(
+                channel
+                or self._pending_channel
+                or self._active_channel
+                or self._channel
+            )
+            if channel_value:
+                query.addQueryItem("channel", channel_value)
+        if not query.isEmpty():
+            url.setQuery(query)
+        return url
 
     def _poll_health(self) -> None:
         self._request_json(self.HEALTH_ENDPOINT, self._handle_health_response)
 
     def _poll_current(self) -> None:
-        self._request_json(self.CURRENT_ENDPOINT, self._handle_current_response)
+        self._request_json(
+            self.CURRENT_ENDPOINT,
+            self._handle_current_response,
+            include_channel=True,
+        )
 
     def _request_json(
         self,
         endpoint: str,
         callback: Any,
+        *,
+        include_channel: bool = False,
+        channel: str | None = None,
     ) -> None:
         if not self._qt_available or self._network is None:
             return
-        url = QUrl(f"{self.BASE_URL}{endpoint}")
+        url = self._build_json_url(
+            endpoint,
+            include_channel=include_channel,
+            channel=channel,
+        )
         request = QNetworkRequest(url)
         request.setRawHeader(b"Accept", b"application/json")
         request.setRawHeader(b"User-Agent", b"midori-ai-agents-runner-radio")
@@ -508,6 +656,8 @@ class RadioController(QObject):
             station_label=data.get("station_label"),
         )
         self._current_track_id = track_id
+        resolved_channel = self.normalize_channel(data.get("channel"))
+        self._resolved_channel = resolved_channel
         if title:
             self._current_track_title = title
             self._last_track_title = title
@@ -587,7 +737,14 @@ class RadioController(QObject):
         if self._is_playing and self._service_available:
             try:
                 if self._player is not None:
-                    self._player.setSource(QUrl(self._build_stream_url(pending)))
+                    self._player.setSource(
+                        QUrl(
+                            self._build_stream_url(
+                                pending,
+                                channel=self._active_channel or self._channel,
+                            )
+                        )
+                    )
                     self._player.play()
             except Exception as exc:
                 self._log_error_throttled(
@@ -867,11 +1024,17 @@ class RadioController(QObject):
             self._pending_quality or self._active_quality or self._quality
         )
         self._active_quality = quality_to_use
+        channel_to_use = self.normalize_channel(
+            self._pending_channel or self._active_channel or self._channel
+        )
+        self._active_channel = channel_to_use
+        self._pending_channel = None
         self._status_text = f"Reconnecting Midori AI Radio ({quality_to_use})..."
         self._last_restart_ts_s = time.monotonic()
         self._reconnect_in_progress = True
 
         try:
+            self._reset_fade_gain()
             if force_restart:
                 try:
                     self._player.stop()
@@ -882,7 +1045,14 @@ class RadioController(QObject):
                     self._player.setSource(QUrl())
                 except Exception:
                     pass
-            self._player.setSource(QUrl(self._build_stream_url(quality_to_use)))
+            self._player.setSource(
+                QUrl(
+                    self._build_stream_url(
+                        quality_to_use,
+                        channel=channel_to_use,
+                    )
+                )
+            )
             self._player.play()
         except Exception as exc:
             self._log_error_throttled(
@@ -968,3 +1138,134 @@ class RadioController(QObject):
             return
         self._last_error_log_ts[key] = now
         logger.rprint(f"[radio] {message}", mode="warn")
+
+    def _status_text_with_channel(self) -> str:
+        base = str(self._status_text or "").strip()
+        return f"{base} [channel: {self._channel_label()}]"
+
+    def _channel_label(self, channel: str | None = None) -> str:
+        resolved = self.normalize_channel(
+            channel
+            if channel is not None
+            else self._resolved_channel or self._active_channel or self._channel
+        )
+        if not resolved:
+            return "all"
+        return resolved
+
+    def _reset_fade_gain(self) -> None:
+        self._fade_gain = 1.0
+        self._apply_audio_output_volume()
+
+    def _stop_channel_fades(self) -> None:
+        if (
+            self._channel_fade_out is not None
+            and self._channel_fade_out.state() == QVariantAnimation.State.Running
+        ):
+            self._channel_fade_out.stop()
+        if (
+            self._channel_fade_in is not None
+            and self._channel_fade_in.state() == QVariantAnimation.State.Running
+        ):
+            self._channel_fade_in.stop()
+
+    def _restart_with_channel_fade(self) -> None:
+        pending_channel = self.normalize_channel(self._pending_channel or self._channel)
+        if not pending_channel and not self._channel:
+            pending_channel = ""
+        self._fade_switch_channel = pending_channel
+
+        if (
+            self._player is None
+            or self._audio_output is None
+            or self._channel_fade_out is None
+            or self._channel_fade_in is None
+        ):
+            self._fallback_restart_for_channel_switch()
+            return
+        if not self._service_available:
+            self._fallback_restart_for_channel_switch()
+            return
+
+        try:
+            self._channel_fade_in.stop()
+            self._channel_fade_out.stop()
+            self._channel_fade_out.setStartValue(float(self._fade_gain))
+            self._channel_fade_out.setEndValue(0.0)
+            self._channel_fade_out.start()
+        except Exception:
+            self._fallback_restart_for_channel_switch()
+
+    def _on_fade_animation_value(self, value: object) -> None:
+        try:
+            parsed = float(value)
+        except Exception:
+            return
+        self._fade_gain = max(0.0, min(1.0, parsed))
+        self._apply_audio_output_volume()
+
+    def _on_channel_fade_out_finished(self) -> None:
+        pending_channel = self.normalize_channel(
+            self._fade_switch_channel or self._channel
+        )
+        self._fade_switch_channel = None
+        self._pending_channel = None
+        self._active_channel = pending_channel
+
+        quality_to_use = self.normalize_quality(
+            self._pending_quality or self._active_quality or self._quality
+        )
+        self._active_quality = quality_to_use
+        self._pending_quality = None
+
+        if self._player is None:
+            self._fallback_restart_for_channel_switch()
+            return
+
+        try:
+            self._player.setSource(
+                QUrl(
+                    self._build_stream_url(
+                        quality_to_use,
+                        channel=pending_channel,
+                    )
+                )
+            )
+            self._player.play()
+        except Exception as exc:
+            self._log_error_throttled(
+                "channel_switch",
+                f"channel switch failed ({pending_channel}): {exc}",
+            )
+            self._fallback_restart_for_channel_switch()
+            return
+
+        if self._channel_fade_in is None:
+            self._reset_fade_gain()
+            return
+
+        try:
+            self._channel_fade_in.stop()
+            self._channel_fade_in.setStartValue(float(self._fade_gain))
+            self._channel_fade_in.setEndValue(1.0)
+            self._channel_fade_in.start()
+        except Exception:
+            self._fallback_restart_for_channel_switch()
+
+    def _on_channel_fade_in_finished(self) -> None:
+        self._reset_fade_gain()
+        self._emit_state()
+
+    def _fallback_restart_for_channel_switch(self) -> None:
+        self._fade_switch_channel = None
+        self._reset_fade_gain()
+        pending_channel = self.normalize_channel(self._pending_channel or self._channel)
+        self._pending_channel = None
+        self._active_channel = pending_channel
+        self._queue_reconnect(
+            "channel switch fallback",
+            allow_without_service=True,
+            force_restart=True,
+            immediate=True,
+        )
+        self._emit_state()

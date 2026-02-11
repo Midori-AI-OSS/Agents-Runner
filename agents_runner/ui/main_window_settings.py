@@ -99,6 +99,9 @@ class _MainWindowSettingsMixin:
         )
         merged["radio_enabled"] = bool(merged.get("radio_enabled") or False)
         merged["radio_autostart"] = bool(merged.get("radio_autostart") or False)
+        merged["radio_channel"] = RadioController.normalize_channel(
+            merged.get("radio_channel")
+        )
         merged["radio_quality"] = RadioController.normalize_quality(
             merged.get("radio_quality")
         )
