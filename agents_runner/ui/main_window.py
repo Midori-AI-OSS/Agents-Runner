@@ -5,7 +5,6 @@ import re
 import threading
 
 from midori_ai_logger import MidoriAiLogger
-
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtCore import QTimer
@@ -32,7 +31,6 @@ from agents_runner.ui.pages import TaskDetailsPage
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.widgets.radio_control import RadioControlWidget
-
 from agents_runner.ui.main_window_capacity import _MainWindowCapacityMixin
 from agents_runner.ui.main_window_dashboard import _MainWindowDashboardMixin
 from agents_runner.ui.main_window_environment import _MainWindowEnvironmentMixin
