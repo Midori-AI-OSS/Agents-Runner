@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -119,10 +120,8 @@ class TestFfmpegPulseRecorder:
 
     def test_successful_start_returns_mic_recording(self) -> None:
         """Test that a successful start returns a MicRecording object."""
-        import subprocess as subprocess_module
-
         mock_process = MagicMock()
-        mock_process.wait.side_effect = subprocess_module.TimeoutExpired("ffmpeg", 0.1)
+        mock_process.wait.side_effect = subprocess.TimeoutExpired("ffmpeg", 0.1)
         mock_process.pid = 12345
 
         with (

@@ -9,6 +9,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+# Timeout for detecting immediate process failures (e.g., PulseAudio unavailable)
+PROCESS_START_TIMEOUT_SECONDS = 0.1
+
 
 @dataclass(frozen=True, slots=True)
 class MicRecording:
@@ -76,9 +79,9 @@ class FfmpegPulseRecorder:
             raise MicRecorderError(f"Could not start ffmpeg: {exc}") from exc
 
         # Check if process failed immediately (e.g., PulseAudio/PipeWire unavailable)
-        # Use poll() with a short timeout to avoid unnecessary delay on success
+        # Use wait() with a short timeout to avoid unnecessary delay on success
         try:
-            poll_result = process.wait(timeout=0.1)
+            poll_result = process.wait(timeout=PROCESS_START_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             # Process is still running - success case
             poll_result = None
