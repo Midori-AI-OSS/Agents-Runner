@@ -115,6 +115,9 @@ class TasksPage(QWidget):
         self._nav_host.setObjectName("TasksNavHost")
         self._nav_host.setMinimumWidth(self._nav_expanded_width)
         self._nav_host.setMaximumWidth(self._nav_expanded_width)
+        nav_host_layout = QVBoxLayout(self._nav_host)
+        nav_host_layout.setContentsMargins(0, 0, 0, 0)
+        nav_host_layout.setSpacing(0)
 
         self._nav_panel = QWidget(self._nav_host)
         self._nav_panel.setObjectName("SettingsNavPanel")
@@ -123,7 +126,7 @@ class TasksPage(QWidget):
         nav_layout = QVBoxLayout(self._nav_panel)
         nav_layout.setContentsMargins(10, 10, 10, 10)
         nav_layout.setSpacing(6)
-        self._set_nav_panel_x(0)
+        nav_host_layout.addWidget(self._nav_panel)
 
         self._right_panel = QWidget()
         self._right_panel.setObjectName("SettingsPaneHost")
@@ -250,11 +253,6 @@ class TasksPage(QWidget):
         self._nav_host.setMaximumWidth(panel_width)
         self._nav_panel.setMinimumWidth(panel_width)
         self._nav_panel.setMaximumWidth(panel_width)
-
-        min_x = -self._nav_expanded_width
-        current_x = int(self._nav_panel.x())
-        current_x = max(min_x, min(0, current_x))
-        self._set_nav_panel_x(current_x)
 
     def _refresh_navigation_controls(self) -> None:
         visible_specs = self._visible_pane_specs()
@@ -424,75 +422,51 @@ class TasksPage(QWidget):
             effect = QGraphicsOpacityEffect(self._nav_panel)
             self._nav_panel.setGraphicsEffect(effect)
 
-        target_x = 0 if visible else -self._nav_expanded_width
         target_opacity = 1.0 if visible else 0.0
-        current_x = int(self._nav_panel.pos().x())
         current_visible = bool(self._nav_host.isVisible())
         current_opacity = float(effect.opacity())
         if (
-            current_x == target_x
-            and current_visible == visible
+            current_visible == visible
             and abs(current_opacity - target_opacity) < 0.01
         ):
             return
 
         if not animate:
-            if visible:
-                self._nav_host.setVisible(True)
-            else:
-                self._nav_host.setVisible(False)
-            self._set_nav_panel_x(target_x)
+            self._nav_host.setVisible(visible)
             effect.setOpacity(target_opacity)
             return
 
         if visible:
             if not self._nav_host.isVisible():
                 self._nav_host.setVisible(True)
-                current_x = -self._nav_expanded_width
                 current_opacity = 0.0
-                self._set_nav_panel_x(current_x)
                 effect.setOpacity(current_opacity)
         elif not self._nav_host.isVisible():
-            self._set_nav_panel_x(target_x)
             effect.setOpacity(target_opacity)
             return
 
-        start_x = current_x
         start_opacity = current_opacity
         if visible:
-            if start_x == 0:
-                start_x = -self._nav_expanded_width
             if start_opacity < 0.01:
                 start_opacity = 0.0
         else:
-            if start_x <= -self._nav_expanded_width:
-                start_x = 0
             if start_opacity < 0.01:
                 start_opacity = 1.0
 
-        self._set_nav_panel_x(start_x)
         effect.setOpacity(start_opacity)
 
         end_opacity = target_opacity
 
-        pos_anim = QPropertyAnimation(self._nav_panel, b"pos", self)
-        pos_anim.setDuration(220)
-        pos_anim.setStartValue(QPoint(start_x, 0))
-        pos_anim.setEndValue(QPoint(target_x, 0))
-        pos_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
-
         opacity_anim = QPropertyAnimation(effect, b"opacity", self)
-        opacity_anim.setDuration(200)
+        opacity_anim.setDuration(220)
         opacity_anim.setStartValue(start_opacity)
         opacity_anim.setEndValue(end_opacity)
         opacity_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
 
         group = QParallelAnimationGroup(self)
-        group.addAnimation(pos_anim)
         group.addAnimation(opacity_anim)
 
         def _cleanup() -> None:
-            self._set_nav_panel_x(target_x)
             effect.setOpacity(end_opacity)
             if not visible:
                 self._nav_host.setVisible(False)
@@ -594,11 +568,10 @@ class TasksPage(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode(force=not self.isVisible())
-        if self._nav_animation is None:
-            self._set_nav_panel_x(int(self._nav_panel.x()))
-            self._sync_nav_button_sizes()
-        else:
+        if self._nav_animation is not None:
             self._nav_size_sync_pending = True
+        else:
+            self._sync_nav_button_sizes()
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
@@ -610,16 +583,8 @@ class TasksPage(QWidget):
             self._update_navigation_mode(force=False, animate_override=True)
         else:
             self._update_navigation_mode(force=True, animate_override=False)
-        if self._nav_animation is None:
-            self._set_nav_panel_x(int(self._nav_panel.x()))
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
-
-    def _set_nav_panel_x(self, x: int) -> None:
-        width = int(self._nav_expanded_width)
-        height = max(0, int(self._nav_host.height()))
-        clamped_x = max(-width, min(0, int(x)))
-        self._nav_panel.setGeometry(clamped_x, 0, width, height)
 
     def _update_navigation_mode(
         self, *, force: bool, animate_override: bool | None = None
