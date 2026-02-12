@@ -1,14 +1,42 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+from PySide6.QtCore import QEasingCurve
+from PySide6.QtCore import QParallelAnimationGroup
+from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPropertyAnimation
+from PySide6.QtCore import QSignalBlocker
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QTabWidget
+from PySide6.QtWidgets import QComboBox
+from PySide6.QtWidgets import QGraphicsOpacityEffect
+from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QStackedWidget
+from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import Environment
 from agents_runner.environments import resolve_environment_github_repo
+from agents_runner.ui.constants import CARD_MARGINS
+from agents_runner.ui.constants import CARD_SPACING
+from agents_runner.ui.constants import HEADER_MARGINS
+from agents_runner.ui.constants import HEADER_SPACING
+from agents_runner.ui.constants import MAIN_LAYOUT_MARGINS
+from agents_runner.ui.constants import MAIN_LAYOUT_SPACING
 from agents_runner.ui.pages.github_work_list import GitHubWorkListPage
 from agents_runner.ui.pages.new_task import NewTaskPage
+from agents_runner.ui.widgets import GlassCard
+
+
+@dataclass(frozen=True)
+class _TasksPaneSpec:
+    key: str
+    title: str
+    requires_github: bool
 
 
 class TasksPage(QWidget):
@@ -21,25 +49,91 @@ class TasksPage(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("TasksPageRoot")
+
         self._new_task = new_task_page
         self._environments: dict[str, Environment] = {}
         self._active_env_id = ""
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        self._compact_mode = False
+        self._active_pane_key = ""
+        self._github_supported = False
 
-        self._tabs = QTabWidget()
-        self._tabs.setDocumentMode(True)
-        self._tabs.tabBar().setDrawBase(False)
+        self._pane_animation: QParallelAnimationGroup | None = None
+        self._pane_rest_pos: QPoint | None = None
+        self._nav_animation: QParallelAnimationGroup | None = None
+
+        self._nav_expanded_width = 280
+        self._nav_panel_target_visible = True
+
+        self._pane_specs = self._default_pane_specs()
+        self._pane_index_by_key: dict[str, int] = {}
+        self._nav_buttons: dict[str, QToolButton] = {}
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(*MAIN_LAYOUT_MARGINS)
+        layout.setSpacing(MAIN_LAYOUT_SPACING)
+
+        header = GlassCard()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(*HEADER_MARGINS)
+        header_layout.setSpacing(HEADER_SPACING)
+
+        self._title = QLabel("Tasks")
+        self._title.setStyleSheet("font-size: 18px; font-weight: 750;")
+        self._subtitle = QLabel("Workflow")
+        self._subtitle.setObjectName("SettingsPaneSubtitle")
+
+        header_layout.addWidget(self._title)
+        header_layout.addWidget(self._subtitle)
+        header_layout.addStretch(1)
+        layout.addWidget(header)
+
+        card = GlassCard()
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(*CARD_MARGINS)
+        card_layout.setSpacing(CARD_SPACING)
+
+        self._compact_nav = QComboBox()
+        self._compact_nav.setObjectName("SettingsCompactNav")
+        self._compact_nav.setVisible(False)
+        self._compact_nav.currentIndexChanged.connect(self._on_compact_nav_changed)
+        card_layout.addWidget(self._compact_nav)
+
+        panes_layout = QHBoxLayout()
+        panes_layout.setContentsMargins(0, 0, 0, 0)
+        panes_layout.setSpacing(14)
+
+        self._nav_panel = QWidget()
+        self._nav_panel.setObjectName("SettingsNavPanel")
+        self._nav_panel.setMinimumWidth(0)
+        self._nav_panel.setMaximumWidth(self._nav_expanded_width)
+        nav_layout = QVBoxLayout(self._nav_panel)
+        nav_layout.setContentsMargins(10, 10, 10, 10)
+        nav_layout.setSpacing(6)
+
+        self._right_panel = QWidget()
+        self._right_panel.setObjectName("SettingsPaneHost")
+        right_layout = QVBoxLayout(self._right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+
+        self._page_stack = QStackedWidget()
+        self._page_stack.setObjectName("SettingsPageStack")
+        right_layout.addWidget(self._page_stack, 1)
+
+        panes_layout.addWidget(self._nav_panel)
+        panes_layout.addWidget(self._right_panel, 1)
+
+        card_layout.addLayout(panes_layout, 1)
+        layout.addWidget(card, 1)
 
         self._prs = GitHubWorkListPage(item_type="pr")
         self._issues = GitHubWorkListPage(item_type="issue")
 
-        self._new_task_tab_index = self._tabs.addTab(self._new_task, "New Task")
-        self._pr_tab_index = self._tabs.addTab(self._prs, "Pull Requests")
-        self._issues_tab_index = self._tabs.addTab(self._issues, "Issues")
-        self._tabs.currentChanged.connect(self._on_tab_changed)
+        self._build_pages()
+        self._build_navigation(nav_layout)
+        self._sync_nav_button_sizes()
 
         self._new_task.environment_changed.connect(
             self._on_new_task_environment_changed
@@ -53,31 +147,304 @@ class TasksPage(QWidget):
         self._prs.auto_review_requested.connect(self.auto_review_requested.emit)
         self._issues.auto_review_requested.connect(self.auto_review_requested.emit)
 
-        layout.addWidget(self._tabs, 1)
-        self._set_work_tabs_visible(False)
+        self._set_current_pane("new_task", animate=False)
+        self._set_active_navigation("new_task")
+        self._refresh_navigation_controls()
 
-    def _set_work_tabs_visible(self, visible: bool) -> None:
-        tab_bar = self._tabs.tabBar()
-        if hasattr(tab_bar, "setTabVisible"):
-            tab_bar.setTabVisible(self._pr_tab_index, bool(visible))
-            tab_bar.setTabVisible(self._issues_tab_index, bool(visible))
+        self._update_navigation_mode(force=True)
+        QTimer.singleShot(0, self._sync_nav_button_sizes)
+
+    def _default_pane_specs(self) -> list[_TasksPaneSpec]:
+        return [
+            _TasksPaneSpec(
+                key="new_task",
+                title="New Task",
+                requires_github=False,
+            ),
+            _TasksPaneSpec(
+                key="pull_requests",
+                title="Pull Requests",
+                requires_github=True,
+            ),
+            _TasksPaneSpec(
+                key="issues",
+                title="Issues",
+                requires_github=True,
+            ),
+        ]
+
+    def _visible_pane_specs(self) -> list[_TasksPaneSpec]:
+        if self._github_supported:
+            return list(self._pane_specs)
+        return [spec for spec in self._pane_specs if not spec.requires_github]
+
+    def _is_pane_key_visible(self, key: str) -> bool:
+        for spec in self._visible_pane_specs():
+            if spec.key == key:
+                return True
+        return False
+
+    def _build_pages(self) -> None:
+        widget_for_key = {
+            "new_task": self._new_task,
+            "pull_requests": self._prs,
+            "issues": self._issues,
+        }
+        for spec in self._pane_specs:
+            widget = widget_for_key[spec.key]
+            index = self._page_stack.addWidget(widget)
+            self._pane_index_by_key[spec.key] = index
+
+    def _build_navigation(self, nav_layout: QVBoxLayout) -> None:
+        for spec in self._pane_specs:
+            button = QToolButton()
+            button.setObjectName("SettingsNavButton")
+            button.setText(spec.title)
+            button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            button.setCheckable(True)
+            button.clicked.connect(
+                lambda _checked=False, pane_key=spec.key: self._on_nav_button_clicked(
+                    pane_key
+                )
+            )
+            self._nav_buttons[spec.key] = button
+            nav_layout.addWidget(button)
+
+        nav_layout.addStretch(1)
+
+    def _sync_nav_button_sizes(self) -> None:
+        if not self._nav_buttons:
+            return
+        width = 0
+        for button in self._nav_buttons.values():
+            width = max(width, button.sizeHint().width())
+        width = min(max(width, 220), 300)
+        for button in self._nav_buttons.values():
+            button.setMinimumWidth(width)
+
+    def _refresh_navigation_controls(self) -> None:
+        visible_specs = self._visible_pane_specs()
+        visible_keys = {spec.key for spec in visible_specs}
+
+        for key, button in self._nav_buttons.items():
+            button.setVisible(key in visible_keys)
+
+        active_key = self._active_pane_key
+        if not self._is_pane_key_visible(active_key):
+            active_key = "new_task"
+            self._set_current_pane(active_key, animate=True)
+
+        self._set_active_navigation(active_key)
+
+        with QSignalBlocker(self._compact_nav):
+            self._compact_nav.clear()
+            for spec in visible_specs:
+                self._compact_nav.addItem(spec.title, spec.key)
+
+            idx = self._compact_nav.findData(active_key)
+            if idx < 0 and self._compact_nav.count() > 0:
+                idx = 0
+            if idx >= 0:
+                self._compact_nav.setCurrentIndex(idx)
+
+    def _on_nav_button_clicked(self, key: str) -> None:
+        self._navigate_to_pane(key)
+
+    def _on_compact_nav_changed(self, _index: int) -> None:
+        key = str(self._compact_nav.currentData() or "").strip()
+        if not key:
+            return
+        self._navigate_to_pane(key)
+
+    def _navigate_to_pane(self, key: str) -> None:
+        key = str(key or "").strip()
+        if not key:
+            return
+        if not self._is_pane_key_visible(key):
+            return
+        if key == self._active_pane_key:
+            self._set_active_navigation(key)
+            return
+        self._set_current_pane(key, animate=True)
+        self._set_active_navigation(key)
+
+    def _set_active_navigation(self, key: str) -> None:
+        key = str(key or "").strip()
+        self._active_pane_key = key
+
+        for pane_key, button in self._nav_buttons.items():
+            button.setChecked(pane_key == key and button.isVisible())
+
+        idx = self._compact_nav.findData(key)
+        if idx >= 0:
+            with QSignalBlocker(self._compact_nav):
+                self._compact_nav.setCurrentIndex(idx)
+
+        if key == "new_task":
+            self._subtitle.setText("Workflow")
+        elif key == "pull_requests":
+            self._subtitle.setText("Pull Requests")
+        elif key == "issues":
+            self._subtitle.setText("Issues")
         else:
-            self._tabs.setTabEnabled(self._pr_tab_index, bool(visible))
-            self._tabs.setTabEnabled(self._issues_tab_index, bool(visible))
+            self._subtitle.setText("Workflow")
 
-        if not visible and self._tabs.currentIndex() != self._new_task_tab_index:
-            self._tabs.setCurrentIndex(self._new_task_tab_index)
+    def _set_current_pane(self, key: str, *, animate: bool) -> None:
+        target_index = self._pane_index_by_key.get(key)
+        if target_index is None:
+            return
 
-        self._on_tab_changed(self._tabs.currentIndex())
+        current_index = self._page_stack.currentIndex()
+        if current_index == target_index:
+            self._active_pane_key = key
+            self._sync_active_page_runtime()
+            return
 
-    def _on_tab_changed(self, index: int) -> None:
-        self._prs.set_polling_enabled(index == self._pr_tab_index)
-        self._issues.set_polling_enabled(index == self._issues_tab_index)
+        if current_index < 0 or not animate:
+            self._page_stack.setCurrentIndex(target_index)
+            self._active_pane_key = key
+            self._sync_active_page_runtime()
+            return
+
+        forward = target_index > current_index
+        self._page_stack.setCurrentIndex(target_index)
+        self._animate_stack(forward=forward)
+        self._active_pane_key = key
+        self._sync_active_page_runtime()
+
+    def _animate_stack(self, *, forward: bool) -> None:
+        if self._pane_animation is not None:
+            self._pane_animation.stop()
+            self._pane_animation = None
+
+        if self._pane_rest_pos is not None:
+            self._page_stack.move(self._pane_rest_pos)
+        self._page_stack.setGraphicsEffect(None)
+
+        base_pos = self._page_stack.pos()
+        self._pane_rest_pos = QPoint(base_pos)
+
+        offset = 16 if forward else -16
+        start_pos = QPoint(base_pos.x() + offset, base_pos.y())
+
+        effect = QGraphicsOpacityEffect(self._page_stack)
+        effect.setOpacity(0.0)
+        self._page_stack.setGraphicsEffect(effect)
+        self._page_stack.move(start_pos)
+
+        pos_anim = QPropertyAnimation(self._page_stack, b"pos", self)
+        pos_anim.setDuration(210)
+        pos_anim.setStartValue(start_pos)
+        pos_anim.setEndValue(base_pos)
+        pos_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        opacity_anim = QPropertyAnimation(effect, b"opacity", self)
+        opacity_anim.setDuration(210)
+        opacity_anim.setStartValue(0.0)
+        opacity_anim.setEndValue(1.0)
+        opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        group = QParallelAnimationGroup(self)
+        group.addAnimation(pos_anim)
+        group.addAnimation(opacity_anim)
+
+        def _cleanup() -> None:
+            if self._pane_rest_pos is not None:
+                self._page_stack.move(self._pane_rest_pos)
+            self._page_stack.setGraphicsEffect(None)
+            self._pane_animation = None
+
+        group.finished.connect(_cleanup)
+        group.start()
+        self._pane_animation = group
+
+    def _sync_active_page_runtime(self) -> None:
+        active = self._active_pane_key
+        self._prs.set_polling_enabled(active == "pull_requests")
+        self._issues.set_polling_enabled(active == "issues")
+
+    def _set_nav_panel_visible(self, visible: bool, *, animate: bool) -> None:
+        visible = bool(visible)
+        self._nav_panel_target_visible = visible
+
+        if self._nav_animation is not None:
+            self._nav_animation.stop()
+            self._nav_animation = None
+
+        effect = self._nav_panel.graphicsEffect()
+        if not isinstance(effect, QGraphicsOpacityEffect):
+            effect = QGraphicsOpacityEffect(self._nav_panel)
+            self._nav_panel.setGraphicsEffect(effect)
+
+        target_width = self._nav_expanded_width if visible else 0
+        target_opacity = 1.0 if visible else 0.0
+        current_width = max(0, int(self._nav_panel.maximumWidth()))
+        current_visible = bool(self._nav_panel.isVisible())
+        current_opacity = float(effect.opacity())
+        if (
+            current_width == target_width
+            and current_visible == visible
+            and abs(current_opacity - target_opacity) < 0.01
+        ):
+            return
+
+        if not animate:
+            if visible:
+                self._nav_panel.setVisible(True)
+                self._nav_panel.setMaximumWidth(self._nav_expanded_width)
+                effect.setOpacity(1.0)
+            else:
+                self._nav_panel.setMaximumWidth(0)
+                effect.setOpacity(0.0)
+                self._nav_panel.setVisible(False)
+            return
+
+        if visible:
+            self._nav_panel.setVisible(True)
+
+        start_width = max(0, int(self._nav_panel.maximumWidth()))
+        end_width = target_width
+
+        start_opacity = float(effect.opacity())
+        if start_opacity <= 0.0 and visible:
+            start_opacity = 0.0
+        elif start_opacity <= 0.0:
+            start_opacity = 1.0
+        end_opacity = target_opacity
+
+        width_anim = QPropertyAnimation(self._nav_panel, b"maximumWidth", self)
+        width_anim.setDuration(220)
+        width_anim.setStartValue(start_width)
+        width_anim.setEndValue(end_width)
+        width_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        opacity_anim = QPropertyAnimation(effect, b"opacity", self)
+        opacity_anim.setDuration(200)
+        opacity_anim.setStartValue(start_opacity)
+        opacity_anim.setEndValue(end_opacity)
+        opacity_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        group = QParallelAnimationGroup(self)
+        group.addAnimation(width_anim)
+        group.addAnimation(opacity_anim)
+
+        def _cleanup() -> None:
+            self._nav_panel.setMaximumWidth(end_width)
+            effect.setOpacity(end_opacity)
+            if not visible:
+                self._nav_panel.setVisible(False)
+            self._nav_animation = None
+
+        group.finished.connect(_cleanup)
+        group.start()
+        self._nav_animation = group
 
     def _sync_visibility_for_active_environment(self) -> None:
         env = self._environments.get(self._active_env_id)
-        is_supported = resolve_environment_github_repo(env) is not None
-        self._set_work_tabs_visible(is_supported)
+        self._github_supported = resolve_environment_github_repo(env) is not None
+
+        self._refresh_navigation_controls()
+        self._update_navigation_mode(force=False)
 
     def set_environments(self, envs: dict[str, Environment], active_id: str) -> None:
         self._environments = dict(envs or {})
@@ -93,7 +460,8 @@ class TasksPage(QWidget):
         self._issues.set_settings_data(settings_data)
 
     def show_new_task_tab(self, *, focus_prompt: bool = True) -> None:
-        self._tabs.setCurrentIndex(self._new_task_tab_index)
+        self._set_current_pane("new_task", animate=True)
+        self._set_active_navigation("new_task")
         if focus_prompt:
             self._new_task.focus_prompt()
 
@@ -118,4 +486,29 @@ class TasksPage(QWidget):
             self._new_task.set_environment_id(env_id)
 
     def is_new_task_tab_active(self) -> bool:
-        return self._tabs.currentIndex() == self._new_task_tab_index
+        return self._active_pane_key == "new_task"
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_navigation_mode(force=False)
+        self._sync_nav_button_sizes()
+
+    def _update_navigation_mode(self, *, force: bool) -> None:
+        if not self._github_supported:
+            self._compact_mode = False
+            self._compact_nav.setVisible(False)
+            self._set_nav_panel_visible(False, animate=not force)
+            return
+
+        compact = self.width() < 1080
+        mode_changed = compact != self._compact_mode
+        self._compact_mode = compact
+
+        self._compact_nav.setVisible(compact)
+
+        target_visible = not compact
+        animate_panel = bool(
+            (mode_changed or target_visible != self._nav_panel_target_visible)
+            and not force
+        )
+        self._set_nav_panel_visible(target_visible, animate=animate_panel)
