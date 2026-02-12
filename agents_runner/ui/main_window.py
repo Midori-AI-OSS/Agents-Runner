@@ -21,7 +21,8 @@ from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import APP_TITLE
 from agents_runner.ui.graphics import GlassRoot
 from agents_runner.ui.lucide_icons import lucide_icon
-from agents_runner.ui.radio import RadioController
+
+# RadioController imported lazily in __init__ to avoid crashes when PipeWire unavailable
 from agents_runner.ui.pages import DashboardPage
 from agents_runner.ui.pages import EnvironmentsPage
 from agents_runner.ui.pages import NewTaskPage
@@ -169,10 +170,15 @@ class MainWindow(
         self._recovery_ticker.timeout.connect(self._tick_recovery)
         self._recovery_ticker.start()
 
+        # Import RadioController lazily to avoid crashes when PipeWire/QtMultimedia unavailable
+        RadioController = None
         try:
+            from agents_runner.ui.radio import RadioController
+
             self._radio_controller = RadioController(self)
+            self._RadioController = RadioController  # Store class for static methods
         except Exception as exc:
-            # If RadioController fails to initialize (e.g., PipeWire/audio unavailable),
+            # If RadioController fails to import/initialize (e.g., PipeWire/audio unavailable),
             # log the error but continue app startup
             logger.rprint(
                 f"Radio controller initialization failed (app will continue without radio): {exc}",
@@ -180,6 +186,7 @@ class MainWindow(
             )
             # Set to None - code below will need to check for None
             self._radio_controller = None  # type: ignore[assignment]
+            self._RadioController = None
 
         self._root = GlassRoot()
         self.setCentralWidget(self._root)
@@ -333,19 +340,25 @@ class MainWindow(
         user_initiated: bool,
         previous_enabled: bool | None = None,
     ) -> None:
+        # If RadioController class unavailable, can't sync settings
+        if self._RadioController is None:
+            return
+
         enabled = bool(self._settings_data.get("radio_enabled") or False)
-        channel = RadioController.normalize_channel(
+        channel = self._RadioController.normalize_channel(
             self._settings_data.get("radio_channel")
         )
-        quality = RadioController.normalize_quality(
+        quality = self._RadioController.normalize_quality(
             self._settings_data.get("radio_quality")
         )
-        volume = RadioController.clamp_volume(self._settings_data.get("radio_volume"))
+        volume = self._RadioController.clamp_volume(
+            self._settings_data.get("radio_volume")
+        )
         autostart = bool(self._settings_data.get("radio_autostart") or False)
         loudness_boost_enabled = bool(
             self._settings_data.get("radio_loudness_boost_enabled") or False
         )
-        loudness_boost_factor = RadioController.normalize_loudness_boost_factor(
+        loudness_boost_factor = self._RadioController.normalize_loudness_boost_factor(
             self._settings_data.get("radio_loudness_boost_factor")
         )
 
@@ -402,9 +415,9 @@ class MainWindow(
         self._schedule_save()
 
     def _on_radio_control_volume_changed(self, value: int) -> None:
-        if self._radio_controller is None:
+        if self._radio_controller is None or self._RadioController is None:
             return
-        clamped = RadioController.clamp_volume(value)
+        clamped = self._RadioController.clamp_volume(value)
         self._settings_data["radio_volume"] = clamped
         self._radio_controller.set_volume(clamped)
         self._schedule_save()
@@ -465,7 +478,10 @@ class MainWindow(
         self.setWindowTitle(f"{APP_TITLE} [{channel_label}]")
 
     def _refresh_radio_channel_options(self, *, disable_on_failure: bool) -> None:
-        selected_channel = RadioController.normalize_channel(
+        if self._RadioController is None:
+            return
+
+        selected_channel = self._RadioController.normalize_channel(
             self._settings_data.get("radio_channel")
         )
         if self._radio_controller is None or not self._radio_controller.qt_available:
@@ -477,7 +493,10 @@ class MainWindow(
             return
 
         def _handle_channels(channels: object, error_text: str) -> None:
-            current_selected = RadioController.normalize_channel(
+            if self._RadioController is None:
+                return
+
+            current_selected = self._RadioController.normalize_channel(
                 self._settings_data.get("radio_channel")
             )
 
@@ -490,9 +509,12 @@ class MainWindow(
                     )
                 return
 
+            if self._RadioController is None:
+                return
+
             normalized: list[str] = []
             for raw in channels:
-                channel = RadioController.normalize_channel(raw)
+                channel = self._RadioController.normalize_channel(raw)
                 if not channel or channel in normalized:
                     continue
                 normalized.append(channel)
