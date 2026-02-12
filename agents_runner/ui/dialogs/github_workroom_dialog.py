@@ -326,6 +326,7 @@ class GitHubWorkroomDialog(QDialog):
             )
             return
         self.prompt_requested.emit(prompt)
+        self.accept()
 
     def _on_toggle_open_state(self) -> None:
         room = self._room

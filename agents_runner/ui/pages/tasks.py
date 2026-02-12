@@ -182,6 +182,11 @@ class TasksPage(QWidget):
             ),
         ]
 
+    def _left_nav_specs(self) -> list[_TasksPaneSpec]:
+        by_key = {spec.key: spec for spec in self._pane_specs}
+        order = ("new_task", "issues", "pull_requests")
+        return [by_key[key] for key in order if key in by_key]
+
     def _visible_pane_specs(self) -> list[_TasksPaneSpec]:
         if self._github_supported:
             return list(self._pane_specs)
@@ -205,7 +210,7 @@ class TasksPage(QWidget):
             self._pane_index_by_key[spec.key] = index
 
     def _build_navigation(self, nav_layout: QVBoxLayout) -> None:
-        for spec in self._pane_specs:
+        for spec in self._left_nav_specs():
             button = QToolButton()
             button.setObjectName("SettingsNavButton")
             button.setText(spec.title)
