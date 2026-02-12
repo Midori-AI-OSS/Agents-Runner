@@ -5,12 +5,12 @@ import threading
 from datetime import datetime
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QUrl
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QEnterEvent
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
@@ -30,7 +30,12 @@ from agents_runner.gh.work_items import list_open_pull_requests
 from agents_runner.prompts import load_prompt
 from agents_runner.ui.dialogs.github_workroom_dialog import GitHubWorkroomDialog
 from agents_runner.ui.lucide_icons import lucide_icon
+from agents_runner.ui.utils import _apply_environment_combo_tint
+from agents_runner.ui.utils import _stain_color
 from agents_runner.ui.widgets import GlassCard
+from midori_ai_logger import MidoriAiLogger
+
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class _GitHubWorkRow(QWidget):
@@ -158,6 +163,8 @@ class GitHubWorkListPage(QWidget):
         self._auto_review_enabled = True
         self._poll_interval_s = 30
         self._auto_review_seen_comment_ids: set[int] = set()
+        self._active_stain = ""
+        self._last_fetch_issue = ""
 
         self._rows: dict[int, _GitHubWorkRow] = {}
 
@@ -169,6 +176,7 @@ class GitHubWorkListPage(QWidget):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 14, 16, 14)
         header_layout.setSpacing(10)
+        self._header_card = header
 
         title = "Pull Requests" if self._item_type == "pr" else "Issues"
         self._title = QLabel(title)
@@ -194,6 +202,7 @@ class GitHubWorkListPage(QWidget):
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(0, 12, 0, 12)
         card_layout.setSpacing(8)
+        self._list_card = card
 
         columns = QWidget()
         columns_layout = QHBoxLayout(columns)
@@ -208,6 +217,7 @@ class GitHubWorkListPage(QWidget):
         c2.setMinimumWidth(110)
         c3 = QLabel("Info")
         c3.setStyleSheet("color: rgba(237, 239, 245, 150); font-weight: 650;")
+        self._column_labels = (c1, c2, c3)
 
         columns_layout.addWidget(c1, 5)
         columns_layout.addWidget(c2, 0)
@@ -227,12 +237,8 @@ class GitHubWorkListPage(QWidget):
         self._list_layout.addStretch(1)
         self._scroll.setWidget(self._list)
 
-        self._status = QLabel("Select an environment to load data.")
-        self._status.setStyleSheet("color: rgba(237, 239, 245, 160);")
-
         card_layout.addWidget(columns)
         card_layout.addWidget(self._scroll, 1)
-        card_layout.addWidget(self._status)
         root.addWidget(card, 1)
 
         self._poll_timer = QTimer(self)
@@ -240,6 +246,7 @@ class GitHubWorkListPage(QWidget):
         self._poll_timer.timeout.connect(self.refresh)
 
         self._fetch_completed.connect(self._on_fetch_completed)
+        self._apply_environment_tints("")
 
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
         settings = dict(settings_data or {})
@@ -294,6 +301,9 @@ class GitHubWorkListPage(QWidget):
 
         if self._environment.count() > 0:
             self._active_env_id = str(self._environment.currentData() or "")
+        else:
+            self._active_env_id = ""
+        self._sync_environment_stain()
 
     def set_active_environment_id(self, env_id: str) -> None:
         desired = str(env_id or "").strip()
@@ -304,9 +314,18 @@ class GitHubWorkListPage(QWidget):
             self._environment.setCurrentIndex(idx)
             return
         self._active_env_id = desired
+        self._sync_environment_stain()
+
+    def set_environment_stain(self, stain: str) -> None:
+        normalized = str(stain or "").strip().lower()
+        if normalized == self._active_stain:
+            return
+        self._active_stain = normalized
+        self._apply_environment_tints(normalized)
 
     def _on_environment_changed(self, _index: int) -> None:
         self._active_env_id = str(self._environment.currentData() or "")
+        self._sync_environment_stain()
         self.environment_changed.emit(self._active_env_id)
         self.refresh()
 
@@ -315,8 +334,8 @@ class GitHubWorkListPage(QWidget):
             self._active_env_id or self._environment.currentData() or ""
         ).strip()
         if not env_id:
-            self._status.setText("Select an environment to load data.")
             self._clear_rows()
+            self._last_fetch_issue = ""
             return
 
         self._fetch_seq += 1
@@ -325,8 +344,6 @@ class GitHubWorkListPage(QWidget):
         auto_review_enabled = bool(
             self._auto_review_enabled and self._item_type == "pr"
         )
-
-        self._status.setText("Loading...")
 
         worker = threading.Thread(
             target=self._fetch_worker,
@@ -552,7 +569,13 @@ class GitHubWorkListPage(QWidget):
 
         if repo_context is None:
             self._clear_rows()
-            self._status.setText("GitHub is unavailable for this environment.")
+            self._log_fetch_issue_once(
+                (
+                    f"[github-{self._item_type}] GitHub is unavailable for "
+                    f"environment '{self._active_env_id}'."
+                ),
+                mode="warn",
+            )
             return
 
         rows = [
@@ -561,19 +584,26 @@ class GitHubWorkListPage(QWidget):
             if isinstance(item, GitHubWorkItem)
         ]
         env = self._environments.get(self._active_env_id)
-        stain = str(getattr(env, "color", "slate") or "slate").strip().lower()
+        stain = (
+            self._active_stain
+            or str(getattr(env, "color", "slate") or "").strip().lower()
+        )
+        if not stain:
+            stain = "slate"
 
         if error:
             self._clear_rows()
-            self._status.setText(f"Load failed: {error}")
+            self._log_fetch_issue_once(
+                (
+                    f"[github-{self._item_type}] Load failed for environment "
+                    f"'{self._active_env_id}': {error}"
+                ),
+                mode="error",
+            )
             return
 
         self._render_rows(rows, stain=stain)
-        kind = "pull request" if self._item_type == "pr" else "issue"
-        if rows:
-            self._status.setText(f"Loaded {len(rows)} open {kind}(s).")
-        else:
-            self._status.setText(f"No open {kind}s found.")
+        self._last_fetch_issue = ""
 
         reviews = auto_reviews if isinstance(auto_reviews, list) else []
         for review in reviews:
@@ -602,3 +632,80 @@ class GitHubWorkListPage(QWidget):
 
             self._auto_review_seen_comment_ids.add(comment_id)
             self.auto_review_requested.emit(self._active_env_id, prompt)
+
+    def _sync_environment_stain(self) -> None:
+        env = self._environments.get(self._active_env_id)
+        stain = str(getattr(env, "color", "") or "").strip().lower()
+        self.set_environment_stain(stain)
+
+    def _apply_environment_tints(self, stain: str) -> None:
+        stain = str(stain or "").strip().lower()
+        if not stain:
+            self._environment.setStyleSheet("")
+            self._refresh.setStyleSheet("")
+            self._header_card.setStyleSheet("")
+            self._list_card.setStyleSheet("")
+            self._list.setStyleSheet("")
+            for label in self._column_labels:
+                label.setStyleSheet(
+                    "color: rgba(237, 239, 245, 150); font-weight: 650;"
+                )
+            return
+
+        _apply_environment_combo_tint(self._environment, stain)
+        tint = _stain_color(stain)
+        r = int(tint.red())
+        g = int(tint.green())
+        b = int(tint.blue())
+
+        self._refresh.setStyleSheet(
+            "\n".join(
+                [
+                    "QToolButton {",
+                    f"  background-color: rgba({r}, {g}, {b}, 28);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 110);",
+                    "  border-radius: 0px;",
+                    "}",
+                    "QToolButton:hover {",
+                    f"  background-color: rgba({r}, {g}, {b}, 42);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 150);",
+                    "}",
+                    "QToolButton:pressed {",
+                    f"  background-color: rgba({r}, {g}, {b}, 68);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 176);",
+                    "}",
+                ]
+            )
+        )
+        self._header_card.setStyleSheet(
+            "\n".join(
+                [
+                    "QFrame#GlassCard {",
+                    f"  background-color: rgba({r}, {g}, {b}, 20);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 90);",
+                    "  border-radius: 0px;",
+                    "}",
+                ]
+            )
+        )
+        self._list_card.setStyleSheet(
+            "\n".join(
+                [
+                    "QFrame#GlassCard {",
+                    f"  background-color: rgba({r}, {g}, {b}, 16);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 78);",
+                    "  border-radius: 0px;",
+                    "}",
+                ]
+            )
+        )
+        self._list.setStyleSheet(f"background-color: rgba({r}, {g}, {b}, 10);")
+        for label in self._column_labels:
+            label.setStyleSheet(f"color: rgba({r}, {g}, {b}, 215); font-weight: 650;")
+
+    def _log_fetch_issue_once(self, message: str, *, mode: str) -> None:
+        text = str(message or "").strip()
+        if not text or text == self._last_fetch_issue:
+            return
+        self._last_fetch_issue = text
+        logger.rprint(text, mode=mode)

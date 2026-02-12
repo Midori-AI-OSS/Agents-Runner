@@ -237,22 +237,9 @@ class TasksPage(QWidget):
             return
         if not self._nav_buttons:
             return
-        width = 0
-        for button in self._nav_buttons.values():
-            width = max(width, button.sizeHint().width())
-        width = min(max(width, 220), 300)
+        width = max(220, self._nav_expanded_width - 20)
         for button in self._nav_buttons.values():
             button.setMinimumWidth(width)
-
-        panel_width = width + 20
-        if panel_width == self._nav_expanded_width:
-            return
-
-        self._nav_expanded_width = panel_width
-        self._nav_host.setMinimumWidth(panel_width)
-        self._nav_host.setMaximumWidth(panel_width)
-        self._nav_panel.setMinimumWidth(panel_width)
-        self._nav_panel.setMaximumWidth(panel_width)
 
     def _refresh_navigation_controls(self) -> None:
         visible_specs = self._visible_pane_specs()
@@ -403,13 +390,65 @@ class TasksPage(QWidget):
 
         if not stain:
             self._compact_nav.setStyleSheet("")
+            self._apply_nav_tint("")
             self._tint_overlay.set_tint_color(None)
+            self._prs.set_environment_stain("")
+            self._issues.set_environment_stain("")
             return
 
+        self._apply_nav_tint(stain)
         _apply_environment_combo_tint(self._compact_nav, stain)
-        self._tint_overlay.set_tint_color(_stain_color(stain))
+        tint = _stain_color(stain)
+        self._tint_overlay.set_tint_color(tint)
+        self._prs.set_environment_stain(stain)
+        self._issues.set_environment_stain(stain)
 
-    def _set_nav_panel_visible(self, visible: bool, *, animate: bool) -> None:
+    def _apply_nav_tint(self, stain: str) -> None:
+        stain = str(stain or "").strip().lower()
+        if not stain:
+            self._nav_panel.setStyleSheet("")
+            return
+
+        tint = _stain_color(stain)
+        r = int(tint.red())
+        g = int(tint.green())
+        b = int(tint.blue())
+        self._nav_panel.setStyleSheet(
+            "\n".join(
+                [
+                    "QWidget#SettingsNavPanel {",
+                    f"  background-color: rgba({r}, {g}, {b}, 26);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 92);",
+                    "  border-radius: 0px;",
+                    "}",
+                    "QToolButton#SettingsNavButton {",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 76);",
+                    f"  background-color: rgba({r}, {g}, {b}, 18);",
+                    "  color: rgba(237, 239, 245, 224);",
+                    "  border-radius: 0px;",
+                    "  text-align: left;",
+                    "  padding: 9px 10px;",
+                    "  font-weight: 620;",
+                    "}",
+                    "QToolButton#SettingsNavButton:hover {",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 132);",
+                    f"  background-color: rgba({r}, {g}, {b}, 34);",
+                    "}",
+                    "QToolButton#SettingsNavButton:checked {",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 170);",
+                    f"  background-color: rgba({r}, {g}, {b}, 62);",
+                    "}",
+                    "QToolButton#SettingsNavButton:checked:hover {",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 190);",
+                    f"  background-color: rgba({r}, {g}, {b}, 82);",
+                    "}",
+                ]
+            )
+        )
+
+    def _set_nav_panel_visible(
+        self, visible: bool, *, animate: bool, collapse_host: bool
+    ) -> None:
         visible = bool(visible)
         self._nav_panel_target_visible = visible
 
@@ -417,31 +456,30 @@ class TasksPage(QWidget):
             self._nav_animation.stop()
             self._nav_animation = None
 
+        if visible and not self._nav_host.isVisible():
+            self._nav_host.setVisible(True)
+
         effect = self._nav_panel.graphicsEffect()
         if not isinstance(effect, QGraphicsOpacityEffect):
             effect = QGraphicsOpacityEffect(self._nav_panel)
             self._nav_panel.setGraphicsEffect(effect)
+        if not self._nav_panel.isVisible():
+            self._nav_panel.setVisible(True)
 
         target_opacity = 1.0 if visible else 0.0
-        current_visible = bool(self._nav_host.isVisible())
         current_opacity = float(effect.opacity())
-        if (
-            current_visible == visible
-            and abs(current_opacity - target_opacity) < 0.01
-        ):
+        if abs(current_opacity - target_opacity) < 0.01:
+            if not visible and collapse_host:
+                self._nav_host.setVisible(False)
             return
 
         if not animate:
-            self._nav_host.setVisible(visible)
             effect.setOpacity(target_opacity)
+            if not visible and collapse_host:
+                self._nav_host.setVisible(False)
             return
 
-        if visible:
-            if not self._nav_host.isVisible():
-                self._nav_host.setVisible(True)
-                current_opacity = 0.0
-                effect.setOpacity(current_opacity)
-        elif not self._nav_host.isVisible():
+        if not self._nav_host.isVisible():
             effect.setOpacity(target_opacity)
             return
 
@@ -468,7 +506,7 @@ class TasksPage(QWidget):
 
         def _cleanup() -> None:
             effect.setOpacity(end_opacity)
-            if not visible:
+            if not visible and collapse_host:
                 self._nav_host.setVisible(False)
             self._nav_animation = None
             if self._nav_size_sync_pending:
@@ -602,7 +640,11 @@ class TasksPage(QWidget):
                 animate_panel = bool(animate_panel and is_visible)
             else:
                 animate_panel = should_animate_override
-            self._set_nav_panel_visible(False, animate=animate_panel)
+            self._set_nav_panel_visible(
+                False,
+                animate=animate_panel,
+                collapse_host=True,
+            )
             return
 
         compact = self.width() < 1080
@@ -620,4 +662,8 @@ class TasksPage(QWidget):
             )
         else:
             animate_panel = should_animate_override
-        self._set_nav_panel_visible(target_visible, animate=animate_panel)
+        self._set_nav_panel_visible(
+            target_visible,
+            animate=animate_panel,
+            collapse_host=compact,
+        )
