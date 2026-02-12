@@ -35,6 +35,9 @@ from agents_runner.ui.utils import _stain_color
 from agents_runner.ui.widgets import GlassCard
 
 
+_GITHUB_NAV_KEYS = ("pull_requests", "issues")
+
+
 @dataclass(frozen=True)
 class _TasksPaneSpec:
     key: str
@@ -60,18 +63,14 @@ class TasksPage(QWidget):
 
         self._compact_mode = False
         self._active_pane_key = ""
+
         self._github_supported = False
-        self._last_support_state: bool | None = None
-        self._has_animated_supported_slide_in = False
-        self._pending_supported_slide_in = False
+        self._support_state_initialized = False
+        self._pending_github_supported: bool | None = None
+        self._button_fade_animation: QParallelAnimationGroup | None = None
 
         self._pane_animation: QParallelAnimationGroup | None = None
         self._pane_rest_pos: QPoint | None = None
-        self._nav_animation: QParallelAnimationGroup | None = None
-        self._nav_size_sync_pending = False
-
-        self._nav_expanded_width = 280
-        self._nav_panel_target_visible = True
 
         self._pane_specs = self._default_pane_specs()
         self._pane_index_by_key: dict[str, int] = {}
@@ -111,22 +110,13 @@ class TasksPage(QWidget):
         panes_layout.setContentsMargins(0, 0, 0, 0)
         panes_layout.setSpacing(14)
 
-        self._nav_host = QWidget()
-        self._nav_host.setObjectName("TasksNavHost")
-        self._nav_host.setMinimumWidth(self._nav_expanded_width)
-        self._nav_host.setMaximumWidth(self._nav_expanded_width)
-        nav_host_layout = QVBoxLayout(self._nav_host)
-        nav_host_layout.setContentsMargins(0, 0, 0, 0)
-        nav_host_layout.setSpacing(0)
-
-        self._nav_panel = QWidget(self._nav_host)
+        self._nav_panel = QWidget()
         self._nav_panel.setObjectName("SettingsNavPanel")
-        self._nav_panel.setMinimumWidth(self._nav_expanded_width)
-        self._nav_panel.setMaximumWidth(self._nav_expanded_width)
+        self._nav_panel.setMinimumWidth(250)
+        self._nav_panel.setMaximumWidth(320)
         nav_layout = QVBoxLayout(self._nav_panel)
         nav_layout.setContentsMargins(10, 10, 10, 10)
         nav_layout.setSpacing(6)
-        nav_host_layout.addWidget(self._nav_panel)
 
         self._right_panel = QWidget()
         self._right_panel.setObjectName("SettingsPaneHost")
@@ -138,7 +128,7 @@ class TasksPage(QWidget):
         self._page_stack.setObjectName("SettingsPageStack")
         right_layout.addWidget(self._page_stack, 1)
 
-        panes_layout.addWidget(self._nav_host)
+        panes_layout.addWidget(self._nav_panel)
         panes_layout.addWidget(self._right_panel, 1)
 
         card_layout.addLayout(panes_layout, 1)
@@ -167,7 +157,7 @@ class TasksPage(QWidget):
         self._set_active_navigation("new_task")
         self._refresh_navigation_controls()
 
-        self._update_navigation_mode(force=True)
+        self._update_navigation_mode()
         QTimer.singleShot(0, self._sync_nav_button_sizes)
 
         self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
@@ -232,24 +222,42 @@ class TasksPage(QWidget):
         nav_layout.addStretch(1)
 
     def _sync_nav_button_sizes(self) -> None:
-        if self._nav_animation is not None:
-            self._nav_size_sync_pending = True
+        if self._compact_mode or not self._nav_buttons:
             return
-        if not self._nav_buttons:
-            return
-        width = max(220, self._nav_expanded_width - 20)
-        for button in self._nav_buttons.values():
-            button.setMinimumWidth(width)
 
-    def _refresh_navigation_controls(self) -> None:
+        panel_width = self._nav_panel.width()
+        if panel_width <= 0:
+            return
+
+        inner_width = panel_width
+        nav_layout = self._nav_panel.layout()
+        if nav_layout is not None:
+            margins = nav_layout.contentsMargins()
+            inner_width -= margins.left() + margins.right()
+
+        target_width = max(1, inner_width - 2)
+        for button in self._nav_buttons.values():
+            button.setFixedWidth(target_width)
+
+    def _refresh_navigation_controls(
+        self,
+        *,
+        button_visible_keys: set[str] | None = None,
+    ) -> None:
         visible_specs = self._visible_pane_specs()
-        visible_keys = {spec.key for spec in visible_specs}
+        logical_visible_keys = {spec.key for spec in visible_specs}
+
+        actual_visible_keys = (
+            set(button_visible_keys)
+            if button_visible_keys is not None
+            else set(logical_visible_keys)
+        )
 
         for key, button in self._nav_buttons.items():
-            button.setVisible(key in visible_keys)
+            button.setVisible(key in actual_visible_keys)
 
         active_key = self._active_pane_key
-        if not self._is_pane_key_visible(active_key):
+        if active_key not in logical_visible_keys:
             active_key = "new_task"
             self._set_current_pane(active_key, animate=True)
 
@@ -446,130 +454,116 @@ class TasksPage(QWidget):
             )
         )
 
-    def _effective_page_width(self) -> int:
-        width = int(self.width())
-        win = self.window()
-        if win is not None and win is not self:
-            try:
-                width = max(width, int(win.width()))
-            except Exception:
-                pass
-        return max(width, 0)
-
-    def _set_nav_panel_visible(
-        self, visible: bool, *, animate: bool, collapse_host: bool
-    ) -> None:
-        visible = bool(visible)
-        self._nav_panel_target_visible = visible
-
-        if self._nav_animation is not None:
-            self._nav_animation.stop()
-            self._nav_animation = None
-
-        if visible and not self._nav_host.isVisible():
-            self._nav_host.setVisible(True)
-
-        effect = self._nav_panel.graphicsEffect()
+    def _ensure_button_opacity_effect(
+        self, button: QToolButton
+    ) -> QGraphicsOpacityEffect:
+        effect = button.graphicsEffect()
         if not isinstance(effect, QGraphicsOpacityEffect):
-            effect = QGraphicsOpacityEffect(self._nav_panel)
-            self._nav_panel.setGraphicsEffect(effect)
-        if not self._nav_panel.isVisible():
-            self._nav_panel.setVisible(True)
+            effect = QGraphicsOpacityEffect(button)
+            button.setGraphicsEffect(effect)
+            effect.setOpacity(1.0)
+        return effect
 
-        target_opacity = 1.0 if visible else 0.0
-        current_opacity = float(effect.opacity())
-        if abs(current_opacity - target_opacity) < 0.01:
-            if not visible and collapse_host:
-                self._nav_host.setVisible(False)
+    def _animate_github_nav_buttons(self, *, show: bool) -> None:
+        if self._button_fade_animation is not None:
             return
 
-        if not animate:
-            effect.setOpacity(target_opacity)
-            if not visible and collapse_host:
-                self._nav_host.setVisible(False)
-            return
-
-        if not self._nav_host.isVisible():
-            effect.setOpacity(target_opacity)
-            return
-
-        start_opacity = current_opacity
-        if visible:
-            if start_opacity < 0.01:
-                start_opacity = 0.0
+        button_keys = {"new_task", *_GITHUB_NAV_KEYS}
+        if show:
+            self._refresh_navigation_controls(button_visible_keys={"new_task"})
         else:
-            if start_opacity < 0.01:
-                start_opacity = 1.0
+            self._refresh_navigation_controls(button_visible_keys=button_keys)
 
-        effect.setOpacity(start_opacity)
+        buttons: list[QToolButton] = []
+        for key in _GITHUB_NAV_KEYS:
+            button = self._nav_buttons.get(key)
+            if button is not None:
+                buttons.append(button)
 
-        end_opacity = target_opacity
-
-        opacity_anim = QPropertyAnimation(effect, b"opacity", self)
-        opacity_anim.setDuration(220)
-        opacity_anim.setStartValue(start_opacity)
-        opacity_anim.setEndValue(end_opacity)
-        opacity_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        if not buttons:
+            self._refresh_navigation_controls()
+            self._sync_nav_button_sizes()
+            return
 
         group = QParallelAnimationGroup(self)
-        group.addAnimation(opacity_anim)
+        for button in buttons:
+            effect = self._ensure_button_opacity_effect(button)
+            button.setVisible(True)
 
-        def _cleanup() -> None:
-            effect.setOpacity(end_opacity)
-            if not visible and collapse_host:
-                self._nav_host.setVisible(False)
-            self._nav_animation = None
-            if self._nav_size_sync_pending:
-                self._nav_size_sync_pending = False
-                self._sync_nav_button_sizes()
+            if show:
+                start_opacity = 0.0
+                end_opacity = 1.0
+            else:
+                start_opacity = float(effect.opacity())
+                if start_opacity < 0.01:
+                    start_opacity = 1.0
+                end_opacity = 0.0
 
-        group.finished.connect(_cleanup)
+            effect.setOpacity(start_opacity)
+
+            opacity_anim = QPropertyAnimation(effect, b"opacity", self)
+            opacity_anim.setDuration(220)
+            opacity_anim.setStartValue(start_opacity)
+            opacity_anim.setEndValue(end_opacity)
+            opacity_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+            group.addAnimation(opacity_anim)
+
+        def _on_finished() -> None:
+            self._button_fade_animation = None
+            for key in _GITHUB_NAV_KEYS:
+                button = self._nav_buttons.get(key)
+                if button is None:
+                    continue
+                effect = self._ensure_button_opacity_effect(button)
+                effect.setOpacity(1.0)
+
+            self._refresh_navigation_controls()
+            self._sync_nav_button_sizes()
+
+            pending = self._pending_github_supported
+            self._pending_github_supported = None
+            if pending is not None and pending != self._github_supported:
+                self._apply_github_support_state(pending)
+                self._apply_environment_tints()
+
+        group.finished.connect(_on_finished)
         group.start()
-        self._nav_animation = group
+        self._button_fade_animation = group
+
+    def _apply_github_support_state(self, supported: bool) -> None:
+        previous_supported = self._github_supported
+        state_changed = previous_supported != supported
+        self._github_supported = supported
+
+        self._update_navigation_mode()
+
+        should_animate = bool(
+            self._support_state_initialized
+            and state_changed
+            and self.isVisible()
+            and not self._compact_mode
+            and self._nav_panel.isVisible()
+        )
+
+        if should_animate:
+            self._animate_github_nav_buttons(show=supported)
+        else:
+            self._refresh_navigation_controls()
+            self._sync_nav_button_sizes()
+
+        self._support_state_initialized = True
 
     def _sync_visibility_for_active_environment(self) -> None:
         env = self._environments.get(self._active_env_id)
-        previous_supported = self._last_support_state
         supported = resolve_environment_github_repo(env) is not None
 
-        self._github_supported = supported
-        self._last_support_state = supported
+        if self._button_fade_animation is not None:
+            self._pending_github_supported = supported
+            self._apply_environment_tints()
+            return
 
-        self._refresh_navigation_controls()
+        self._apply_github_support_state(supported)
         self._apply_environment_tints()
-
-        is_visible = bool(self.isVisible())
-
-        if not supported:
-            self._pending_supported_slide_in = False
-            should_slide_out = bool(previous_supported is True and is_visible)
-            self._update_navigation_mode(
-                force=not is_visible,
-                animate_override=should_slide_out,
-            )
-            return
-
-        if not self._has_animated_supported_slide_in:
-            if is_visible:
-                self._has_animated_supported_slide_in = True
-                self._pending_supported_slide_in = False
-                self._update_navigation_mode(force=False, animate_override=True)
-            else:
-                self._pending_supported_slide_in = True
-                self._update_navigation_mode(force=True, animate_override=False)
-            return
-
-        if previous_supported is False:
-            if is_visible:
-                self._pending_supported_slide_in = False
-                self._update_navigation_mode(force=False, animate_override=True)
-            else:
-                self._pending_supported_slide_in = True
-                self._update_navigation_mode(force=True, animate_override=False)
-            return
-
-        self._pending_supported_slide_in = False
-        self._update_navigation_mode(force=not is_visible, animate_override=False)
 
     def set_environments(self, envs: dict[str, Environment], active_id: str) -> None:
         self._environments = dict(envs or {})
@@ -615,65 +609,22 @@ class TasksPage(QWidget):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self._update_navigation_mode(force=not self.isVisible())
-        if self._nav_animation is not None:
-            self._nav_size_sync_pending = True
-        else:
-            self._sync_nav_button_sizes()
+        self._update_navigation_mode()
+        self._sync_nav_button_sizes()
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        if self._pending_supported_slide_in and self._github_supported:
-            self._pending_supported_slide_in = False
-            self._has_animated_supported_slide_in = True
-            self._update_navigation_mode(force=False, animate_override=True)
-        else:
-            self._update_navigation_mode(force=True, animate_override=False)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
-    def _update_navigation_mode(
-        self, *, force: bool, animate_override: bool | None = None
-    ) -> None:
-        is_visible = bool(self.isVisible())
-        should_animate_override = bool(
-            animate_override is True and not force and is_visible
-        )
-
-        if not self._github_supported:
-            self._compact_mode = False
-            self._compact_nav.setVisible(False)
-            if animate_override is None:
-                animate_panel = bool(not force and self._nav_panel_target_visible)
-                animate_panel = bool(animate_panel and is_visible)
-            else:
-                animate_panel = should_animate_override
-            self._set_nav_panel_visible(
-                False,
-                animate=animate_panel,
-                collapse_host=True,
-            )
+    def _update_navigation_mode(self) -> None:
+        compact = self.width() < 1080
+        if compact == self._compact_mode:
             return
-
-        compact = self._effective_page_width() < 1080
-        mode_changed = compact != self._compact_mode
         self._compact_mode = compact
-
         self._compact_nav.setVisible(compact)
-
-        target_visible = not compact
-        if animate_override is None:
-            animate_panel = bool(
-                (mode_changed or target_visible != self._nav_panel_target_visible)
-                and not force
-                and is_visible
-            )
-        else:
-            animate_panel = should_animate_override
-        self._set_nav_panel_visible(
-            target_visible,
-            animate=animate_panel,
-            collapse_host=compact,
-        )
+        self._nav_panel.setVisible(not compact)
+        if not compact:
+            QTimer.singleShot(0, self._sync_nav_button_sizes)

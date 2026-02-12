@@ -53,14 +53,12 @@ def test_tasks_nav_width_stable_during_main_window_page_transitions() -> None:
     _pump(app)
 
     tracker = _ResizeTracker()
-    win._tasks_page._nav_host.installEventFilter(tracker)
-
-    expected = int(win._tasks_page._nav_expanded_width)
+    win._tasks_page._nav_panel.installEventFilter(tracker)
 
     win._show_tasks()
     _pump(app, rounds=30)
     assert win._tasks_page.isVisible()
-    assert int(win._tasks_page._nav_host.width()) == expected
+    first_width = int(win._tasks_page._nav_panel.width())
 
     win._show_dashboard()
     _pump(app, rounds=30)
@@ -69,11 +67,21 @@ def test_tasks_nav_width_stable_during_main_window_page_transitions() -> None:
     win._show_tasks()
     _pump(app, rounds=30)
     assert win._tasks_page.isVisible()
-    assert int(win._tasks_page._nav_host.width()) == expected
+    second_width = int(win._tasks_page._nav_panel.width())
 
-    visible_widths = {w for visible, w, _h in tracker.samples if visible}
+    minimum = int(win._tasks_page._nav_panel.minimumWidth())
+    maximum = int(win._tasks_page._nav_panel.maximumWidth())
+    assert minimum <= first_width <= maximum
+    assert minimum <= second_width <= maximum
+    assert abs(first_width - second_width) <= 4, (
+        f"nav panel settled width drifted between page transitions: "
+        f"first={first_width}, second={second_width}"
+    )
+
+    visible_widths = [w for visible, w, _h in tracker.samples if visible]
     if visible_widths:
-        assert visible_widths == {expected}, (
-            f"nav width changed during transitions: {sorted(visible_widths)}; "
+        spread = max(visible_widths) - min(visible_widths)
+        assert spread <= 8, (
+            f"nav width changed too much during transitions: {visible_widths}; "
             f"tracked={tracker.samples}"
         )
