@@ -7,6 +7,8 @@ from agents_runner.environments.model import WORKSPACE_CLONED
 from agents_runner.environments.model import WORKSPACE_MOUNTED
 from agents_runner.environments.model import WORKSPACE_NONE
 from agents_runner.environments.model import Environment
+from agents_runner.environments.github_repo import GitHubRepoContext
+from agents_runner.environments.github_repo import resolve_environment_github_repo
 from agents_runner.environments.model import PromptConfig
 from agents_runner.environments.model import normalize_workspace_type
 from agents_runner.environments.parse import parse_env_vars_text
@@ -29,6 +31,7 @@ __all__ = [
     "WORKSPACE_MOUNTED",
     "WORKSPACE_NONE",
     "Environment",
+    "GitHubRepoContext",
     "PromptConfig",
     "default_data_dir",
     "delete_environment",
@@ -42,6 +45,7 @@ __all__ = [
     "parse_ports_text",
     "save_environment",
     "serialize_environment",
+    "resolve_environment_github_repo",
     "SYSTEM_ENV_ID",
     "SYSTEM_ENV_NAME",
 ]

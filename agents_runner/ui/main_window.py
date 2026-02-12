@@ -25,6 +25,7 @@ from agents_runner.ui.pages import DashboardPage
 from agents_runner.ui.pages import EnvironmentsPage
 from agents_runner.ui.pages import NewTaskPage
 from agents_runner.ui.pages import SettingsPage
+from agents_runner.ui.pages import TasksPage
 from agents_runner.ui.pages import TaskDetailsPage
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.widgets import GlassCard
@@ -108,6 +109,11 @@ class MainWindow(
             "radio_autostart": False,
             "radio_loudness_boost_enabled": False,
             "radio_loudness_boost_factor": 2.2,
+            "github_workroom_prefer_browser": False,
+            "github_write_confirmation_mode": "always",
+            "github_poll_interval_s": 30,
+            "agentsnova_auto_review_enabled": True,
+            "agentsnova_review_guard_mode": "reaction",
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False
@@ -182,10 +188,10 @@ class MainWindow(
         self._btn_home.clicked.connect(self._show_dashboard)
 
         self._btn_new = QToolButton()
-        self._btn_new.setText("New task")
+        self._btn_new.setText("Tasks")
         self._btn_new.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self._btn_new.setIcon(lucide_icon("folder-plus"))
-        self._btn_new.clicked.connect(self._show_new_task)
+        self._btn_new.clicked.connect(self._show_tasks)
 
         self._btn_envs = QToolButton()
         self._btn_envs.setText("Environments")
@@ -231,6 +237,8 @@ class MainWindow(
         self._new_task.requested_launch.connect(self._start_interactive_task_from_ui)
         self._new_task.environment_changed.connect(self._on_new_task_env_changed)
         self._new_task.back_requested.connect(self._show_dashboard)
+        self._tasks_page = TasksPage(new_task_page=self._new_task)
+        self._tasks_page.auto_review_requested.connect(self._on_auto_review_requested)
         self._details = TaskDetailsPage()
         self._details.set_environments(self._environments)
         self._details.back_requested.connect(self._show_dashboard)
@@ -256,12 +264,12 @@ class MainWindow(
         self._stack_layout.setContentsMargins(0, 0, 0, 0)
         self._stack_layout.setSpacing(0)
         self._stack_layout.addWidget(self._dashboard)
-        self._stack_layout.addWidget(self._new_task)
+        self._stack_layout.addWidget(self._tasks_page)
         self._stack_layout.addWidget(self._details)
         self._stack_layout.addWidget(self._envs_page)
         self._stack_layout.addWidget(self._settings)
         self._dashboard.show()
-        self._new_task.hide()
+        self._tasks_page.hide()
         self._details.hide()
         self._envs_page.hide()
         self._settings.hide()
@@ -275,6 +283,10 @@ class MainWindow(
         self._refresh_radio_channel_options(disable_on_failure=True)
         self._on_radio_state_changed(self._radio_controller.state_snapshot())
         self._try_start_queued_tasks()
+
+    def _on_auto_review_requested(self, env_id: str, prompt: str) -> None:
+        host_codex = str(self._settings_data.get("host_codex_dir") or "").strip()
+        self._start_task_from_ui(prompt, host_codex, env_id, "")
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)

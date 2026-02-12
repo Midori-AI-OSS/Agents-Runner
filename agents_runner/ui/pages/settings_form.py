@@ -184,6 +184,32 @@ class _SettingsFormMixin:
             "Mounts ~/.cache to speed up package manager installs across environments."
         )
 
+        self._github_workroom_prefer_browser = QCheckBox(
+            "Prefer browser for GitHub workroom"
+        )
+        self._github_workroom_prefer_browser.setToolTip(
+            "When enabled, opening an issue or pull request goes directly to the system browser."
+        )
+
+        self._github_write_confirmation_mode = QComboBox()
+        self._github_write_confirmation_mode.addItem("Always confirm", "always")
+        self._github_write_confirmation_mode.addItem(
+            "Confirm destructive only",
+            "destructive_only",
+        )
+        self._github_write_confirmation_mode.addItem("No confirmations", "never")
+        self._github_write_confirmation_mode.setToolTip(
+            "Controls confirmation prompts for GitHub write actions "
+            "(open/close, comments, reaction markers)."
+        )
+
+        self._agentsnova_auto_review_enabled = QCheckBox(
+            "Enable @agentsnova auto-review queueing"
+        )
+        self._agentsnova_auto_review_enabled.setToolTip(
+            "When enabled, PR/Issue mentions of @agentsnova can auto-queue tasks."
+        )
+
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
             "#!/usr/bin/env bash\n"
@@ -276,6 +302,16 @@ class _SettingsFormMixin:
         general_body.addWidget(self._spellcheck_enabled)
         general_body.addWidget(self._gh_context_default)
         general_body.addWidget(self._append_pixelarch_context)
+        general_body.addWidget(self._github_workroom_prefer_browser)
+        general_body.addWidget(self._agentsnova_auto_review_enabled)
+
+        github_write_layout = QGridLayout()
+        github_write_layout.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        github_write_layout.setVerticalSpacing(GRID_VERTICAL_SPACING)
+        github_write_layout.setColumnStretch(1, 1)
+        github_write_layout.addWidget(QLabel("GitHub write confirmations"), 0, 0)
+        github_write_layout.addWidget(self._github_write_confirmation_mode, 0, 1)
+        general_body.addLayout(github_write_layout)
         general_body.addStretch(1)
         self._register_page("general_preferences", general_page)
 
@@ -700,8 +736,22 @@ class _SettingsFormMixin:
             self._append_pixelarch_context.setChecked(
                 bool(settings.get("append_pixelarch_context") or False)
             )
+            self._github_workroom_prefer_browser.setChecked(
+                bool(settings.get("github_workroom_prefer_browser") or False)
+            )
+            self._agentsnova_auto_review_enabled.setChecked(
+                bool(settings.get("agentsnova_auto_review_enabled", True))
+            )
             self._headless_desktop_enabled.setChecked(
                 bool(settings.get("headless_desktop_enabled") or False)
+            )
+            confirmation_mode = str(
+                settings.get("github_write_confirmation_mode") or "always"
+            ).strip()
+            self._set_combo_value(
+                self._github_write_confirmation_mode,
+                confirmation_mode,
+                fallback="always",
             )
             self._gh_context_default.setChecked(
                 bool(settings.get("gh_context_default_enabled") or False)
@@ -776,6 +826,15 @@ class _SettingsFormMixin:
             "preflight_script": str(self._preflight_script.toPlainText() or ""),
             "append_pixelarch_context": bool(
                 self._append_pixelarch_context.isChecked()
+            ),
+            "github_workroom_prefer_browser": bool(
+                self._github_workroom_prefer_browser.isChecked()
+            ),
+            "github_write_confirmation_mode": str(
+                self._github_write_confirmation_mode.currentData() or "always"
+            ),
+            "agentsnova_auto_review_enabled": bool(
+                self._agentsnova_auto_review_enabled.isChecked()
             ),
             "headless_desktop_enabled": bool(
                 self._headless_desktop_enabled.isChecked()

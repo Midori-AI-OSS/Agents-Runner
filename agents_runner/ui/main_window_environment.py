@@ -178,6 +178,8 @@ class _MainWindowEnvironmentMixin:
         self._dashboard.set_environment_filter_options(
             [(e.env_id, e.name or e.env_id) for e in envs]
         )
+        if hasattr(self, "_tasks_page"):
+            self._tasks_page.set_environments(self._user_environment_map(), active_id)
 
         self._syncing_environment = True
         try:

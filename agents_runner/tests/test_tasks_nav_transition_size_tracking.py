@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import os
+
+import pytest
+from PySide6.QtCore import QObject
+from PySide6.QtCore import QEvent
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QWidget
+
+from agents_runner.environments import Environment
+from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.ui.main_window import MainWindow
+from agents_runner.ui.radio.controller import RadioController
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+
+class _ResizeTracker(QObject):
+    def __init__(self) -> None:
+        super().__init__()
+        self.samples: list[tuple[bool, int, int]] = []
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if event.type() == QEvent.Type.Resize and isinstance(watched, QWidget):
+            self.samples.append(
+                (watched.isVisible(), watched.width(), watched.height())
+            )
+        return False
+
+
+def _pump(app: QApplication, rounds: int = 15) -> None:
+    for _ in range(rounds):
+        app.processEvents()
+        QTest.qWait(20)
+
+
+def test_tasks_nav_width_stable_during_main_window_page_transitions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        RadioController,
+        "probe_qt_multimedia_available",
+        classmethod(lambda cls: False),
+    )
+    app = QApplication.instance() or QApplication([])
+
+    win = MainWindow()
+    win.resize(1280, 720)
+    win.show()
+    _pump(app)
+
+    env = Environment(
+        env_id="transition-test",
+        name="Transition Test",
+        color="cyan",
+        workspace_type=WORKSPACE_CLONED,
+        workspace_target="owner/repo",
+    )
+    win._tasks_page.set_environments({env.env_id: env}, env.env_id)
+    _pump(app)
+
+    tracker = _ResizeTracker()
+    win._tasks_page._nav_panel.installEventFilter(tracker)
+
+    win._show_tasks()
+    _pump(app, rounds=30)
+    assert win._tasks_page.isVisible()
+    first_width = int(win._tasks_page._nav_panel.width())
+
+    win._show_dashboard()
+    _pump(app, rounds=30)
+    assert win._dashboard.isVisible()
+
+    win._show_tasks()
+    _pump(app, rounds=30)
+    assert win._tasks_page.isVisible()
+    second_width = int(win._tasks_page._nav_panel.width())
+
+    minimum = int(win._tasks_page._nav_panel.minimumWidth())
+    maximum = int(win._tasks_page._nav_panel.maximumWidth())
+    assert minimum <= first_width <= maximum
+    assert minimum <= second_width <= maximum
+    assert abs(first_width - second_width) <= 4, (
+        f"nav panel settled width drifted between page transitions: "
+        f"first={first_width}, second={second_width}"
+    )
+
+    visible_widths = [w for visible, w, _h in tracker.samples if visible]
+    if visible_widths:
+        spread = max(visible_widths) - min(visible_widths)
+        assert spread <= 8, (
+            f"nav width changed too much during transitions: {visible_widths}; "
+            f"tracked={tracker.samples}"
+        )

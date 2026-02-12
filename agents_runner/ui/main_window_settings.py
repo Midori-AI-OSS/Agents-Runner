@@ -23,6 +23,8 @@ class _MainWindowSettingsMixin:
         self._envs_page.set_settings_data(
             self._settings_data
         )  # Pass settings to environments page
+        if hasattr(self, "_tasks_page"):
+            self._tasks_page.set_settings_data(self._settings_data)
         self._apply_active_environment_to_new_task()
 
         # Apply spellcheck setting to new task page
@@ -93,6 +95,30 @@ class _MainWindowSettingsMixin:
             merged[key] = self._sanitize_interactive_command_value(key, merged.get(key))
         merged["append_pixelarch_context"] = bool(
             merged.get("append_pixelarch_context") or False
+        )
+        merged["github_workroom_prefer_browser"] = bool(
+            merged.get("github_workroom_prefer_browser") or False
+        )
+        confirmation_mode = (
+            str(merged.get("github_write_confirmation_mode") or "always")
+            .strip()
+            .lower()
+        )
+        if confirmation_mode not in {"always", "destructive_only", "never"}:
+            confirmation_mode = "always"
+        merged["github_write_confirmation_mode"] = confirmation_mode
+        merged["agentsnova_auto_review_enabled"] = bool(
+            merged.get("agentsnova_auto_review_enabled", True)
+        )
+        try:
+            merged["github_poll_interval_s"] = max(
+                5, int(merged.get("github_poll_interval_s", 30))
+            )
+        except Exception:
+            merged["github_poll_interval_s"] = 30
+        merged["agentsnova_review_guard_mode"] = (
+            str(merged.get("agentsnova_review_guard_mode") or "reaction").strip()
+            or "reaction"
         )
         merged["headless_desktop_enabled"] = bool(
             merged.get("headless_desktop_enabled") or False
