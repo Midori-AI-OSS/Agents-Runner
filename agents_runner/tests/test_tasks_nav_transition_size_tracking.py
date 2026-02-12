@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 
+import pytest
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QEvent
 from PySide6.QtTest import QTest
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import QWidget
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.main_window import MainWindow
+from agents_runner.ui.radio.controller import RadioController
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -34,7 +36,14 @@ def _pump(app: QApplication, rounds: int = 15) -> None:
         QTest.qWait(20)
 
 
-def test_tasks_nav_width_stable_during_main_window_page_transitions() -> None:
+def test_tasks_nav_width_stable_during_main_window_page_transitions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        RadioController,
+        "probe_qt_multimedia_available",
+        classmethod(lambda cls: False),
+    )
     app = QApplication.instance() or QApplication([])
 
     win = MainWindow()

@@ -20,6 +20,11 @@ jobs:
       - name: Pull PixelArch Container
         run: docker pull lunamidori5/pixelarch:emerald
 
+      - name: Install Qt runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes libegl1
+
       - name: Sync
         run: uv sync --group lint --group test
 
