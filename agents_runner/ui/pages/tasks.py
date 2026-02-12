@@ -68,6 +68,7 @@ class TasksPage(QWidget):
         self._pane_animation: QParallelAnimationGroup | None = None
         self._pane_rest_pos: QPoint | None = None
         self._nav_animation: QParallelAnimationGroup | None = None
+        self._nav_size_sync_pending = False
 
         self._nav_expanded_width = 280
         self._nav_panel_target_visible = True
@@ -228,6 +229,9 @@ class TasksPage(QWidget):
         nav_layout.addStretch(1)
 
     def _sync_nav_button_sizes(self) -> None:
+        if self._nav_animation is not None:
+            self._nav_size_sync_pending = True
+            return
         if not self._nav_buttons:
             return
         width = 0
@@ -493,6 +497,9 @@ class TasksPage(QWidget):
             if not visible:
                 self._nav_host.setVisible(False)
             self._nav_animation = None
+            if self._nav_size_sync_pending:
+                self._nav_size_sync_pending = False
+                self._sync_nav_button_sizes()
 
         group.finished.connect(_cleanup)
         group.start()
@@ -587,8 +594,11 @@ class TasksPage(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode(force=not self.isVisible())
-        self._set_nav_panel_x(int(self._nav_panel.x()))
-        self._sync_nav_button_sizes()
+        if self._nav_animation is None:
+            self._set_nav_panel_x(int(self._nav_panel.x()))
+            self._sync_nav_button_sizes()
+        else:
+            self._nav_size_sync_pending = True
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
@@ -600,7 +610,8 @@ class TasksPage(QWidget):
             self._update_navigation_mode(force=False, animate_override=True)
         else:
             self._update_navigation_mode(force=True, animate_override=False)
-        self._set_nav_panel_x(int(self._nav_panel.x()))
+        if self._nav_animation is None:
+            self._set_nav_panel_x(int(self._nav_panel.x()))
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
