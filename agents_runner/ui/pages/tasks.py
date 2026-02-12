@@ -27,8 +27,11 @@ from agents_runner.ui.constants import HEADER_MARGINS
 from agents_runner.ui.constants import HEADER_SPACING
 from agents_runner.ui.constants import MAIN_LAYOUT_MARGINS
 from agents_runner.ui.constants import MAIN_LAYOUT_SPACING
+from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.pages.github_work_list import GitHubWorkListPage
 from agents_runner.ui.pages.new_task import NewTaskPage
+from agents_runner.ui.utils import _apply_environment_combo_tint
+from agents_runner.ui.utils import _stain_color
 from agents_runner.ui.widgets import GlassCard
 
 
@@ -58,6 +61,9 @@ class TasksPage(QWidget):
         self._compact_mode = False
         self._active_pane_key = ""
         self._github_supported = False
+        self._last_support_state: bool | None = None
+        self._has_animated_supported_slide_in = False
+        self._pending_supported_slide_in = False
 
         self._pane_animation: QParallelAnimationGroup | None = None
         self._pane_rest_pos: QPoint | None = None
@@ -153,6 +159,9 @@ class TasksPage(QWidget):
 
         self._update_navigation_mode(force=True)
         QTimer.singleShot(0, self._sync_nav_button_sizes)
+
+        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
+        self._tint_overlay.raise_()
 
     def _default_pane_specs(self) -> list[_TasksPaneSpec]:
         return [
@@ -363,6 +372,20 @@ class TasksPage(QWidget):
         self._prs.set_polling_enabled(active == "pull_requests")
         self._issues.set_polling_enabled(active == "issues")
 
+    def _apply_environment_tints(self) -> None:
+        stain = ""
+        env = self._environments.get(self._active_env_id)
+        if env is not None:
+            stain = str(env.normalized_color() or "").strip().lower()
+
+        if not stain:
+            self._compact_nav.setStyleSheet("")
+            self._tint_overlay.set_tint_color(None)
+            return
+
+        _apply_environment_combo_tint(self._compact_nav, stain)
+        self._tint_overlay.set_tint_color(_stain_color(stain))
+
     def _set_nav_panel_visible(self, visible: bool, *, animate: bool) -> None:
         visible = bool(visible)
         self._nav_panel_target_visible = visible
@@ -441,10 +464,47 @@ class TasksPage(QWidget):
 
     def _sync_visibility_for_active_environment(self) -> None:
         env = self._environments.get(self._active_env_id)
-        self._github_supported = resolve_environment_github_repo(env) is not None
+        previous_supported = self._last_support_state
+        supported = resolve_environment_github_repo(env) is not None
+
+        self._github_supported = supported
+        self._last_support_state = supported
 
         self._refresh_navigation_controls()
-        self._update_navigation_mode(force=False)
+        self._apply_environment_tints()
+
+        is_visible = bool(self.isVisible())
+
+        if not supported:
+            self._pending_supported_slide_in = False
+            should_slide_out = bool(previous_supported is True and is_visible)
+            self._update_navigation_mode(
+                force=not is_visible,
+                animate_override=should_slide_out,
+            )
+            return
+
+        if not self._has_animated_supported_slide_in:
+            if is_visible:
+                self._has_animated_supported_slide_in = True
+                self._pending_supported_slide_in = False
+                self._update_navigation_mode(force=False, animate_override=True)
+            else:
+                self._pending_supported_slide_in = True
+                self._update_navigation_mode(force=True, animate_override=False)
+            return
+
+        if previous_supported is False:
+            if is_visible:
+                self._pending_supported_slide_in = False
+                self._update_navigation_mode(force=False, animate_override=True)
+            else:
+                self._pending_supported_slide_in = True
+                self._update_navigation_mode(force=True, animate_override=False)
+            return
+
+        self._pending_supported_slide_in = False
+        self._update_navigation_mode(force=not is_visible, animate_override=False)
 
     def set_environments(self, envs: dict[str, Environment], active_id: str) -> None:
         self._environments = dict(envs or {})
@@ -490,14 +550,39 @@ class TasksPage(QWidget):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self._update_navigation_mode(force=False)
+        self._update_navigation_mode(force=not self.isVisible())
         self._sync_nav_button_sizes()
+        self._tint_overlay.setGeometry(self.rect())
+        self._tint_overlay.raise_()
 
-    def _update_navigation_mode(self, *, force: bool) -> None:
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._pending_supported_slide_in and self._github_supported:
+            self._pending_supported_slide_in = False
+            self._has_animated_supported_slide_in = True
+            self._update_navigation_mode(force=False, animate_override=True)
+        else:
+            self._update_navigation_mode(force=True, animate_override=False)
+        self._tint_overlay.setGeometry(self.rect())
+        self._tint_overlay.raise_()
+
+    def _update_navigation_mode(
+        self, *, force: bool, animate_override: bool | None = None
+    ) -> None:
+        is_visible = bool(self.isVisible())
+        should_animate_override = bool(
+            animate_override is True and not force and is_visible
+        )
+
         if not self._github_supported:
             self._compact_mode = False
             self._compact_nav.setVisible(False)
-            self._set_nav_panel_visible(False, animate=not force)
+            if animate_override is None:
+                animate_panel = bool(not force and self._nav_panel_target_visible)
+                animate_panel = bool(animate_panel and is_visible)
+            else:
+                animate_panel = should_animate_override
+            self._set_nav_panel_visible(False, animate=animate_panel)
             return
 
         compact = self.width() < 1080
@@ -507,8 +592,12 @@ class TasksPage(QWidget):
         self._compact_nav.setVisible(compact)
 
         target_visible = not compact
-        animate_panel = bool(
-            (mode_changed or target_visible != self._nav_panel_target_visible)
-            and not force
-        )
+        if animate_override is None:
+            animate_panel = bool(
+                (mode_changed or target_visible != self._nav_panel_target_visible)
+                and not force
+                and is_visible
+            )
+        else:
+            animate_panel = should_animate_override
         self._set_nav_panel_visible(target_visible, animate=animate_panel)
