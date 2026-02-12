@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
+from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
@@ -872,62 +873,53 @@ class NewTaskPage(QWidget):
             if idx >= 0:
                 self._terminal.setCurrentIndex(idx)
 
+    @staticmethod
+    def _friendly_agent_label(label: str) -> str:
+        raw = str(label or "").strip()
+        if not raw:
+            return ""
+
+        lower = raw.lower()
+        if lower.startswith("fallback:"):
+            raw = raw[len("fallback:") :].strip()
+
+        cli = raw
+        suffix = ""
+        split_idx = raw.find(" (")
+        if split_idx > 0 and raw.endswith(")"):
+            cli = raw[:split_idx].strip()
+            suffix = raw[split_idx:]
+
+        friendly = str(get_agent_display_name(cli) or cli).strip()
+        return f"{friendly}{suffix}"
+
+    def _format_agent_info_text(self, agent: str, next_agent: str = "") -> str:
+        current = self._friendly_agent_label(agent)
+        upcoming = self._friendly_agent_label(next_agent)
+        if upcoming and current and upcoming == current:
+            upcoming = ""
+        if current and upcoming:
+            return f"{current} | {upcoming}"
+        if current:
+            return current
+        return upcoming
+
     def set_agent_info(self, agent: str, next_agent: str = "") -> None:
-        """Set tooltip info showing current and next agent."""
-        agent = str(agent or "").strip()
-        next_agent = str(next_agent or "").strip()
+        """Update inline and tooltip labels using the selected and next agent."""
+        display_text = self._format_agent_info_text(agent, next_agent)
 
-        if next_agent and next_agent != agent:
-            if str(next_agent).startswith("Fallback:"):
-                tooltip = f"Using: {agent} | {next_agent}"
-            else:
-                tooltip = f"Using: {agent} | Next: {next_agent}"
-        elif agent:
-            tooltip = f"Using: {agent}"
+        if display_text:
+            self._agent_chain.setText(display_text)
+            self._agent_chain.setVisible(True)
+            self._prompt_separator.setVisible(True)
         else:
-            tooltip = ""
-
-        self._run_interactive.setToolTip(tooltip)
-        self._run_agent.setToolTip(tooltip)
-
-    def set_agent_chain(self, agents: list[str], selection_mode: str = "") -> None:
-        """Set the agent chain display for the selected environment.
-
-        Args:
-            agents: List of agent names in priority order
-            selection_mode: Agent selection mode ("fallback", "round-robin", "least-used", or empty)
-        """
-        # Hide chain display when empty or single agent
-        if not agents or len(agents) <= 1:
+            self._agent_chain.setText("")
             self._agent_chain.setVisible(False)
             self._prompt_separator.setVisible(False)
-            return
 
-        # Show chain display for multiple agents
-        self._agent_chain.setVisible(True)
-        self._prompt_separator.setVisible(True)
-
-        # If more than 3 items, show first 2 + "..."
-        if len(agents) > 3:
-            display_agents = agents[:2]
-            chain_text = " → ".join(a.title() for a in display_agents) + " → ..."
-        else:
-            chain_text = " → ".join(a.title() for a in agents)
-
-        self._agent_chain.setText(chain_text)
-
-        # Build tooltip based on selection mode
-        is_fallback_mode = str(selection_mode or "").strip() == "fallback"
-        tooltip = "Agents will be used in this order:\n"
-        for i, agent in enumerate(agents, 1):
-            if i == 1:
-                tooltip += f"{i}. {agent.title()} (Primary)\n"
-            else:
-                if is_fallback_mode:
-                    tooltip += f"{i}. {agent.title()} (Fallback {i - 1})\n"
-                else:
-                    tooltip += f"{i}. {agent.title()} (Priority {i})\n"
-        self._agent_chain.setToolTip(tooltip.strip())
+        self._agent_chain.setToolTip(display_text)
+        self._run_interactive.setToolTip(display_text)
+        self._run_agent.setToolTip(display_text)
 
     def reset_for_new_run(self) -> None:
         self._prompt.setPlainText("")
