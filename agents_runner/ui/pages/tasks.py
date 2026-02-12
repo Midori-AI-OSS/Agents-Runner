@@ -64,8 +64,6 @@ class TasksPage(QWidget):
         self._last_support_state: bool | None = None
         self._has_animated_supported_slide_in = False
         self._pending_supported_slide_in = False
-        self._pr_status_text = "Select an environment to load data."
-        self._issue_status_text = "Select an environment to load data."
 
         self._pane_animation: QParallelAnimationGroup | None = None
         self._pane_rest_pos: QPoint | None = None
@@ -92,13 +90,9 @@ class TasksPage(QWidget):
         self._title.setStyleSheet("font-size: 18px; font-weight: 750;")
         self._subtitle = QLabel("Workflow")
         self._subtitle.setObjectName("SettingsPaneSubtitle")
-        self._sub_subtitle = QLabel("")
-        self._sub_subtitle.setObjectName("SettingsPaneSubtitle")
-        self._sub_subtitle.setStyleSheet("color: rgba(237, 239, 245, 145);")
 
         header_layout.addWidget(self._title)
         header_layout.addWidget(self._subtitle)
-        header_layout.addWidget(self._sub_subtitle)
         header_layout.addStretch(1)
         layout.addWidget(header)
 
@@ -152,8 +146,6 @@ class TasksPage(QWidget):
 
         self._prs = GitHubWorkListPage(item_type="pr")
         self._issues = GitHubWorkListPage(item_type="issue")
-        self._pr_status_text = self._prs.current_status_text()
-        self._issue_status_text = self._issues.current_status_text()
 
         self._build_pages()
         self._build_navigation(nav_layout)
@@ -164,8 +156,6 @@ class TasksPage(QWidget):
         )
         self._prs.environment_changed.connect(self._on_work_environment_changed)
         self._issues.environment_changed.connect(self._on_work_environment_changed)
-        self._prs.status_text_changed.connect(self._on_pr_status_text_changed)
-        self._issues.status_text_changed.connect(self._on_issue_status_text_changed)
 
         self._prs.prompt_append_requested.connect(self._append_prompt_to_new_task)
         self._issues.prompt_append_requested.connect(self._append_prompt_to_new_task)
@@ -330,26 +320,6 @@ class TasksPage(QWidget):
             self._subtitle.setText("Issues")
         else:
             self._subtitle.setText("Workflow")
-        self._sync_sub_subtitle()
-
-    def _sync_sub_subtitle(self) -> None:
-        if self._active_pane_key == "pull_requests":
-            self._sub_subtitle.setText(self._pr_status_text)
-            return
-        if self._active_pane_key == "issues":
-            self._sub_subtitle.setText(self._issue_status_text)
-            return
-        self._sub_subtitle.setText("")
-
-    def _on_pr_status_text_changed(self, text: str) -> None:
-        self._pr_status_text = str(text or "")
-        if self._active_pane_key == "pull_requests":
-            self._sync_sub_subtitle()
-
-    def _on_issue_status_text_changed(self, text: str) -> None:
-        self._issue_status_text = str(text or "")
-        if self._active_pane_key == "issues":
-            self._sync_sub_subtitle()
 
     def _set_current_pane(self, key: str, *, animate: bool) -> None:
         target_index = self._pane_index_by_key.get(key)

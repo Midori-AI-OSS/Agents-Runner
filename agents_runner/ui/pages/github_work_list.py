@@ -141,7 +141,6 @@ class GitHubWorkListPage(QWidget):
     environment_changed = Signal(str)
     prompt_append_requested = Signal(str, str)
     auto_review_requested = Signal(str, str)
-    status_text_changed = Signal(str)
 
     _fetch_completed = Signal(int, object, str, object, object)
 
@@ -171,6 +170,10 @@ class GitHubWorkListPage(QWidget):
         header_layout.setContentsMargins(16, 14, 16, 14)
         header_layout.setSpacing(10)
 
+        title = "Pull Requests" if self._item_type == "pr" else "Issues"
+        self._title = QLabel(title)
+        self._title.setStyleSheet("font-size: 16px; font-weight: 750;")
+
         self._environment = QComboBox()
         self._environment.setFixedWidth(260)
         self._environment.currentIndexChanged.connect(self._on_environment_changed)
@@ -181,6 +184,7 @@ class GitHubWorkListPage(QWidget):
         self._refresh.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self._refresh.clicked.connect(self.refresh)
 
+        header_layout.addWidget(self._title)
         header_layout.addStretch(1)
         header_layout.addWidget(self._environment)
         header_layout.addWidget(self._refresh)
@@ -225,10 +229,10 @@ class GitHubWorkListPage(QWidget):
 
         self._status = QLabel("Select an environment to load data.")
         self._status.setStyleSheet("color: rgba(237, 239, 245, 160);")
-        self._status.setVisible(False)
 
         card_layout.addWidget(columns)
         card_layout.addWidget(self._scroll, 1)
+        card_layout.addWidget(self._status)
         root.addWidget(card, 1)
 
         self._poll_timer = QTimer(self)
@@ -306,20 +310,12 @@ class GitHubWorkListPage(QWidget):
         self.environment_changed.emit(self._active_env_id)
         self.refresh()
 
-    def current_status_text(self) -> str:
-        return str(self._status.text() or "")
-
-    def _set_status_text(self, text: str) -> None:
-        value = str(text or "")
-        self._status.setText(value)
-        self.status_text_changed.emit(value)
-
     def refresh(self) -> None:
         env_id = str(
             self._active_env_id or self._environment.currentData() or ""
         ).strip()
         if not env_id:
-            self._set_status_text("Select an environment to load data.")
+            self._status.setText("Select an environment to load data.")
             self._clear_rows()
             return
 
@@ -330,7 +326,7 @@ class GitHubWorkListPage(QWidget):
             self._auto_review_enabled and self._item_type == "pr"
         )
 
-        self._set_status_text("Loading...")
+        self._status.setText("Loading...")
 
         worker = threading.Thread(
             target=self._fetch_worker,
@@ -556,7 +552,7 @@ class GitHubWorkListPage(QWidget):
 
         if repo_context is None:
             self._clear_rows()
-            self._set_status_text("GitHub is unavailable for this environment.")
+            self._status.setText("GitHub is unavailable for this environment.")
             return
 
         rows = [
@@ -569,15 +565,15 @@ class GitHubWorkListPage(QWidget):
 
         if error:
             self._clear_rows()
-            self._set_status_text(f"Load failed: {error}")
+            self._status.setText(f"Load failed: {error}")
             return
 
         self._render_rows(rows, stain=stain)
         kind = "pull request" if self._item_type == "pr" else "issue"
         if rows:
-            self._set_status_text(f"Loaded {len(rows)} open {kind}(s).")
+            self._status.setText(f"Loaded {len(rows)} open {kind}(s).")
         else:
-            self._set_status_text(f"No open {kind}s found.")
+            self._status.setText(f"No open {kind}s found.")
 
         reviews = auto_reviews if isinstance(auto_reviews, list) else []
         for review in reviews:
