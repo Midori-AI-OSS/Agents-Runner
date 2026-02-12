@@ -57,12 +57,43 @@ class FfmpegPulseRecorder:
             str(output_path),
         ]
 
-        process = subprocess.Popen(
-            args,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
+        try:
+            process = subprocess.Popen(
+                args,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+        except FileNotFoundError as exc:
+            raise MicRecorderError(
+                "Could not start ffmpeg (executable not found)."
+            ) from exc
+        except PermissionError as exc:
+            raise MicRecorderError(
+                "Could not start ffmpeg (permission denied)."
+            ) from exc
+        except OSError as exc:
+            raise MicRecorderError(f"Could not start ffmpeg: {exc}") from exc
+
+        # Check if process failed immediately (e.g., PulseAudio/PipeWire unavailable)
+        time.sleep(0.1)  # Give ffmpeg a moment to fail if PulseAudio is missing
+        poll_result = process.poll()
+        if poll_result is not None:
+            # Process already exited - read error message
+            stderr_text = ""
+            if process.stderr:
+                try:
+                    stderr_bytes = process.stderr.read()
+                    stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
+                except Exception:
+                    pass
+
+            error_msg = (
+                stderr_text
+                or "Could not connect to audio server (PulseAudio/PipeWire may be unavailable)."
+            )
+            raise MicRecorderError(error_msg)
+
         return MicRecording(
             output_path=output_path, started_at_s=time.time(), process=process
         )
