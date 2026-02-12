@@ -6,9 +6,10 @@ from PySide6.QtCore import (
     QPoint,
     QPropertyAnimation,
     QSignalBlocker,
-    QTimer,
 )
 from PySide6.QtWidgets import QGraphicsOpacityEffect
+
+from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 
 
 class _EnvironmentsNavigationMixin:
@@ -171,29 +172,9 @@ class _EnvironmentsNavigationMixin:
         self.try_autosave(show_validation_errors=False)
 
     def _update_navigation_mode(self) -> None:
-        compact = self.width() < 1080
+        compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD
         if compact == self._compact_mode:
             return
         self._compact_mode = compact
         self._compact_nav.setVisible(compact)
         self._nav_panel.setVisible(not compact)
-        if not compact:
-            QTimer.singleShot(0, self._sync_nav_button_sizes)
-
-    def _sync_nav_button_sizes(self) -> None:
-        if self._compact_mode or not self._nav_buttons:
-            return
-
-        panel_width = self._nav_panel.width()
-        if panel_width <= 0:
-            return
-
-        inner_width = panel_width
-        nav_layout = self._nav_panel.layout()
-        if nav_layout is not None:
-            margins = nav_layout.contentsMargins()
-            inner_width -= margins.left() + margins.right()
-
-        target_width = max(1, inner_width - 2)
-        for button in self._nav_buttons.values():
-            button.setFixedWidth(target_width)

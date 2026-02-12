@@ -17,6 +17,10 @@ PIXELARCH_GIT_CONTEXT_SUFFIX = load_prompt(
 MAIN_LAYOUT_MARGINS = (0, 0, 0, 0)
 MAIN_LAYOUT_SPACING = 14
 
+# Left navigation panel constants
+LEFT_NAV_PANEL_WIDTH = 280
+LEFT_NAV_COMPACT_THRESHOLD = 1080
+
 # Header constants (GlassCard with title/subtitle/back)
 HEADER_MARGINS = (18, 16, 18, 16)
 HEADER_SPACING = 10
