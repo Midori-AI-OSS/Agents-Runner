@@ -933,5 +933,21 @@ class NewTaskPage(QWidget):
         self._prompt.setPlainText("")
         self._prompt.setFocus(Qt.OtherFocusReason)
 
+    def append_prompt_text(self, text: str) -> None:
+        addition = str(text or "").strip()
+        if not addition:
+            return
+
+        current = str(self._prompt.toPlainText() or "").rstrip()
+        if current:
+            combined = f"{current}\n\n{addition}"
+        else:
+            combined = addition
+        self._prompt.setPlainText(combined)
+        cursor = self._prompt.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        self._prompt.setTextCursor(cursor)
+        self._prompt.setFocus(Qt.OtherFocusReason)
+
     def focus_prompt(self) -> None:
         self._prompt.setFocus(Qt.OtherFocusReason)

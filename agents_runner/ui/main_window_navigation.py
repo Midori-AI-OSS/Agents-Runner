@@ -19,7 +19,7 @@ class _MainWindowNavigationMixin:
         """Smooth cross-fade transition between pages."""
         pages = [
             self._dashboard,
-            self._new_task,
+            self._tasks_page,
             self._details,
             self._envs_page,
             self._settings,
@@ -91,10 +91,13 @@ class _MainWindowNavigationMixin:
         self._transition_to_page(self._dashboard)
 
     def _show_new_task(self) -> None:
+        self._show_tasks()
+
+    def _show_tasks(self) -> None:
         if not self._try_autosave_before_navigation():
             return
-        self._new_task.focus_prompt()
-        self._transition_to_page(self._new_task)
+        self._tasks_page.show_new_task_tab(focus_prompt=True)
+        self._transition_to_page(self._tasks_page)
 
     def _show_task_details(self) -> None:
         if not self._try_autosave_before_navigation():

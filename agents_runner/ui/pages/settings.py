@@ -146,12 +146,15 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._ui_theme,
             self._radio_channel,
             self._radio_quality,
+            self._github_write_confirmation_mode,
         ):
             combo.currentIndexChanged.connect(self._trigger_immediate_autosave)
 
         for checkbox in (
             self._preflight_enabled,
             self._append_pixelarch_context,
+            self._github_workroom_prefer_browser,
+            self._agentsnova_auto_review_enabled,
             self._headless_desktop_enabled,
             self._gh_context_default,
             self._spellcheck_enabled,

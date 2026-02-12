@@ -184,6 +184,11 @@ class _MainWindowPersistenceMixin:
         self._settings_data.setdefault("radio_autostart", False)
         self._settings_data.setdefault("radio_loudness_boost_enabled", False)
         self._settings_data.setdefault("radio_loudness_boost_factor", 2.2)
+        self._settings_data.setdefault("github_workroom_prefer_browser", False)
+        self._settings_data.setdefault("github_write_confirmation_mode", "always")
+        self._settings_data.setdefault("github_poll_interval_s", 30)
+        self._settings_data.setdefault("agentsnova_auto_review_enabled", True)
+        self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
         host_codex_dir = os.path.normpath(
             os.path.expanduser(
                 str(self._settings_data.get("host_codex_dir") or "").strip()
