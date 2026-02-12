@@ -32,7 +32,6 @@ class TasksPage(QWidget):
         self._tabs = QTabWidget()
         self._tabs.setDocumentMode(True)
         self._tabs.tabBar().setDrawBase(False)
-        self._tabs.currentChanged.connect(self._on_tab_changed)
 
         self._prs = GitHubWorkListPage(item_type="pr")
         self._issues = GitHubWorkListPage(item_type="issue")
@@ -40,6 +39,7 @@ class TasksPage(QWidget):
         self._new_task_tab_index = self._tabs.addTab(self._new_task, "New Task")
         self._pr_tab_index = self._tabs.addTab(self._prs, "Pull Requests")
         self._issues_tab_index = self._tabs.addTab(self._issues, "Issues")
+        self._tabs.currentChanged.connect(self._on_tab_changed)
 
         self._new_task.environment_changed.connect(
             self._on_new_task_environment_changed
