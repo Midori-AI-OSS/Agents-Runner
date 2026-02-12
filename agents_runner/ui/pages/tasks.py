@@ -110,13 +110,22 @@ class TasksPage(QWidget):
         panes_layout.setContentsMargins(0, 0, 0, 0)
         panes_layout.setSpacing(14)
 
-        self._nav_panel = QWidget()
+        self._nav_host = QWidget()
+        self._nav_host.setObjectName("TasksNavHost")
+        self._nav_host.setMinimumWidth(self._nav_expanded_width)
+        self._nav_host.setMaximumWidth(self._nav_expanded_width)
+        nav_host_layout = QVBoxLayout(self._nav_host)
+        nav_host_layout.setContentsMargins(0, 0, 0, 0)
+        nav_host_layout.setSpacing(0)
+
+        self._nav_panel = QWidget(self._nav_host)
         self._nav_panel.setObjectName("SettingsNavPanel")
-        self._nav_panel.setMinimumWidth(0)
+        self._nav_panel.setMinimumWidth(self._nav_expanded_width)
         self._nav_panel.setMaximumWidth(self._nav_expanded_width)
         nav_layout = QVBoxLayout(self._nav_panel)
         nav_layout.setContentsMargins(10, 10, 10, 10)
         nav_layout.setSpacing(6)
+        nav_host_layout.addWidget(self._nav_panel)
 
         self._right_panel = QWidget()
         self._right_panel.setObjectName("SettingsPaneHost")
@@ -128,7 +137,7 @@ class TasksPage(QWidget):
         self._page_stack.setObjectName("SettingsPageStack")
         right_layout.addWidget(self._page_stack, 1)
 
-        panes_layout.addWidget(self._nav_panel)
+        panes_layout.addWidget(self._nav_host)
         panes_layout.addWidget(self._right_panel, 1)
 
         card_layout.addLayout(panes_layout, 1)
@@ -399,13 +408,13 @@ class TasksPage(QWidget):
             effect = QGraphicsOpacityEffect(self._nav_panel)
             self._nav_panel.setGraphicsEffect(effect)
 
-        target_width = self._nav_expanded_width if visible else 0
+        target_x = 0 if visible else -self._nav_expanded_width
         target_opacity = 1.0 if visible else 0.0
-        current_width = max(0, int(self._nav_panel.maximumWidth()))
-        current_visible = bool(self._nav_panel.isVisible())
+        current_x = int(self._nav_panel.pos().x())
+        current_visible = bool(self._nav_host.isVisible())
         current_opacity = float(effect.opacity())
         if (
-            current_width == target_width
+            current_x == target_x
             and current_visible == visible
             and abs(current_opacity - target_opacity) < 0.01
         ):
@@ -413,33 +422,48 @@ class TasksPage(QWidget):
 
         if not animate:
             if visible:
-                self._nav_panel.setVisible(True)
-                self._nav_panel.setMaximumWidth(self._nav_expanded_width)
-                effect.setOpacity(1.0)
+                self._nav_host.setVisible(True)
             else:
-                self._nav_panel.setMaximumWidth(0)
-                effect.setOpacity(0.0)
-                self._nav_panel.setVisible(False)
+                self._nav_host.setVisible(False)
+            self._nav_panel.move(target_x, 0)
+            effect.setOpacity(target_opacity)
             return
 
         if visible:
-            self._nav_panel.setVisible(True)
+            if not self._nav_host.isVisible():
+                self._nav_host.setVisible(True)
+                current_x = -self._nav_expanded_width
+                current_opacity = 0.0
+                self._nav_panel.move(current_x, 0)
+                effect.setOpacity(current_opacity)
+        elif not self._nav_host.isVisible():
+            self._nav_panel.move(target_x, 0)
+            effect.setOpacity(target_opacity)
+            return
 
-        start_width = max(0, int(self._nav_panel.maximumWidth()))
-        end_width = target_width
+        start_x = current_x
+        start_opacity = current_opacity
+        if visible:
+            if start_x == 0:
+                start_x = -self._nav_expanded_width
+            if start_opacity < 0.01:
+                start_opacity = 0.0
+        else:
+            if start_x <= -self._nav_expanded_width:
+                start_x = 0
+            if start_opacity < 0.01:
+                start_opacity = 1.0
 
-        start_opacity = float(effect.opacity())
-        if start_opacity <= 0.0 and visible:
-            start_opacity = 0.0
-        elif start_opacity <= 0.0:
-            start_opacity = 1.0
+        self._nav_panel.move(start_x, 0)
+        effect.setOpacity(start_opacity)
+
         end_opacity = target_opacity
 
-        width_anim = QPropertyAnimation(self._nav_panel, b"maximumWidth", self)
-        width_anim.setDuration(220)
-        width_anim.setStartValue(start_width)
-        width_anim.setEndValue(end_width)
-        width_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        pos_anim = QPropertyAnimation(self._nav_panel, b"pos", self)
+        pos_anim.setDuration(220)
+        pos_anim.setStartValue(QPoint(start_x, 0))
+        pos_anim.setEndValue(QPoint(target_x, 0))
+        pos_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
 
         opacity_anim = QPropertyAnimation(effect, b"opacity", self)
         opacity_anim.setDuration(200)
@@ -448,14 +472,14 @@ class TasksPage(QWidget):
         opacity_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
 
         group = QParallelAnimationGroup(self)
-        group.addAnimation(width_anim)
+        group.addAnimation(pos_anim)
         group.addAnimation(opacity_anim)
 
         def _cleanup() -> None:
-            self._nav_panel.setMaximumWidth(end_width)
+            self._nav_panel.move(target_x, 0)
             effect.setOpacity(end_opacity)
             if not visible:
-                self._nav_panel.setVisible(False)
+                self._nav_host.setVisible(False)
             self._nav_animation = None
 
         group.finished.connect(_cleanup)
