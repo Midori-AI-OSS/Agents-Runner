@@ -76,8 +76,13 @@ class FfmpegPulseRecorder:
             raise MicRecorderError(f"Could not start ffmpeg: {exc}") from exc
 
         # Check if process failed immediately (e.g., PulseAudio/PipeWire unavailable)
-        time.sleep(0.1)  # Give ffmpeg a moment to fail if PulseAudio is missing
-        poll_result = process.poll()
+        # Use poll() with a short timeout to avoid unnecessary delay on success
+        try:
+            poll_result = process.wait(timeout=0.1)
+        except subprocess.TimeoutExpired:
+            # Process is still running - success case
+            poll_result = None
+
         if poll_result is not None:
             # Process already exited - read error message
             stderr_text = ""
@@ -85,7 +90,8 @@ class FfmpegPulseRecorder:
                 try:
                     stderr_bytes = process.stderr.read()
                     stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
-                except Exception:
+                except (IOError, OSError, UnicodeDecodeError):
+                    # Failed to read stderr, use default message
                     pass
 
             error_msg = (

@@ -75,7 +75,7 @@ class TestFfmpegPulseRecorder:
     def test_start_detects_immediate_process_failure(self) -> None:
         """Test that immediate process failure (e.g., PulseAudio unavailable) is detected."""
         mock_process = MagicMock()
-        mock_process.poll.return_value = 1  # Process exited with error
+        mock_process.wait.return_value = 1  # Process exited with error
         mock_process.stderr.read.return_value = (
             b"Server connection failed: Connection refused"
         )
@@ -93,7 +93,7 @@ class TestFfmpegPulseRecorder:
     def test_start_provides_default_error_when_no_stderr(self) -> None:
         """Test that a default error message is provided when process fails with no stderr."""
         mock_process = MagicMock()
-        mock_process.poll.return_value = 1  # Process exited with error
+        mock_process.wait.return_value = 1  # Process exited with error
         mock_process.stderr = None
 
         with (
@@ -119,8 +119,10 @@ class TestFfmpegPulseRecorder:
 
     def test_successful_start_returns_mic_recording(self) -> None:
         """Test that a successful start returns a MicRecording object."""
+        import subprocess as subprocess_module
+
         mock_process = MagicMock()
-        mock_process.poll.return_value = None  # Process still running
+        mock_process.wait.side_effect = subprocess_module.TimeoutExpired("ffmpeg", 0.1)
         mock_process.pid = 12345
 
         with (
