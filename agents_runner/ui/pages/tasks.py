@@ -114,9 +114,6 @@ class TasksPage(QWidget):
         self._nav_host.setObjectName("TasksNavHost")
         self._nav_host.setMinimumWidth(self._nav_expanded_width)
         self._nav_host.setMaximumWidth(self._nav_expanded_width)
-        nav_host_layout = QVBoxLayout(self._nav_host)
-        nav_host_layout.setContentsMargins(0, 0, 0, 0)
-        nav_host_layout.setSpacing(0)
 
         self._nav_panel = QWidget(self._nav_host)
         self._nav_panel.setObjectName("SettingsNavPanel")
@@ -125,7 +122,7 @@ class TasksPage(QWidget):
         nav_layout = QVBoxLayout(self._nav_panel)
         nav_layout.setContentsMargins(10, 10, 10, 10)
         nav_layout.setSpacing(6)
-        nav_host_layout.addWidget(self._nav_panel)
+        self._set_nav_panel_x(0)
 
         self._right_panel = QWidget()
         self._right_panel.setObjectName("SettingsPaneHost")
@@ -239,6 +236,21 @@ class TasksPage(QWidget):
         width = min(max(width, 220), 300)
         for button in self._nav_buttons.values():
             button.setMinimumWidth(width)
+
+        panel_width = width + 20
+        if panel_width == self._nav_expanded_width:
+            return
+
+        self._nav_expanded_width = panel_width
+        self._nav_host.setMinimumWidth(panel_width)
+        self._nav_host.setMaximumWidth(panel_width)
+        self._nav_panel.setMinimumWidth(panel_width)
+        self._nav_panel.setMaximumWidth(panel_width)
+
+        min_x = -self._nav_expanded_width
+        current_x = int(self._nav_panel.x())
+        current_x = max(min_x, min(0, current_x))
+        self._set_nav_panel_x(current_x)
 
     def _refresh_navigation_controls(self) -> None:
         visible_specs = self._visible_pane_specs()
@@ -425,7 +437,7 @@ class TasksPage(QWidget):
                 self._nav_host.setVisible(True)
             else:
                 self._nav_host.setVisible(False)
-            self._nav_panel.move(target_x, 0)
+            self._set_nav_panel_x(target_x)
             effect.setOpacity(target_opacity)
             return
 
@@ -434,10 +446,10 @@ class TasksPage(QWidget):
                 self._nav_host.setVisible(True)
                 current_x = -self._nav_expanded_width
                 current_opacity = 0.0
-                self._nav_panel.move(current_x, 0)
+                self._set_nav_panel_x(current_x)
                 effect.setOpacity(current_opacity)
         elif not self._nav_host.isVisible():
-            self._nav_panel.move(target_x, 0)
+            self._set_nav_panel_x(target_x)
             effect.setOpacity(target_opacity)
             return
 
@@ -454,7 +466,7 @@ class TasksPage(QWidget):
             if start_opacity < 0.01:
                 start_opacity = 1.0
 
-        self._nav_panel.move(start_x, 0)
+        self._set_nav_panel_x(start_x)
         effect.setOpacity(start_opacity)
 
         end_opacity = target_opacity
@@ -476,7 +488,7 @@ class TasksPage(QWidget):
         group.addAnimation(opacity_anim)
 
         def _cleanup() -> None:
-            self._nav_panel.move(target_x, 0)
+            self._set_nav_panel_x(target_x)
             effect.setOpacity(end_opacity)
             if not visible:
                 self._nav_host.setVisible(False)
@@ -575,6 +587,7 @@ class TasksPage(QWidget):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode(force=not self.isVisible())
+        self._set_nav_panel_x(int(self._nav_panel.x()))
         self._sync_nav_button_sizes()
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
@@ -587,8 +600,15 @@ class TasksPage(QWidget):
             self._update_navigation_mode(force=False, animate_override=True)
         else:
             self._update_navigation_mode(force=True, animate_override=False)
+        self._set_nav_panel_x(int(self._nav_panel.x()))
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
+
+    def _set_nav_panel_x(self, x: int) -> None:
+        width = int(self._nav_expanded_width)
+        height = max(0, int(self._nav_host.height()))
+        clamped_x = max(-width, min(0, int(x)))
+        self._nav_panel.setGeometry(clamped_x, 0, width, height)
 
     def _update_navigation_mode(
         self, *, force: bool, animate_override: bool | None = None
