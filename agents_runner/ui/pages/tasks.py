@@ -403,61 +403,16 @@ class TasksPage(QWidget):
 
         if not stain:
             self._compact_nav.setStyleSheet("")
-            self._apply_nav_tint("")
             self._tint_overlay.set_tint_color(None)
             self._prs.set_environment_stain("")
             self._issues.set_environment_stain("")
             return
 
-        self._apply_nav_tint(stain)
         _apply_environment_combo_tint(self._compact_nav, stain)
         tint = _stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
         self._prs.set_environment_stain(stain)
         self._issues.set_environment_stain(stain)
-
-    def _apply_nav_tint(self, stain: str) -> None:
-        stain = str(stain or "").strip().lower()
-        if not stain:
-            self._nav_panel.setStyleSheet("")
-            return
-
-        tint = _stain_color(stain)
-        r = int(tint.red())
-        g = int(tint.green())
-        b = int(tint.blue())
-        self._nav_panel.setStyleSheet(
-            "\n".join(
-                [
-                    "QWidget#SettingsNavPanel {",
-                    "  background-color: rgba(18, 20, 28, 185);",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 110);",
-                    "  border-radius: 0px;",
-                    "}",
-                    "QToolButton#SettingsNavButton {",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 88);",
-                    "  background-color: rgba(18, 20, 28, 148);",
-                    "  color: rgba(237, 239, 245, 220);",
-                    "  border-radius: 0px;",
-                    "  text-align: left;",
-                    "  padding: 9px 10px;",
-                    "  font-weight: 620;",
-                    "}",
-                    "QToolButton#SettingsNavButton:hover {",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 140);",
-                    f"  background-color: rgba({r}, {g}, {b}, 28);",
-                    "}",
-                    "QToolButton#SettingsNavButton:checked {",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 176);",
-                    f"  background-color: rgba({r}, {g}, {b}, 54);",
-                    "}",
-                    "QToolButton#SettingsNavButton:checked:hover {",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 194);",
-                    f"  background-color: rgba({r}, {g}, {b}, 72);",
-                    "}",
-                ]
-            )
-        )
 
     def _ensure_button_opacity_effect(
         self, button: QToolButton

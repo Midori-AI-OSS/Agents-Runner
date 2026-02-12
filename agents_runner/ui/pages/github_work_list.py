@@ -32,7 +32,6 @@ from agents_runner.ui.dialogs.github_workroom_dialog import GitHubWorkroomDialog
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
-from agents_runner.ui.widgets import GlassCard
 from midori_ai_logger import MidoriAiLogger
 
 logger = MidoriAiLogger(channel=None, name=__name__)
@@ -162,11 +161,10 @@ class GitHubWorkListPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(14)
 
-        header = GlassCard()
+        header = QWidget()
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(16, 14, 16, 14)
         header_layout.setSpacing(10)
-        self._header_card = header
 
         title = "Pull Requests" if self._item_type == "pr" else "Issues"
         self._title = QLabel(title)
@@ -188,11 +186,10 @@ class GitHubWorkListPage(QWidget):
         header_layout.addWidget(self._refresh)
         root.addWidget(header)
 
-        card = GlassCard()
+        card = QWidget()
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(0, 12, 0, 12)
         card_layout.setSpacing(8)
-        self._list_card = card
 
         columns = QWidget()
         columns_layout = QHBoxLayout(columns)
@@ -769,8 +766,6 @@ class GitHubWorkListPage(QWidget):
         if not stain:
             self._environment.setStyleSheet("")
             self._refresh.setStyleSheet("")
-            self._header_card.setStyleSheet("")
-            self._list_card.setStyleSheet("")
             self._list.setStyleSheet("")
             return
 
@@ -799,29 +794,7 @@ class GitHubWorkListPage(QWidget):
                 ]
             )
         )
-        self._header_card.setStyleSheet(
-            "\n".join(
-                [
-                    "QFrame#GlassCard {",
-                    f"  background-color: rgba({r}, {g}, {b}, 20);",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 90);",
-                    "  border-radius: 0px;",
-                    "}",
-                ]
-            )
-        )
-        self._list_card.setStyleSheet(
-            "\n".join(
-                [
-                    "QFrame#GlassCard {",
-                    f"  background-color: rgba({r}, {g}, {b}, 16);",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 78);",
-                    "  border-radius: 0px;",
-                    "}",
-                ]
-            )
-        )
-        self._list.setStyleSheet(f"background-color: rgba({r}, {g}, {b}, 10);")
+        self._list.setStyleSheet("")
 
     def _log_fetch_issue_once(self, message: str, *, mode: str) -> None:
         text = str(message or "").strip()

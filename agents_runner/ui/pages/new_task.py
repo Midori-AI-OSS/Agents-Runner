@@ -32,7 +32,6 @@ from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
-from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.widgets import SpellTextEdit
 from agents_runner.ui.widgets import StainedGlassButton
 from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
@@ -76,7 +75,7 @@ class NewTaskPage(QWidget):
         self._environment.setFixedWidth(240)
         self._environment.currentIndexChanged.connect(self._on_environment_changed)
 
-        header = GlassCard()
+        header = QWidget()
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(18, 16, 18, 16)
         header_layout.setSpacing(6)
@@ -110,7 +109,7 @@ class NewTaskPage(QWidget):
         header_layout.addLayout(top_row)
         layout.addWidget(header)
 
-        card = GlassCard()
+        card = QWidget()
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(18, 16, 18, 16)
         card_layout.setSpacing(10)
