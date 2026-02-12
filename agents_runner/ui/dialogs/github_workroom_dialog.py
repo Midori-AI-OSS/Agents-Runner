@@ -37,6 +37,7 @@ class GitHubWorkroomDialog(QDialog):
         repo_name: str,
         item_type: str,
         number: int,
+        item_url: str = "",
         confirmation_mode: str,
         parent=None,
     ) -> None:
@@ -45,6 +46,7 @@ class GitHubWorkroomDialog(QDialog):
         self._repo_name = str(repo_name or "").strip()
         self._item_type = str(item_type or "").strip().lower()
         self._number = max(1, int(number))
+        self._item_url = str(item_url or "").strip()
         self._confirmation_mode = str(confirmation_mode or "always").strip().lower()
         self._room: GitHubWorkroom | None = None
 
@@ -280,11 +282,14 @@ class GitHubWorkroomDialog(QDialog):
 
     def _open_in_browser(self) -> None:
         room = self._room
-        if room is None:
+        url = ""
+        if room is not None:
+            url = str(room.url or "").strip()
+        if not url:
+            url = str(self._item_url or "").strip()
+        if not url:
             return
-        if not room.url:
-            return
-        QDesktopServices.openUrl(QUrl(room.url))
+        QDesktopServices.openUrl(QUrl(url))
 
     def _build_prompt(self) -> str:
         room = self._room

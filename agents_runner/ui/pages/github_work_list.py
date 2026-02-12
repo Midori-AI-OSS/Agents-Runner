@@ -493,6 +493,7 @@ class GitHubWorkListPage(QWidget):
             repo_name=repo_context.repo_name,
             item_type=item.item_type,
             number=item.number,
+            item_url=item.url,
             confirmation_mode=self._confirmation_mode,
             parent=self,
         )
