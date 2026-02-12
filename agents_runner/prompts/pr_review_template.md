@@ -7,6 +7,7 @@ Review GitHub pull request #{PR_NUMBER} for repository {REPO_OWNER}/{REPO_NAME}.
 
 PR URL: {PR_URL}
 PR title: {PR_TITLE}
+Trigger source: {TRIGGER_SOURCE}
 Mention comment ID: {MENTION_COMMENT_ID}
 
 Required workflow:

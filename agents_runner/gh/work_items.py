@@ -13,6 +13,8 @@ class GitHubReactionSummary:
     thumbs_up: int = 0
     thumbs_down: int = 0
     eyes: int = 0
+    rocket: int = 0
+    hooray: int = 0
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,7 @@ class GitHubWorkItem:
     author: str
     created_at: str
     updated_at: str
+    body: str = ""
     is_draft: bool = False
 
 
@@ -108,12 +111,16 @@ def _parse_reaction_summary(raw: object) -> GitHubReactionSummary:
             thumbs_up=max(0, _safe_int(raw.get("+1"))),
             thumbs_down=max(0, _safe_int(raw.get("-1"))),
             eyes=max(0, _safe_int(raw.get("eyes"))),
+            rocket=max(0, _safe_int(raw.get("rocket"))),
+            hooray=max(0, _safe_int(raw.get("hooray"))),
         )
 
     groups = raw if isinstance(raw, list) else []
     up = 0
     down = 0
     eyes = 0
+    rocket = 0
+    hooray = 0
     for item in groups:
         if not isinstance(item, dict):
             continue
@@ -129,8 +136,18 @@ def _parse_reaction_summary(raw: object) -> GitHubReactionSummary:
             down = total
         elif content == "EYES":
             eyes = total
+        elif content == "ROCKET":
+            rocket = total
+        elif content == "HOORAY":
+            hooray = total
 
-    return GitHubReactionSummary(thumbs_up=up, thumbs_down=down, eyes=eyes)
+    return GitHubReactionSummary(
+        thumbs_up=up,
+        thumbs_down=down,
+        eyes=eyes,
+        rocket=rocket,
+        hooray=hooray,
+    )
 
 
 def _parse_work_item(item_type: str, raw: object) -> GitHubWorkItem | None:
@@ -150,6 +167,7 @@ def _parse_work_item(item_type: str, raw: object) -> GitHubWorkItem | None:
         item_type=item_type,
         number=number,
         title=_safe_text(raw.get("title")) or f"#{number}",
+        body=_safe_text(raw.get("body")),
         state=_safe_text(raw.get("state")).lower() or "open",
         url=_safe_text(raw.get("url")),
         author=author,
@@ -185,7 +203,7 @@ def list_open_pull_requests(
             "--limit",
             str(max(1, int(limit))),
             "--json",
-            "number,title,state,url,author,createdAt,updatedAt,isDraft",
+            "number,title,body,state,url,author,createdAt,updatedAt,isDraft",
         ],
         timeout_s=45.0,
     )
@@ -218,7 +236,7 @@ def list_open_issues(
             "--limit",
             str(max(1, int(limit))),
             "--json",
-            "number,title,state,url,author,createdAt,updatedAt",
+            "number,title,body,state,url,author,createdAt,updatedAt",
         ],
         timeout_s=45.0,
     )
@@ -480,7 +498,7 @@ def add_issue_comment_reaction(
 ) -> None:
     repo = _repo_full_name(repo_owner, repo_name)
     reaction_value = _safe_text(reaction)
-    if reaction_value not in {"+1", "-1", "eyes"}:
+    if reaction_value not in {"+1", "-1", "eyes", "rocket", "hooray"}:
         raise GhManagementError(f"unsupported reaction: {reaction_value}")
 
     _run_gh_json(

@@ -7,6 +7,8 @@ Fix GitHub issue #{ISSUE_NUMBER} for repository {REPO_OWNER}/{REPO_NAME}.
 
 Issue URL: {ISSUE_URL}
 Issue title: {ISSUE_TITLE}
+Trigger source: {TRIGGER_SOURCE}
+Mention comment ID: {MENTION_COMMENT_ID}
 
 Required workflow:
 1. Read the full issue details and reproduce the problem.

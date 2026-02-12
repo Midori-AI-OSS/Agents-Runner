@@ -152,6 +152,7 @@ class GitHubWorkListPage(QWidget):
         self._auto_review_enabled = True
         self._poll_interval_s = 30
         self._auto_review_seen_comment_ids: set[int] = set()
+        self._auto_review_seen_item_mentions: set[str] = set()
         self._active_stain = ""
         self._last_fetch_issue = ""
 
@@ -326,13 +327,18 @@ class GitHubWorkListPage(QWidget):
         self._fetch_seq += 1
         seq = int(self._fetch_seq)
         queued_snapshot = set(self._auto_review_seen_comment_ids)
-        auto_review_enabled = bool(
-            self._auto_review_enabled and self._item_type == "pr"
-        )
+        queued_item_snapshot = set(self._auto_review_seen_item_mentions)
+        auto_review_enabled = bool(self._auto_review_enabled)
 
         worker = threading.Thread(
             target=self._fetch_worker,
-            args=(seq, env_id, queued_snapshot, auto_review_enabled),
+            args=(
+                seq,
+                env_id,
+                queued_snapshot,
+                queued_item_snapshot,
+                auto_review_enabled,
+            ),
             daemon=True,
         )
         worker.start()
@@ -342,6 +348,7 @@ class GitHubWorkListPage(QWidget):
         seq: int,
         env_id: str,
         queued_snapshot: set[int],
+        queued_item_snapshot: set[str],
         auto_review_enabled: bool,
     ) -> None:
         repo_context = None
@@ -375,6 +382,7 @@ class GitHubWorkListPage(QWidget):
                     repo_name=repo_context.repo_name,
                     items=items,
                     queued_snapshot=queued_snapshot,
+                    queued_item_snapshot=queued_item_snapshot,
                 )
         except Exception as exc:
             error = str(exc)
@@ -388,10 +396,19 @@ class GitHubWorkListPage(QWidget):
         repo_name: str,
         items: list[GitHubWorkItem],
         queued_snapshot: set[int],
+        queued_item_snapshot: set[str],
     ) -> list[dict[str, object]]:
         results: list[dict[str, object]] = []
 
         for item in items:
+            item_key = self._mention_item_key(
+                repo_owner=repo_owner,
+                repo_name=repo_name,
+                item_type=item.item_type,
+                number=item.number,
+            )
+            queued_for_item = False
+
             comments = list_issue_comments(
                 repo_owner,
                 repo_name,
@@ -412,33 +429,89 @@ class GitHubWorkListPage(QWidget):
                 reactions = comment.reactions
                 if reactions.thumbs_up > 0 or reactions.thumbs_down > 0:
                     continue
-                if reactions.eyes > 0:
-                    continue
+
+                marker = "eyes"
+                if item.item_type == "pr":
+                    if reactions.eyes > 0:
+                        continue
+                else:
+                    marker = "rocket"
+                    if reactions.rocket > 0 or reactions.hooray > 0:
+                        continue
 
                 try:
                     add_issue_comment_reaction(
                         repo_owner,
                         repo_name,
                         comment_id=comment.comment_id,
-                        reaction="eyes",
+                        reaction=marker,
                     )
                 except Exception:
                     continue
 
                 results.append(
                     {
-                        "comment_id": comment.comment_id,
-                        "pr_number": item.number,
-                        "pr_url": item.url,
-                        "pr_title": item.title,
+                        "item_type": item.item_type,
+                        "number": item.number,
+                        "url": item.url,
+                        "title": item.title,
+                        "mention_comment_id": comment.comment_id,
+                        "trigger_source": "comment_mention",
+                        "item_key": item_key,
                     }
                 )
+                queued_for_item = True
 
                 if len(results) >= 3:
                     return results
                 break
 
+            if queued_for_item:
+                continue
+
+            if item_key in queued_item_snapshot:
+                continue
+
+            if self._item_has_agentsnova_mention(item):
+                results.append(
+                    {
+                        "item_type": item.item_type,
+                        "number": item.number,
+                        "url": item.url,
+                        "title": item.title,
+                        "mention_comment_id": 0,
+                        "trigger_source": "body_mention",
+                        "item_key": item_key,
+                    }
+                )
+                queued_item_snapshot.add(item_key)
+                if len(results) >= 3:
+                    return results
+
         return results
+
+    def _mention_item_key(
+        self,
+        *,
+        repo_owner: str,
+        repo_name: str,
+        item_type: str,
+        number: int,
+    ) -> str:
+        try:
+            normalized_number = max(0, int(number))
+        except Exception:
+            normalized_number = 0
+        return (
+            f"{str(repo_owner or '').strip().lower()}/"
+            f"{str(repo_name or '').strip().lower()}:"
+            f"{str(item_type or '').strip().lower()}:{normalized_number}"
+        )
+
+    def _item_has_agentsnova_mention(self, item: GitHubWorkItem) -> bool:
+        body = str(getattr(item, "body", "") or "").strip().lower()
+        title = str(getattr(item, "title", "") or "").strip().lower()
+        return "@agentsnova" in body or "@agentsnova" in title
 
     def _format_time(self, value: str) -> str:
         text = str(value or "").strip()
@@ -516,30 +589,66 @@ class GitHubWorkListPage(QWidget):
         repo_owner = str(getattr(repo_context, "repo_owner", "") or "")
         repo_name = str(getattr(repo_context, "repo_name", "") or "")
 
-        if item.item_type == "pr":
-            prompt = load_prompt(
-                "pr_review_template",
-                REPO_OWNER=repo_owner,
-                REPO_NAME=repo_name,
-                PR_NUMBER=item.number,
-                PR_URL=item.url,
-                PR_TITLE=item.title,
-                MENTION_COMMENT_ID="",
-            ).strip()
-        else:
-            prompt = load_prompt(
-                "issue_fix_template",
-                REPO_OWNER=repo_owner,
-                REPO_NAME=repo_name,
-                ISSUE_NUMBER=item.number,
-                ISSUE_URL=item.url,
-                ISSUE_TITLE=item.title,
-            ).strip()
+        prompt = self._build_task_prompt(
+            item_type=item.item_type,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            number=item.number,
+            url=item.url,
+            title=item.title,
+            trigger_source="manual",
+            mention_comment_id=0,
+        )
 
         if not prompt:
             return
 
         self.prompt_append_requested.emit(self._active_env_id, prompt)
+
+    def _build_task_prompt(
+        self,
+        *,
+        item_type: str,
+        repo_owner: str,
+        repo_name: str,
+        number: int,
+        url: str,
+        title: str,
+        trigger_source: str,
+        mention_comment_id: int,
+    ) -> str:
+        normalized_item_type = str(item_type or "").strip().lower()
+        try:
+            parsed_mention_comment_id = int(mention_comment_id)
+        except Exception:
+            parsed_mention_comment_id = 0
+        mention_id = (
+            str(parsed_mention_comment_id) if parsed_mention_comment_id > 0 else ""
+        )
+        source = str(trigger_source or "").strip().lower() or "manual"
+
+        if normalized_item_type == "pr":
+            return load_prompt(
+                "pr_review_template",
+                REPO_OWNER=repo_owner,
+                REPO_NAME=repo_name,
+                PR_NUMBER=number,
+                PR_URL=url,
+                PR_TITLE=title,
+                MENTION_COMMENT_ID=mention_id,
+                TRIGGER_SOURCE=source,
+            ).strip()
+
+        return load_prompt(
+            "issue_fix_template",
+            REPO_OWNER=repo_owner,
+            REPO_NAME=repo_name,
+            ISSUE_NUMBER=number,
+            ISSUE_URL=url,
+            ISSUE_TITLE=title,
+            MENTION_COMMENT_ID=mention_id,
+            TRIGGER_SOURCE=source,
+        ).strip()
 
     def _on_fetch_completed(
         self,
@@ -591,31 +700,63 @@ class GitHubWorkListPage(QWidget):
         self._last_fetch_issue = ""
 
         reviews = auto_reviews if isinstance(auto_reviews, list) else []
+        repo_owner = str(getattr(repo_context, "repo_owner", "") or "")
+        repo_name = str(getattr(repo_context, "repo_name", "") or "")
         for review in reviews:
             if not isinstance(review, dict):
                 continue
 
-            comment_id = int(review.get("comment_id") or 0)
-            if comment_id <= 0 or comment_id in self._auto_review_seen_comment_ids:
+            item_type = str(review.get("item_type") or self._item_type).strip().lower()
+            try:
+                number = int(review.get("number") or 0)
+            except Exception:
+                number = 0
+            if number <= 0:
                 continue
 
-            pr_number = int(review.get("pr_number") or 0)
-            pr_url = str(review.get("pr_url") or "").strip()
-            pr_title = str(review.get("pr_title") or "").strip()
+            trigger_source = str(review.get("trigger_source") or "").strip().lower()
+            try:
+                mention_comment_id = int(review.get("mention_comment_id") or 0)
+            except Exception:
+                mention_comment_id = 0
 
-            prompt = load_prompt(
-                "pr_review_template",
-                REPO_OWNER=str(getattr(repo_context, "repo_owner", "") or ""),
-                REPO_NAME=str(getattr(repo_context, "repo_name", "") or ""),
-                PR_NUMBER=pr_number,
-                PR_URL=pr_url,
-                PR_TITLE=pr_title,
-                MENTION_COMMENT_ID=comment_id,
-            ).strip()
+            if (
+                mention_comment_id > 0
+                and mention_comment_id in self._auto_review_seen_comment_ids
+            ):
+                continue
+
+            item_key = str(review.get("item_key") or "").strip()
+            if not item_key:
+                item_key = self._mention_item_key(
+                    repo_owner=repo_owner,
+                    repo_name=repo_name,
+                    item_type=item_type,
+                    number=number,
+                )
+            if (
+                trigger_source == "body_mention"
+                and item_key in self._auto_review_seen_item_mentions
+            ):
+                continue
+
+            prompt = self._build_task_prompt(
+                item_type=item_type,
+                repo_owner=repo_owner,
+                repo_name=repo_name,
+                number=number,
+                url=str(review.get("url") or "").strip(),
+                title=str(review.get("title") or "").strip(),
+                trigger_source=trigger_source,
+                mention_comment_id=mention_comment_id,
+            )
             if not prompt:
                 continue
 
-            self._auto_review_seen_comment_ids.add(comment_id)
+            if mention_comment_id > 0:
+                self._auto_review_seen_comment_ids.add(mention_comment_id)
+            if trigger_source == "body_mention":
+                self._auto_review_seen_item_mentions.add(item_key)
             self.auto_review_requested.emit(self._active_env_id, prompt)
 
     def _sync_environment_stain(self) -> None:

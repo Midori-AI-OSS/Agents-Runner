@@ -305,6 +305,7 @@ class GitHubWorkroomDialog(QDialog):
                 PR_URL=room.url,
                 PR_TITLE=room.title,
                 MENTION_COMMENT_ID="",
+                TRIGGER_SOURCE="manual",
             )
 
         return load_prompt(
@@ -314,6 +315,8 @@ class GitHubWorkroomDialog(QDialog):
             ISSUE_NUMBER=room.number,
             ISSUE_URL=room.url,
             ISSUE_TITLE=room.title,
+            MENTION_COMMENT_ID="",
+            TRIGGER_SOURCE="manual",
         )
 
     def _on_primary(self) -> None:

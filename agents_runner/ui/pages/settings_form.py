@@ -207,7 +207,7 @@ class _SettingsFormMixin:
             "Enable @agentsnova auto-review queueing"
         )
         self._agentsnova_auto_review_enabled.setToolTip(
-            "When enabled, PR comments that mention @agentsnova can auto-queue review tasks."
+            "When enabled, PR/Issue mentions of @agentsnova can auto-queue tasks."
         )
 
         self._preflight_script = QPlainTextEdit()
