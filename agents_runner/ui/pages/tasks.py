@@ -417,34 +417,44 @@ class TasksPage(QWidget):
             "\n".join(
                 [
                     "QWidget#SettingsNavPanel {",
-                    f"  background-color: rgba({r}, {g}, {b}, 26);",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 92);",
+                    "  background-color: rgba(18, 20, 28, 185);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 110);",
                     "  border-radius: 0px;",
                     "}",
                     "QToolButton#SettingsNavButton {",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 76);",
-                    f"  background-color: rgba({r}, {g}, {b}, 18);",
-                    "  color: rgba(237, 239, 245, 224);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 88);",
+                    "  background-color: rgba(18, 20, 28, 148);",
+                    "  color: rgba(237, 239, 245, 220);",
                     "  border-radius: 0px;",
                     "  text-align: left;",
                     "  padding: 9px 10px;",
                     "  font-weight: 620;",
                     "}",
                     "QToolButton#SettingsNavButton:hover {",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 132);",
-                    f"  background-color: rgba({r}, {g}, {b}, 34);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 140);",
+                    f"  background-color: rgba({r}, {g}, {b}, 28);",
                     "}",
                     "QToolButton#SettingsNavButton:checked {",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 170);",
-                    f"  background-color: rgba({r}, {g}, {b}, 62);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 176);",
+                    f"  background-color: rgba({r}, {g}, {b}, 54);",
                     "}",
                     "QToolButton#SettingsNavButton:checked:hover {",
-                    f"  border: 1px solid rgba({r}, {g}, {b}, 190);",
-                    f"  background-color: rgba({r}, {g}, {b}, 82);",
+                    f"  border: 1px solid rgba({r}, {g}, {b}, 194);",
+                    f"  background-color: rgba({r}, {g}, {b}, 72);",
                     "}",
                 ]
             )
         )
+
+    def _effective_page_width(self) -> int:
+        width = int(self.width())
+        win = self.window()
+        if win is not None and win is not self:
+            try:
+                width = max(width, int(win.width()))
+            except Exception:
+                pass
+        return max(width, 0)
 
     def _set_nav_panel_visible(
         self, visible: bool, *, animate: bool, collapse_host: bool
@@ -647,7 +657,7 @@ class TasksPage(QWidget):
             )
             return
 
-        compact = self.width() < 1080
+        compact = self._effective_page_width() < 1080
         mode_changed = compact != self._compact_mode
         self._compact_mode = compact
 
