@@ -35,6 +35,13 @@ class _MainWindowNavigationMixin:
             target_page.show()
             return
 
+        # Prime hidden page geometry to avoid first-frame size pop during cross-fade.
+        try:
+            target_page.setGeometry(current_page.geometry())
+            target_page.updateGeometry()
+        except Exception:
+            pass
+
         effect_out = current_page.graphicsEffect()
         if not isinstance(effect_out, QGraphicsOpacityEffect):
             effect_out = QGraphicsOpacityEffect(current_page)
@@ -72,6 +79,11 @@ class _MainWindowNavigationMixin:
 
         def start_fade_in() -> None:
             current_page.hide()
+            try:
+                target_page.setGeometry(current_page.geometry())
+                target_page.updateGeometry()
+            except Exception:
+                pass
             target_page.show()
             anim_in.start()
 

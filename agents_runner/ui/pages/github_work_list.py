@@ -63,10 +63,6 @@ class _GitHubWorkRow(QWidget):
         self._title.setStyleSheet("font-weight: 650; color: rgba(237, 239, 245, 235);")
         self._title.setMinimumWidth(260)
 
-        self._state = QLabel("—")
-        self._state.setStyleSheet("color: rgba(237, 239, 245, 190); font-weight: 700;")
-        self._state.setMinimumWidth(110)
-
         self._meta = QLabel("—")
         self._meta.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
@@ -82,9 +78,8 @@ class _GitHubWorkRow(QWidget):
         self._btn_open.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_open.clicked.connect(lambda: self.open_requested.emit(self._item))
 
-        layout.addWidget(self._title, 5)
-        layout.addWidget(self._state, 0)
-        layout.addWidget(self._meta, 4)
+        layout.addWidget(self._title, 6)
+        layout.addWidget(self._meta, 5)
         layout.addWidget(self._btn_primary, 0)
         layout.addWidget(self._btn_open, 0)
 
@@ -119,12 +114,6 @@ class _GitHubWorkRow(QWidget):
         self._item = item
         prefix = "PR" if item.item_type == "pr" else "Issue"
         self._title.setText(f"{prefix} #{item.number}: {item.title}")
-
-        state = str(item.state or "").strip().lower()
-        if item.item_type == "pr" and item.is_draft and state == "open":
-            self._state.setText("Draft")
-        else:
-            self._state.setText(state.title() if state else "—")
 
         self._meta.setText(meta_text)
 
@@ -212,16 +201,12 @@ class GitHubWorkListPage(QWidget):
         c1 = QLabel("Item")
         c1.setStyleSheet("color: rgba(237, 239, 245, 150); font-weight: 650;")
         c1.setMinimumWidth(260)
-        c2 = QLabel("State")
-        c2.setStyleSheet("color: rgba(237, 239, 245, 150); font-weight: 650;")
-        c2.setMinimumWidth(110)
         c3 = QLabel("Info")
         c3.setStyleSheet("color: rgba(237, 239, 245, 150); font-weight: 650;")
-        self._column_labels = (c1, c2, c3)
+        self._column_labels = (c1, c3)
 
-        columns_layout.addWidget(c1, 5)
-        columns_layout.addWidget(c2, 0)
-        columns_layout.addWidget(c3, 4)
+        columns_layout.addWidget(c1, 6)
+        columns_layout.addWidget(c3, 5)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -646,10 +631,6 @@ class GitHubWorkListPage(QWidget):
             self._header_card.setStyleSheet("")
             self._list_card.setStyleSheet("")
             self._list.setStyleSheet("")
-            for label in self._column_labels:
-                label.setStyleSheet(
-                    "color: rgba(237, 239, 245, 150); font-weight: 650;"
-                )
             return
 
         _apply_environment_combo_tint(self._environment, stain)
@@ -700,8 +681,6 @@ class GitHubWorkListPage(QWidget):
             )
         )
         self._list.setStyleSheet(f"background-color: rgba({r}, {g}, {b}, 10);")
-        for label in self._column_labels:
-            label.setStyleSheet(f"color: rgba({r}, {g}, {b}, 215); font-weight: 650;")
 
     def _log_fetch_issue_once(self, message: str, *, mode: str) -> None:
         text = str(message or "").strip()
