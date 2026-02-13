@@ -196,6 +196,14 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
     extra_mounts = payload.get("extra_mounts", [])
     extra_mounts = extra_mounts if isinstance(extra_mounts, list) else []
+    env_vars_advanced_mode = bool(payload.get("env_vars_advanced_mode", False))
+    mounts_advanced_mode = bool(payload.get("mounts_advanced_mode", False))
+    env_vars_advanced_acknowledged = bool(
+        payload.get("env_vars_advanced_acknowledged", False)
+    ) or bool(env_vars_advanced_mode)
+    mounts_advanced_acknowledged = bool(
+        payload.get("mounts_advanced_acknowledged", False)
+    ) or bool(mounts_advanced_mode)
 
     ports = payload.get("ports", [])
     ports = ports if isinstance(ports, list) else []
@@ -415,6 +423,10 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         preflight_script=preflight_script,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
+        env_vars_advanced_mode=env_vars_advanced_mode,
+        mounts_advanced_mode=mounts_advanced_mode,
+        env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+        mounts_advanced_acknowledged=mounts_advanced_acknowledged,
         ports=[str(item) for item in ports if str(item).strip()],
         ports_unlocked=ports_unlocked,
         ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -509,6 +521,14 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "preflight_script": env.preflight_script,
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),
+        "env_vars_advanced_mode": bool(getattr(env, "env_vars_advanced_mode", False)),
+        "mounts_advanced_mode": bool(getattr(env, "mounts_advanced_mode", False)),
+        "env_vars_advanced_acknowledged": bool(
+            getattr(env, "env_vars_advanced_acknowledged", False)
+        ),
+        "mounts_advanced_acknowledged": bool(
+            getattr(env, "mounts_advanced_acknowledged", False)
+        ),
         "ports": list(getattr(env, "ports", [])),
         "ports_unlocked": bool(getattr(env, "ports_unlocked", False)),
         "ports_advanced_acknowledged": bool(

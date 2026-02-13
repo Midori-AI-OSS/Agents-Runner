@@ -69,6 +69,7 @@ class MountsTabWidget(QWidget):
         super().__init__(parent)
         self._rows: list[_MountRow] = []
         self._advanced_mode = False
+        self._advanced_acknowledged = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*TAB_CONTENT_MARGINS)
@@ -150,7 +151,13 @@ class MountsTabWidget(QWidget):
         self._render_table()
         self._sync_mode_state()
 
-    def set_mounts(self, mounts: list[str]) -> None:
+    def set_mounts(
+        self,
+        mounts: list[str],
+        *,
+        advanced_mode: bool | None = None,
+        advanced_acknowledged: bool | None = None,
+    ) -> None:
         parsed_rows: list[_MountRow] = []
         use_advanced_mode = False
         for spec in mounts or []:
@@ -161,7 +168,15 @@ class MountsTabWidget(QWidget):
             parsed_rows.append(row)
 
         self._rows = parsed_rows
-        self._advanced_mode = use_advanced_mode
+        if advanced_mode is None:
+            self._advanced_mode = use_advanced_mode
+        else:
+            self._advanced_mode = bool(advanced_mode) or use_advanced_mode
+        self._advanced_acknowledged = (
+            bool(advanced_acknowledged)
+            if advanced_acknowledged is not None
+            else bool(self._advanced_mode)
+        ) or bool(self._advanced_mode)
 
         self._advanced_text.blockSignals(True)
         try:
@@ -204,6 +219,12 @@ class MountsTabWidget(QWidget):
             mounts.append(f"{host_path}:{container_path}:{mode}")
         return mounts, errors
 
+    def is_advanced_mode(self) -> bool:
+        return bool(self._advanced_mode)
+
+    def is_advanced_acknowledged(self) -> bool:
+        return bool(self._advanced_acknowledged)
+
     def _on_mode_clicked(self) -> None:
         if self._advanced_mode:
             self._switch_to_simple_mode()
@@ -228,6 +249,20 @@ class MountsTabWidget(QWidget):
         self._add_btn.setVisible(True)
 
     def _switch_to_advanced_mode(self) -> None:
+        if not self._advanced_acknowledged:
+            result = QMessageBox.warning(
+                self,
+                "Warning: Advanced Mounts",
+                "Advanced mount editing accepts raw host_path:container_path[:mode] entries.\n\n"
+                "Invalid mounts can break tasks or expose filesystem paths unintentionally.\n\n"
+                "Do you want to proceed?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if result != QMessageBox.Yes:
+                return
+            self._advanced_acknowledged = True
+
         lines: list[str] = []
         for row in self._rows:
             host_path = str(row.host_path or "").strip()

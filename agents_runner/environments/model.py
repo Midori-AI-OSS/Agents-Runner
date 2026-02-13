@@ -88,6 +88,10 @@ class Environment:
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
+    env_vars_advanced_mode: bool = False
+    mounts_advanced_mode: bool = False
+    env_vars_advanced_acknowledged: bool = False
+    mounts_advanced_acknowledged: bool = False
     ports: list[str] = field(default_factory=list)
     ports_unlocked: bool = False
     ports_advanced_acknowledged: bool = False

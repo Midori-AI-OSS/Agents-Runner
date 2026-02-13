@@ -44,6 +44,7 @@ class EnvVarsTabWidget(QWidget):
         super().__init__(parent)
         self._rows: list[_EnvVarRow] = []
         self._advanced_mode = False
+        self._advanced_acknowledged = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*TAB_CONTENT_MARGINS)
@@ -120,13 +121,26 @@ class EnvVarsTabWidget(QWidget):
         self._render_table()
         self._sync_mode_state()
 
-    def set_env_vars(self, env_vars: dict[str, str]) -> None:
+    def set_env_vars(
+        self,
+        env_vars: dict[str, str],
+        *,
+        advanced_mode: bool | None = None,
+        advanced_acknowledged: bool | None = None,
+    ) -> None:
         self._rows = [
             _EnvVarRow(key=str(key or "").strip(), value=str(value or ""))
             for key, value in sorted((env_vars or {}).items(), key=lambda item: item[0])
             if str(key or "").strip()
         ]
-        self._advanced_mode = False
+        self._advanced_mode = (
+            bool(advanced_mode) if advanced_mode is not None else False
+        )
+        self._advanced_acknowledged = (
+            bool(advanced_acknowledged)
+            if advanced_acknowledged is not None
+            else bool(self._advanced_mode)
+        )
 
         self._advanced_text.blockSignals(True)
         try:
@@ -155,6 +169,12 @@ class EnvVarsTabWidget(QWidget):
             parsed[key] = value
         return parsed, errors
 
+    def is_advanced_mode(self) -> bool:
+        return bool(self._advanced_mode)
+
+    def is_advanced_acknowledged(self) -> bool:
+        return bool(self._advanced_acknowledged)
+
     def _on_mode_clicked(self) -> None:
         if self._advanced_mode:
             self._switch_to_simple_mode()
@@ -179,6 +199,20 @@ class EnvVarsTabWidget(QWidget):
         self._add_btn.setVisible(True)
 
     def _switch_to_advanced_mode(self) -> None:
+        if not self._advanced_acknowledged:
+            result = QMessageBox.warning(
+                self,
+                "Warning: Advanced Environment Variables",
+                "Advanced environment variable editing accepts raw KEY=VALUE entries.\n\n"
+                "Invalid entries can break tasks or override runtime behavior unexpectedly.\n\n"
+                "Do you want to proceed?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if result != QMessageBox.Yes:
+                return
+            self._advanced_acknowledged = True
+
         lines: list[str] = []
         for row in self._rows:
             key = str(row.key or "").strip()

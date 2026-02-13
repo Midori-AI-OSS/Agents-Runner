@@ -167,6 +167,12 @@ class _EnvironmentsPageActionsMixin:
                     "Fix mounts:\n" + "\n".join(mount_errors[:12]),
                 )
             return False
+        env_vars_advanced_mode = bool(self._env_vars_tab.is_advanced_mode())
+        mounts_advanced_mode = bool(self._mounts_tab.is_advanced_mode())
+        env_vars_advanced_acknowledged = bool(
+            self._env_vars_tab.is_advanced_acknowledged()
+        )
+        mounts_advanced_acknowledged = bool(self._mounts_tab.is_advanced_acknowledged())
         ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
             self._ports_tab.get_ports()
         )
@@ -212,6 +218,10 @@ class _EnvironmentsPageActionsMixin:
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                env_vars_advanced_mode=env_vars_advanced_mode,
+                mounts_advanced_mode=mounts_advanced_mode,
+                env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+                mounts_advanced_acknowledged=mounts_advanced_acknowledged,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
                 ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -245,6 +255,10 @@ class _EnvironmentsPageActionsMixin:
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                env_vars_advanced_mode=env_vars_advanced_mode,
+                mounts_advanced_mode=mounts_advanced_mode,
+                env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+                mounts_advanced_acknowledged=mounts_advanced_acknowledged,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
                 ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -318,6 +332,12 @@ class _EnvironmentsPageActionsMixin:
                 self, "Invalid mounts", "Fix mounts:\n" + "\n".join(mount_errors[:12])
             )
             return None
+        env_vars_advanced_mode = bool(self._env_vars_tab.is_advanced_mode())
+        mounts_advanced_mode = bool(self._mounts_tab.is_advanced_mode())
+        env_vars_advanced_acknowledged = bool(
+            self._env_vars_tab.is_advanced_acknowledged()
+        )
+        mounts_advanced_acknowledged = bool(self._mounts_tab.is_advanced_acknowledged())
         ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
             self._ports_tab.get_ports()
         )
@@ -363,6 +383,10 @@ class _EnvironmentsPageActionsMixin:
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                env_vars_advanced_mode=env_vars_advanced_mode,
+                mounts_advanced_mode=mounts_advanced_mode,
+                env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+                mounts_advanced_acknowledged=mounts_advanced_acknowledged,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
                 ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -392,6 +416,10 @@ class _EnvironmentsPageActionsMixin:
             preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
+            env_vars_advanced_mode=env_vars_advanced_mode,
+            mounts_advanced_mode=mounts_advanced_mode,
+            env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+            mounts_advanced_acknowledged=mounts_advanced_acknowledged,
             ports=ports,
             ports_unlocked=ports_unlocked,
             ports_advanced_acknowledged=ports_advanced_acknowledged,
