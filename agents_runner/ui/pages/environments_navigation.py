@@ -33,8 +33,9 @@ class _EnvironmentsNavigationMixin:
             self._gh_context_enabled,
             self._gh_use_host_cli,
             self._preflight_enabled,
-            self._cached_preflight_enabled,
-            self._run_preflight_enabled,
+            self._cache_system_preflight_enabled,
+            self._cache_settings_preflight_enabled,
+            self._cache_environment_preflight_enabled,
         ):
             checkbox.toggled.connect(self._trigger_immediate_autosave)
 
@@ -47,8 +48,6 @@ class _EnvironmentsNavigationMixin:
 
         for editor in (
             self._preflight_script,
-            self._cached_preflight_script,
-            self._run_preflight_script,
             self._env_vars,
             self._mounts,
         ):

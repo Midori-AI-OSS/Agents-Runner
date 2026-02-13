@@ -22,6 +22,9 @@ from agents_runner.agent_cli import verify_cli_clause
 from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
+from agents_runner.docker.image_builder import ensure_desktop_image
+from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
+from agents_runner.docker.phase_image_builder import ensure_phase_image
 from agents_runner.environments import Environment
 from agents_runner.github_token import resolve_github_token
 from agents_runner.log_format import format_log
@@ -115,12 +118,145 @@ def launch_docker_terminal_task(
         desired_base: Desired base branch for git
         skip_image_pull: If True, skip docker pull in host launcher script
     """
+    # Treat all interactive extra preflights as the desktop phase.
+    desktop_preflight_script = str(extra_preflight_script or "")
+    desktop_enabled = bool(
+        "websockify" in desktop_preflight_script
+        or "noVNC" in desktop_preflight_script
+        or "[desktop]" in desktop_preflight_script
+    )
+
+    preflights_host_dir = PREFLIGHTS_DIR.resolve()
+    system_preflight_path = preflights_host_dir / "pixelarch_yay.sh"
+    system_preflight_script = ""
+    if system_preflight_path.is_file():
+        try:
+            system_preflight_script = system_preflight_path.read_text(encoding="utf-8")
+        except Exception:
+            system_preflight_script = ""
+
+    runtime_image = image
+    system_preflight_cached = False
+    desktop_preflight_cached = False
+    settings_preflight_cached = False
+    environment_preflight_cached = False
+    container_caching_enabled = bool(
+        env and getattr(env, "container_caching_enabled", False)
+    )
+    cache_system_enabled = bool(
+        container_caching_enabled
+        and env
+        and getattr(env, "cache_system_preflight_enabled", False)
+    )
+    cache_settings_enabled = bool(
+        container_caching_enabled
+        and env
+        and getattr(env, "cache_settings_preflight_enabled", False)
+    )
+    cache_environment_enabled = bool(
+        container_caching_enabled
+        and env
+        and getattr(env, "cache_environment_preflight_enabled", False)
+    )
+    desktop_cache_enabled = bool(env and getattr(env, "cache_desktop_build", False))
+    desktop_cache_enabled = desktop_cache_enabled and desktop_enabled
+
+    def on_phase_log(line: str) -> None:
+        main_window._on_task_log(task_id, line)
+
+    if cache_system_enabled and system_preflight_script.strip():
+        next_image = ensure_phase_image(
+            base_image=runtime_image,
+            phase_name="system",
+            script_content=system_preflight_script,
+            preflights_dir=preflights_host_dir,
+            on_log=on_phase_log,
+        )
+        system_preflight_cached = next_image != runtime_image
+        runtime_image = next_image
+    elif cache_system_enabled:
+        on_phase_log(
+            format_log(
+                "phase",
+                "cache",
+                "WARN",
+                "system caching enabled but system script is unavailable",
+            )
+        )
+
+    if desktop_cache_enabled:
+        desktop_base_image = runtime_image
+        next_image = ensure_desktop_image(desktop_base_image, on_log=on_phase_log)
+        desktop_preflight_cached = next_image != desktop_base_image
+        runtime_image = next_image
+        if desktop_preflight_cached:
+            desktop_run_path = preflights_host_dir / "desktop_run.sh"
+            try:
+                desktop_preflight_script = desktop_run_path.read_text(encoding="utf-8")
+            except Exception:
+                desktop_preflight_script = ""
+            if not desktop_preflight_script.strip():
+                on_phase_log(
+                    format_log(
+                        "desktop",
+                        "cache",
+                        "WARN",
+                        f"desktop cache active but runtime script is missing: {desktop_run_path}",
+                    )
+                )
+                desktop_preflight_cached = False
+                runtime_image = desktop_base_image
+
+    if cache_settings_enabled and (settings_preflight_script or "").strip():
+        next_image = ensure_phase_image(
+            base_image=runtime_image,
+            phase_name="settings",
+            script_content=str(settings_preflight_script or ""),
+            preflights_dir=preflights_host_dir,
+            on_log=on_phase_log,
+        )
+        settings_preflight_cached = next_image != runtime_image
+        runtime_image = next_image
+    elif cache_settings_enabled:
+        on_phase_log(
+            format_log(
+                "phase",
+                "cache",
+                "WARN",
+                "settings caching enabled but settings script is empty",
+            )
+        )
+
+    if cache_environment_enabled and (environment_preflight_script or "").strip():
+        next_image = ensure_phase_image(
+            base_image=runtime_image,
+            phase_name="environment",
+            script_content=str(environment_preflight_script or ""),
+            preflights_dir=preflights_host_dir,
+            on_log=on_phase_log,
+        )
+        environment_preflight_cached = next_image != runtime_image
+        runtime_image = next_image
+    elif cache_environment_enabled:
+        on_phase_log(
+            format_log(
+                "phase",
+                "cache",
+                "WARN",
+                "environment caching enabled but environment script is empty",
+            )
+        )
+
     # Prepare preflight scripts and get mounts
     preflight_clause, preflight_mounts, tmp_paths = _prepare_preflight_scripts(
         task_token=task_token,
+        desktop_preflight_script=desktop_preflight_script,
         settings_preflight_script=settings_preflight_script,
         environment_preflight_script=environment_preflight_script,
-        extra_preflight_script=extra_preflight_script,
+        skip_system=system_preflight_cached,
+        skip_desktop=desktop_preflight_cached,
+        skip_settings=settings_preflight_cached,
+        skip_environment=environment_preflight_cached,
     )
 
     if preflight_clause is None:
@@ -155,13 +291,6 @@ def launch_docker_terminal_task(
                 env_args.extend(
                     ["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"]
                 )
-
-        # Check if desktop mode is enabled
-        desktop_enabled = (
-            "websockify" in extra_preflight_script
-            or "noVNC" in extra_preflight_script
-            or "[desktop]" in extra_preflight_script
-        )
 
         # Allocate port for desktop mode
         port_args: list[str] = []
@@ -234,7 +363,7 @@ def launch_docker_terminal_task(
             env_args=env_args,
             port_args=port_args,
             docker_env_passthrough=[],
-            image=image,
+            image=runtime_image,
             container_script=container_script,
         )
 
@@ -263,7 +392,7 @@ def launch_docker_terminal_task(
         docker_pull_cmd = ":"
         if not skip_image_pull:
             docker_platform_args = docker_platform_args_for_pixelarch()
-            docker_pull_parts = ["docker", "pull", *docker_platform_args, image]
+            docker_pull_parts = ["docker", "pull", *docker_platform_args, runtime_image]
             docker_pull_cmd = " ".join(shlex.quote(part) for part in docker_pull_parts)
 
         # Build host shell script
@@ -338,17 +467,26 @@ def launch_docker_terminal_task(
 
 def _prepare_preflight_scripts(
     task_token: str,
+    desktop_preflight_script: str,
     settings_preflight_script: str | None,
     environment_preflight_script: str | None,
-    extra_preflight_script: str,
+    *,
+    skip_system: bool = False,
+    skip_desktop: bool = False,
+    skip_settings: bool = False,
+    skip_environment: bool = False,
 ) -> tuple[str | None, list[str], dict[str, str]]:
     """Create temporary preflight script files and build mount args.
 
     Args:
         task_token: Unique task token for temp file naming
+        desktop_preflight_script: Desktop phase script content
         settings_preflight_script: Global preflight script
         environment_preflight_script: Environment-specific preflight script
-        extra_preflight_script: Additional preflight script
+        skip_system: Skip runtime system phase because it was cached
+        skip_desktop: Skip runtime desktop phase because it was cached
+        skip_settings: Skip runtime settings phase because it was cached
+        skip_environment: Skip runtime environment phase because it was cached
 
     Returns:
         Tuple of (preflight_clause, preflight_mounts, tmp_paths)
@@ -361,16 +499,16 @@ def _prepare_preflight_scripts(
     preflight_mounts: list[str] = []
     tmp_paths: dict[str, str] = {
         "system": "",
+        "desktop": "",
         "settings": "",
         "environment": "",
-        "helpme": "",
     }
 
+    desktop_container_path = f"/tmp/agents-runner-preflight-desktop-{task_token}.sh"
     settings_container_path = f"/tmp/agents-runner-preflight-settings-{task_token}.sh"
     environment_container_path = (
         f"/tmp/agents-runner-preflight-environment-{task_token}.sh"
     )
-    extra_container_path = f"/tmp/agents-runner-preflight-extra-{task_token}.sh"
 
     preflights_host_dir = (
         Path(__file__).resolve().parent.parent / "preflights"
@@ -409,27 +547,43 @@ def _prepare_preflight_scripts(
             ["-v", f"{preflights_host_dir}:{preflights_container_dir}:ro"]
         )
 
+        preflights_scripts: dict[str, str] = {}
+        try:
+            for candidate in sorted(preflights_host_dir.glob("*.sh")):
+                preflights_scripts[candidate.name] = candidate.read_text(
+                    encoding="utf-8"
+                ).strip()
+        except Exception:
+            preflights_scripts = {}
+
         preflight_clause += (
             f"PREFLIGHTS_DIR={shlex.quote(preflights_container_dir)}; "
             'export AGENTS_RUNNER_PREFLIGHTS_DIR="${PREFLIGHTS_DIR}"; '
-            'PREFLIGHT_SYSTEM="${PREFLIGHTS_DIR}/pixelarch_yay.sh"; '
-            f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: starting')}; "
-            '/bin/bash "${PREFLIGHT_SYSTEM}"; '
-            f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: done')}; "
         )
 
-        # Settings preflight (optional)
-        if (settings_preflight_script or "").strip():
-            preflights_scripts: dict[str, str] = {}
-            try:
-                for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                    preflights_scripts[candidate.name] = candidate.read_text(
-                        encoding="utf-8"
-                    ).strip()
-            except Exception:
-                preflights_scripts = {}
+        if not skip_system:
+            preflight_clause += (
+                'PREFLIGHT_SYSTEM="${PREFLIGHTS_DIR}/pixelarch_yay.sh"; '
+                f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: starting')}; "
+                '/bin/bash "${PREFLIGHT_SYSTEM}"; '
+                f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: done')}; "
+            )
 
-            stripped = str(settings_preflight_script or "").strip()
+        def _append_optional_phase(
+            *,
+            label: str,
+            script: str,
+            container_path: str,
+            tmp_key: str,
+            skip: bool,
+            env_var: str,
+        ) -> None:
+            nonlocal preflight_clause
+            if skip:
+                return
+            stripped = str(script or "").strip()
+            if not stripped:
+                return
             matched = next(
                 (
                     name
@@ -440,109 +594,46 @@ def _prepare_preflight_scripts(
             )
             if matched:
                 preflight_clause += (
-                    f'PREFLIGHT_SETTINGS="${{PREFLIGHTS_DIR}}/{matched}"; '
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: running')}; "
-                    '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: done')}; "
+                    f'{env_var}="${{PREFLIGHTS_DIR}}/{matched}"; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: running')}; "
+                    f'/bin/bash "${{{env_var}}}"; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: done')}; "
                 )
-            else:
-                tmp_paths["settings"] = _write_preflight_script(
-                    str(settings_preflight_script or ""), "settings"
-                )
-                preflight_mounts.extend(
-                    ["-v", f"{tmp_paths['settings']}:{settings_container_path}:ro"]
-                )
-                preflight_clause += (
-                    f"PREFLIGHT_SETTINGS={shlex.quote(settings_container_path)}; "
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: running')}; "
-                    '/bin/bash "${PREFLIGHT_SETTINGS}"; '
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'settings: done')}; "
-                )
+                return
 
-        # Environment preflight (optional)
-        if (environment_preflight_script or "").strip():
-            preflights_scripts = {}
-            try:
-                for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                    preflights_scripts[candidate.name] = candidate.read_text(
-                        encoding="utf-8"
-                    ).strip()
-            except Exception:
-                preflights_scripts = {}
-
-            stripped = str(environment_preflight_script or "").strip()
-            matched = next(
-                (
-                    name
-                    for name, content in preflights_scripts.items()
-                    if content == stripped and name != "pixelarch_yay.sh"
-                ),
-                None,
+            tmp_paths[tmp_key] = _write_preflight_script(str(script or ""), label)
+            preflight_mounts.extend(["-v", f"{tmp_paths[tmp_key]}:{container_path}:ro"])
+            preflight_clause += (
+                f"{env_var}={shlex.quote(container_path)}; "
+                f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: running')}; "
+                f'/bin/bash "${{{env_var}}}"; '
+                f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: done')}; "
             )
-            if matched:
-                preflight_clause += (
-                    f'PREFLIGHT_ENV="${{PREFLIGHTS_DIR}}/{matched}"; '
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: running')}; "
-                    '/bin/bash "${PREFLIGHT_ENV}"; '
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: done')}; "
-                )
-            else:
-                tmp_paths["environment"] = _write_preflight_script(
-                    str(environment_preflight_script or ""), "environment"
-                )
-                preflight_mounts.extend(
-                    [
-                        "-v",
-                        f"{tmp_paths['environment']}:{environment_container_path}:ro",
-                    ]
-                )
-                preflight_clause += (
-                    f"PREFLIGHT_ENV={shlex.quote(environment_container_path)}; "
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: running')}; "
-                    '/bin/bash "${PREFLIGHT_ENV}"; '
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'environment: done')}; "
-                )
 
-        # Extra preflight (optional, help mode, etc.)
-        if str(extra_preflight_script or "").strip():
-            preflights_scripts = {}
-            try:
-                for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                    preflights_scripts[candidate.name] = candidate.read_text(
-                        encoding="utf-8"
-                    ).strip()
-            except Exception:
-                preflights_scripts = {}
-
-            stripped = str(extra_preflight_script or "").strip()
-            matched = next(
-                (
-                    name
-                    for name, content in preflights_scripts.items()
-                    if content == stripped and name != "pixelarch_yay.sh"
-                ),
-                None,
-            )
-            if matched:
-                preflight_clause += (
-                    f'PREFLIGHT_EXTRA="${{PREFLIGHTS_DIR}}/{matched}"; '
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: running')}; "
-                    '/bin/bash "${PREFLIGHT_EXTRA}"; '
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: done')}; "
-                )
-            else:
-                tmp_paths["helpme"] = _write_preflight_script(
-                    str(extra_preflight_script or ""), "extra"
-                )
-                preflight_mounts.extend(
-                    ["-v", f"{tmp_paths['helpme']}:{extra_container_path}:ro"]
-                )
-                preflight_clause += (
-                    f"PREFLIGHT_EXTRA={shlex.quote(extra_container_path)}; "
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: running')}; "
-                    '/bin/bash "${PREFLIGHT_EXTRA}"; '
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', 'extra: done')}; "
-                )
+        _append_optional_phase(
+            label="desktop",
+            script=desktop_preflight_script,
+            container_path=desktop_container_path,
+            tmp_key="desktop",
+            skip=skip_desktop,
+            env_var="PREFLIGHT_DESKTOP",
+        )
+        _append_optional_phase(
+            label="settings",
+            script=str(settings_preflight_script or ""),
+            container_path=settings_container_path,
+            tmp_key="settings",
+            skip=skip_settings,
+            env_var="PREFLIGHT_SETTINGS",
+        )
+        _append_optional_phase(
+            label="environment",
+            script=str(environment_preflight_script or ""),
+            container_path=environment_container_path,
+            tmp_key="environment",
+            skip=skip_environment,
+            env_var="PREFLIGHT_ENV",
+        )
 
         return preflight_clause, preflight_mounts, tmp_paths
 
@@ -640,16 +731,17 @@ def _build_host_shell_script(
     host_script_parts = [
         f"CONTAINER_NAME={shlex.quote(container_name)}",
         f"TMP_SYSTEM={shlex.quote(tmp_paths.get('system', ''))}",
+        f"TMP_DESKTOP={shlex.quote(tmp_paths.get('desktop', ''))}",
         f"TMP_SETTINGS={shlex.quote(tmp_paths.get('settings', ''))}",
         f"TMP_ENV={shlex.quote(tmp_paths.get('environment', ''))}",
-        f"TMP_HELPME={shlex.quote(tmp_paths.get('helpme', ''))}",
         f"FINISH_FILE={shlex.quote(finish_path)}",
         'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
         'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
         + 'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
+        + 'if [ -n "$TMP_DESKTOP" ]; then rm -f -- "$TMP_DESKTOP" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; '
-        + 'if [ -n "$TMP_HELPME" ]; then rm -f -- "$TMP_HELPME" >/dev/null 2>&1 || true; fi; }',
+        + "} ",
         'finish() { STATUS=$?; if [ ! -e "$FINISH_FILE" ]; then write_finish "$STATUS"; fi; cleanup; }',
         "trap finish EXIT",
     ]

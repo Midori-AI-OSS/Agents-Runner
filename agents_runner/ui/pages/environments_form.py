@@ -15,8 +15,6 @@ from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
-from PySide6.QtWidgets import QSplitter
-from PySide6.QtWidgets import QStackedWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -30,7 +28,6 @@ from agents_runner.ui.constants import (
     GRID_HORIZONTAL_SPACING,
     GRID_VERTICAL_SPACING,
     STANDARD_BUTTON_WIDTH,
-    TAB_CONTENT_SPACING,
 )
 from agents_runner.ui.pages.environments_agents import AgentsTabWidget
 from agents_runner.ui.pages.environments_ports import PortsTabWidget
@@ -129,10 +126,8 @@ class _EnvironmentsFormMixin:
 
         self._container_caching_enabled = QCheckBox("Enable container caching")
         self._container_caching_enabled.setToolTip(
-            "When enabled, environment preflight scripts are executed at Docker build time.\n"
-            "This creates a cached image with pre-installed dependencies, speeding up task startup.\n\n"
-            "The cached preflight script is configured in the Preflight pane.\n"
-            "Image is automatically rebuilt when the cached preflight script changes."
+            "When enabled, selected preflight phases build cached Docker layers.\n"
+            "Configure phase cache toggles in the Preflight pane."
         )
         self._container_caching_enabled.stateChanged.connect(
             self._on_container_caching_toggled
@@ -202,88 +197,37 @@ class _EnvironmentsFormMixin:
         self._preflight_enabled.toggled.connect(self._preflight_script.setEnabled)
         self._preflight_script.setEnabled(False)
 
-        self._cached_preflight_enabled = QCheckBox("Enable cached preflight")
-        self._cached_preflight_enabled.setToolTip(
-            "Runs at Docker build time to pre-install dependencies.\n"
-            "Creates a cached image for faster task startup."
+        self._cache_system_preflight_enabled = QCheckBox("Cache system phase")
+        self._cache_system_preflight_enabled.setToolTip(
+            "When enabled, the system preflight (`pixelarch_yay.sh`) is cached as an image layer."
         )
+        self._cache_system_preflight_enabled.setEnabled(False)
 
-        self._cached_preflight_script = QPlainTextEdit()
-        self._cached_preflight_script.setPlaceholderText(
-            "#!/usr/bin/env bash\n"
-            "set -euo pipefail\n"
-            "\n"
-            "# Runs at Docker build time.\n"
-            "# Use for installing packages and dependencies.\n"
+        self._cache_settings_preflight_enabled = QCheckBox("Cache settings phase")
+        self._cache_settings_preflight_enabled.setToolTip(
+            "When enabled, the Settings preflight script is cached as an image layer."
         )
-        self._cached_preflight_script.setTabChangesFocus(True)
-        self._cached_preflight_enabled.toggled.connect(
-            self._cached_preflight_script.setEnabled
+        self._cache_settings_preflight_enabled.setEnabled(False)
+
+        self._cache_environment_preflight_enabled = QCheckBox("Cache environment phase")
+        self._cache_environment_preflight_enabled.setToolTip(
+            "When enabled, the Environment preflight script is cached as an image layer."
         )
-        self._cached_preflight_script.setEnabled(False)
+        self._cache_environment_preflight_enabled.setEnabled(False)
 
-        self._run_preflight_enabled = QCheckBox("Enable run preflight")
-        self._run_preflight_enabled.setToolTip(
-            "Runs at task startup after cached preflight.\n"
-            "Use for runtime setup and validation."
+        self._desktop_cache_hint = QLabel(
+            "Desktop phase caching uses `General -> Cache desktop build`."
         )
-
-        self._run_preflight_script = QPlainTextEdit()
-        self._run_preflight_script.setPlaceholderText(
-            "#!/usr/bin/env bash\n"
-            "set -euo pipefail\n"
-            "\n"
-            "# Runs at task startup (after cached layer).\n"
-            "# Use for runtime-specific setup.\n"
-        )
-        self._run_preflight_script.setTabChangesFocus(True)
-        self._run_preflight_enabled.toggled.connect(
-            self._run_preflight_script.setEnabled
-        )
-        self._run_preflight_script.setEnabled(False)
-
-        self._preflight_single_container = QWidget()
-        single_layout = QVBoxLayout(self._preflight_single_container)
-        single_layout.setSpacing(TAB_CONTENT_SPACING)
-        single_layout.setContentsMargins(0, 0, 0, 0)
-        single_layout.addWidget(self._preflight_enabled)
-        single_layout.addWidget(QLabel("Preflight script"))
-        single_layout.addWidget(self._preflight_script, 1)
-
-        self._preflight_dual_container = QWidget()
-        dual_layout = QVBoxLayout(self._preflight_dual_container)
-        dual_layout.setSpacing(TAB_CONTENT_SPACING)
-        dual_layout.setContentsMargins(0, 0, 0, 0)
-
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.setChildrenCollapsible(False)
-
-        left_panel = GlassCard()
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(18, 16, 18, 16)
-        left_layout.setSpacing(10)
-        left_layout.addWidget(self._cached_preflight_enabled)
-        left_layout.addWidget(QLabel("Cached preflight"))
-        left_layout.addWidget(self._cached_preflight_script, 1)
-
-        right_panel = GlassCard()
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(18, 16, 18, 16)
-        right_layout.setSpacing(10)
-        right_layout.addWidget(self._run_preflight_enabled)
-        right_layout.addWidget(QLabel("Run preflight"))
-        right_layout.addWidget(self._run_preflight_script, 1)
-
-        splitter.addWidget(left_panel)
-        splitter.addWidget(right_panel)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
-
-        dual_layout.addWidget(splitter, 1)
-
-        self._preflight_stack = QStackedWidget()
-        self._preflight_stack.addWidget(self._preflight_single_container)
-        self._preflight_stack.addWidget(self._preflight_dual_container)
+        self._preflight_phase_cache_card = GlassCard()
+        phase_layout = QVBoxLayout(self._preflight_phase_cache_card)
+        phase_layout.setContentsMargins(18, 16, 18, 16)
+        phase_layout.setSpacing(10)
+        phase_layout.addWidget(QLabel("Phase cache toggles"))
+        phase_layout.addWidget(self._cache_system_preflight_enabled)
+        phase_layout.addWidget(self._cache_settings_preflight_enabled)
+        phase_layout.addWidget(self._cache_environment_preflight_enabled)
+        phase_layout.addWidget(self._desktop_cache_hint)
+        phase_layout.addStretch(1)
 
         self._env_vars = QPlainTextEdit()
         self._env_vars.setPlaceholderText("# KEY=VALUE (one per line)\n")
@@ -393,7 +337,10 @@ class _EnvironmentsFormMixin:
         self._register_page("ports", ports_page)
 
         preflight_page, preflight_body = self._create_page(specs_by_key["preflight"])
-        preflight_body.addWidget(self._preflight_stack, 1)
+        preflight_body.addWidget(self._preflight_enabled)
+        preflight_body.addWidget(QLabel("Environment preflight script"))
+        preflight_body.addWidget(self._preflight_script, 1)
+        preflight_body.addWidget(self._preflight_phase_cache_card)
         self._register_page("preflight", preflight_page)
 
     def _build_navigation(self, nav_layout: QVBoxLayout) -> None:

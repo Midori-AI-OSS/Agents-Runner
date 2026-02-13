@@ -416,10 +416,20 @@ class _MainWindowTasksAgentMixin:
         container_caching_enabled = (
             bool(getattr(env, "container_caching_enabled", False)) if env else False
         )
-        cached_preflight_script = (
-            str(getattr(env, "cached_preflight_script", "") or "").strip()
+        cache_system_preflight_enabled = (
+            bool(getattr(env, "cache_system_preflight_enabled", False))
             if env
-            else ""
+            else False
+        )
+        cache_settings_preflight_enabled = (
+            bool(getattr(env, "cache_settings_preflight_enabled", False))
+            if env
+            else False
+        )
+        cache_environment_preflight_enabled = (
+            bool(getattr(env, "cache_environment_preflight_enabled", False))
+            if env
+            else False
         )
         # Only enable cache if desktop is enabled
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
@@ -707,7 +717,9 @@ class _MainWindowTasksAgentMixin:
             headless_desktop_enabled=headless_desktop_enabled,
             desktop_cache_enabled=desktop_cache_enabled,
             container_caching_enabled=container_caching_enabled,
-            cached_preflight_script=cached_preflight_script or None,
+            cache_system_preflight_enabled=cache_system_preflight_enabled,
+            cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+            cache_environment_preflight_enabled=cache_environment_preflight_enabled,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,

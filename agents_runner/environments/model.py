@@ -82,7 +82,9 @@ class Environment:
     headless_desktop_enabled: bool = False
     cache_desktop_build: bool = False
     container_caching_enabled: bool = False
-    cached_preflight_script: str = ""
+    cache_system_preflight_enabled: bool = False
+    cache_settings_preflight_enabled: bool = False
+    cache_environment_preflight_enabled: bool = False
     preflight_enabled: bool = False
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
