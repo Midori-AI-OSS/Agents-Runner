@@ -746,7 +746,7 @@ class _MainWindowTasksAgentMixin:
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
 
-        self._show_dashboard()
+        self._maybe_auto_navigate_on_task_start(interactive=False)
         self._new_task.reset_for_new_run()
         return task_id
 

@@ -101,6 +101,8 @@ class MainWindow(
             "max_agents_running": -1,
             "append_pixelarch_context": False,
             "headless_desktop_enabled": False,
+            "auto_navigate_on_run_agent_start": False,
+            "auto_navigate_on_run_interactive_start": False,
             "ui_theme": "auto",
             "radio_enabled": False,
             "radio_channel": "",

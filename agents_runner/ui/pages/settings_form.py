@@ -166,6 +166,18 @@ class _SettingsFormMixin:
         self._headless_desktop_enabled.setToolTip(
             "When enabled, this overrides per-environment headless desktop settings."
         )
+        self._auto_navigate_on_run_agent_start = QCheckBox(
+            "Auto-navigate to Home when Run Agent starts"
+        )
+        self._auto_navigate_on_run_agent_start.setToolTip(
+            "When enabled, starting a Run Agent task switches to the Home dashboard."
+        )
+        self._auto_navigate_on_run_interactive_start = QCheckBox(
+            "Auto-navigate to Home when Run Interactive starts"
+        )
+        self._auto_navigate_on_run_interactive_start.setToolTip(
+            "When enabled, starting a Run Interactive task switches to the Home dashboard."
+        )
 
         self._gh_context_default = QCheckBox(
             "Enable GitHub context by default for new environments"
@@ -374,6 +386,8 @@ class _SettingsFormMixin:
 
         runtime_page, runtime_body = self._create_page(specs_by_key["runtime_behavior"])
         runtime_body.addWidget(self._headless_desktop_enabled)
+        runtime_body.addWidget(self._auto_navigate_on_run_agent_start)
+        runtime_body.addWidget(self._auto_navigate_on_run_interactive_start)
         runtime_body.addWidget(self._mount_host_cache)
         runtime_body.addStretch(1)
         self._register_page("runtime_behavior", runtime_page)
@@ -745,6 +759,12 @@ class _SettingsFormMixin:
             self._headless_desktop_enabled.setChecked(
                 bool(settings.get("headless_desktop_enabled") or False)
             )
+            self._auto_navigate_on_run_agent_start.setChecked(
+                bool(settings.get("auto_navigate_on_run_agent_start") or False)
+            )
+            self._auto_navigate_on_run_interactive_start.setChecked(
+                bool(settings.get("auto_navigate_on_run_interactive_start") or False)
+            )
             confirmation_mode = str(
                 settings.get("github_write_confirmation_mode") or "always"
             ).strip()
@@ -838,6 +858,12 @@ class _SettingsFormMixin:
             ),
             "headless_desktop_enabled": bool(
                 self._headless_desktop_enabled.isChecked()
+            ),
+            "auto_navigate_on_run_agent_start": bool(
+                self._auto_navigate_on_run_agent_start.isChecked()
+            ),
+            "auto_navigate_on_run_interactive_start": bool(
+                self._auto_navigate_on_run_interactive_start.isChecked()
             ),
             "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
             "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),

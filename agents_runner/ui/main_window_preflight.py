@@ -198,7 +198,7 @@ class _MainWindowPreflightMixin:
         self._run_started_s[task_id] = time.time()
 
         thread.start()
-        self._show_dashboard()
+        self._maybe_auto_navigate_on_task_start(interactive=False)
         self._schedule_save()
 
     def _on_settings_test_preflight(self, settings: dict) -> None:

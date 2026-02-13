@@ -292,7 +292,7 @@ class _MainWindowTasksInteractiveMixin:
             task.workspace_type = env.workspace_type
 
         prep_id = uuid4().hex[:8]
-        self._show_dashboard()
+        self._maybe_auto_navigate_on_task_start(interactive=True)
         self._new_task.reset_for_new_run()
 
         prep_worker = InteractivePrepWorker(

@@ -102,6 +102,18 @@ class _MainWindowNavigationMixin:
             return
         self._transition_to_page(self._dashboard)
 
+    def _should_auto_navigate_on_task_start(self, *, interactive: bool) -> bool:
+        key = (
+            "auto_navigate_on_run_interactive_start"
+            if interactive
+            else "auto_navigate_on_run_agent_start"
+        )
+        return bool(self._settings_data.get(key) or False)
+
+    def _maybe_auto_navigate_on_task_start(self, *, interactive: bool) -> None:
+        if self._should_auto_navigate_on_task_start(interactive=interactive):
+            self._show_dashboard()
+
     def _show_new_task(self) -> None:
         self._show_tasks()
 
