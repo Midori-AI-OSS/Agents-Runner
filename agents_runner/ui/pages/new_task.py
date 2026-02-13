@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QEasingCurve
+from PySide6.QtCore import QParallelAnimationGroup
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QSize
@@ -77,8 +78,7 @@ class NewTaskPage(QWidget):
         self._stt_thread: QThread | None = None
         self._stt_worker: SttWorker | None = None
         self._current_interactive_slot: Callable | None = None
-        self._base_branch_visibility_animation: QPropertyAnimation | None = None
-        self._base_branch_support_transition_pending = False
+        self._base_branch_visibility_animation: QParallelAnimationGroup | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -841,14 +841,15 @@ class NewTaskPage(QWidget):
 
     def set_repo_controls_visible(self, visible: bool) -> None:
         desired = bool(visible)
-        if desired != self._repo_controls_visible:
-            self._base_branch_support_transition_pending = True
+        changed = desired != self._repo_controls_visible
         self._repo_controls_visible = desired
-        self._sync_base_branch_controls_visibility()
+        self._sync_base_branch_controls_visibility(
+            animate_transition=bool(changed and self._base_branch_host_active)
+        )
 
     def set_base_branch_host_active(self, active: bool) -> None:
         self._base_branch_host_active = bool(active)
-        self._sync_base_branch_controls_visibility()
+        self._sync_base_branch_controls_visibility(animate_transition=False)
 
     def base_branch_controls_widget(self) -> QWidget:
         return self._base_branch_controls
@@ -867,8 +868,15 @@ class NewTaskPage(QWidget):
             self._base_branch_visibility_animation.stop()
             self._base_branch_visibility_animation = None
         effect = self._base_branch_opacity_effect()
-        effect.setOpacity(1.0 if visible else 0.0)
-        self._base_branch_controls.setVisible(visible)
+        if visible:
+            target_width = max(1, int(self._base_branch_controls.sizeHint().width()))
+            self._base_branch_controls.setMaximumWidth(target_width)
+            self._base_branch_controls.setVisible(True)
+            effect.setOpacity(1.0)
+            return
+        self._base_branch_controls.setMaximumWidth(0)
+        self._base_branch_controls.setVisible(False)
+        effect.setOpacity(0.0)
 
     def _animate_base_branch_visibility(self, *, show: bool) -> None:
         if show and self._base_branch_controls.isVisible():
@@ -881,29 +889,54 @@ class NewTaskPage(QWidget):
             self._base_branch_visibility_animation = None
 
         effect = self._base_branch_opacity_effect()
+        target_width = max(1, int(self._base_branch_controls.sizeHint().width()))
         if show:
+            start_width = 0
+            end_width = target_width
             start_opacity = 0.0
             end_opacity = 1.0
             self._base_branch_controls.setVisible(True)
+            self._base_branch_controls.setMaximumWidth(start_width)
         else:
+            start_width = int(
+                self._base_branch_controls.maximumWidth() or target_width or 0
+            )
+            if start_width <= 0:
+                start_width = target_width
+            end_width = 0
             start_opacity = float(effect.opacity())
             if start_opacity < 0.01:
                 start_opacity = 1.0
             end_opacity = 0.0
+            self._base_branch_controls.setMaximumWidth(start_width)
 
         effect.setOpacity(start_opacity)
 
-        animation = QPropertyAnimation(effect, b"opacity", self)
-        animation.setDuration(220)
-        animation.setStartValue(start_opacity)
-        animation.setEndValue(end_opacity)
-        animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        width_animation = QPropertyAnimation(
+            self._base_branch_controls, b"maximumWidth", self
+        )
+        width_animation.setDuration(220)
+        width_animation.setStartValue(start_width)
+        width_animation.setEndValue(end_width)
+        width_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        opacity_animation = QPropertyAnimation(effect, b"opacity", self)
+        opacity_animation.setDuration(220)
+        opacity_animation.setStartValue(start_opacity)
+        opacity_animation.setEndValue(end_opacity)
+        opacity_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        animation = QParallelAnimationGroup(self)
+        animation.addAnimation(width_animation)
+        animation.addAnimation(opacity_animation)
 
         def _on_finished() -> None:
             self._base_branch_visibility_animation = None
             if show:
                 effect.setOpacity(1.0)
+                self._base_branch_controls.setMaximumWidth(target_width)
                 return
+            self._base_branch_controls.setMaximumWidth(0)
             self._base_branch_controls.setVisible(False)
             effect.setOpacity(0.0)
 
@@ -911,14 +944,13 @@ class NewTaskPage(QWidget):
         animation.start()
         self._base_branch_visibility_animation = animation
 
-    def _sync_base_branch_controls_visibility(self) -> None:
+    def _sync_base_branch_controls_visibility(
+        self, *, animate_transition: bool
+    ) -> None:
         should_show = bool(
             self._repo_controls_visible and self._base_branch_host_active
         )
-        support_transition = bool(self._base_branch_support_transition_pending)
-        self._base_branch_support_transition_pending = False
-
-        if support_transition and self._base_branch_host_active:
+        if animate_transition:
             self._animate_base_branch_visibility(show=should_show)
             return
         self._set_base_branch_visibility_immediate(visible=should_show)
