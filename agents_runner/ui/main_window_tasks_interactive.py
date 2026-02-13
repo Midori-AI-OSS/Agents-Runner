@@ -313,6 +313,20 @@ class _MainWindowTasksInteractiveMixin:
             is_help_launch=is_help_launch,
             apply_full_prompting=apply_full_prompting,
             desktop_enabled=desktop_enabled,
+            settings_preflight_script=settings_preflight_script,
+            extra_preflight_script=extra_preflight_script,
+            container_caching_enabled=bool(
+                env and getattr(env, "container_caching_enabled", False)
+            ),
+            cache_system_preflight_enabled=bool(
+                env and getattr(env, "cache_system_preflight_enabled", False)
+            ),
+            cache_settings_preflight_enabled=bool(
+                env and getattr(env, "cache_settings_preflight_enabled", False)
+            ),
+            cache_desktop_build=bool(
+                env and getattr(env, "cache_desktop_build", False)
+            ),
             prep_id=prep_id,
         )
         prep_thread = QThread(self)
@@ -536,6 +550,23 @@ class _MainWindowTasksInteractiveMixin:
         if pr_metadata_mount:
             launch_mounts.append(pr_metadata_mount)
 
+        cache_override_keys = {
+            "runtime_image",
+            "system_preflight_cached",
+            "desktop_preflight_cached",
+            "settings_preflight_cached",
+            "environment_preflight_cached",
+        }
+        has_runtime_cache_overrides = all(
+            key in payload for key in cache_override_keys
+        )
+        runtime_image = str(payload.get("runtime_image") or context.get("image") or "")
+        resolved_extra_preflight_script = str(
+            payload.get("resolved_extra_preflight_script")
+            or context.get("extra_preflight_script")
+            or ""
+        )
+
         try:
             launch_docker_terminal_task(
                 main_window=self,
@@ -552,7 +583,7 @@ class _MainWindowTasksInteractiveMixin:
                 host_codex=context.get("host_codex") or "",
                 host_workdir=context.get("host_workdir") or "",
                 config_extra_mounts=launch_mounts,
-                image=context.get("image") or "",
+                image=runtime_image,
                 container_name=context.get("container_name") or "",
                 container_agent_dir=context.get("container_agent_dir") or "",
                 container_workdir=context.get("container_workdir") or "",
@@ -560,11 +591,37 @@ class _MainWindowTasksInteractiveMixin:
                 environment_preflight_script=context.get(
                     "environment_preflight_script"
                 ),
-                extra_preflight_script=context.get("extra_preflight_script") or "",
+                extra_preflight_script=resolved_extra_preflight_script,
                 stain=context.get("stain"),
                 spinner=context.get("spinner"),
                 desired_base=context.get("desired_base") or "",
                 skip_image_pull=True,
+                runtime_image_override=runtime_image
+                if has_runtime_cache_overrides
+                else None,
+                system_preflight_cached_override=bool(
+                    payload.get("system_preflight_cached")
+                )
+                if has_runtime_cache_overrides
+                else None,
+                desktop_preflight_cached_override=bool(
+                    payload.get("desktop_preflight_cached")
+                )
+                if has_runtime_cache_overrides
+                else None,
+                settings_preflight_cached_override=bool(
+                    payload.get("settings_preflight_cached")
+                )
+                if has_runtime_cache_overrides
+                else None,
+                environment_preflight_cached_override=bool(
+                    payload.get("environment_preflight_cached")
+                )
+                if has_runtime_cache_overrides
+                else None,
+                desktop_preflight_script_override=resolved_extra_preflight_script
+                if has_runtime_cache_overrides
+                else None,
             )
         except Exception as exc:
             self._on_interactive_prep_failed(task_id, str(exc))

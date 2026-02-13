@@ -81,6 +81,12 @@ def launch_docker_terminal_task(
     spinner: str | None,
     desired_base: str = "",
     skip_image_pull: bool = False,
+    runtime_image_override: str | None = None,
+    system_preflight_cached_override: bool | None = None,
+    desktop_preflight_cached_override: bool | None = None,
+    settings_preflight_cached_override: bool | None = None,
+    environment_preflight_cached_override: bool | None = None,
+    desktop_preflight_script_override: str | None = None,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
 
@@ -117,6 +123,12 @@ def launch_docker_terminal_task(
         spinner: Task spinner color
         desired_base: Desired base branch for git
         skip_image_pull: If True, skip docker pull in host launcher script
+        runtime_image_override: Optional precomputed runtime image
+        system_preflight_cached_override: Optional precomputed system cache status
+        desktop_preflight_cached_override: Optional precomputed desktop cache status
+        settings_preflight_cached_override: Optional precomputed settings cache status
+        environment_preflight_cached_override: Optional precomputed env cache status
+        desktop_preflight_script_override: Optional precomputed desktop script
     """
     # Treat all interactive extra preflights as the desktop phase.
     desktop_preflight_script = str(extra_preflight_script or "")
@@ -156,71 +168,93 @@ def launch_docker_terminal_task(
     desktop_cache_enabled = bool(env and getattr(env, "cache_desktop_build", False))
     desktop_cache_enabled = desktop_cache_enabled and desktop_enabled
 
+    use_precomputed_cache = all(
+        value is not None
+        for value in (
+            runtime_image_override,
+            system_preflight_cached_override,
+            desktop_preflight_cached_override,
+            settings_preflight_cached_override,
+            environment_preflight_cached_override,
+        )
+    )
+
     def on_phase_log(line: str) -> None:
         main_window._on_task_log(task_id, line)
 
-    if cache_system_enabled and system_preflight_script.strip():
-        next_image = ensure_phase_image(
-            base_image=runtime_image,
-            phase_name="system",
-            script_content=system_preflight_script,
-            preflights_dir=preflights_host_dir,
-            on_log=on_phase_log,
-        )
-        system_preflight_cached = next_image != runtime_image
-        runtime_image = next_image
-    elif cache_system_enabled:
-        on_phase_log(
-            format_log(
-                "phase",
-                "cache",
-                "WARN",
-                "system caching enabled but system script is unavailable",
+    if use_precomputed_cache:
+        runtime_image = str(runtime_image_override or image)
+        system_preflight_cached = bool(system_preflight_cached_override)
+        desktop_preflight_cached = bool(desktop_preflight_cached_override)
+        settings_preflight_cached = bool(settings_preflight_cached_override)
+        environment_preflight_cached = bool(environment_preflight_cached_override)
+        if desktop_preflight_script_override is not None:
+            desktop_preflight_script = str(desktop_preflight_script_override or "")
+    else:
+        if cache_system_enabled and system_preflight_script.strip():
+            next_image = ensure_phase_image(
+                base_image=runtime_image,
+                phase_name="system",
+                script_content=system_preflight_script,
+                preflights_dir=preflights_host_dir,
+                on_log=on_phase_log,
             )
-        )
-
-    if desktop_cache_enabled:
-        desktop_base_image = runtime_image
-        next_image = ensure_desktop_image(desktop_base_image, on_log=on_phase_log)
-        desktop_preflight_cached = next_image != desktop_base_image
-        runtime_image = next_image
-        if desktop_preflight_cached:
-            desktop_run_path = preflights_host_dir / "desktop_run.sh"
-            try:
-                desktop_preflight_script = desktop_run_path.read_text(encoding="utf-8")
-            except Exception:
-                desktop_preflight_script = ""
-            if not desktop_preflight_script.strip():
-                on_phase_log(
-                    format_log(
-                        "desktop",
-                        "cache",
-                        "WARN",
-                        f"desktop cache active but runtime script is missing: {desktop_run_path}",
-                    )
+            system_preflight_cached = next_image != runtime_image
+            runtime_image = next_image
+        elif cache_system_enabled:
+            on_phase_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "WARN",
+                    "system caching enabled but system script is unavailable",
                 )
-                desktop_preflight_cached = False
-                runtime_image = desktop_base_image
-
-    if cache_settings_enabled and (settings_preflight_script or "").strip():
-        next_image = ensure_phase_image(
-            base_image=runtime_image,
-            phase_name="settings",
-            script_content=str(settings_preflight_script or ""),
-            preflights_dir=preflights_host_dir,
-            on_log=on_phase_log,
-        )
-        settings_preflight_cached = next_image != runtime_image
-        runtime_image = next_image
-    elif cache_settings_enabled:
-        on_phase_log(
-            format_log(
-                "phase",
-                "cache",
-                "WARN",
-                "settings caching enabled but settings script is empty",
             )
-        )
+
+        if desktop_cache_enabled:
+            desktop_base_image = runtime_image
+            next_image = ensure_desktop_image(desktop_base_image, on_log=on_phase_log)
+            desktop_preflight_cached = next_image != desktop_base_image
+            runtime_image = next_image
+            if desktop_preflight_cached:
+                desktop_run_path = preflights_host_dir / "desktop_run.sh"
+                try:
+                    desktop_preflight_script = desktop_run_path.read_text(
+                        encoding="utf-8"
+                    )
+                except Exception:
+                    desktop_preflight_script = ""
+                if not desktop_preflight_script.strip():
+                    on_phase_log(
+                        format_log(
+                            "desktop",
+                            "cache",
+                            "WARN",
+                            f"desktop cache active but runtime script is missing: {desktop_run_path}",
+                        )
+                    )
+                    desktop_preflight_cached = False
+                    runtime_image = desktop_base_image
+
+        if cache_settings_enabled and (settings_preflight_script or "").strip():
+            next_image = ensure_phase_image(
+                base_image=runtime_image,
+                phase_name="settings",
+                script_content=str(settings_preflight_script or ""),
+                preflights_dir=preflights_host_dir,
+                on_log=on_phase_log,
+            )
+            settings_preflight_cached = next_image != runtime_image
+            runtime_image = next_image
+        elif cache_settings_enabled:
+            on_phase_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "WARN",
+                    "settings caching enabled but settings script is empty",
+                )
+            )
 
     # Prepare preflight scripts and get mounts
     preflight_clause, preflight_mounts, tmp_paths = _prepare_preflight_scripts(
