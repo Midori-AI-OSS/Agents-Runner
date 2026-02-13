@@ -286,20 +286,11 @@ class GitHubWorkListPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
 
-        header = QWidget()
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 6, 16, 0)
-        header_layout.setSpacing(10)
-
         self._refresh = QToolButton()
-        self._refresh.setText("Refresh")
         self._refresh.setIcon(lucide_icon("refresh-cw"))
-        self._refresh.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._refresh.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._refresh.setToolTip("Refresh")
         self._refresh.clicked.connect(self.refresh)
-
-        header_layout.addStretch(1)
-        header_layout.addWidget(self._refresh)
-        root.addWidget(header)
 
         card = QWidget()
         card_layout = QVBoxLayout(card)
@@ -320,6 +311,7 @@ class GitHubWorkListPage(QWidget):
 
         columns_layout.addWidget(c1, 6)
         columns_layout.addWidget(c3, 5)
+        columns_layout.addWidget(self._refresh, 0, Qt.AlignRight)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
