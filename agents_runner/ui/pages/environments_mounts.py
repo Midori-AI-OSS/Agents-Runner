@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import parse_mounts_text
+from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.constants import (
     BUTTON_ROW_SPACING,
     TAB_CONTENT_MARGINS,
@@ -310,8 +311,9 @@ class MountsTabWidget(QWidget):
 
                 remove_btn = QToolButton()
                 remove_btn.setObjectName("RowTrash")
-                remove_btn.setText("Remove")
-                remove_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+                remove_btn.setIcon(lucide_icon("trash-2"))
+                remove_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+                remove_btn.setToolTip("Remove row")
                 remove_btn.clicked.connect(
                     lambda _=False, i=row_index: self._on_remove_row(i)
                 )
