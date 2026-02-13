@@ -557,9 +557,7 @@ class _MainWindowTasksInteractiveMixin:
             "settings_preflight_cached",
             "environment_preflight_cached",
         }
-        has_runtime_cache_overrides = all(
-            key in payload for key in cache_override_keys
-        )
+        has_runtime_cache_overrides = all(key in payload for key in cache_override_keys)
         runtime_image = str(payload.get("runtime_image") or context.get("image") or "")
         resolved_extra_preflight_script = str(
             payload.get("resolved_extra_preflight_script")

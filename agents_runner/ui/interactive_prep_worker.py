@@ -187,7 +187,9 @@ class InteractivePrepWorker(QObject):
         cache_settings_enabled = bool(
             self._container_caching_enabled and self._cache_settings_preflight_enabled
         )
-        desktop_cache_enabled = bool(self._cache_desktop_build and self._desktop_enabled)
+        desktop_cache_enabled = bool(
+            self._cache_desktop_build and self._desktop_enabled
+        )
 
         def on_phase_log(line: str) -> None:
             self.log.emit(self._task_id, str(line or ""))
