@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import Callable
 
+from PySide6.QtCore import QEasingCurve
+from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QSize
 from PySide6.QtCore import Signal
@@ -16,6 +18,7 @@ from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -66,20 +69,20 @@ class NewTaskPage(QWidget):
         self._workspace_ready = False
         self._workspace_error = ""
         self._spellcheck_enabled = True  # Default to enabled
+        self._terminal_id = ""
+        self._terminal_options: dict[str, str] = {}
+        self._terminal_available = False
         self._stt_mode = "offline"
         self._mic_recording: MicRecording | None = None
         self._stt_thread: QThread | None = None
         self._stt_worker: SttWorker | None = None
         self._current_interactive_slot: Callable | None = None
+        self._base_branch_visibility_animation: QPropertyAnimation | None = None
+        self._base_branch_support_transition_pending = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
-
-        header = QWidget()
-        header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(18, 16, 18, 16)
-        header_layout.setSpacing(6)
+        layout.setSpacing(0)
 
         self._base_branch_controls = QWidget(self)
         base_branch_layout = QHBoxLayout(self._base_branch_controls)
@@ -95,17 +98,9 @@ class NewTaskPage(QWidget):
         self._base_branch_controls.setVisible(False)
         base_branch_layout.addWidget(self._base_branch_label)
         base_branch_layout.addWidget(self._base_branch)
-
-        top_row = QHBoxLayout()
-        top_row.setSpacing(10)
-        title = QLabel("New task")
-        title.setStyleSheet("font-size: 18px; font-weight: 750;")
-
-        top_row.addWidget(title)
-        top_row.addStretch(1)
-
-        header_layout.addLayout(top_row)
-        layout.addWidget(header)
+        base_branch_opacity = QGraphicsOpacityEffect(self._base_branch_controls)
+        base_branch_opacity.setOpacity(0.0)
+        self._base_branch_controls.setGraphicsEffect(base_branch_opacity)
 
         card = QWidget()
         card_layout = QVBoxLayout(card)
@@ -177,13 +172,9 @@ class NewTaskPage(QWidget):
         )
         interactive_hint.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
-        self._terminal = QComboBox()
-        self._refresh_terminals()
-
-        refresh_terminals = QToolButton()
-        refresh_terminals.setText("Refresh")
-        refresh_terminals.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        refresh_terminals.clicked.connect(self._refresh_terminals)
+        self._terminal_display = QLabel("No terminals detected")
+        self._terminal_display.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._terminal_display.setStyleSheet("color: rgba(237, 239, 245, 200);")
 
         self._command = QLineEdit("--sandbox danger-full-access")
         self._command.setPlaceholderText(
@@ -196,17 +187,17 @@ class NewTaskPage(QWidget):
         interactive_grid.setHorizontalSpacing(10)
         interactive_grid.setVerticalSpacing(10)
         interactive_grid.setColumnStretch(1, 1)
+        interactive_grid.setColumnStretch(3, 1)
         interactive_grid.addWidget(QLabel("Terminal"), 0, 0)
-        interactive_grid.addWidget(self._terminal, 0, 1)
-        interactive_grid.addWidget(refresh_terminals, 0, 2)
+        interactive_grid.addWidget(self._terminal_display, 0, 1)
 
         # Workspace display for mounted folder environments (shown on terminal line)
         self._terminal_workspace_label = QLabel("Workspace")
         self._terminal_workspace = QLabel("—")
         self._terminal_workspace.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._terminal_workspace.setStyleSheet("color: rgba(237, 239, 245, 200);")
-        interactive_grid.addWidget(self._terminal_workspace_label, 0, 3)
-        interactive_grid.addWidget(self._terminal_workspace, 0, 4)
+        interactive_grid.addWidget(self._terminal_workspace_label, 0, 2)
+        interactive_grid.addWidget(self._terminal_workspace, 0, 3)
         # Initially hidden, shown for mounted folder environments
         self._terminal_workspace_label.setVisible(False)
         self._terminal_workspace.setVisible(False)
@@ -266,6 +257,8 @@ class NewTaskPage(QWidget):
 
         self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.raise_()
+        self._refresh_terminal_selection("")
+        self._update_run_buttons()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -305,37 +298,58 @@ class NewTaskPage(QWidget):
         return reply == QMessageBox.Yes
 
     def _update_run_buttons(self) -> None:
-        has_terminal = bool(str(self._terminal.currentData() or "").strip())
+        has_terminal = bool(self._terminal_available and self._terminal_id)
         can_launch = bool(self._workspace_ready and has_terminal)
         self._run_agent.setEnabled(self._workspace_ready)
         self._run_interactive.setEnabled(can_launch)
         self._get_agent_help.setEnabled(can_launch)
 
-    def _refresh_terminals(self) -> None:
-        current = str(self._terminal.currentData() or "")
+    def _refresh_terminal_selection(self, terminal_id: str) -> None:
         options = detect_terminal_options()
-        self._terminal.blockSignals(True)
-        try:
-            self._terminal.clear()
-            if not options:
-                self._terminal.addItem("No terminals detected", "")
-                self._terminal.setCurrentIndex(0)
-            else:
-                selected = False
-                for opt in options:
-                    self._terminal.addItem(opt.label, opt.terminal_id)
-                desired = current
-                if desired:
-                    idx = self._terminal.findData(desired)
-                    if idx >= 0:
-                        self._terminal.setCurrentIndex(idx)
-                        selected = True
-                if not selected and self._terminal.count() > 0:
-                    self._terminal.setCurrentIndex(0)
-        finally:
-            self._terminal.blockSignals(False)
+        self._terminal_options = {opt.terminal_id: opt.label for opt in options}
+
+        selected_id = str(terminal_id or "").strip()
+        if selected_id and selected_id in self._terminal_options:
+            self._terminal_id = selected_id
+        elif self._terminal_id and self._terminal_id in self._terminal_options:
+            pass
+        elif options:
+            self._terminal_id = str(options[0].terminal_id or "").strip()
+        else:
+            self._terminal_id = ""
+
+        self._terminal_available = bool(
+            self._terminal_id and self._terminal_id in self._terminal_options
+        )
+
+        if self._terminal_available:
+            label = str(
+                self._terminal_options.get(self._terminal_id, self._terminal_id) or ""
+            )
+            self._terminal_display.setText(label)
+            self._terminal_display.setToolTip(label)
+        elif self._terminal_id:
+            unavailable = f"{self._terminal_id} (not detected)"
+            self._terminal_display.setText(unavailable)
+            self._terminal_display.setToolTip(unavailable)
+        else:
+            self._terminal_display.setText("No terminals detected")
+            self._terminal_display.setToolTip("No terminals detected")
+
         if hasattr(self, "_run_interactive"):
             self._update_run_buttons()
+
+    def _resolve_terminal_for_launch(self) -> str:
+        self._refresh_terminal_selection(self._terminal_id)
+        terminal_id = str(self._terminal_id or "").strip()
+        if terminal_id and terminal_id in self._terminal_options:
+            return terminal_id
+        QMessageBox.warning(
+            self,
+            "No terminals found",
+            "Could not detect an installed terminal emulator to launch.",
+        )
+        return ""
 
     def _on_run(self) -> None:
         prompt = (self._prompt.toPlainText() or "").strip()
@@ -383,13 +397,8 @@ class NewTaskPage(QWidget):
             )
             return
 
-        terminal_id = str(self._terminal.currentData() or "").strip()
+        terminal_id = self._resolve_terminal_for_launch()
         if not terminal_id:
-            QMessageBox.warning(
-                self,
-                "No terminals found",
-                "Could not detect an installed terminal emulator to launch.",
-            )
             return
 
         helpme_path = (
@@ -472,13 +481,8 @@ class NewTaskPage(QWidget):
 
         host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
 
-        terminal_id = str(self._terminal.currentData() or "").strip()
+        terminal_id = self._resolve_terminal_for_launch()
         if not terminal_id:
-            QMessageBox.warning(
-                self,
-                "No terminals found",
-                "Could not detect an installed terminal emulator to launch.",
-            )
             return
 
         env_id = self._active_env_id
@@ -836,7 +840,10 @@ class NewTaskPage(QWidget):
         )
 
     def set_repo_controls_visible(self, visible: bool) -> None:
-        self._repo_controls_visible = bool(visible)
+        desired = bool(visible)
+        if desired != self._repo_controls_visible:
+            self._base_branch_support_transition_pending = True
+        self._repo_controls_visible = desired
         self._sync_base_branch_controls_visibility()
 
     def set_base_branch_host_active(self, active: bool) -> None:
@@ -846,10 +853,75 @@ class NewTaskPage(QWidget):
     def base_branch_controls_widget(self) -> QWidget:
         return self._base_branch_controls
 
+    def _base_branch_opacity_effect(self) -> QGraphicsOpacityEffect:
+        effect = self._base_branch_controls.graphicsEffect()
+        if isinstance(effect, QGraphicsOpacityEffect):
+            return effect
+        effect = QGraphicsOpacityEffect(self._base_branch_controls)
+        effect.setOpacity(1.0 if self._base_branch_controls.isVisible() else 0.0)
+        self._base_branch_controls.setGraphicsEffect(effect)
+        return effect
+
+    def _set_base_branch_visibility_immediate(self, *, visible: bool) -> None:
+        if self._base_branch_visibility_animation is not None:
+            self._base_branch_visibility_animation.stop()
+            self._base_branch_visibility_animation = None
+        effect = self._base_branch_opacity_effect()
+        effect.setOpacity(1.0 if visible else 0.0)
+        self._base_branch_controls.setVisible(visible)
+
+    def _animate_base_branch_visibility(self, *, show: bool) -> None:
+        if show and self._base_branch_controls.isVisible():
+            return
+        if not show and not self._base_branch_controls.isVisible():
+            return
+
+        if self._base_branch_visibility_animation is not None:
+            self._base_branch_visibility_animation.stop()
+            self._base_branch_visibility_animation = None
+
+        effect = self._base_branch_opacity_effect()
+        if show:
+            start_opacity = 0.0
+            end_opacity = 1.0
+            self._base_branch_controls.setVisible(True)
+        else:
+            start_opacity = float(effect.opacity())
+            if start_opacity < 0.01:
+                start_opacity = 1.0
+            end_opacity = 0.0
+
+        effect.setOpacity(start_opacity)
+
+        animation = QPropertyAnimation(effect, b"opacity", self)
+        animation.setDuration(220)
+        animation.setStartValue(start_opacity)
+        animation.setEndValue(end_opacity)
+        animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        def _on_finished() -> None:
+            self._base_branch_visibility_animation = None
+            if show:
+                effect.setOpacity(1.0)
+                return
+            self._base_branch_controls.setVisible(False)
+            effect.setOpacity(0.0)
+
+        animation.finished.connect(_on_finished)
+        animation.start()
+        self._base_branch_visibility_animation = animation
+
     def _sync_base_branch_controls_visibility(self) -> None:
-        self._base_branch_controls.setVisible(
-            bool(self._repo_controls_visible and self._base_branch_host_active)
+        should_show = bool(
+            self._repo_controls_visible and self._base_branch_host_active
         )
+        support_transition = bool(self._base_branch_support_transition_pending)
+        self._base_branch_support_transition_pending = False
+
+        if support_transition and self._base_branch_host_active:
+            self._animate_base_branch_visibility(show=should_show)
+            return
+        self._set_base_branch_visibility_immediate(visible=should_show)
 
     def set_repo_branches(
         self, branches: list[str], selected: str | None = None
@@ -876,11 +948,7 @@ class NewTaskPage(QWidget):
     def set_interactive_defaults(self, terminal_id: str, command: str) -> None:
         if command:
             self._command.setText(command)
-        terminal_id = str(terminal_id or "")
-        if terminal_id:
-            idx = self._terminal.findData(terminal_id)
-            if idx >= 0:
-                self._terminal.setCurrentIndex(idx)
+        self._refresh_terminal_selection(str(terminal_id or ""))
 
     @staticmethod
     def _friendly_agent_label(label: str) -> str:

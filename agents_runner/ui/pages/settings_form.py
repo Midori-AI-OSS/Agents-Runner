@@ -25,6 +25,7 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_agent_system
 from agents_runner.agent_systems import get_default_agent_system_name
+from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
@@ -110,6 +111,19 @@ class _SettingsFormMixin:
             ("tmux", "tmux"),
         ]:
             self._shell.addItem(label, value)
+
+        self._interactive_terminal = QComboBox()
+        self._interactive_terminal.setToolTip(
+            "Default terminal used by Run Interactive and Get Agent Help."
+        )
+        self._refresh_terminal_options(selected_terminal_id="")
+
+        self._refresh_interactive_terminal = QToolButton()
+        self._refresh_interactive_terminal.setText("Refresh")
+        self._refresh_interactive_terminal.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._refresh_interactive_terminal.clicked.connect(
+            self._on_refresh_terminal_options_clicked
+        )
 
         self._ui_theme = QComboBox()
         self._ui_theme.setToolTip(
@@ -311,6 +325,15 @@ class _SettingsFormMixin:
         general_body.addWidget(self._github_workroom_prefer_browser)
         general_body.addWidget(self._agentsnova_auto_review_enabled)
 
+        terminal_layout = QGridLayout()
+        terminal_layout.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        terminal_layout.setVerticalSpacing(GRID_VERTICAL_SPACING)
+        terminal_layout.setColumnStretch(1, 1)
+        terminal_layout.addWidget(QLabel("Interactive terminal"), 0, 0)
+        terminal_layout.addWidget(self._interactive_terminal, 0, 1)
+        terminal_layout.addWidget(self._refresh_interactive_terminal, 0, 2)
+        general_body.addLayout(terminal_layout)
+
         github_write_layout = QGridLayout()
         github_write_layout.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
         github_write_layout.setVerticalSpacing(GRID_VERTICAL_SPACING)
@@ -352,7 +375,7 @@ class _SettingsFormMixin:
         agent_grid.setColumnStretch(1, 1)
         agent_grid.addWidget(QLabel("Agent CLI"), 0, 0)
         agent_grid.addWidget(self._use, 0, 1)
-        agent_grid.addWidget(QLabel("Shell"), 1, 0)
+        agent_grid.addWidget(QLabel("Agent Shell"), 1, 0)
         agent_grid.addWidget(self._shell, 1, 1)
         agent_body.addLayout(agent_grid)
         agent_body.addStretch(1)
@@ -465,7 +488,7 @@ class _SettingsFormMixin:
                 )
                 nav_layout.addWidget(button)
                 self._nav_buttons[spec.key] = button
-                self._compact_nav.addItem(spec.title, spec.key)
+                self._compact_nav.addItem(button_label, spec.key)
 
         nav_layout.addStretch(1)
 
@@ -700,6 +723,11 @@ class _SettingsFormMixin:
 
             shell_value = str(settings.get("shell") or "bash").strip().lower()
             self._set_combo_value(self._shell, shell_value, fallback="bash")
+            self._refresh_terminal_options(
+                selected_terminal_id=str(
+                    settings.get("interactive_terminal_id") or ""
+                ).strip()
+            )
 
             self._host_codex_dir.setText(
                 os.path.expanduser(
@@ -817,6 +845,9 @@ class _SettingsFormMixin:
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
+            "interactive_terminal_id": str(
+                self._interactive_terminal.currentData() or ""
+            ),
             "ui_theme": normalize_ui_theme_name(
                 str(self._ui_theme.currentData() or "auto"), allow_auto=True
             ),
@@ -909,6 +940,38 @@ class _SettingsFormMixin:
         )
         if path:
             self._host_gemini_dir.setText(path)
+
+    def _refresh_terminal_options(self, *, selected_terminal_id: str) -> None:
+        selected_id = str(selected_terminal_id or "").strip()
+        current_id = str(self._interactive_terminal.currentData() or "").strip()
+        options = detect_terminal_options()
+
+        with QSignalBlocker(self._interactive_terminal):
+            self._interactive_terminal.clear()
+            if not options:
+                self._interactive_terminal.addItem("No terminals detected", "")
+                self._interactive_terminal.setCurrentIndex(0)
+                return
+
+            for option in options:
+                self._interactive_terminal.addItem(option.label, option.terminal_id)
+
+            desired = selected_id or current_id
+            if not desired:
+                desired = str(options[0].terminal_id or "").strip()
+            self._set_combo_value(
+                self._interactive_terminal,
+                desired,
+                fallback=str(options[0].terminal_id or "").strip(),
+            )
+
+    def _on_refresh_terminal_options_clicked(self) -> None:
+        self._refresh_terminal_options(
+            selected_terminal_id=str(
+                self._interactive_terminal.currentData() or ""
+            ).strip()
+        )
+        self._trigger_immediate_autosave()
 
     @staticmethod
     def _set_combo_value(combo: QComboBox, value: str, fallback: str) -> None:

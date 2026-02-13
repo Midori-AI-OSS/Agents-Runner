@@ -4,6 +4,10 @@ import threading
 
 from datetime import datetime
 
+from PySide6.QtCore import QEasingCurve
+from PySide6.QtCore import QParallelAnimationGroup
+from PySide6.QtCore import QPoint
+from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QUrl
 from PySide6.QtCore import QTimer
@@ -12,6 +16,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QEnterEvent
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QScrollArea
 from PySide6.QtWidgets import QSizePolicy
@@ -30,12 +35,16 @@ from agents_runner.prompts import load_prompt
 from agents_runner.ui.dialogs.github_workroom_dialog import GitHubWorkroomDialog
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.widgets import BouncingLoadingBar
 from midori_ai_logger import MidoriAiLogger
 
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class _GitHubWorkRow(QWidget):
+    _ACTION_PANEL_HIDDEN_OFFSET = 14
+    _ACTION_PANEL_WIDTH = 86
+
     clicked = Signal(object)
     primary_requested = Signal(object)
     open_requested = Signal(object)
@@ -63,6 +72,14 @@ class _GitHubWorkRow(QWidget):
         self._meta = QLabel("—")
         self._meta.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
+        self._actions_host = QWidget(self)
+        self._actions_host.setFixedWidth(self._ACTION_PANEL_WIDTH)
+        self._actions_host.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self._actions_panel = QWidget(self._actions_host)
+        actions_layout = QHBoxLayout(self._actions_panel)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(8)
+
         self._btn_primary = QToolButton()
         self._btn_primary.setObjectName("RowTrash")
         self._btn_primary.setToolButtonStyle(Qt.ToolButtonIconOnly)
@@ -75,13 +92,17 @@ class _GitHubWorkRow(QWidget):
         self._btn_open.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_open.clicked.connect(lambda: self.open_requested.emit(self._item))
 
+        actions_layout.addWidget(self._btn_primary, 0, Qt.AlignRight)
+        actions_layout.addWidget(self._btn_open, 0, Qt.AlignRight)
+
         layout.addWidget(self._title, 6)
         layout.addWidget(self._meta, 5)
-        layout.addWidget(self._btn_primary, 0)
-        layout.addWidget(self._btn_open, 0)
+        layout.addWidget(self._actions_host, 0)
 
+        self._actions_animation: QParallelAnimationGroup | None = None
+        self._actions_visible = False
         self._configure_actions()
-        self._set_actions_visible(False)
+        self._set_actions_visible(False, animate=False)
 
     def _configure_actions(self) -> None:
         if self._item_type == "pr":
@@ -94,9 +115,74 @@ class _GitHubWorkRow(QWidget):
         self._btn_open.setIcon(lucide_icon("eye"))
         self._btn_open.setToolTip("Open workroom")
 
-    def _set_actions_visible(self, visible: bool) -> None:
-        self._btn_primary.setVisible(bool(visible))
-        self._btn_open.setVisible(bool(visible))
+    def _actions_opacity_effect(self) -> QGraphicsOpacityEffect:
+        effect = self._actions_panel.graphicsEffect()
+        if isinstance(effect, QGraphicsOpacityEffect):
+            return effect
+        effect = QGraphicsOpacityEffect(self._actions_panel)
+        effect.setOpacity(1.0 if self._actions_visible else 0.0)
+        self._actions_panel.setGraphicsEffect(effect)
+        return effect
+
+    def _layout_actions_panel(self) -> None:
+        panel_width = int(self._actions_host.width())
+        panel_height = int(self._actions_host.height())
+        self._actions_panel.resize(panel_width, panel_height)
+        x = 0 if self._actions_visible else self._ACTION_PANEL_HIDDEN_OFFSET
+        self._actions_panel.move(x, 0)
+
+    def _set_actions_visible(self, visible: bool, *, animate: bool = True) -> None:
+        target_visible = bool(visible)
+        self._actions_visible = target_visible
+
+        if self._actions_animation is not None:
+            self._actions_animation.stop()
+            self._actions_animation = None
+
+        effect = self._actions_opacity_effect()
+        target_x = 0 if target_visible else self._ACTION_PANEL_HIDDEN_OFFSET
+        target_opacity = 1.0 if target_visible else 0.0
+
+        self._actions_panel.setAttribute(
+            Qt.WA_TransparentForMouseEvents, not target_visible
+        )
+
+        if not animate:
+            current_y = int(self._actions_panel.pos().y())
+            self._actions_panel.move(target_x, current_y)
+            effect.setOpacity(target_opacity)
+            return
+
+        start_pos = QPoint(
+            int(self._actions_panel.pos().x()), int(self._actions_panel.pos().y())
+        )
+        end_pos = QPoint(target_x, int(self._actions_panel.pos().y()))
+        start_opacity = float(effect.opacity())
+
+        pos_anim = QPropertyAnimation(self._actions_panel, b"pos", self)
+        pos_anim.setDuration(180)
+        pos_anim.setStartValue(start_pos)
+        pos_anim.setEndValue(end_pos)
+        pos_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        opacity_anim = QPropertyAnimation(effect, b"opacity", self)
+        opacity_anim.setDuration(180)
+        opacity_anim.setStartValue(start_opacity)
+        opacity_anim.setEndValue(target_opacity)
+        opacity_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        group = QParallelAnimationGroup(self)
+        group.addAnimation(pos_anim)
+        group.addAnimation(opacity_anim)
+
+        def _on_finished() -> None:
+            self._actions_animation = None
+            if not self._actions_visible:
+                self._actions_panel.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+
+        group.finished.connect(_on_finished)
+        group.start()
+        self._actions_animation = group
 
     def set_stain(self, stain: str) -> None:
         value = str(stain or "slate").strip().lower() or "slate"
@@ -119,13 +205,52 @@ class _GitHubWorkRow(QWidget):
             self.clicked.emit(self._item)
         super().mousePressEvent(event)
 
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._layout_actions_panel()
+
     def enterEvent(self, event: QEnterEvent) -> None:
-        self._set_actions_visible(True)
+        self._set_actions_visible(True, animate=True)
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:
-        self._set_actions_visible(False)
+        self._set_actions_visible(False, animate=True)
         super().leaveEvent(event)
+
+
+class _GitHubWorkSkeletonRow(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("TaskRow")
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setProperty("stain", "slate")
+        self.setFixedHeight(56)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(0)
+        self._pulse = BouncingLoadingBar(width=240, height=8, chunk_fraction=0.18)
+        self._pulse.set_mode("bounce")
+        self._pulse.start()
+        layout.addWidget(self._pulse, 1)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._pulse.setFixedWidth(max(120, int(self.width()) - 24))
+
+    def set_stain(self, stain: str) -> None:
+        value = str(stain or "slate").strip().lower() or "slate"
+        if str(self.property("stain") or "") != value:
+            self.setProperty("stain", value)
+            self.style().unpolish(self)
+            self.style().polish(self)
+            self.update()
+        tint = _stain_color(value)
+        self._pulse.set_color(tint)
+
+    def stop(self) -> None:
+        self._pulse.stop()
 
 
 class GitHubWorkListPage(QWidget):
@@ -154,19 +279,16 @@ class GitHubWorkListPage(QWidget):
         self._last_fetch_issue = ""
 
         self._rows: dict[int, _GitHubWorkRow] = {}
+        self._skeleton_rows: list[_GitHubWorkSkeletonRow] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(14)
+        root.setSpacing(8)
 
         header = QWidget()
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 14, 16, 14)
+        header_layout.setContentsMargins(16, 6, 16, 0)
         header_layout.setSpacing(10)
-
-        title = "Pull Requests" if self._item_type == "pr" else "Issues"
-        self._title = QLabel(title)
-        self._title.setStyleSheet("font-size: 16px; font-weight: 750;")
 
         self._refresh = QToolButton()
         self._refresh.setText("Refresh")
@@ -174,7 +296,6 @@ class GitHubWorkListPage(QWidget):
         self._refresh.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self._refresh.clicked.connect(self.refresh)
 
-        header_layout.addWidget(self._title)
         header_layout.addStretch(1)
         header_layout.addWidget(self._refresh)
         root.addWidget(header)
@@ -298,6 +419,7 @@ class GitHubWorkListPage(QWidget):
 
         self._fetch_seq += 1
         seq = int(self._fetch_seq)
+        self._render_loading_rows(stain=self._current_stain())
         queued_snapshot = set(self._auto_review_seen_comment_ids)
         queued_item_snapshot = set(self._auto_review_seen_item_mentions)
         auto_review_enabled = bool(self._auto_review_enabled)
@@ -500,8 +622,19 @@ class GitHubWorkListPage(QWidget):
             item = self._list_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                if isinstance(widget, _GitHubWorkSkeletonRow):
+                    widget.stop()
                 widget.deleteLater()
         self._rows.clear()
+        self._skeleton_rows.clear()
+
+    def _render_loading_rows(self, *, stain: str) -> None:
+        self._clear_rows()
+        for _ in range(6):
+            row = _GitHubWorkSkeletonRow()
+            row.set_stain(stain)
+            self._list_layout.insertWidget(self._list_layout.count() - 1, row)
+            self._skeleton_rows.append(row)
 
     def _render_rows(self, items: list[GitHubWorkItem], *, stain: str) -> None:
         self._clear_rows()
@@ -731,6 +864,15 @@ class GitHubWorkListPage(QWidget):
                 self._auto_review_seen_item_mentions.add(item_key)
             self.auto_review_requested.emit(self._active_env_id, prompt)
 
+    def _current_stain(self) -> str:
+        env = self._environments.get(self._active_env_id)
+        stain = (
+            self._active_stain or str(getattr(env, "color", "") or "").strip().lower()
+        )
+        if not stain:
+            return "slate"
+        return stain
+
     def _sync_environment_stain(self) -> None:
         env = self._environments.get(self._active_env_id)
         stain = str(getattr(env, "color", "") or "").strip().lower()
@@ -768,6 +910,10 @@ class GitHubWorkListPage(QWidget):
             )
         )
         self._list.setStyleSheet("")
+        for row in self._rows.values():
+            row.set_stain(stain)
+        for row in self._skeleton_rows:
+            row.set_stain(stain)
 
     def _log_fetch_issue_once(self, message: str, *, mode: str) -> None:
         text = str(message or "").strip()
