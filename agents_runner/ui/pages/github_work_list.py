@@ -230,8 +230,8 @@ class _GitHubWorkSkeletonRow(QWidget):
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(0)
-        self._pulse = BouncingLoadingBar(width=240, height=8, chunk_fraction=0.18)
-        self._pulse.set_mode("bounce")
+        self._pulse = BouncingLoadingBar(width=240, height=40, chunk_fraction=0.40)
+        self._pulse.set_mode("shimmer_sweep")
         self._pulse.start()
         layout.addWidget(self._pulse, 1)
 
@@ -280,25 +280,17 @@ class GitHubWorkListPage(QWidget):
 
         self._rows: dict[int, _GitHubWorkRow] = {}
         self._skeleton_rows: list[_GitHubWorkSkeletonRow] = []
+        self._initial_load_seen_keys: set[str] = set()
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(8)
 
-        header = QWidget()
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 6, 16, 0)
-        header_layout.setSpacing(10)
-
         self._refresh = QToolButton()
-        self._refresh.setText("Refresh")
         self._refresh.setIcon(lucide_icon("refresh-cw"))
-        self._refresh.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._refresh.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._refresh.setToolTip("Refresh")
         self._refresh.clicked.connect(self.refresh)
-
-        header_layout.addStretch(1)
-        header_layout.addWidget(self._refresh)
-        root.addWidget(header)
 
         card = QWidget()
         card_layout = QVBoxLayout(card)
@@ -319,6 +311,7 @@ class GitHubWorkListPage(QWidget):
 
         columns_layout.addWidget(c1, 6)
         columns_layout.addWidget(c3, 5)
+        columns_layout.addWidget(self._refresh, 0, Qt.AlignRight)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
@@ -419,7 +412,10 @@ class GitHubWorkListPage(QWidget):
 
         self._fetch_seq += 1
         seq = int(self._fetch_seq)
-        self._render_loading_rows(stain=self._current_stain())
+        load_key = self._first_load_key(env_id)
+        if load_key not in self._initial_load_seen_keys:
+            self._initial_load_seen_keys.add(load_key)
+            self._render_loading_rows(stain=self._current_stain())
         queued_snapshot = set(self._auto_review_seen_comment_ids)
         queued_item_snapshot = set(self._auto_review_seen_item_mentions)
         auto_review_enabled = bool(self._auto_review_enabled)
@@ -872,6 +868,10 @@ class GitHubWorkListPage(QWidget):
         if not stain:
             return "slate"
         return stain
+
+    def _first_load_key(self, env_id: str) -> str:
+        normalized_env_id = str(env_id or "").strip().lower()
+        return f"{self._item_type}:{normalized_env_id}"
 
     def _sync_environment_stain(self) -> None:
         env = self._environments.get(self._active_env_id)

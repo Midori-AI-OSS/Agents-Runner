@@ -426,11 +426,6 @@ class _MainWindowTasksAgentMixin:
             if env
             else False
         )
-        cache_environment_preflight_enabled = (
-            bool(getattr(env, "cache_environment_preflight_enabled", False))
-            if env
-            else False
-        )
         # Only enable cache if desktop is enabled
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
 
@@ -719,7 +714,6 @@ class _MainWindowTasksAgentMixin:
             container_caching_enabled=container_caching_enabled,
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-            cache_environment_preflight_enabled=cache_environment_preflight_enabled,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,

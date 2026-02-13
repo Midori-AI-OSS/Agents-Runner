@@ -153,11 +153,6 @@ def launch_docker_terminal_task(
         and env
         and getattr(env, "cache_settings_preflight_enabled", False)
     )
-    cache_environment_enabled = bool(
-        container_caching_enabled
-        and env
-        and getattr(env, "cache_environment_preflight_enabled", False)
-    )
     desktop_cache_enabled = bool(env and getattr(env, "cache_desktop_build", False))
     desktop_cache_enabled = desktop_cache_enabled and desktop_enabled
 
@@ -224,26 +219,6 @@ def launch_docker_terminal_task(
                 "cache",
                 "WARN",
                 "settings caching enabled but settings script is empty",
-            )
-        )
-
-    if cache_environment_enabled and (environment_preflight_script or "").strip():
-        next_image = ensure_phase_image(
-            base_image=runtime_image,
-            phase_name="environment",
-            script_content=str(environment_preflight_script or ""),
-            preflights_dir=preflights_host_dir,
-            on_log=on_phase_log,
-        )
-        environment_preflight_cached = next_image != runtime_image
-        runtime_image = next_image
-    elif cache_environment_enabled:
-        on_phase_log(
-            format_log(
-                "phase",
-                "cache",
-                "WARN",
-                "environment caching enabled but environment script is empty",
             )
         )
 
