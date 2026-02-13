@@ -116,6 +116,12 @@ class _SettingsFormMixin:
             "Auto syncs background theme to the active agent.\n"
             "Select a specific theme to force an override."
         )
+        self._popup_theme_animation_enabled = QCheckBox("Animate popup backgrounds")
+        self._popup_theme_animation_enabled.setToolTip(
+            "When enabled, themed popup backgrounds stay animated. "
+            "Disable to render popups as static backgrounds."
+        )
+        self._popup_theme_animation_enabled.setChecked(True)
         self._theme_preview_tiles: dict[str, ThemePreviewTile] = {}
         self._theme_preview_order: list[str] = []
         self._theme_preview_grid: QGridLayout | None = None
@@ -323,6 +329,7 @@ class _SettingsFormMixin:
         themes_grid.addWidget(QLabel("Theme"), 0, 0)
         themes_grid.addWidget(self._ui_theme, 0, 1)
         themes_body.addLayout(themes_grid)
+        themes_body.addWidget(self._popup_theme_animation_enabled)
         previews_heading = QLabel("Theme previews")
         previews_heading.setObjectName("SettingsPaneSubtitle")
         themes_body.addWidget(previews_heading)
@@ -767,6 +774,9 @@ class _SettingsFormMixin:
                 settings.get("ui_theme"), allow_auto=True
             )
             self._refresh_theme_options(selected=theme_value)
+            self._popup_theme_animation_enabled.setChecked(
+                bool(settings.get("popup_theme_animation_enabled", True))
+            )
 
             radio_enabled = bool(settings.get("radio_enabled") or False)
             self._radio_enabled.setChecked(radio_enabled)
@@ -809,6 +819,9 @@ class _SettingsFormMixin:
             "shell": str(self._shell.currentData() or "bash"),
             "ui_theme": normalize_ui_theme_name(
                 str(self._ui_theme.currentData() or "auto"), allow_auto=True
+            ),
+            "popup_theme_animation_enabled": bool(
+                self._popup_theme_animation_enabled.isChecked()
             ),
             "host_codex_dir": os.path.expanduser(
                 str(self._host_codex_dir.text() or "").strip()

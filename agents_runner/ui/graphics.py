@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -135,6 +136,17 @@ def _resolve_theme_name(theme_name: str) -> str:
     return candidate
 
 
+def resolve_effective_ui_theme_name(settings: Mapping[str, object] | None) -> str:
+    """Resolve the effective UI theme from persisted settings."""
+    payload = settings or {}
+    selected = normalize_ui_theme_name(payload.get("ui_theme"), allow_auto=True)
+    if selected != "auto":
+        return _resolve_theme_name(selected)
+
+    agent_cli = str(payload.get("use") or "codex").strip().lower() or "codex"
+    return _resolve_theme_name(_theme_name_for_agent(agent_cli))
+
+
 def _theme_name_for_agent(agent_cli: str) -> str:
     agent_cli = str(agent_cli or "").strip().lower()
     if not agent_cli:
@@ -191,10 +203,11 @@ class GlassRoot(QWidget):
 
         self._ensure_theme_runtime(self._theme_name)
 
-        ticker = QTimer(self)
-        ticker.setInterval(100)
-        ticker.timeout.connect(self._update_background_animation)
-        ticker.start()
+        self._animation_enabled = True
+        self._ticker = QTimer(self)
+        self._ticker.setInterval(100)
+        self._ticker.timeout.connect(self._update_background_animation)
+        self._ticker.start()
 
     def _ensure_theme_runtime(self, theme_name: str) -> object | None:
         resolved = _resolve_theme_name(theme_name)
@@ -290,17 +303,39 @@ class GlassRoot(QWidget):
         self._set_theme_blend(0.0)
 
     def set_theme_name(self, theme_name: str) -> None:
-        if not self.isVisible():
+        if not self.isVisible() or not self._animation_enabled:
             self._apply_theme_immediately(theme_name)
             return
         self._transition_to_theme(theme_name)
 
     def set_agent_theme(self, agent_cli: str) -> None:
         resolved = _theme_name_for_agent(agent_cli)
-        if not self.isVisible():
+        if not self.isVisible() or not self._animation_enabled:
             self._apply_theme_immediately(resolved)
             return
         self._transition_to_theme(resolved)
+
+    def set_animation_enabled(self, enabled: bool) -> None:
+        enabled = bool(enabled)
+        if enabled == self._animation_enabled:
+            return
+        self._animation_enabled = enabled
+        if enabled:
+            self._tick_last_s = time.monotonic()
+            self._ticker.start()
+        else:
+            self._ticker.stop()
+            if self._theme_anim is not None:
+                self._theme_anim.stop()
+                self._theme_anim = None
+                if self._theme_to_name is not None:
+                    self._theme_name = self._theme_to_name
+                    self._theme_to_name = None
+                    self._set_theme_blend(0.0)
+        self.update()
+
+    def animation_enabled(self) -> bool:
+        return bool(self._animation_enabled)
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -329,6 +364,8 @@ class GlassRoot(QWidget):
     themeBlend = Property(float, _get_theme_blend, _set_theme_blend)
 
     def _update_background_animation(self) -> None:
+        if not self._animation_enabled:
+            return
         now_s = time.monotonic()
         dt_s = float(now_s - float(self._tick_last_s))
         if dt_s <= 0.0:

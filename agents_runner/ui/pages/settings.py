@@ -148,6 +148,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._github_workroom_prefer_browser,
             self._agentsnova_auto_review_enabled,
             self._headless_desktop_enabled,
+            self._popup_theme_animation_enabled,
             self._gh_context_default,
             self._spellcheck_enabled,
             self._mount_host_cache,

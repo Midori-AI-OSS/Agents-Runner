@@ -177,6 +177,7 @@ class _MainWindowPersistenceMixin:
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("spellcheck_enabled", True)
         self._settings_data.setdefault("ui_theme", "auto")
+        self._settings_data.setdefault("popup_theme_animation_enabled", True)
         self._settings_data.setdefault("radio_enabled", False)
         self._settings_data.setdefault("radio_channel", "")
         self._settings_data.setdefault("radio_quality", "medium")
@@ -229,6 +230,9 @@ class _MainWindowPersistenceMixin:
 
         self._settings_data["radio_enabled"] = bool(
             self._settings_data.get("radio_enabled") or False
+        )
+        self._settings_data["popup_theme_animation_enabled"] = bool(
+            self._settings_data.get("popup_theme_animation_enabled", True)
         )
         self._settings_data["radio_autostart"] = bool(
             self._settings_data.get("radio_autostart") or False

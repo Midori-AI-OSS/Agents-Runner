@@ -8,7 +8,6 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication
-from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
@@ -23,11 +22,12 @@ from agents_runner.gh.work_items import get_pull_request_workroom
 from agents_runner.gh.work_items import post_comment
 from agents_runner.gh.work_items import set_item_open_state
 from agents_runner.prompts import load_prompt
+from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.widgets import GlassCard
 
 
-class GitHubWorkroomDialog(QDialog):
+class GitHubWorkroomDialog(ThemedDialog):
     prompt_requested = Signal(str)
 
     def __init__(
@@ -53,7 +53,7 @@ class GitHubWorkroomDialog(QDialog):
         self.setWindowTitle("GitHub Workroom")
         self.setMinimumSize(860, 620)
 
-        layout = QVBoxLayout(self)
+        layout = self.content_layout()
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
