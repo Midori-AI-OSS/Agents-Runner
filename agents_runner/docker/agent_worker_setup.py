@@ -521,44 +521,6 @@ class WorkerSetup:
                 )
             )
 
-        environment_preflight_script = str(
-            self._config.environment_preflight_script or ""
-        )
-        if (
-            container_caching_enabled
-            and self._config.cache_environment_preflight_enabled
-            and environment_preflight_script.strip()
-        ):
-            self._on_log(
-                format_log(
-                    "phase",
-                    "cache",
-                    "INFO",
-                    "environment caching enabled; checking cached layer",
-                )
-            )
-            next_image = ensure_phase_image(
-                base_image=runtime_image,
-                phase_name="environment",
-                script_content=environment_preflight_script,
-                preflights_dir=preflights_host_dir,
-                on_log=self._on_log,
-            )
-            environment_preflight_cached = next_image != runtime_image
-            runtime_image = next_image
-        elif (
-            container_caching_enabled
-            and self._config.cache_environment_preflight_enabled
-        ):
-            self._on_log(
-                format_log(
-                    "phase",
-                    "cache",
-                    "WARN",
-                    "environment caching enabled but environment script is empty",
-                )
-            )
-
         return self._CachingConfig(
             preflights_host_dir=preflights_host_dir,
             system_preflight_enabled=system_preflight_enabled,

@@ -520,9 +520,6 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             cache_settings_preflight_enabled=bool(
                 payload.get("cache_settings_preflight_enabled") or False
             ),
-            cache_environment_preflight_enabled=bool(
-                payload.get("cache_environment_preflight_enabled") or False
-            ),
             container_settings_preflight_path=str(
                 payload.get("container_settings_preflight_path")
                 or "/tmp/agents-runner-preflight-settings-{task_id}.sh"

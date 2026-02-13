@@ -216,12 +216,6 @@ class _EnvironmentsFormMixin:
         )
         self._cache_settings_preflight_enabled.setEnabled(False)
 
-        self._cache_environment_preflight_enabled = QCheckBox("Cache environment phase")
-        self._cache_environment_preflight_enabled.setToolTip(
-            "When enabled, the Environment preflight script is cached as an image layer."
-        )
-        self._cache_environment_preflight_enabled.setEnabled(False)
-
         self._env_vars_tab = EnvVarsTabWidget()
         self._env_vars_tab.env_vars_changed.connect(self._queue_debounced_autosave)
 
@@ -326,7 +320,6 @@ class _EnvironmentsFormMixin:
         caching_body.addWidget(self._cache_desktop_build)
         caching_body.addWidget(self._cache_system_preflight_enabled)
         caching_body.addWidget(self._cache_settings_preflight_enabled)
-        caching_body.addWidget(self._cache_environment_preflight_enabled)
         caching_body.addStretch(1)
         self._register_page("caching", caching_page)
 

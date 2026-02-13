@@ -191,9 +191,6 @@ class _EnvironmentsPageActionsMixin:
         cache_settings_preflight_enabled = bool(
             self._cache_settings_preflight_enabled.isChecked()
         )
-        cache_environment_preflight_enabled = bool(
-            self._cache_environment_preflight_enabled.isChecked()
-        )
 
         if base_env is None:
             env = Environment(
@@ -211,7 +208,6 @@ class _EnvironmentsPageActionsMixin:
                 ),
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-                cache_environment_preflight_enabled=cache_environment_preflight_enabled,
                 preflight_enabled=preflight_enabled,
                 preflight_script=preflight_script,
                 env_vars=env_vars,
@@ -245,7 +241,6 @@ class _EnvironmentsPageActionsMixin:
                 ),
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-                cache_environment_preflight_enabled=cache_environment_preflight_enabled,
                 preflight_enabled=preflight_enabled,
                 preflight_script=preflight_script,
                 env_vars=env_vars,
@@ -347,9 +342,6 @@ class _EnvironmentsPageActionsMixin:
         cache_settings_preflight_enabled = bool(
             self._cache_settings_preflight_enabled.isChecked()
         )
-        cache_environment_preflight_enabled = bool(
-            self._cache_environment_preflight_enabled.isChecked()
-        )
 
         if existing is None:
             return Environment(
@@ -367,7 +359,6 @@ class _EnvironmentsPageActionsMixin:
                 ),
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-                cache_environment_preflight_enabled=cache_environment_preflight_enabled,
                 preflight_enabled=preflight_enabled,
                 preflight_script=preflight_script,
                 env_vars=env_vars,
@@ -397,7 +388,6 @@ class _EnvironmentsPageActionsMixin:
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-            cache_environment_preflight_enabled=cache_environment_preflight_enabled,
             preflight_enabled=preflight_enabled,
             preflight_script=preflight_script,
             env_vars=env_vars,

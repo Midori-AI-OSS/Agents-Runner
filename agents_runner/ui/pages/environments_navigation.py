@@ -35,7 +35,6 @@ class _EnvironmentsNavigationMixin:
             self._preflight_enabled,
             self._cache_system_preflight_enabled,
             self._cache_settings_preflight_enabled,
-            self._cache_environment_preflight_enabled,
         ):
             checkbox.toggled.connect(self._trigger_immediate_autosave)
 
