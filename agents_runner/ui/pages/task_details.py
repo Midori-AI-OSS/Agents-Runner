@@ -69,11 +69,6 @@ class TaskDetailsPage(QWidget):
         self._subtitle = QLabel("—")
         self._subtitle.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
-        back = QToolButton()
-        back.setText("Back")
-        back.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        back.clicked.connect(self.back_requested.emit)
-
         self._review_menu = QMenu(self)
         self._review_pr = self._review_menu.addAction("Create PR")
         self._review_pr.triggered.connect(self._on_pr_triggered)
@@ -94,7 +89,6 @@ class TaskDetailsPage(QWidget):
         header_layout.addWidget(self._subtitle, 1)
         header_layout.addWidget(self._review, 0, Qt.AlignRight)
         header_layout.addWidget(self._desktop_btn, 0, Qt.AlignRight)
-        header_layout.addWidget(back, 0, Qt.AlignRight)
         layout.addWidget(header)
 
         self._tabs = QTabWidget()

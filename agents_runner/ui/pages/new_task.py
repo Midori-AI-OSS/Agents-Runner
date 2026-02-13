@@ -53,11 +53,15 @@ class NewTaskPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
+        self._known_environment_ids: set[str] = set()
+        self._active_env_id = ""
         self._env_workspace_types: dict[
             str, str
         ] = {}  # Track workspace types for environments
         self._env_template_injection: dict[str, bool] = {}
         self._env_desktop_enabled: dict[str, bool] = {}
+        self._repo_controls_visible = False
+        self._base_branch_host_active = False
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
@@ -72,16 +76,15 @@ class NewTaskPage(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
 
-        self._environment = QComboBox()
-        self._environment.setFixedWidth(240)
-        self._environment.currentIndexChanged.connect(self._on_environment_changed)
-
         header = QWidget()
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(18, 16, 18, 16)
         header_layout.setSpacing(6)
 
-        # Base branch dropdown (will be added to title bar later)
+        self._base_branch_controls = QWidget(self)
+        base_branch_layout = QHBoxLayout(self._base_branch_controls)
+        base_branch_layout.setContentsMargins(0, 0, 0, 0)
+        base_branch_layout.setSpacing(6)
         self._base_branch_label = QLabel("Base branch")
         self._base_branch = QComboBox()
         self._base_branch.setFixedWidth(240)
@@ -89,12 +92,9 @@ class NewTaskPage(QWidget):
             "Base branch for the per-task branch (only shown for repo environments)."
         )
         self.set_repo_branches([])
-        self._base_branch.setVisible(False)  # Initially hidden
-
-        # Separator label for title bar
-        self._title_separator = QLabel("::")
-        self._title_separator.setStyleSheet("color: rgba(237, 239, 245, 160);")
-        self._title_separator.setVisible(False)  # Initially hidden
+        self._base_branch_controls.setVisible(False)
+        base_branch_layout.addWidget(self._base_branch_label)
+        base_branch_layout.addWidget(self._base_branch)
 
         top_row = QHBoxLayout()
         top_row.setSpacing(10)
@@ -103,9 +103,6 @@ class NewTaskPage(QWidget):
 
         top_row.addWidget(title)
         top_row.addStretch(1)
-        top_row.addWidget(self._environment)
-        top_row.addWidget(self._title_separator)
-        top_row.addWidget(self._base_branch)
 
         header_layout.addLayout(top_row)
         layout.addWidget(header)
@@ -358,7 +355,7 @@ class NewTaskPage(QWidget):
 
         host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
 
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         base_branch = str(self._base_branch.currentData() or "")
 
         # Confirm auto base branch for cloned repo environments
@@ -409,7 +406,7 @@ class NewTaskPage(QWidget):
             return
 
         host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         base_branch = str(self._base_branch.currentData() or "")
 
         # Confirm auto base branch for cloned repo environments
@@ -446,7 +443,7 @@ class NewTaskPage(QWidget):
         self._current_interactive_slot = new_slot
 
     def _sync_interactive_options(self) -> None:
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         desktop_enabled = self._env_desktop_enabled.get(env_id, False)
 
         if env_id and desktop_enabled:
@@ -484,7 +481,7 @@ class NewTaskPage(QWidget):
             )
             return
 
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         base_branch = str(self._base_branch.currentData() or "")
 
         # Confirm auto base branch for cloned repo environments
@@ -524,18 +521,10 @@ class NewTaskPage(QWidget):
             return
         self._emit_interactive_launch(extra_preflight_script=desktop_script)
 
-    def _on_environment_changed(self, index: int) -> None:
-        self._apply_environment_tints()
-        self._sync_interactive_options()
-        self._update_workspace_visibility()
-        self._sync_template_prompt_indicator()
-        self.environment_changed.emit(str(self._environment.currentData() or ""))
-
     def _apply_environment_tints(self) -> None:
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         stain = (self._env_stains.get(env_id) or "").strip().lower() if env_id else ""
         if not stain:
-            self._environment.setStyleSheet("")
             self._base_branch.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
             self._get_agent_help.set_tint_color(None)
@@ -543,7 +532,6 @@ class NewTaskPage(QWidget):
             self._run_agent.set_tint_color(None)
             return
 
-        _apply_environment_combo_tint(self._environment, stain)
         _apply_environment_combo_tint(self._base_branch, stain)
         tint = _stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
@@ -588,13 +576,13 @@ class NewTaskPage(QWidget):
         self._sync_interactive_options()
 
     def _sync_template_prompt_indicator(self) -> None:
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         should_show = bool(self._env_template_injection.get(env_id, False))
         self._template_prompt_indicator.setVisible(should_show)
 
     def _update_workspace_visibility(self) -> None:
         """Update workspace line visibility based on workspace type."""
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
 
         # Cloned environments: hide workspace line completely
@@ -620,26 +608,37 @@ class NewTaskPage(QWidget):
             self._terminal_workspace.setVisible(False)
 
     def set_environments(self, envs: list[tuple[str, str]], active_id: str) -> None:
-        current = str(self._environment.currentData() or "")
-        self._environment.blockSignals(True)
-        try:
-            self._environment.clear()
-            for env_id, name in envs:
-                self._environment.addItem(name, env_id)
-            desired = active_id or current
-            idx = self._environment.findData(desired)
-            if idx >= 0:
-                self._environment.setCurrentIndex(idx)
-        finally:
-            self._environment.blockSignals(False)
-        self._apply_environment_tints()
-        self._sync_interactive_options()
+        ordered_ids: list[str] = []
+        for env_id, _name in envs:
+            parsed_env_id = str(env_id or "").strip()
+            if parsed_env_id:
+                ordered_ids.append(parsed_env_id)
+
+        self._known_environment_ids = set(ordered_ids)
+        desired = str(active_id or "").strip() or self._active_env_id
+        if desired not in self._known_environment_ids and ordered_ids:
+            desired = ordered_ids[0]
+        if desired not in self._known_environment_ids:
+            desired = ""
+
+        self.set_environment_id(desired)
 
     def set_environment_id(self, env_id: str) -> None:
-        idx = self._environment.findData(env_id)
-        if idx >= 0:
-            self._environment.setCurrentIndex(idx)
+        desired = str(env_id or "").strip()
+        if (
+            desired
+            and self._known_environment_ids
+            and desired not in self._known_environment_ids
+        ):
+            desired = ""
+        previous = self._active_env_id
+        self._active_env_id = desired
         self._apply_environment_tints()
+        self._sync_interactive_options()
+        self._update_workspace_visibility()
+        self._sync_template_prompt_indicator()
+        if previous != self._active_env_id:
+            self.environment_changed.emit(self._active_env_id)
 
     def set_defaults(self, host_codex: str) -> None:
         if host_codex:
@@ -837,9 +836,20 @@ class NewTaskPage(QWidget):
         )
 
     def set_repo_controls_visible(self, visible: bool) -> None:
-        visible = bool(visible)
-        self._title_separator.setVisible(visible)
-        self._base_branch.setVisible(visible)
+        self._repo_controls_visible = bool(visible)
+        self._sync_base_branch_controls_visibility()
+
+    def set_base_branch_host_active(self, active: bool) -> None:
+        self._base_branch_host_active = bool(active)
+        self._sync_base_branch_controls_visibility()
+
+    def base_branch_controls_widget(self) -> QWidget:
+        return self._base_branch_controls
+
+    def _sync_base_branch_controls_visibility(self) -> None:
+        self._base_branch_controls.setVisible(
+            bool(self._repo_controls_visible and self._base_branch_host_active)
+        )
 
     def set_repo_branches(
         self, branches: list[str], selected: str | None = None

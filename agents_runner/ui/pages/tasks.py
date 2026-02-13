@@ -91,10 +91,20 @@ class TasksPage(QWidget):
         self._title.setStyleSheet("font-size: 18px; font-weight: 750;")
         self._subtitle = QLabel("Workflow")
         self._subtitle.setObjectName("SettingsPaneSubtitle")
+        self._env_label = QLabel("Env")
+        self._env_select = QComboBox()
+        self._env_select.setFixedWidth(240)
+        self._env_select.currentIndexChanged.connect(
+            self._on_header_environment_changed
+        )
+        self._base_branch_controls = self._new_task.base_branch_controls_widget()
 
         header_layout.addWidget(self._title)
         header_layout.addWidget(self._subtitle)
         header_layout.addStretch(1)
+        header_layout.addWidget(self._env_label)
+        header_layout.addWidget(self._env_select)
+        header_layout.addWidget(self._base_branch_controls)
         layout.addWidget(header)
 
         card = GlassCard()
@@ -144,8 +154,6 @@ class TasksPage(QWidget):
         self._new_task.environment_changed.connect(
             self._on_new_task_environment_changed
         )
-        self._prs.environment_changed.connect(self._on_work_environment_changed)
-        self._issues.environment_changed.connect(self._on_work_environment_changed)
 
         self._prs.prompt_append_requested.connect(self._append_prompt_to_new_task)
         self._issues.prompt_append_requested.connect(self._append_prompt_to_new_task)
@@ -156,6 +164,7 @@ class TasksPage(QWidget):
         self._set_current_pane("new_task", animate=False)
         self._set_active_navigation("new_task")
         self._refresh_navigation_controls()
+        self._sync_header_controls()
 
         self._update_navigation_mode()
 
@@ -273,6 +282,21 @@ class TasksPage(QWidget):
             return
         self._navigate_to_pane(key)
 
+    def _on_header_environment_changed(self, _index: int) -> None:
+        env_id = str(self._env_select.currentData() or "").strip()
+        if not env_id:
+            return
+        self._new_task.set_environment_id(env_id)
+
+    def _set_header_environment_id(self, env_id: str) -> None:
+        idx = self._env_select.findData(env_id)
+        if idx >= 0 and self._env_select.currentIndex() != idx:
+            with QSignalBlocker(self._env_select):
+                self._env_select.setCurrentIndex(idx)
+
+    def _sync_header_controls(self) -> None:
+        self._new_task.set_base_branch_host_active(self._active_pane_key == "new_task")
+
     def _navigate_to_pane(self, key: str) -> None:
         key = str(key or "").strip()
         if not key:
@@ -305,6 +329,7 @@ class TasksPage(QWidget):
             self._subtitle.setText("Issues")
         else:
             self._subtitle.setText("Workflow")
+        self._sync_header_controls()
 
     def _set_current_pane(self, key: str, *, animate: bool) -> None:
         target_index = self._pane_index_by_key.get(key)
@@ -315,12 +340,14 @@ class TasksPage(QWidget):
         if current_index == target_index:
             self._active_pane_key = key
             self._sync_active_page_runtime()
+            self._sync_header_controls()
             return
 
         if current_index < 0 or not animate:
             self._page_stack.setCurrentIndex(target_index)
             self._active_pane_key = key
             self._sync_active_page_runtime()
+            self._sync_header_controls()
             return
 
         forward = target_index > current_index
@@ -328,6 +355,7 @@ class TasksPage(QWidget):
         self._animate_stack(forward=forward)
         self._active_pane_key = key
         self._sync_active_page_runtime()
+        self._sync_header_controls()
 
     def _animate_stack(self, *, forward: bool) -> None:
         if self._pane_animation is not None:
@@ -387,12 +415,14 @@ class TasksPage(QWidget):
             stain = str(env.normalized_color() or "").strip().lower()
 
         if not stain:
+            self._env_select.setStyleSheet("")
             self._compact_nav.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
             self._prs.set_environment_stain("")
             self._issues.set_environment_stain("")
             return
 
+        _apply_environment_combo_tint(self._env_select, stain)
         _apply_environment_combo_tint(self._compact_nav, stain)
         tint = _stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
@@ -509,7 +539,31 @@ class TasksPage(QWidget):
 
     def set_environments(self, envs: dict[str, Environment], active_id: str) -> None:
         self._environments = dict(envs or {})
-        self._active_env_id = str(active_id or "").strip()
+        current = str(self._env_select.currentData() or "").strip()
+
+        with QSignalBlocker(self._env_select):
+            self._env_select.clear()
+            ordered = sorted(
+                self._environments.values(),
+                key=lambda e: (str(e.name or e.env_id).lower(), str(e.env_id).lower()),
+            )
+            for env in ordered:
+                self._env_select.addItem(env.name or env.env_id, env.env_id)
+
+            desired = str(active_id or "").strip() or current
+            idx = self._env_select.findData(desired)
+            if idx < 0 and self._env_select.count() > 0:
+                idx = 0
+            if idx >= 0:
+                self._env_select.setCurrentIndex(idx)
+
+        if self._env_select.count() > 0:
+            self._active_env_id = str(self._env_select.currentData() or "").strip()
+        else:
+            self._active_env_id = ""
+
+        with QSignalBlocker(self._new_task):
+            self._new_task.set_environment_id(self._active_env_id)
 
         self._prs.set_environments(self._environments, self._active_env_id)
         self._issues.set_environments(self._environments, self._active_env_id)
@@ -536,15 +590,11 @@ class TasksPage(QWidget):
 
     def _on_new_task_environment_changed(self, env_id: str) -> None:
         env_id = str(env_id or "").strip()
+        self._set_header_environment_id(env_id)
         self._active_env_id = env_id
         self._prs.set_active_environment_id(env_id)
         self._issues.set_active_environment_id(env_id)
         self._sync_visibility_for_active_environment()
-
-    def _on_work_environment_changed(self, env_id: str) -> None:
-        env_id = str(env_id or "").strip()
-        if env_id:
-            self._new_task.set_environment_id(env_id)
 
     def is_new_task_tab_active(self) -> bool:
         return self._active_pane_key == "new_task"

@@ -6,7 +6,6 @@ from PySide6.QtCore import (
     QPoint,
     QPropertyAnimation,
     QSignalBlocker,
-    Qt,
     QTimer,
     Signal,
 )
@@ -78,14 +77,8 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             "Settings are saved locally in:\n~/.midoriai/agents-runner/state.json"
         )
 
-        back = QToolButton()
-        back.setText("Back")
-        back.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        back.clicked.connect(self._on_back)
-
         header_layout.addWidget(title)
         header_layout.addStretch(1)
-        header_layout.addWidget(back, 0, Qt.AlignRight)
         layout.addWidget(header)
 
         card = GlassCard()

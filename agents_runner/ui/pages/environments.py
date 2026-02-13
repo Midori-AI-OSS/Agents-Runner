@@ -20,7 +20,6 @@ from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.gh_management import is_gh_available
 from agents_runner.persistence import default_state_path
 from agents_runner.ui.constants import (
-    BUTTON_ROW_SPACING,
     CARD_MARGINS,
     CARD_SPACING,
     HEADER_MARGINS,
@@ -88,25 +87,8 @@ class EnvironmentsPage(
         )
         title.setToolTip(f"Environments are saved locally in:\n{envs_path}")
 
-        back = QToolButton()
-        back.setText("Back")
-        back.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        back.clicked.connect(self._on_back)
-
-        header_layout.addWidget(title)
-        header_layout.addStretch(1)
-        header_layout.addWidget(back, 0, Qt.AlignRight)
-        layout.addWidget(header)
-
-        card = GlassCard()
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(*CARD_MARGINS)
-        card_layout.setSpacing(CARD_SPACING)
-
-        top_row = QHBoxLayout()
-        top_row.setSpacing(BUTTON_ROW_SPACING)
-
         self._env_select = QComboBox()
+        self._env_select.setFixedWidth(240)
         self._env_select.currentIndexChanged.connect(self._on_env_selected)
 
         new_btn = QToolButton()
@@ -124,12 +106,19 @@ class EnvironmentsPage(
         test_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
         test_btn.clicked.connect(self._on_test_preflight)
 
-        top_row.addWidget(QLabel("Environment"))
-        top_row.addWidget(self._env_select, 1)
-        top_row.addWidget(new_btn)
-        top_row.addWidget(delete_btn)
-        top_row.addWidget(test_btn)
-        card_layout.addLayout(top_row)
+        header_layout.addWidget(title)
+        header_layout.addStretch(1)
+        header_layout.addWidget(QLabel("Env"))
+        header_layout.addWidget(self._env_select)
+        header_layout.addWidget(new_btn)
+        header_layout.addWidget(delete_btn)
+        header_layout.addWidget(test_btn)
+        layout.addWidget(header)
+
+        card = GlassCard()
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(*CARD_MARGINS)
+        card_layout.setSpacing(CARD_SPACING)
 
         self._compact_nav = QComboBox()
         self._compact_nav.setObjectName("SettingsCompactNav")

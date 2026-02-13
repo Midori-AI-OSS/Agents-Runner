@@ -11,7 +11,6 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QEnterEvent
 from PySide6.QtGui import QMouseEvent
-from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QScrollArea
@@ -30,7 +29,6 @@ from agents_runner.gh.work_items import list_open_pull_requests
 from agents_runner.prompts import load_prompt
 from agents_runner.ui.dialogs.github_workroom_dialog import GitHubWorkroomDialog
 from agents_runner.ui.lucide_icons import lucide_icon
-from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
 from midori_ai_logger import MidoriAiLogger
 
@@ -170,10 +168,6 @@ class GitHubWorkListPage(QWidget):
         self._title = QLabel(title)
         self._title.setStyleSheet("font-size: 16px; font-weight: 750;")
 
-        self._environment = QComboBox()
-        self._environment.setFixedWidth(260)
-        self._environment.currentIndexChanged.connect(self._on_environment_changed)
-
         self._refresh = QToolButton()
         self._refresh.setText("Refresh")
         self._refresh.setIcon(lucide_icon("refresh-cw"))
@@ -182,7 +176,6 @@ class GitHubWorkListPage(QWidget):
 
         header_layout.addWidget(self._title)
         header_layout.addStretch(1)
-        header_layout.addWidget(self._environment)
         header_layout.addWidget(self._refresh)
         root.addWidget(header)
 
@@ -264,40 +257,30 @@ class GitHubWorkListPage(QWidget):
         self._environments = dict(envs or {})
         desired = str(active_id or "").strip()
 
-        self._environment.blockSignals(True)
-        try:
-            self._environment.clear()
+        if desired and desired not in self._environments:
+            desired = ""
+        if not desired and self._environments:
             ordered = sorted(
                 self._environments.values(),
                 key=lambda e: (str(e.name or e.env_id).lower(), str(e.env_id).lower()),
             )
-            for env in ordered:
-                self._environment.addItem(env.name or env.env_id, env.env_id)
+            if ordered:
+                desired = str(ordered[0].env_id or "").strip()
 
-            idx = self._environment.findData(desired)
-            if idx < 0 and self._environment.count() > 0:
-                idx = 0
-            if idx >= 0:
-                self._environment.setCurrentIndex(idx)
-        finally:
-            self._environment.blockSignals(False)
-
-        if self._environment.count() > 0:
-            self._active_env_id = str(self._environment.currentData() or "")
-        else:
-            self._active_env_id = ""
+        self._active_env_id = desired
         self._sync_environment_stain()
 
     def set_active_environment_id(self, env_id: str) -> None:
         desired = str(env_id or "").strip()
         if not desired:
             return
-        idx = self._environment.findData(desired)
-        if idx >= 0 and self._environment.currentIndex() != idx:
-            self._environment.setCurrentIndex(idx)
+        if desired not in self._environments:
+            return
+        if desired == self._active_env_id:
             return
         self._active_env_id = desired
         self._sync_environment_stain()
+        self.refresh()
 
     def set_environment_stain(self, stain: str) -> None:
         normalized = str(stain or "").strip().lower()
@@ -306,16 +289,8 @@ class GitHubWorkListPage(QWidget):
         self._active_stain = normalized
         self._apply_environment_tints(normalized)
 
-    def _on_environment_changed(self, _index: int) -> None:
-        self._active_env_id = str(self._environment.currentData() or "")
-        self._sync_environment_stain()
-        self.environment_changed.emit(self._active_env_id)
-        self.refresh()
-
     def refresh(self) -> None:
-        env_id = str(
-            self._active_env_id or self._environment.currentData() or ""
-        ).strip()
+        env_id = str(self._active_env_id or "").strip()
         if not env_id:
             self._clear_rows()
             self._last_fetch_issue = ""
@@ -764,12 +739,10 @@ class GitHubWorkListPage(QWidget):
     def _apply_environment_tints(self, stain: str) -> None:
         stain = str(stain or "").strip().lower()
         if not stain:
-            self._environment.setStyleSheet("")
             self._refresh.setStyleSheet("")
             self._list.setStyleSheet("")
             return
 
-        _apply_environment_combo_tint(self._environment, stain)
         tint = _stain_color(stain)
         r = int(tint.red())
         g = int(tint.green())
