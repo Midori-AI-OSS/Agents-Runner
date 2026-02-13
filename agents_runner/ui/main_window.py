@@ -102,6 +102,7 @@ class MainWindow(
             "append_pixelarch_context": False,
             "headless_desktop_enabled": False,
             "ui_theme": "auto",
+            "popup_theme_animation_enabled": True,
             "radio_enabled": False,
             "radio_channel": "",
             "radio_quality": "medium",

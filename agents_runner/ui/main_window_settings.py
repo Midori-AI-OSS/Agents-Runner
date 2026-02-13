@@ -123,6 +123,9 @@ class _MainWindowSettingsMixin:
         merged["headless_desktop_enabled"] = bool(
             merged.get("headless_desktop_enabled") or False
         )
+        merged["popup_theme_animation_enabled"] = bool(
+            merged.get("popup_theme_animation_enabled", True)
+        )
         merged["radio_enabled"] = bool(merged.get("radio_enabled") or False)
         merged["radio_autostart"] = bool(merged.get("radio_autostart") or False)
         merged["radio_channel"] = RadioController.normalize_channel(

@@ -29,9 +29,10 @@ from agents_runner.setup.orchestrator import (
     mark_setup_skipped,
 )
 from agents_runner.ui.dialogs.docker_validator import DockerValidator
+from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 
 
-class FirstRunSetupDialog(QDialog):
+class FirstRunSetupDialog(ThemedDialog):
     """First-run setup dialog shown on app launch if setup incomplete."""
 
     def __init__(self, parent: QWidget | None = None):
@@ -56,8 +57,7 @@ class FirstRunSetupDialog(QDialog):
 
     def _setup_ui(self) -> None:
         """Set up the dialog UI."""
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        layout = self.content_layout()
 
         # Welcome message
         welcome_label = QLabel("Welcome to Agents Runner!")
@@ -267,7 +267,7 @@ class FirstRunSetupDialog(QDialog):
             self.reject()
 
 
-class SetupProgressDialog(QDialog):
+class SetupProgressDialog(ThemedDialog):
     """Progress dialog shown during sequential agent setup."""
 
     def __init__(self, agents: list[str], parent: QWidget | None = None):
@@ -293,8 +293,7 @@ class SetupProgressDialog(QDialog):
 
     def _setup_ui(self) -> None:
         """Set up the progress dialog UI."""
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        layout = self.content_layout()
 
         # Title
         self._title_label = QLabel("Setting up agents...")
