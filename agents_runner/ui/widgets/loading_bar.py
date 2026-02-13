@@ -192,7 +192,7 @@ class BouncingLoadingBar(QWidget):
         if self._mode == "shimmer_sweep":
             r, g, b = self._color.red(), self._color.green(), self._color.blue()
             painter.setPen(Qt.NoPen)
-            painter.setBrush(QColor(r, g, b, 46))
+            painter.setBrush(QColor(r, g, b, 14))
             painter.drawRect(inner)
 
             sweep_w = max(18, int(inner.width() * 0.46))
@@ -206,9 +206,9 @@ class BouncingLoadingBar(QWidget):
                 float(inner.top()),
             )
             gradient.setColorAt(0.00, QColor(r, g, b, 0))
-            gradient.setColorAt(0.32, QColor(r, g, b, 88))
-            gradient.setColorAt(0.50, QColor(r, g, b, 175))
-            gradient.setColorAt(0.68, QColor(r, g, b, 88))
+            gradient.setColorAt(0.32, QColor(r, g, b, 20))
+            gradient.setColorAt(0.50, QColor(r, g, b, 42))
+            gradient.setColorAt(0.68, QColor(r, g, b, 20))
             gradient.setColorAt(1.00, QColor(r, g, b, 0))
             painter.setBrush(gradient)
             painter.drawRect(
