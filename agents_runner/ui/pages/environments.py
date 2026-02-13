@@ -25,6 +25,7 @@ from agents_runner.ui.constants import (
     CARD_SPACING,
     HEADER_MARGINS,
     HEADER_SPACING,
+    LEFT_NAV_PANEL_WIDTH,
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
 )
@@ -142,8 +143,7 @@ class EnvironmentsPage(
 
         self._nav_panel = QWidget()
         self._nav_panel.setObjectName("SettingsNavPanel")
-        self._nav_panel.setMinimumWidth(250)
-        self._nav_panel.setMaximumWidth(320)
+        self._nav_panel.setFixedWidth(LEFT_NAV_PANEL_WIDTH)
         nav_layout = QVBoxLayout(self._nav_panel)
         nav_layout.setContentsMargins(10, 10, 10, 10)
         nav_layout.setSpacing(6)
@@ -167,7 +167,6 @@ class EnvironmentsPage(
         self._build_controls()
         self._build_pages()
         self._build_navigation(nav_layout)
-        self._sync_nav_button_sizes()
         self._connect_autosave_signals()
 
         if self._pane_specs:
@@ -176,7 +175,6 @@ class EnvironmentsPage(
             self._set_current_pane(first_key, animate=False)
 
         self._update_navigation_mode()
-        QTimer.singleShot(0, self._sync_nav_button_sizes)
 
         self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.raise_()
@@ -184,7 +182,6 @@ class EnvironmentsPage(
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
-        self._sync_nav_button_sizes()
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 

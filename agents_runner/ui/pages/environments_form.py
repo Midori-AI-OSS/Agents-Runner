@@ -416,7 +416,7 @@ class _EnvironmentsFormMixin:
                 button.setToolButtonStyle(Qt.ToolButtonTextOnly)
                 button.setFixedHeight(40)
                 button.setSizePolicy(
-                    QSizePolicy.Policy.Fixed,
+                    QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Fixed,
                 )
                 button.clicked.connect(
