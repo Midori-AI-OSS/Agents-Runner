@@ -458,7 +458,7 @@ def launch_docker_terminal_task(
 
         # Launch terminal
         launch_in_terminal(terminal_opt, host_script, cwd=host_workdir)
-        main_window._show_dashboard()
+        main_window._maybe_auto_navigate_on_task_start(interactive=True)
         main_window._new_task.reset_for_new_run()
 
     except Exception as exc:

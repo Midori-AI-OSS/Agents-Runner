@@ -150,6 +150,8 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._agentsnova_auto_review_enabled,
             self._headless_desktop_enabled,
             self._popup_theme_animation_enabled,
+            self._auto_navigate_on_run_agent_start,
+            self._auto_navigate_on_run_interactive_start,
             self._gh_context_default,
             self._spellcheck_enabled,
             self._mount_host_cache,

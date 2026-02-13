@@ -175,6 +175,8 @@ class _MainWindowPersistenceMixin:
             "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace",
         )
         self._settings_data.setdefault("headless_desktop_enabled", False)
+        self._settings_data.setdefault("auto_navigate_on_run_agent_start", False)
+        self._settings_data.setdefault("auto_navigate_on_run_interactive_start", False)
         self._settings_data.setdefault("spellcheck_enabled", True)
         self._settings_data.setdefault("ui_theme", "auto")
         self._settings_data.setdefault("popup_theme_animation_enabled", True)
@@ -253,6 +255,12 @@ class _MainWindowPersistenceMixin:
             RadioController.normalize_loudness_boost_factor(
                 self._settings_data.get("radio_loudness_boost_factor")
             )
+        )
+        self._settings_data["auto_navigate_on_run_agent_start"] = bool(
+            self._settings_data.get("auto_navigate_on_run_agent_start") or False
+        )
+        self._settings_data["auto_navigate_on_run_interactive_start"] = bool(
+            self._settings_data.get("auto_navigate_on_run_interactive_start") or False
         )
 
         items = load_active_task_payloads(self._state_path)

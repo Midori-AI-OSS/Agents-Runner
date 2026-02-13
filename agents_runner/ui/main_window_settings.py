@@ -129,6 +129,12 @@ class _MainWindowSettingsMixin:
         merged["popup_theme_animation_enabled"] = bool(
             merged.get("popup_theme_animation_enabled", True)
         )
+        merged["auto_navigate_on_run_agent_start"] = bool(
+            merged.get("auto_navigate_on_run_agent_start") or False
+        )
+        merged["auto_navigate_on_run_interactive_start"] = bool(
+            merged.get("auto_navigate_on_run_interactive_start") or False
+        )
         merged["radio_enabled"] = bool(merged.get("radio_enabled") or False)
         merged["radio_autostart"] = bool(merged.get("radio_autostart") or False)
         merged["radio_channel"] = RadioController.normalize_channel(
