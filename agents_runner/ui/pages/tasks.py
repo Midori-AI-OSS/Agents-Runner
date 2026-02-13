@@ -91,7 +91,7 @@ class TasksPage(QWidget):
         self._title.setStyleSheet("font-size: 18px; font-weight: 750;")
         self._subtitle = QLabel("Workflow")
         self._subtitle.setObjectName("SettingsPaneSubtitle")
-        self._env_label = QLabel("Env")
+        self._env_label = QLabel("Environments")
         self._env_select = QComboBox()
         self._env_select.setFixedWidth(240)
         self._env_select.currentIndexChanged.connect(

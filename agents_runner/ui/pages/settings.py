@@ -135,6 +135,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         for combo in (
             self._use,
             self._shell,
+            self._interactive_terminal,
             self._ui_theme,
             self._radio_channel,
             self._radio_quality,

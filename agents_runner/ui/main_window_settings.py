@@ -74,6 +74,9 @@ class _MainWindowSettingsMixin:
 
         merged["preflight_enabled"] = bool(merged.get("preflight_enabled") or False)
         merged["preflight_script"] = str(merged.get("preflight_script") or "")
+        merged["interactive_terminal_id"] = str(
+            merged.get("interactive_terminal_id") or ""
+        ).strip()
         merged["interactive_command"] = str(
             merged.get("interactive_command") or "--sandbox danger-full-access"
         )
