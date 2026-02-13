@@ -42,6 +42,21 @@ print_remediation_root() {
   log "  - Common destinations: agents_runner/ (code), .agents/implementation/ (notes), .agents/tasks/wip/ (work), .agents/temp/ (temporary artifacts)"
 }
 
+is_agents_md_path_ci() {
+  local path_lower="${1,,}"
+  case "${path_lower}" in
+    "agents.md"|\
+    ".agents/tasks/agents.md"|\
+    ".agents/tasks/wip/agents.md"|\
+    ".agents/tasks/done/agents.md"|\
+    ".agents/tasks/taskmaster/agents.md"|\
+    ".agents/tasks/not-ready/agents.md")
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 repo_root="$(git rev-parse --show-toplevel)"
 cd "${repo_root}"
 
@@ -64,6 +79,9 @@ disallowed_staged_paths=()
 for path in "${staged_paths[@]}"; do
   [[ -z "${path}" ]] && continue
   top_level="${path%%/*}"
+  if [[ "${top_level,,}" == "agents.md" ]]; then
+    continue
+  fi
   if [[ -z "${root_allowlist["$top_level"]+x}" ]]; then
     disallowed_staged_paths+=("${path}")
   fi
@@ -82,6 +100,50 @@ had_structure_error=0
 audit_tracked=()
 mapfile -d '' -t audit_tracked < <(git ls-files -z -- .agents/audit)
 audit_required=".agents/audit/AGENTS.md"
+
+staged_name_status=()
+mapfile -d '' -t staged_name_status < <(git diff --cached --name-status -z --diff-filter=DR)
+protected_agents_deletions=()
+status_idx=0
+while ((status_idx < ${#staged_name_status[@]})); do
+  status="${staged_name_status[$status_idx]}"
+  status_idx=$((status_idx + 1))
+  case "${status}" in
+    D*)
+      old_path="${staged_name_status[$status_idx]:-}"
+      status_idx=$((status_idx + 1))
+      if is_agents_md_path_ci "${old_path}"; then
+        protected_agents_deletions+=("${old_path}")
+      fi
+      ;;
+    R*)
+      old_path="${staged_name_status[$status_idx]:-}"
+      new_path="${staged_name_status[$((status_idx + 1))]:-}"
+      ((status_idx+=2))
+      if is_agents_md_path_ci "${old_path}" && ! is_agents_md_path_ci "${new_path}"; then
+        protected_agents_deletions+=("${old_path} -> ${new_path}")
+      fi
+      ;;
+    *)
+      status_idx=$((status_idx + 1))
+      ;;
+  esac
+done
+
+if ((${#protected_agents_deletions[@]} > 0)); then
+  log "ERROR: Protected AGENTS.md paths must never be deleted from task folders or repo root."
+  print_paths "Blocked AGENTS deletions/renames" "${protected_agents_deletions[@]}"
+  log "How to fix:"
+  log "  - Restore AGENTS.md files in protected locations and stage them."
+  log "  - Allowed protected locations (case-insensitive basename match):"
+  log "      AGENTS.md"
+  log "      .agents/tasks/AGENTS.md"
+  log "      .agents/tasks/wip/AGENTS.md"
+  log "      .agents/tasks/done/AGENTS.md"
+  log "      .agents/tasks/taskmaster/AGENTS.md"
+  log "      .agents/tasks/not-ready/AGENTS.md"
+  had_structure_error=1
+fi
 
 audit_missing=0
 audit_extra=()
@@ -123,13 +185,24 @@ tasks_required=(
 )
 
 declare -A tasks_required_set=()
+declare -A tasks_required_lower_set=()
 for path in "${tasks_required[@]}"; do
   tasks_required_set["$path"]=1
+  tasks_required_lower_set["${path,,}"]=1
 done
 
 tasks_missing=()
-for path in "${tasks_required[@]}"; do
-  if ! git ls-files --error-unmatch -- "$path" >/dev/null 2>&1; then
+for required_path in "${tasks_required[@]}"; do
+  required_lower="${required_path,,}"
+  required_found=0
+  for tracked_path in "${tasks_tracked[@]}"; do
+    if [[ "${tracked_path,,}" == "${required_lower}" ]]; then
+      required_found=1
+      break
+    fi
+  done
+  if [[ "${required_found}" -eq 0 ]]; then
+    path="${required_path}"
     tasks_missing+=("$path")
   fi
 done
@@ -137,7 +210,7 @@ done
 tasks_invalid=()
 tasks_has_task_files=0
 for path in "${tasks_tracked[@]}"; do
-  if [[ -n "${tasks_required_set["$path"]+x}" ]]; then
+  if [[ -n "${tasks_required_set["$path"]+x}" || -n "${tasks_required_lower_set["${path,,}"]+x}" ]]; then
     continue
   fi
   if [[ "${path}" =~ ^\.agents/tasks/not-ready/[^/]+\.(md|txt)$ ]]; then
