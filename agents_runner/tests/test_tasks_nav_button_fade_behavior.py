@@ -28,6 +28,12 @@ class _DummyNewTaskPage(QWidget):
     def append_prompt_text(self, _prompt: str) -> None:
         return
 
+    def base_branch_controls_widget(self) -> QWidget:
+        return QWidget()
+
+    def set_base_branch_host_active(self, _active: bool) -> None:
+        return
+
 
 def _pump(app: QApplication, rounds: int = 10) -> None:
     for _ in range(rounds):
