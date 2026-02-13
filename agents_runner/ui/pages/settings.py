@@ -135,6 +135,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         for combo in (
             self._use,
             self._shell,
+            self._interactive_terminal,
             self._ui_theme,
             self._radio_channel,
             self._radio_quality,
@@ -148,6 +149,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._github_workroom_prefer_browser,
             self._agentsnova_auto_review_enabled,
             self._headless_desktop_enabled,
+            self._popup_theme_animation_enabled,
             self._auto_navigate_on_run_agent_start,
             self._auto_navigate_on_run_interactive_start,
             self._gh_context_default,

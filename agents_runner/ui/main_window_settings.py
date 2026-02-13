@@ -74,6 +74,9 @@ class _MainWindowSettingsMixin:
 
         merged["preflight_enabled"] = bool(merged.get("preflight_enabled") or False)
         merged["preflight_script"] = str(merged.get("preflight_script") or "")
+        merged["interactive_terminal_id"] = str(
+            merged.get("interactive_terminal_id") or ""
+        ).strip()
         merged["interactive_command"] = str(
             merged.get("interactive_command") or "--sandbox danger-full-access"
         )
@@ -122,6 +125,9 @@ class _MainWindowSettingsMixin:
         )
         merged["headless_desktop_enabled"] = bool(
             merged.get("headless_desktop_enabled") or False
+        )
+        merged["popup_theme_animation_enabled"] = bool(
+            merged.get("popup_theme_animation_enabled", True)
         )
         merged["auto_navigate_on_run_agent_start"] = bool(
             merged.get("auto_navigate_on_run_agent_start") or False

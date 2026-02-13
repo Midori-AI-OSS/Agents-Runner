@@ -11,8 +11,6 @@ from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import delete_environment
 from agents_runner.environments import load_environments
-from agents_runner.environments import parse_env_vars_text
-from agents_runner.environments import parse_mounts_text
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
@@ -152,7 +150,7 @@ class _EnvironmentsPageActionsMixin:
         else:
             gh_context_enabled = False
 
-        env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
+        env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
             if show_validation_errors:
                 QMessageBox.warning(
@@ -160,7 +158,15 @@ class _EnvironmentsPageActionsMixin:
                 )
             return False
 
-        mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        mounts, mount_errors = self._mounts_tab.get_mounts()
+        if mount_errors:
+            if show_validation_errors:
+                QMessageBox.warning(
+                    self,
+                    "Invalid mounts",
+                    "Fix mounts:\n" + "\n".join(mount_errors[:12]),
+                )
+            return False
         ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
             self._ports_tab.get_ports()
         )
@@ -304,14 +310,19 @@ class _EnvironmentsPageActionsMixin:
         else:
             gh_context_enabled = False
 
-        env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
+        env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
             QMessageBox.warning(
                 self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
             )
             return None
 
-        mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        mounts, mount_errors = self._mounts_tab.get_mounts()
+        if mount_errors:
+            QMessageBox.warning(
+                self, "Invalid mounts", "Fix mounts:\n" + "\n".join(mount_errors[:12])
+            )
+            return None
         ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
             self._ports_tab.get_ports()
         )

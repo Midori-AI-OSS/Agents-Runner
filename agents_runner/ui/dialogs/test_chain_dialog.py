@@ -7,13 +7,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import QThread
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QDialogButtonBox
 from PySide6.QtWidgets import QLabel
-from PySide6.QtWidgets import QVBoxLayout
 
 from agents_runner.setup.agent_status import AgentStatus
 from agents_runner.setup.agent_status import detect_all_agents
+from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 from agents_runner.ui.widgets import AgentChainStatusWidget
 
 
@@ -33,7 +32,7 @@ class AgentStatusCheckThread(QThread):
         self.status_ready.emit(status_map)
 
 
-class TestChainDialog(QDialog):
+class TestChainDialog(ThemedDialog):
     """Dialog for testing agent chain availability."""
 
     def __init__(
@@ -51,7 +50,7 @@ class TestChainDialog(QDialog):
         self.setMinimumWidth(500)
         self.setMinimumHeight(300)
 
-        layout = QVBoxLayout(self)
+        layout = self.content_layout()
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 

@@ -30,9 +30,10 @@ from agents_runner.ui.constants import (
     STANDARD_BUTTON_WIDTH,
 )
 from agents_runner.ui.pages.environments_agents import AgentsTabWidget
+from agents_runner.ui.pages.environments_env_vars import EnvVarsTabWidget
+from agents_runner.ui.pages.environments_mounts import MountsTabWidget
 from agents_runner.ui.pages.environments_ports import PortsTabWidget
 from agents_runner.ui.pages.environments_prompts import PromptsTabWidget
-from agents_runner.ui.widgets import GlassCard
 
 
 @dataclass(frozen=True)
@@ -48,7 +49,7 @@ class _EnvironmentsFormMixin:
         return [
             _EnvironmentPaneSpec(
                 key="general",
-                title="General",
+                title="Preferences",
                 subtitle="Core environment identity, limits, and runtime toggles.",
                 section="General",
             ),
@@ -85,7 +86,13 @@ class _EnvironmentsFormMixin:
             _EnvironmentPaneSpec(
                 key="preflight",
                 title="Preflight",
-                subtitle="Container setup scripts for cached and runtime execution.",
+                subtitle="Container setup scripts executed before tasks run.",
+                section="Automation",
+            ),
+            _EnvironmentPaneSpec(
+                key="caching",
+                title="Caching",
+                subtitle="Container and desktop caching controls for this environment.",
                 section="Automation",
             ),
         ]
@@ -127,7 +134,7 @@ class _EnvironmentsFormMixin:
         self._container_caching_enabled = QCheckBox("Enable container caching")
         self._container_caching_enabled.setToolTip(
             "When enabled, selected preflight phases build cached Docker layers.\n"
-            "Configure phase cache toggles in the Preflight pane."
+            "Configure phase cache toggles in the Caching pane."
         )
         self._container_caching_enabled.stateChanged.connect(
             self._on_container_caching_toggled
@@ -215,27 +222,11 @@ class _EnvironmentsFormMixin:
         )
         self._cache_environment_preflight_enabled.setEnabled(False)
 
-        self._desktop_cache_hint = QLabel(
-            "Desktop phase caching uses `General -> Cache desktop build`."
-        )
-        self._preflight_phase_cache_card = GlassCard()
-        phase_layout = QVBoxLayout(self._preflight_phase_cache_card)
-        phase_layout.setContentsMargins(18, 16, 18, 16)
-        phase_layout.setSpacing(10)
-        phase_layout.addWidget(QLabel("Phase cache toggles"))
-        phase_layout.addWidget(self._cache_system_preflight_enabled)
-        phase_layout.addWidget(self._cache_settings_preflight_enabled)
-        phase_layout.addWidget(self._cache_environment_preflight_enabled)
-        phase_layout.addWidget(self._desktop_cache_hint)
-        phase_layout.addStretch(1)
+        self._env_vars_tab = EnvVarsTabWidget()
+        self._env_vars_tab.env_vars_changed.connect(self._queue_debounced_autosave)
 
-        self._env_vars = QPlainTextEdit()
-        self._env_vars.setPlaceholderText("# KEY=VALUE (one per line)\n")
-        self._env_vars.setTabChangesFocus(True)
-
-        self._mounts = QPlainTextEdit()
-        self._mounts.setPlaceholderText("# host_path:container_path[:ro]\n")
-        self._mounts.setTabChangesFocus(True)
+        self._mounts_tab = MountsTabWidget()
+        self._mounts_tab.mounts_changed.connect(self._queue_debounced_autosave)
 
         self._ports_tab = PortsTabWidget()
         self._ports_tab.ports_changed.connect(self._on_ports_changed)
@@ -267,15 +258,7 @@ class _EnvironmentsFormMixin:
         headless_desktop_layout.setContentsMargins(0, 0, 0, 0)
         headless_desktop_layout.setSpacing(BUTTON_ROW_SPACING)
         headless_desktop_layout.addWidget(self._headless_desktop_enabled)
-        headless_desktop_layout.addWidget(self._cache_desktop_build)
         headless_desktop_layout.addStretch(1)
-
-        container_caching_row = QWidget(general_page)
-        container_caching_layout = QHBoxLayout(container_caching_row)
-        container_caching_layout.setContentsMargins(0, 0, 0, 0)
-        container_caching_layout.setSpacing(BUTTON_ROW_SPACING)
-        container_caching_layout.addWidget(self._container_caching_enabled)
-        container_caching_layout.addStretch(1)
 
         cross_agents_row = QWidget(general_page)
         cross_agents_layout = QHBoxLayout(cross_agents_row)
@@ -305,10 +288,8 @@ class _EnvironmentsFormMixin:
         grid.addWidget(self._gh_context_row, 4, 1, 1, 2)
         grid.addWidget(QLabel("Headless desktop"), 5, 0)
         grid.addWidget(headless_desktop_row, 5, 1, 1, 2)
-        grid.addWidget(QLabel("Container caching"), 6, 0)
-        grid.addWidget(container_caching_row, 6, 1, 1, 2)
-        grid.addWidget(QLabel("Cross agents"), 7, 0)
-        grid.addWidget(cross_agents_row, 7, 1, 1, 2)
+        grid.addWidget(QLabel("Cross agents"), 6, 0)
+        grid.addWidget(cross_agents_row, 6, 1, 1, 2)
 
         general_body.addLayout(grid)
         general_body.addStretch(1)
@@ -323,13 +304,11 @@ class _EnvironmentsFormMixin:
         self._register_page("prompts", prompts_page)
 
         env_vars_page, env_vars_body = self._create_page(specs_by_key["env_vars"])
-        env_vars_body.addWidget(QLabel("Container env vars"))
-        env_vars_body.addWidget(self._env_vars, 1)
+        env_vars_body.addWidget(self._env_vars_tab, 1)
         self._register_page("env_vars", env_vars_page)
 
         mounts_page, mounts_body = self._create_page(specs_by_key["mounts"])
-        mounts_body.addWidget(QLabel("Extra bind mounts"))
-        mounts_body.addWidget(self._mounts, 1)
+        mounts_body.addWidget(self._mounts_tab, 1)
         self._register_page("mounts", mounts_page)
 
         ports_page, ports_body = self._create_page(specs_by_key["ports"])
@@ -340,8 +319,16 @@ class _EnvironmentsFormMixin:
         preflight_body.addWidget(self._preflight_enabled)
         preflight_body.addWidget(QLabel("Environment preflight script"))
         preflight_body.addWidget(self._preflight_script, 1)
-        preflight_body.addWidget(self._preflight_phase_cache_card)
         self._register_page("preflight", preflight_page)
+
+        caching_page, caching_body = self._create_page(specs_by_key["caching"])
+        caching_body.addWidget(self._container_caching_enabled)
+        caching_body.addWidget(self._cache_desktop_build)
+        caching_body.addWidget(self._cache_system_preflight_enabled)
+        caching_body.addWidget(self._cache_settings_preflight_enabled)
+        caching_body.addWidget(self._cache_environment_preflight_enabled)
+        caching_body.addStretch(1)
+        self._register_page("caching", caching_page)
 
     def _build_navigation(self, nav_layout: QVBoxLayout) -> None:
         sections: dict[str, list[_EnvironmentPaneSpec]] = {}
@@ -404,8 +391,6 @@ class _EnvironmentsFormMixin:
 
     @staticmethod
     def _pane_button_label(key: str, title: str) -> str:
-        if key == "env_vars":
-            return "Env Vars"
         return title
 
     def _pick_gh_management_folder(self) -> None:

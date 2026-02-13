@@ -104,6 +104,7 @@ class MainWindow(
             "auto_navigate_on_run_agent_start": False,
             "auto_navigate_on_run_interactive_start": False,
             "ui_theme": "auto",
+            "popup_theme_animation_enabled": True,
             "radio_enabled": False,
             "radio_channel": "",
             "radio_quality": "medium",
