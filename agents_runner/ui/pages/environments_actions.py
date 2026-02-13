@@ -177,23 +177,17 @@ class _EnvironmentsPageActionsMixin:
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
-        # Read preflight scripts based on container caching state
-        container_caching_enabled = bool(self._container_caching_enabled.isChecked())
-
-        if container_caching_enabled:
-            # Dual-editor mode: read from both editors
-            cached_preflight_script = (
-                str(self._cached_preflight_script.toPlainText() or "")
-                if self._cached_preflight_enabled.isChecked()
-                else ""
-            )
-            preflight_enabled = bool(self._run_preflight_enabled.isChecked())
-            preflight_script = str(self._run_preflight_script.toPlainText() or "")
-        else:
-            # Single-editor mode: read from single editor only
-            cached_preflight_script = ""
-            preflight_enabled = bool(self._preflight_enabled.isChecked())
-            preflight_script = str(self._preflight_script.toPlainText() or "")
+        preflight_enabled = bool(self._preflight_enabled.isChecked())
+        preflight_script = str(self._preflight_script.toPlainText() or "")
+        cache_system_preflight_enabled = bool(
+            self._cache_system_preflight_enabled.isChecked()
+        )
+        cache_settings_preflight_enabled = bool(
+            self._cache_settings_preflight_enabled.isChecked()
+        )
+        cache_environment_preflight_enabled = bool(
+            self._cache_environment_preflight_enabled.isChecked()
+        )
 
         if base_env is None:
             env = Environment(
@@ -209,7 +203,9 @@ class _EnvironmentsPageActionsMixin:
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
-                cached_preflight_script=cached_preflight_script,
+                cache_system_preflight_enabled=cache_system_preflight_enabled,
+                cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+                cache_environment_preflight_enabled=cache_environment_preflight_enabled,
                 preflight_enabled=preflight_enabled,
                 preflight_script=preflight_script,
                 env_vars=env_vars,
@@ -241,7 +237,9 @@ class _EnvironmentsPageActionsMixin:
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
-                cached_preflight_script=cached_preflight_script,
+                cache_system_preflight_enabled=cache_system_preflight_enabled,
+                cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+                cache_environment_preflight_enabled=cache_environment_preflight_enabled,
                 preflight_enabled=preflight_enabled,
                 preflight_script=preflight_script,
                 env_vars=env_vars,
@@ -330,23 +328,17 @@ class _EnvironmentsPageActionsMixin:
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
-        # Read preflight scripts based on container caching state
-        container_caching_enabled = bool(self._container_caching_enabled.isChecked())
-
-        if container_caching_enabled:
-            # Dual-editor mode: read from both editors
-            cached_preflight_script = (
-                str(self._cached_preflight_script.toPlainText() or "")
-                if self._cached_preflight_enabled.isChecked()
-                else ""
-            )
-            preflight_enabled = bool(self._run_preflight_enabled.isChecked())
-            preflight_script = str(self._run_preflight_script.toPlainText() or "")
-        else:
-            # Single-editor mode: read from single editor only
-            cached_preflight_script = ""
-            preflight_enabled = bool(self._preflight_enabled.isChecked())
-            preflight_script = str(self._preflight_script.toPlainText() or "")
+        preflight_enabled = bool(self._preflight_enabled.isChecked())
+        preflight_script = str(self._preflight_script.toPlainText() or "")
+        cache_system_preflight_enabled = bool(
+            self._cache_system_preflight_enabled.isChecked()
+        )
+        cache_settings_preflight_enabled = bool(
+            self._cache_settings_preflight_enabled.isChecked()
+        )
+        cache_environment_preflight_enabled = bool(
+            self._cache_environment_preflight_enabled.isChecked()
+        )
 
         if existing is None:
             return Environment(
@@ -362,7 +354,9 @@ class _EnvironmentsPageActionsMixin:
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
-                cached_preflight_script=cached_preflight_script,
+                cache_system_preflight_enabled=cache_system_preflight_enabled,
+                cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+                cache_environment_preflight_enabled=cache_environment_preflight_enabled,
                 preflight_enabled=preflight_enabled,
                 preflight_script=preflight_script,
                 env_vars=env_vars,
@@ -390,7 +384,9 @@ class _EnvironmentsPageActionsMixin:
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
-            cached_preflight_script=cached_preflight_script,
+            cache_system_preflight_enabled=cache_system_preflight_enabled,
+            cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+            cache_environment_preflight_enabled=cache_environment_preflight_enabled,
             preflight_enabled=preflight_enabled,
             preflight_script=preflight_script,
             env_vars=env_vars,

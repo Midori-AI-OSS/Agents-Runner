@@ -26,6 +26,7 @@ import shlex
 import time
 import selectors
 import subprocess
+from pathlib import Path
 from typing import Any, Callable
 
 from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
@@ -194,6 +195,15 @@ class ContainerExecutor:
         preflight_clause = ""
         preflight_mounts: list[str] = []
 
+        # System preflight
+        if (
+            self._runtime_env.system_preflight_enabled
+            and not self._runtime_env.system_preflight_cached
+        ):
+            clause, mounts = self._build_system_preflight()
+            preflight_clause += clause
+            preflight_mounts.extend(mounts)
+
         # Desktop preflight
         if self._runtime_env.desktop_enabled:
             preflight_clause += self._build_desktop_preflight_clause()
@@ -205,7 +215,10 @@ class ContainerExecutor:
             )
 
         # Settings preflight
-        if self._runtime_env.settings_preflight_tmp_path is not None:
+        if (
+            self._runtime_env.settings_preflight_tmp_path is not None
+            and not self._runtime_env.settings_preflight_cached
+        ):
             clause, mounts = self._build_settings_preflight(
                 self._runtime_env.settings_preflight_tmp_path,
                 self._runtime_env.settings_container_path,
@@ -214,7 +227,10 @@ class ContainerExecutor:
             preflight_mounts.extend(mounts)
 
         # Environment preflight
-        if self._runtime_env.environment_preflight_tmp_path is not None:
+        if (
+            self._runtime_env.environment_preflight_tmp_path is not None
+            and not self._runtime_env.environment_preflight_cached
+        ):
             clause, mounts = self._build_environment_preflight(
                 self._runtime_env.environment_preflight_tmp_path,
                 self._runtime_env.environment_container_path,
@@ -224,9 +240,33 @@ class ContainerExecutor:
 
         return preflight_clause, preflight_mounts
 
+    def _build_system_preflight(self) -> tuple[str, list[str]]:
+        """Build system preflight clause and mounts."""
+        host_preflights_dir = Path(self._runtime_env.preflights_host_dir).resolve()
+        if not host_preflights_dir.is_dir():
+            self._on_log(
+                format_log(
+                    "docker",
+                    "preflight",
+                    "WARN",
+                    f"system preflight skipped; preflights dir not found: {host_preflights_dir}",
+                )
+            )
+            return "", []
+        container_dir = "/tmp/agents-runner-preflights"
+        return (
+            f"PREFLIGHTS_DIR={shlex.quote(container_dir)}; "
+            'export AGENTS_RUNNER_PREFLIGHTS_DIR="${PREFLIGHTS_DIR}"; '
+            'PREFLIGHT_SYSTEM="${PREFLIGHTS_DIR}/pixelarch_yay.sh"; '
+            f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: starting')}; "
+            '/bin/bash "${PREFLIGHT_SYSTEM}"; '
+            f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: done')}; ",
+            ["-v", f"{host_preflights_dir}:{container_dir}:ro"],
+        )
+
     def _build_desktop_preflight_clause(self) -> str:
         """Build desktop preflight clause based on cached vs runtime setup."""
-        using_cached_image = self._runtime_env.runtime_image != self._config.image
+        using_cached_image = bool(self._runtime_env.desktop_cached)
         if using_cached_image:
             self._on_log(
                 format_log(

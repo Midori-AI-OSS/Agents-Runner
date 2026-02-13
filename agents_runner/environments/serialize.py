@@ -184,7 +184,15 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     headless_desktop_enabled = bool(payload.get("headless_desktop_enabled", False))
     cache_desktop_build = bool(payload.get("cache_desktop_build", False))
     container_caching_enabled = bool(payload.get("container_caching_enabled", False))
-    cached_preflight_script = str(payload.get("cached_preflight_script") or "")
+    cache_system_preflight_enabled = bool(
+        payload.get("cache_system_preflight_enabled", False)
+    )
+    cache_settings_preflight_enabled = bool(
+        payload.get("cache_settings_preflight_enabled", False)
+    )
+    cache_environment_preflight_enabled = bool(
+        payload.get("cache_environment_preflight_enabled", False)
+    )
 
     env_vars = payload.get("env_vars", {})
     env_vars = env_vars if isinstance(env_vars, dict) else {}
@@ -404,7 +412,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         headless_desktop_enabled=headless_desktop_enabled,
         cache_desktop_build=cache_desktop_build,
         container_caching_enabled=container_caching_enabled,
-        cached_preflight_script=cached_preflight_script,
+        cache_system_preflight_enabled=cache_system_preflight_enabled,
+        cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+        cache_environment_preflight_enabled=cache_environment_preflight_enabled,
         preflight_enabled=preflight_enabled,
         preflight_script=preflight_script,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
@@ -493,8 +503,14 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "container_caching_enabled": bool(
             getattr(env, "container_caching_enabled", False)
         ),
-        "cached_preflight_script": str(
-            getattr(env, "cached_preflight_script", "") or ""
+        "cache_system_preflight_enabled": bool(
+            getattr(env, "cache_system_preflight_enabled", False)
+        ),
+        "cache_settings_preflight_enabled": bool(
+            getattr(env, "cache_settings_preflight_enabled", False)
+        ),
+        "cache_environment_preflight_enabled": bool(
+            getattr(env, "cache_environment_preflight_enabled", False)
         ),
         "preflight_enabled": bool(env.preflight_enabled),
         "preflight_script": env.preflight_script,

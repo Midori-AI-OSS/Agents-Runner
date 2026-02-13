@@ -263,11 +263,10 @@ class EnvironmentsPage(
                 self._gh_use_host_cli.setChecked(bool(is_gh_available()))
                 self._preflight_enabled.setChecked(False)
                 self._preflight_script.setPlainText("")
-                self._cached_preflight_enabled.setChecked(False)
-                self._cached_preflight_script.setPlainText("")
-                self._run_preflight_enabled.setChecked(False)
-                self._run_preflight_script.setPlainText("")
-                self._preflight_stack.setCurrentIndex(0)
+                self._cache_system_preflight_enabled.setChecked(False)
+                self._cache_settings_preflight_enabled.setChecked(False)
+                self._cache_environment_preflight_enabled.setChecked(False)
+                self._on_container_caching_toggled(Qt.CheckState.Unchecked.value)
                 self._env_vars.setPlainText("")
                 self._mounts.setPlainText("")
                 self._ports_tab.set_desktop_effective_enabled(
@@ -330,23 +329,23 @@ class EnvironmentsPage(
             )
             self._sync_workspace_controls(env=env)
 
-            container_caching = bool(getattr(env, "container_caching_enabled", False))
-
             self._preflight_enabled.setChecked(bool(env.preflight_enabled))
             self._preflight_script.setEnabled(bool(env.preflight_enabled))
             self._preflight_script.setPlainText(env.preflight_script or "")
-
-            cached_script = str(getattr(env, "cached_preflight_script", "") or "")
-            has_cached = bool(cached_script.strip())
-            self._cached_preflight_enabled.setChecked(has_cached)
-            self._cached_preflight_script.setEnabled(has_cached)
-            self._cached_preflight_script.setPlainText(cached_script)
-
-            self._run_preflight_enabled.setChecked(bool(env.preflight_enabled))
-            self._run_preflight_script.setEnabled(bool(env.preflight_enabled))
-            self._run_preflight_script.setPlainText(env.preflight_script or "")
-
-            self._preflight_stack.setCurrentIndex(1 if container_caching else 0)
+            self._cache_system_preflight_enabled.setChecked(
+                bool(getattr(env, "cache_system_preflight_enabled", False))
+            )
+            self._cache_settings_preflight_enabled.setChecked(
+                bool(getattr(env, "cache_settings_preflight_enabled", False))
+            )
+            self._cache_environment_preflight_enabled.setChecked(
+                bool(getattr(env, "cache_environment_preflight_enabled", False))
+            )
+            self._on_container_caching_toggled(
+                Qt.CheckState.Checked.value
+                if bool(getattr(env, "container_caching_enabled", False))
+                else Qt.CheckState.Unchecked.value
+            )
 
             env_lines = "\n".join(f"{k}={v}" for k, v in sorted(env.env_vars.items()))
             self._env_vars.setPlainText(env_lines)
@@ -386,7 +385,12 @@ class EnvironmentsPage(
 
     def _on_container_caching_toggled(self, state: int) -> None:
         is_enabled = state == Qt.CheckState.Checked.value
-        self._preflight_stack.setCurrentIndex(1 if is_enabled else 0)
+        for checkbox in (
+            self._cache_system_preflight_enabled,
+            self._cache_settings_preflight_enabled,
+            self._cache_environment_preflight_enabled,
+        ):
+            checkbox.setEnabled(is_enabled)
 
     def _on_use_cross_agents_toggled(self, state: int) -> None:
         is_enabled = state == Qt.CheckState.Checked.value
