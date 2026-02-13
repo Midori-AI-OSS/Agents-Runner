@@ -46,12 +46,7 @@ class _EnvironmentsNavigationMixin:
         ):
             line_edit.textChanged.connect(self._queue_debounced_autosave)
 
-        for editor in (
-            self._preflight_script,
-            self._env_vars,
-            self._mounts,
-        ):
-            editor.textChanged.connect(self._queue_debounced_autosave)
+        self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
 
     def _on_nav_button_clicked(self, key: str) -> None:
         self._navigate_to_pane(key, user_initiated=True)

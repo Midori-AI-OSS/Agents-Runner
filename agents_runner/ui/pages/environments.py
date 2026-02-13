@@ -108,7 +108,7 @@ class EnvironmentsPage(
 
         header_layout.addWidget(title)
         header_layout.addStretch(1)
-        header_layout.addWidget(QLabel("Env"))
+        header_layout.addWidget(QLabel("Environments"))
         header_layout.addWidget(self._env_select)
         header_layout.addWidget(new_btn)
         header_layout.addWidget(delete_btn)
@@ -256,8 +256,8 @@ class EnvironmentsPage(
                 self._cache_settings_preflight_enabled.setChecked(False)
                 self._cache_environment_preflight_enabled.setChecked(False)
                 self._on_container_caching_toggled(Qt.CheckState.Unchecked.value)
-                self._env_vars.setPlainText("")
-                self._mounts.setPlainText("")
+                self._env_vars_tab.set_env_vars({})
+                self._mounts_tab.set_mounts([])
                 self._ports_tab.set_desktop_effective_enabled(
                     self._effective_desktop_enabled()
                 )
@@ -336,9 +336,8 @@ class EnvironmentsPage(
                 else Qt.CheckState.Unchecked.value
             )
 
-            env_lines = "\n".join(f"{k}={v}" for k, v in sorted(env.env_vars.items()))
-            self._env_vars.setPlainText(env_lines)
-            self._mounts.setPlainText("\n".join(env.extra_mounts))
+            self._env_vars_tab.set_env_vars(env.env_vars)
+            self._mounts_tab.set_mounts(env.extra_mounts)
             self._ports_tab.set_ports(
                 getattr(env, "ports", []) or [],
                 bool(getattr(env, "ports_unlocked", False)),
