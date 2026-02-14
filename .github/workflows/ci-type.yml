@@ -1,0 +1,24 @@
+name: CI Type
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  type:
+    name: CI Type
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6.6.0
+
+      - name: Sync
+        run: uv sync --group ci
+
+      - name: Type Check
+        run: uv run basedpyright
