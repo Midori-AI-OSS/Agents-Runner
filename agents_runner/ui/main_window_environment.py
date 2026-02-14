@@ -320,14 +320,14 @@ class _MainWindowEnvironmentMixin:
             if not task.environment_id:
                 task.environment_id = self._active_environment_id()
         if self._envs_page.isVisible():
+            current_selected = self._envs_page.selected_environment_id()
             selected = (
-                preferred_env_id
-                or self._envs_page.selected_environment_id()
-                or self._active_environment_id()
+                preferred_env_id or current_selected or self._active_environment_id()
             )
             if self._is_internal_environment_id(selected):
                 selected = self._active_environment_id()
-            self._envs_page.set_environments(self._user_environment_map(), selected)
+            if not (preferred_env_id and preferred_env_id == current_selected):
+                self._envs_page.set_environments(self._user_environment_map(), selected)
         self._apply_active_environment_to_new_task()
         self._refresh_task_rows()
         self._schedule_save()

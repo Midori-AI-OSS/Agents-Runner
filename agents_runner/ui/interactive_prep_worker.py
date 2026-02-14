@@ -4,7 +4,6 @@ import os
 import shlex
 import subprocess
 import time
-from pathlib import Path
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
