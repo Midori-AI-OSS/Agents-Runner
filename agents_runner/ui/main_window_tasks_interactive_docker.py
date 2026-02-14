@@ -290,6 +290,7 @@ def launch_docker_terminal_task(
             if not k:
                 continue
             env_args.extend(["-e", f"{k}={value}"])
+        env_args.extend(["-e", "MIDORI_AI_AGENTS_RUNNER_INTERACTIVE=true"])
 
         # Check if we need to forward GH_TOKEN
         forward_gh_token = bool(
