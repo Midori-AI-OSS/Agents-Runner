@@ -30,6 +30,8 @@ from agents_runner.pr_metadata import pr_metadata_container_path
 from agents_runner.pr_metadata import pr_metadata_host_path
 from agents_runner.pr_metadata import pr_metadata_prompt_instructions
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.prompts.sections import compose_prompt_sections
+from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.bridges import TaskRunnerBridge
@@ -463,13 +465,13 @@ class _MainWindowTasksAgentMixin:
             # Update in-memory copy to persist across tab changes and reloads
             self._environments[env.env_id] = env
 
-        runner_prompt = prompt
+        prompt_sections: list[str] = []
         if bool(self._settings_data.get("append_pixelarch_context") or False):
-            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
+            prompt_sections.append(PIXELARCH_AGENT_CONTEXT_SUFFIX)
 
         # Inject git context when cloned workspace is used
         if workspace_type == WORKSPACE_CLONED:
-            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_GIT_CONTEXT_SUFFIX}"
+            prompt_sections.append(PIXELARCH_GIT_CONTEXT_SUFFIX)
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
@@ -480,9 +482,7 @@ class _MainWindowTasksAgentMixin:
                 enabled_env_prompts.append(sanitize_prompt(text))
 
         if enabled_env_prompts:
-            runner_prompt = f"{runner_prompt.rstrip()}\n\n" + "\n\n".join(
-                enabled_env_prompts
-            )
+            prompt_sections.append("\n\n".join(enabled_env_prompts))
             self._on_task_log(
                 task_id,
                 format_log(
@@ -492,6 +492,8 @@ class _MainWindowTasksAgentMixin:
                     f"appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)",
                 ),
             )
+        prompt_sections.append(prompt)
+        runner_prompt = compose_prompt_sections(prompt_sections)
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
         ports_for_task = list(getattr(env, "ports", []) or []) if env else []
@@ -655,10 +657,14 @@ class _MainWindowTasksAgentMixin:
                         task_branch = "(already created by runner)"
                         head_commit = "(set after clone)"
 
-                    runner_prompt = (
-                        f"{runner_prompt}"
-                        f"{github_context_prompt_instructions(repo_url=repo_url, repo_owner=repo_owner, repo_name=repo_name, base_branch=base_branch, task_branch=task_branch, head_commit=head_commit)}"
-                        f"{pr_metadata_prompt_instructions(pr_container_path)}"
+                    runner_prompt = insert_prompt_sections_before_user_prompt(
+                        runner_prompt,
+                        [
+                            (
+                                f"{github_context_prompt_instructions(repo_url=repo_url, repo_owner=repo_owner, repo_name=repo_name, base_branch=base_branch, task_branch=task_branch, head_commit=head_commit)}"
+                                f"{pr_metadata_prompt_instructions(pr_container_path)}"
+                            )
+                        ],
                     )
                     # Clarify two-phase process for cloned repo environments
                     if workspace_type == WORKSPACE_CLONED:

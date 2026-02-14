@@ -27,6 +27,7 @@ from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.log_format import format_log
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.prompts.sections import compose_prompt_sections
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.constants import PIXELARCH_AGENT_CONTEXT_SUFFIX
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
@@ -388,13 +389,13 @@ class _MainWindowTasksInteractiveMixin:
         env: object | None,
         task_id: str,
     ) -> str:
-        runner_prompt = str(prompt or "")
+        prompt_sections: list[str] = []
 
         if bool(self._settings_data.get("append_pixelarch_context") or False):
-            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
+            prompt_sections.append(PIXELARCH_AGENT_CONTEXT_SUFFIX)
 
         if workspace_type == WORKSPACE_CLONED:
-            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_GIT_CONTEXT_SUFFIX}"
+            prompt_sections.append(PIXELARCH_GIT_CONTEXT_SUFFIX)
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
@@ -405,9 +406,7 @@ class _MainWindowTasksInteractiveMixin:
                 enabled_env_prompts.append(sanitize_prompt(text))
 
         if enabled_env_prompts:
-            runner_prompt = f"{runner_prompt.rstrip()}\n\n" + "\n\n".join(
-                enabled_env_prompts
-            )
+            prompt_sections.append("\n\n".join(enabled_env_prompts))
             self._on_task_log(
                 task_id,
                 format_log(
@@ -418,7 +417,8 @@ class _MainWindowTasksInteractiveMixin:
                 ),
             )
 
-        return runner_prompt
+        prompt_sections.append(prompt)
+        return compose_prompt_sections(prompt_sections)
 
     def _interactive_prep_id(self, task_id: str) -> str:
         task_id = str(task_id or "").strip()
