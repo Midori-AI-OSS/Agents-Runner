@@ -17,11 +17,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-lint = [
+ci = [
     "ruff>=0.12.0",
-]
-test = [
     "pytest>=8.4.0",
+    "basedpyright>=1.34.0",
 ]
 
 [build-system]
@@ -34,6 +33,10 @@ packages = ["agents_runner"]
 [tool.pytest.ini_options]
 testpaths = ["agents_runner/tests"]
 pythonpath = ["."]
+
+[tool.basedpyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.13"
 
 [tool.uv.sources]
 midori_ai_logger = { git = "https://github.com/Midori-AI-OSS/agents-packages.git", subdirectory = "logger" }
