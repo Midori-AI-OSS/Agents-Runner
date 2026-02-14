@@ -299,12 +299,20 @@ class MainWindow(
             self._schedule_save()
 
     def closeEvent(self, event) -> None:
-        if hasattr(self, "_radio_controller"):
-            self._radio_controller.shutdown()
+        try:
+            self._settings.try_autosave()
+        except Exception:
+            pass
+        try:
+            self._envs_page.try_autosave(show_validation_errors=False)
+        except Exception:
+            pass
         try:
             self._save_state()
         except Exception:
             pass
+        if hasattr(self, "_radio_controller"):
+            self._radio_controller.shutdown()
         # Clean up external viewer process
         if hasattr(self, "_details"):
             self._details.cleanup()

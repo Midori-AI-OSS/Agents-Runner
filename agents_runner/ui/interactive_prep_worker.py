@@ -10,6 +10,8 @@ from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
 
 from agents_runner.docker.agent_worker_prompt import PromptAssembler
+from agents_runner.docker.cache_resolver import resolve_runtime_cache
+from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import cleanup_task_workspace
@@ -58,6 +60,12 @@ class InteractivePrepWorker(QObject):
         is_help_launch: bool,
         apply_full_prompting: bool,
         desktop_enabled: bool,
+        settings_preflight_script: str | None,
+        extra_preflight_script: str,
+        container_caching_enabled: bool,
+        cache_system_preflight_enabled: bool,
+        cache_settings_preflight_enabled: bool,
+        cache_desktop_build: bool,
         prep_id: str = "",
     ) -> None:
         super().__init__()
@@ -78,6 +86,12 @@ class InteractivePrepWorker(QObject):
         self._is_help_launch = bool(is_help_launch)
         self._apply_full_prompting = bool(apply_full_prompting)
         self._desktop_enabled = bool(desktop_enabled)
+        self._settings_preflight_script = str(settings_preflight_script or "")
+        self._extra_preflight_script = str(extra_preflight_script or "")
+        self._container_caching_enabled = bool(container_caching_enabled)
+        self._cache_system_preflight_enabled = bool(cache_system_preflight_enabled)
+        self._cache_settings_preflight_enabled = bool(cache_settings_preflight_enabled)
+        self._cache_desktop_build = bool(cache_desktop_build)
         self._prep_id = str(prep_id or "").strip()
         self._stop_requested = False
 
@@ -154,6 +168,41 @@ class InteractivePrepWorker(QObject):
             pr_container_path,
             f"{pr_host_path}:{pr_container_path}:rw",
         )
+
+    def _resolve_runtime_image_for_launch(self) -> dict[str, object]:
+        cache_system_enabled = bool(
+            self._container_caching_enabled and self._cache_system_preflight_enabled
+        )
+        cache_settings_enabled = bool(
+            self._container_caching_enabled and self._cache_settings_preflight_enabled
+        )
+        desktop_cache_enabled = bool(
+            self._cache_desktop_build and self._desktop_enabled
+        )
+
+        def on_phase_log(line: str) -> None:
+            self.log.emit(self._task_id, str(line or ""))
+
+        result = resolve_runtime_cache(
+            base_image=self._image,
+            cache_system_enabled=cache_system_enabled,
+            cache_settings_enabled=cache_settings_enabled,
+            desktop_cache_enabled=desktop_cache_enabled,
+            extra_preflight_script=str(self._extra_preflight_script or ""),
+            settings_preflight_script=self._settings_preflight_script,
+            preflights_host_dir=PREFLIGHTS_DIR.resolve(),
+            on_log=on_phase_log,
+            check_stop=self._check_stop,
+        )
+
+        return {
+            "runtime_image": result.runtime_image,
+            "system_preflight_cached": result.system_preflight_cached,
+            "desktop_preflight_cached": result.desktop_preflight_cached,
+            "settings_preflight_cached": result.settings_preflight_cached,
+            "environment_preflight_cached": result.environment_preflight_cached,
+            "resolved_extra_preflight_script": result.desktop_preflight_script,
+        }
 
     def _append_full_prompt_github_context(
         self,
@@ -372,6 +421,20 @@ class InteractivePrepWorker(QObject):
             self._diag("INFO", "phase=image_ready done")
 
             self._check_stop()
+            self._emit_stage("starting", "Preparing runtime image cache")
+            cache_resolve_started_s = time.monotonic()
+            self._diag("INFO", "phase=interactive_cache_resolve begin")
+            cache_resolution = self._resolve_runtime_image_for_launch()
+            cache_resolve_elapsed_ms = (
+                time.monotonic() - cache_resolve_started_s
+            ) * 1000.0
+            self._diag(
+                "INFO",
+                "phase=interactive_cache_resolve done "
+                f"elapsed_ms={cache_resolve_elapsed_ms:.0f}",
+            )
+
+            self._check_stop()
             cmd_started_s = time.monotonic()
             self._diag("INFO", "phase=command_build begin")
             cmd_parts = build_agent_command_parts(
@@ -398,6 +461,22 @@ class InteractivePrepWorker(QObject):
                     "gh_pr_metadata_path": pr_host_path,
                     "pr_metadata_mount": pr_metadata_mount,
                     "cmd_parts": cmd_parts,
+                    "runtime_image": cache_resolution.get("runtime_image"),
+                    "system_preflight_cached": cache_resolution.get(
+                        "system_preflight_cached", False
+                    ),
+                    "desktop_preflight_cached": cache_resolution.get(
+                        "desktop_preflight_cached", False
+                    ),
+                    "settings_preflight_cached": cache_resolution.get(
+                        "settings_preflight_cached", False
+                    ),
+                    "environment_preflight_cached": cache_resolution.get(
+                        "environment_preflight_cached", False
+                    ),
+                    "resolved_extra_preflight_script": cache_resolution.get(
+                        "resolved_extra_preflight_script", ""
+                    ),
                 },
             )
         except Exception as exc:

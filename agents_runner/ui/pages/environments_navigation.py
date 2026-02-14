@@ -23,7 +23,7 @@ class _EnvironmentsNavigationMixin:
             self._color,
             self._workspace_type_combo,
         ):
-            combo.currentIndexChanged.connect(self._trigger_immediate_autosave)
+            combo.currentIndexChanged.connect(self._queue_debounced_autosave)
 
         for checkbox in (
             self._headless_desktop_enabled,
@@ -36,16 +36,7 @@ class _EnvironmentsNavigationMixin:
             self._cache_system_preflight_enabled,
             self._cache_settings_preflight_enabled,
         ):
-            checkbox.toggled.connect(self._trigger_immediate_autosave)
-
-        for line_edit in (
-            self._name,
-            self._max_agents_running,
-            self._workspace_target,
-        ):
-            line_edit.textChanged.connect(self._queue_debounced_autosave)
-
-        self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
+            checkbox.toggled.connect(self._queue_debounced_autosave)
 
     def _on_nav_button_clicked(self, key: str) -> None:
         self._navigate_to_pane(key, user_initiated=True)
@@ -151,13 +142,6 @@ class _EnvironmentsNavigationMixin:
         if self._suppress_autosave:
             return
         self._autosave_timer.start()
-
-    def _trigger_immediate_autosave(self, *_args: object) -> None:
-        if self._suppress_autosave:
-            return
-        if self._autosave_timer.isActive():
-            self._autosave_timer.stop()
-        self._emit_autosave()
 
     def _emit_autosave(self) -> None:
         if self._suppress_autosave:
