@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
+from pathlib import Path
 from typing import Any
 
 from midori_ai_logger import MidoriAiLogger
@@ -203,6 +205,13 @@ class RadioController(QObject):
     def probe_qt_multimedia_available(cls) -> bool:
         if QAudioOutput is None or QMediaPlayer is None:
             return False
+        pipewire_socket = cls._pipewire_socket_path()
+        if pipewire_socket is None or not pipewire_socket.exists():
+            logger.rprint(
+                "radio probe skipped: PipeWire runtime socket unavailable.",
+                mode="warn",
+            )
+            return False
         probe_audio: Any | None = None
         probe_player: Any | None = None
         try:
@@ -218,6 +227,19 @@ class RadioController(QObject):
                 probe_player.deleteLater()
             if probe_audio is not None:
                 probe_audio.deleteLater()
+
+    @staticmethod
+    def _pipewire_socket_path() -> Path | None:
+        runtime_dir = str(os.environ.get("XDG_RUNTIME_DIR") or "").strip()
+        if not runtime_dir:
+            return None
+        remote_name = str(os.environ.get("PIPEWIRE_REMOTE") or "pipewire-0").strip()
+        if not remote_name:
+            remote_name = "pipewire-0"
+        remote_path = Path(remote_name)
+        if remote_path.is_absolute():
+            return remote_path
+        return Path(runtime_dir) / remote_path
 
     @property
     def qt_available(self) -> bool:
