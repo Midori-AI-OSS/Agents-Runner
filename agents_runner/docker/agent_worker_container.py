@@ -398,6 +398,7 @@ class ContainerExecutor:
             k = str(key).strip()
             if k:
                 env_args.extend(["-e", f"{k}={value}"])
+        env_args.extend(["-e", "MIDORI_AI_AGENTS_RUNNER_INTERACTIVE=false"])
 
         # Forward GitHub tokens if needed
         needs_token = (
