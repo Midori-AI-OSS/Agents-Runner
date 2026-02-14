@@ -120,6 +120,28 @@ class _MainWindowSettingsMixin:
             )
         except Exception:
             merged["github_poll_interval_s"] = 30
+        merged["github_polling_enabled"] = bool(
+            merged.get("github_polling_enabled") or False
+        )
+        try:
+            merged["github_poll_startup_delay_s"] = max(
+                0, int(merged.get("github_poll_startup_delay_s", 35))
+            )
+        except Exception:
+            merged["github_poll_startup_delay_s"] = 35
+        trusted_users_raw = merged.get("agentsnova_trusted_users_global")
+        trusted_users_rows = (
+            trusted_users_raw if isinstance(trusted_users_raw, list) else []
+        )
+        trusted_users: list[str] = []
+        seen_trusted_users: set[str] = set()
+        for row in trusted_users_rows:
+            username = str(row or "").strip().lstrip("@").lower()
+            if not username or username in seen_trusted_users:
+                continue
+            trusted_users.append(username)
+            seen_trusted_users.add(username)
+        merged["agentsnova_trusted_users_global"] = trusted_users
         merged["agentsnova_review_guard_mode"] = (
             str(merged.get("agentsnova_review_guard_mode") or "reaction").strip()
             or "reaction"

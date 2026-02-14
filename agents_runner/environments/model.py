@@ -101,6 +101,9 @@ class Environment:
     gh_last_base_branch: str = ""
     gh_use_host_cli: bool = True
     gh_context_enabled: bool = False  # Renamed from gh_pr_metadata_enabled
+    github_polling_enabled: bool = False
+    agentsnova_trusted_users_env: list[str] = field(default_factory=list)
+    agentsnova_trusted_mode: str = "inherit"
     prompts: list[PromptConfig] = field(default_factory=list)
     prompts_unlocked: bool = False
     agent_selection: AgentSelection | None = None

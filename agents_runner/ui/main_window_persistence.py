@@ -190,7 +190,10 @@ class _MainWindowPersistenceMixin:
         self._settings_data.setdefault("github_workroom_prefer_browser", False)
         self._settings_data.setdefault("github_write_confirmation_mode", "always")
         self._settings_data.setdefault("github_poll_interval_s", 30)
+        self._settings_data.setdefault("github_polling_enabled", False)
+        self._settings_data.setdefault("github_poll_startup_delay_s", 35)
         self._settings_data.setdefault("agentsnova_auto_review_enabled", True)
+        self._settings_data.setdefault("agentsnova_trusted_users_global", [])
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
         host_codex_dir = os.path.normpath(
             os.path.expanduser(
@@ -256,6 +259,28 @@ class _MainWindowPersistenceMixin:
                 self._settings_data.get("radio_loudness_boost_factor")
             )
         )
+        self._settings_data["github_polling_enabled"] = bool(
+            self._settings_data.get("github_polling_enabled") or False
+        )
+        try:
+            self._settings_data["github_poll_startup_delay_s"] = max(
+                0, int(self._settings_data.get("github_poll_startup_delay_s", 35))
+            )
+        except Exception:
+            self._settings_data["github_poll_startup_delay_s"] = 35
+        trusted_users_raw = self._settings_data.get("agentsnova_trusted_users_global")
+        trusted_users_rows = (
+            trusted_users_raw if isinstance(trusted_users_raw, list) else []
+        )
+        trusted_users: list[str] = []
+        seen_users: set[str] = set()
+        for row in trusted_users_rows:
+            username = str(row or "").strip().lstrip("@").lower()
+            if not username or username in seen_users:
+                continue
+            trusted_users.append(username)
+            seen_users.add(username)
+        self._settings_data["agentsnova_trusted_users_global"] = trusted_users
         self._settings_data["auto_navigate_on_run_agent_start"] = bool(
             self._settings_data.get("auto_navigate_on_run_agent_start") or False
         )

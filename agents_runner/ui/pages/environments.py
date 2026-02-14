@@ -34,6 +34,7 @@ from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.pages.environments_actions import _EnvironmentsPageActionsMixin
 from agents_runner.ui.pages.environments_form import _EnvironmentsFormMixin
 from agents_runner.ui.pages.environments_navigation import _EnvironmentsNavigationMixin
+from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 from agents_runner.ui.utils import _apply_environment_combo_tint
 from agents_runner.ui.utils import _stain_color
 from agents_runner.ui.widgets import GlassCard
@@ -253,8 +254,13 @@ class EnvironmentsPage(
                 self._use_cross_agents.setChecked(False)
                 self._gh_context_enabled.setChecked(False)
                 self._gh_context_enabled.setEnabled(False)
-                self._gh_context_label.setVisible(False)
-                self._gh_context_row.setVisible(False)
+                self._github_polling_enabled.setChecked(False)
+                trusted_mode_idx = self._agentsnova_trusted_mode.findData("inherit")
+                if trusted_mode_idx < 0:
+                    trusted_mode_idx = 0
+                if trusted_mode_idx >= 0:
+                    self._agentsnova_trusted_mode.setCurrentIndex(trusted_mode_idx)
+                self._agentsnova_trusted_users_env.set_usernames([])
                 self._workspace_type_combo.setCurrentIndex(0)
                 self._workspace_target.setText("")
                 self._gh_use_host_cli.setChecked(bool(is_gh_available()))
@@ -321,8 +327,18 @@ class EnvironmentsPage(
                 bool(getattr(env, "gh_context_enabled", False))
             )
             self._gh_context_enabled.setEnabled(context_available)
-            self._gh_context_label.setVisible(context_available)
-            self._gh_context_row.setVisible(context_available)
+            self._github_polling_enabled.setChecked(
+                bool(getattr(env, "github_polling_enabled", False))
+            )
+            trusted_mode = normalize_trusted_mode(
+                getattr(env, "agentsnova_trusted_mode", "inherit")
+            )
+            trusted_mode_idx = self._agentsnova_trusted_mode.findData(trusted_mode)
+            if trusted_mode_idx >= 0:
+                self._agentsnova_trusted_mode.setCurrentIndex(trusted_mode_idx)
+            self._agentsnova_trusted_users_env.set_usernames(
+                list(getattr(env, "agentsnova_trusted_users_env", []) or [])
+            )
 
             idx = self._workspace_type_combo.findData(workspace_type)
             if idx >= 0:

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import ALLOWED_STAINS
+from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
@@ -29,6 +30,8 @@ from agents_runner.ui.constants import (
     GRID_VERTICAL_SPACING,
     STANDARD_BUTTON_WIDTH,
 )
+from agents_runner.ui.pages.github_trust import collect_seed_usernames_for_environment
+from agents_runner.ui.pages.github_username_list import GitHubUsernameListWidget
 from agents_runner.ui.pages.environments_agents import AgentsTabWidget
 from agents_runner.ui.pages.environments_env_vars import EnvVarsTabWidget
 from agents_runner.ui.pages.environments_mounts import MountsTabWidget
@@ -63,6 +66,12 @@ class _EnvironmentsFormMixin:
                 key="prompts",
                 title="Prompts",
                 subtitle="Prompt snippets and unlock behavior for this environment.",
+                section="Collaboration",
+            ),
+            _EnvironmentPaneSpec(
+                key="github",
+                title="GitHub",
+                subtitle="GitHub context, polling, and trusted actor controls for this environment.",
                 section="Collaboration",
             ),
             _EnvironmentPaneSpec(
@@ -156,6 +165,33 @@ class _EnvironmentsFormMixin:
         )
         self._gh_context_enabled.setEnabled(False)
         self._gh_context_enabled.setVisible(True)
+        self._github_polling_enabled = QCheckBox(
+            "Enable background GitHub polling for this environment"
+        )
+        self._github_polling_enabled.setToolTip(
+            "Requires global GitHub polling in Settings. When enabled, this environment participates in app-wide polling."
+        )
+        self._agentsnova_trusted_mode = QComboBox()
+        self._agentsnova_trusted_mode.addItem("Inherit global trusted users", "inherit")
+        self._agentsnova_trusted_mode.addItem(
+            "Add environment trusted users", "additive"
+        )
+        self._agentsnova_trusted_mode.addItem(
+            "Replace with environment trusted users", "replace"
+        )
+        self._agentsnova_trusted_mode.setToolTip(
+            "Controls how this environment resolves trusted usernames for auto-review mention checks."
+        )
+        self._agentsnova_trusted_users_env = GitHubUsernameListWidget()
+        self._setup_github_defaults_env = QToolButton()
+        self._setup_github_defaults_env.setText("Setup Defaults")
+        self._setup_github_defaults_env.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._setup_github_defaults_env.setToolTip(
+            "Seed trusted users from this environment's repo owner/org members and current gh login."
+        )
+        self._setup_github_defaults_env.clicked.connect(
+            self._on_setup_environment_github_defaults
+        )
 
         # Workspace controls are retained for compatibility with existing logic but remain hidden.
         self._workspace_type_combo = QComboBox()
@@ -261,29 +297,16 @@ class _EnvironmentsFormMixin:
         cross_agents_layout.addWidget(self._use_cross_agents)
         cross_agents_layout.addStretch(1)
 
-        self._gh_context_label = QLabel("GitHub context")
-        self._gh_context_row = QWidget(general_page)
-        gh_context_layout = QHBoxLayout(self._gh_context_row)
-        gh_context_layout.setContentsMargins(0, 0, 0, 0)
-        gh_context_layout.setSpacing(BUTTON_ROW_SPACING)
-        gh_context_layout.addWidget(self._gh_context_enabled)
-        gh_context_layout.addStretch(1)
-
-        self._gh_context_label.setVisible(False)
-        self._gh_context_row.setVisible(False)
-
         grid.addWidget(QLabel("Name"), 0, 0)
         grid.addWidget(self._name, 0, 1, 1, 2)
         grid.addWidget(QLabel("Color"), 1, 0)
         grid.addWidget(self._color, 1, 1, 1, 2)
         grid.addWidget(QLabel("Max agents running"), 3, 0)
         grid.addWidget(max_agents_row, 3, 1, 1, 2)
-        grid.addWidget(self._gh_context_label, 4, 0)
-        grid.addWidget(self._gh_context_row, 4, 1, 1, 2)
-        grid.addWidget(QLabel("Headless desktop"), 5, 0)
-        grid.addWidget(headless_desktop_row, 5, 1, 1, 2)
-        grid.addWidget(QLabel("Cross agents"), 6, 0)
-        grid.addWidget(cross_agents_row, 6, 1, 1, 2)
+        grid.addWidget(QLabel("Headless desktop"), 4, 0)
+        grid.addWidget(headless_desktop_row, 4, 1, 1, 2)
+        grid.addWidget(QLabel("Cross agents"), 5, 0)
+        grid.addWidget(cross_agents_row, 5, 1, 1, 2)
 
         general_body.addLayout(grid)
         general_body.addStretch(1)
@@ -296,6 +319,30 @@ class _EnvironmentsFormMixin:
         prompts_page, prompts_body = self._create_page(specs_by_key["prompts"])
         prompts_body.addWidget(self._prompts_tab, 1)
         self._register_page("prompts", prompts_page)
+
+        github_page, github_body = self._create_page(specs_by_key["github"])
+        github_body.addWidget(self._gh_context_enabled)
+        github_body.addWidget(self._github_polling_enabled)
+
+        github_grid = QGridLayout()
+        github_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        github_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
+        github_grid.setContentsMargins(0, 0, 0, 0)
+        github_grid.addWidget(QLabel("Trusted user mode"), 0, 0)
+        github_grid.addWidget(self._agentsnova_trusted_mode, 0, 1)
+        github_body.addLayout(github_grid)
+
+        trusted_label = QLabel("Trusted GitHub users")
+        trusted_label.setObjectName("SettingsPaneSubtitle")
+        github_body.addWidget(trusted_label)
+        github_body.addWidget(self._agentsnova_trusted_users_env, 1)
+
+        github_actions = QHBoxLayout()
+        github_actions.setSpacing(BUTTON_ROW_SPACING)
+        github_actions.addWidget(self._setup_github_defaults_env)
+        github_actions.addStretch(1)
+        github_body.addLayout(github_actions)
+        self._register_page("github", github_page)
 
         env_vars_page, env_vars_body = self._create_page(specs_by_key["env_vars"])
         env_vars_body.addWidget(self._env_vars_tab, 1)
@@ -385,6 +432,25 @@ class _EnvironmentsFormMixin:
     @staticmethod
     def _pane_button_label(key: str, title: str) -> str:
         return title
+
+    def _current_environment(self) -> Environment | None:
+        envs = getattr(self, "_environments", {})
+        if not isinstance(envs, dict):
+            return None
+        env_id = str(getattr(self, "_current_env_id", "") or "").strip()
+        env = envs.get(env_id)
+        return env if isinstance(env, Environment) else None
+
+    def _on_setup_environment_github_defaults(self) -> None:
+        env = self._current_environment()
+        seeded = collect_seed_usernames_for_environment(env)
+        if not seeded:
+            return
+        self._agentsnova_trusted_users_env.merge_usernames(seeded)
+        try:
+            self._queue_advanced_autosave()
+        except Exception:
+            pass
 
     def _pick_gh_management_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(

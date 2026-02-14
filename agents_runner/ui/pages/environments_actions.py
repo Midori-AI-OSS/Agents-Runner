@@ -14,6 +14,7 @@ from agents_runner.environments import load_environments
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
+from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 
 
 class _EnvironmentsPageActionsMixin:
@@ -150,6 +151,13 @@ class _EnvironmentsPageActionsMixin:
                 gh_context_enabled = False
         else:
             gh_context_enabled = False
+        github_polling_enabled = bool(self._github_polling_enabled.isChecked())
+        agentsnova_trusted_mode = normalize_trusted_mode(
+            self._agentsnova_trusted_mode.currentData() or "inherit"
+        )
+        agentsnova_trusted_users_env = (
+            self._agentsnova_trusted_users_env.get_usernames()
+        )
 
         env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
@@ -231,6 +239,9 @@ class _EnvironmentsPageActionsMixin:
                 workspace_target=workspace_target,
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
+                github_polling_enabled=github_polling_enabled,
+                agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+                agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
@@ -268,6 +279,9 @@ class _EnvironmentsPageActionsMixin:
                 workspace_target=workspace_target,
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
+                github_polling_enabled=github_polling_enabled,
+                agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+                agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
@@ -319,6 +333,13 @@ class _EnvironmentsPageActionsMixin:
                 gh_context_enabled = False
         else:
             gh_context_enabled = False
+        github_polling_enabled = bool(self._github_polling_enabled.isChecked())
+        agentsnova_trusted_mode = normalize_trusted_mode(
+            self._agentsnova_trusted_mode.currentData() or "inherit"
+        )
+        agentsnova_trusted_users_env = (
+            self._agentsnova_trusted_users_env.get_usernames()
+        )
 
         env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
@@ -396,6 +417,9 @@ class _EnvironmentsPageActionsMixin:
                 workspace_target=workspace_target,
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
+                github_polling_enabled=github_polling_enabled,
+                agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+                agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
@@ -429,6 +453,9 @@ class _EnvironmentsPageActionsMixin:
             workspace_target=workspace_target,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=gh_context_enabled,
+            github_polling_enabled=github_polling_enabled,
+            agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+            agentsnova_trusted_mode=agentsnova_trusted_mode,
             prompts=prompts,
             prompts_unlocked=prompts_unlocked,
             agent_selection=agent_selection,

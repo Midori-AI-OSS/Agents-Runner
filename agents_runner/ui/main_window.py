@@ -117,7 +117,10 @@ class MainWindow(
             "github_workroom_prefer_browser": False,
             "github_write_confirmation_mode": "always",
             "github_poll_interval_s": 30,
+            "github_polling_enabled": False,
+            "github_poll_startup_delay_s": 35,
             "agentsnova_auto_review_enabled": True,
+            "agentsnova_trusted_users_global": [],
             "agentsnova_review_guard_mode": "reaction",
         }
         self._environments: dict[str, Environment] = {}
