@@ -33,6 +33,7 @@ from agents_runner.ui.widgets.radio_control import RadioControlWidget
 
 from agents_runner.ui.main_window_capacity import _MainWindowCapacityMixin
 from agents_runner.ui.main_window_dashboard import _MainWindowDashboardMixin
+from agents_runner.ui.main_window_auto_review import _MainWindowAutoReviewMixin
 from agents_runner.ui.main_window_environment import _MainWindowEnvironmentMixin
 from agents_runner.ui.main_window_navigation import _MainWindowNavigationMixin
 from agents_runner.ui.main_window_persistence import _MainWindowPersistenceMixin
@@ -57,6 +58,7 @@ class MainWindow(
     _MainWindowSettingsMixin,
     _MainWindowEnvironmentMixin,
     _MainWindowDashboardMixin,
+    _MainWindowAutoReviewMixin,
     _MainWindowTasksAgentMixin,
     _MainWindowTasksInteractiveMixin,
     _MainWindowTasksInteractiveFinalizeMixin,
@@ -286,10 +288,6 @@ class MainWindow(
         self._refresh_radio_channel_options(disable_on_failure=True)
         self._on_radio_state_changed(self._radio_controller.state_snapshot())
         self._try_start_queued_tasks()
-
-    def _on_auto_review_requested(self, env_id: str, prompt: str) -> None:
-        host_codex = str(self._settings_data.get("host_codex_dir") or "").strip()
-        self._start_task_from_ui(prompt, host_codex, env_id, "")
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
