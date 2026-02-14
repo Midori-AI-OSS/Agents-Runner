@@ -324,14 +324,6 @@ class _EnvironmentsFormMixin:
         github_body.addWidget(self._gh_context_enabled)
         github_body.addWidget(self._github_polling_enabled)
 
-        github_grid = QGridLayout()
-        github_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        github_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        github_grid.setContentsMargins(0, 0, 0, 0)
-        github_grid.addWidget(QLabel("Trusted user mode"), 0, 0)
-        github_grid.addWidget(self._agentsnova_trusted_mode, 0, 1)
-        github_body.addLayout(github_grid)
-
         trusted_label = QLabel("Trusted GitHub users")
         trusted_label.setObjectName("SettingsPaneSubtitle")
         github_body.addWidget(trusted_label)
@@ -339,8 +331,9 @@ class _EnvironmentsFormMixin:
 
         github_actions = QHBoxLayout()
         github_actions.setSpacing(BUTTON_ROW_SPACING)
-        github_actions.addWidget(self._setup_github_defaults_env)
         github_actions.addStretch(1)
+        github_actions.addWidget(self._setup_github_defaults_env)
+        github_actions.addWidget(self._agentsnova_trusted_mode)
         github_body.addLayout(github_actions)
         self._register_page("github", github_page)
 

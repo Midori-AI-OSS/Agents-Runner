@@ -3,7 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QHeaderView
-from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QTableWidget
@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
+from agents_runner.ui.constants import BUTTON_ROW_SPACING
 from agents_runner.ui.constants import TABLE_ROW_HEIGHT
 from agents_runner.ui.lucide_icons import lucide_icon
 
@@ -55,16 +56,15 @@ class GitHubUsernameListWidget(QWidget):
         layout.addWidget(self._table, 1)
 
         actions = QWidget()
-        actions_layout = QVBoxLayout(actions)
+        actions_layout = QHBoxLayout(actions)
         actions_layout.setContentsMargins(0, 0, 0, 0)
-        actions_layout.setSpacing(0)
-        add_label = QLabel("Add trusted user")
-        actions_layout.addWidget(add_label)
+        actions_layout.setSpacing(BUTTON_ROW_SPACING)
         add_btn = QToolButton()
         add_btn.setText("Add")
         add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
         add_btn.clicked.connect(self._on_add_row)
-        actions_layout.addWidget(add_btn, 0, Qt.AlignLeft)
+        actions_layout.addWidget(add_btn)
+        actions_layout.addStretch(1)
         layout.addWidget(actions)
 
         self._render_table()
