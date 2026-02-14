@@ -20,6 +20,8 @@ from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.gh_management import is_gh_available
 from agents_runner.persistence import default_state_path
 from agents_runner.ui.constants import (
+    AUTOSAVE_DISCRETE_MS,
+    AUTOSAVE_IDLE_MS,
     CARD_MARGINS,
     CARD_SPACING,
     HEADER_MARGINS,
@@ -58,8 +60,12 @@ class EnvironmentsPage(
         self._suppress_autosave = False
         self._autosave_timer = QTimer(self)
         self._autosave_timer.setSingleShot(True)
-        self._autosave_timer.setInterval(450)
+        self._autosave_timer.setInterval(AUTOSAVE_DISCRETE_MS)
         self._autosave_timer.timeout.connect(self._emit_autosave)
+        self._advanced_autosave_timer = QTimer(self)
+        self._advanced_autosave_timer.setSingleShot(True)
+        self._advanced_autosave_timer.setInterval(AUTOSAVE_IDLE_MS)
+        self._advanced_autosave_timer.timeout.connect(self._emit_autosave)
 
         self._pane_animation = None
         self._pane_rest_pos = None
@@ -228,6 +234,8 @@ class EnvironmentsPage(
     def _load_selected(self) -> None:
         if self._autosave_timer.isActive():
             self._autosave_timer.stop()
+        if self._advanced_autosave_timer.isActive():
+            self._advanced_autosave_timer.stop()
 
         env_id = str(self._env_select.currentData() or "")
         env = self._environments.get(env_id)
@@ -372,13 +380,18 @@ class EnvironmentsPage(
             self._suppress_autosave = False
 
     def _on_prompts_changed(self) -> None:
-        self._queue_debounced_autosave()
+        self._queue_advanced_autosave()
 
     def _on_agents_changed(self) -> None:
-        self._queue_debounced_autosave()
+        self._queue_advanced_autosave()
 
     def _on_ports_changed(self) -> None:
-        self._queue_debounced_autosave()
+        self._queue_advanced_autosave()
+
+    def _queue_advanced_autosave(self, *_args: object) -> None:
+        if self._suppress_autosave:
+            return
+        self._advanced_autosave_timer.start()
 
     def _on_headless_desktop_toggled(self, state: int) -> None:
         is_enabled = state == Qt.CheckState.Checked.value

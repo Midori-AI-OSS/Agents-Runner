@@ -997,7 +997,7 @@ class _SettingsFormMixin:
                 self._interactive_terminal.currentData() or ""
             ).strip()
         )
-        self._trigger_immediate_autosave()
+        self._queue_debounced_autosave()
 
     @staticmethod
     def _set_combo_value(combo: QComboBox, value: str, fallback: str) -> None:

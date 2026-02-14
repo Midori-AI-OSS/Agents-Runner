@@ -130,8 +130,12 @@ def launch_docker_terminal_task(
         environment_preflight_cached_override: Optional precomputed env cache status
         desktop_preflight_script_override: Optional precomputed desktop script
     """
-    # Treat all interactive extra preflights as the desktop phase.
+    # Apply desktop preflight script override if provided, before desktop detection
     desktop_preflight_script = str(extra_preflight_script or "")
+    if desktop_preflight_script_override is not None:
+        desktop_preflight_script = str(desktop_preflight_script_override or "")
+
+    # Treat all interactive extra preflights as the desktop phase.
     desktop_enabled = bool(
         "websockify" in desktop_preflight_script
         or "noVNC" in desktop_preflight_script
@@ -188,8 +192,6 @@ def launch_docker_terminal_task(
         desktop_preflight_cached = bool(desktop_preflight_cached_override)
         settings_preflight_cached = bool(settings_preflight_cached_override)
         environment_preflight_cached = bool(environment_preflight_cached_override)
-        if desktop_preflight_script_override is not None:
-            desktop_preflight_script = str(desktop_preflight_script_override or "")
     else:
         if cache_system_enabled and system_preflight_script.strip():
             next_image = ensure_phase_image(
