@@ -22,6 +22,7 @@ class _EnvironmentsNavigationMixin:
         for combo in (
             self._color,
             self._workspace_type_combo,
+            self._agentsnova_trusted_mode,
         ):
             combo.currentIndexChanged.connect(self._queue_debounced_autosave)
 
@@ -31,12 +32,16 @@ class _EnvironmentsNavigationMixin:
             self._container_caching_enabled,
             self._use_cross_agents,
             self._gh_context_enabled,
+            self._github_polling_enabled,
             self._gh_use_host_cli,
             self._preflight_enabled,
             self._cache_system_preflight_enabled,
             self._cache_settings_preflight_enabled,
         ):
             checkbox.toggled.connect(self._queue_debounced_autosave)
+        self._agentsnova_trusted_users_env.usernames_changed.connect(
+            self._queue_advanced_autosave
+        )
 
     def _on_nav_button_clicked(self, key: str) -> None:
         self._navigate_to_pane(key, user_initiated=True)

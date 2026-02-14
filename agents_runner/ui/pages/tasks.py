@@ -30,6 +30,7 @@ from agents_runner.ui.constants import LEFT_NAV_PANEL_WIDTH
 from agents_runner.ui.constants import MAIN_LAYOUT_MARGINS
 from agents_runner.ui.constants import MAIN_LAYOUT_SPACING
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
+from agents_runner.ui.pages.github_work_coordinator import GitHubWorkCoordinator
 from agents_runner.ui.pages.github_work_list import GitHubWorkListPage
 from agents_runner.ui.pages.new_task import NewTaskPage
 from agents_runner.ui.utils import _apply_environment_combo_tint
@@ -77,6 +78,7 @@ class TasksPage(QWidget):
         self._pane_specs = self._default_pane_specs()
         self._pane_index_by_key: dict[str, int] = {}
         self._nav_buttons: dict[str, QToolButton] = {}
+        self._github_work_coordinator = GitHubWorkCoordinator(self)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(*MAIN_LAYOUT_MARGINS)
@@ -145,8 +147,12 @@ class TasksPage(QWidget):
         card_layout.addLayout(panes_layout, 1)
         layout.addWidget(card, 1)
 
-        self._prs = GitHubWorkListPage(item_type="pr")
-        self._issues = GitHubWorkListPage(item_type="issue")
+        self._prs = GitHubWorkListPage(
+            item_type="pr", coordinator=self._github_work_coordinator
+        )
+        self._issues = GitHubWorkListPage(
+            item_type="issue", coordinator=self._github_work_coordinator
+        )
 
         self._build_pages()
         self._build_navigation(nav_layout)
@@ -158,8 +164,9 @@ class TasksPage(QWidget):
         self._prs.prompt_append_requested.connect(self._append_prompt_to_new_task)
         self._issues.prompt_append_requested.connect(self._append_prompt_to_new_task)
 
-        self._prs.auto_review_requested.connect(self.auto_review_requested.emit)
-        self._issues.auto_review_requested.connect(self.auto_review_requested.emit)
+        self._github_work_coordinator.auto_review_requested.connect(
+            self.auto_review_requested.emit
+        )
 
         self._set_current_pane("new_task", animate=False)
         self._set_active_navigation("new_task")
@@ -405,8 +412,8 @@ class TasksPage(QWidget):
 
     def _sync_active_page_runtime(self) -> None:
         active = self._active_pane_key
-        self._prs.set_polling_enabled(active == "pull_requests")
-        self._issues.set_polling_enabled(active == "issues")
+        self._prs.set_pane_active(active == "pull_requests")
+        self._issues.set_pane_active(active == "issues")
 
     def _apply_environment_tints(self) -> None:
         stain = ""
@@ -567,12 +574,14 @@ class TasksPage(QWidget):
 
         self._prs.set_environments(self._environments, self._active_env_id)
         self._issues.set_environments(self._environments, self._active_env_id)
+        self._github_work_coordinator.set_environments(self._environments)
 
         self._sync_visibility_for_active_environment()
 
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
         self._prs.set_settings_data(settings_data)
         self._issues.set_settings_data(settings_data)
+        self._github_work_coordinator.set_settings_data(settings_data)
 
     def show_new_task_tab(self, *, focus_prompt: bool = True) -> None:
         self._set_current_pane("new_task", animate=True)

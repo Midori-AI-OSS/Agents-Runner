@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 
 from PySide6.QtCore import QSignalBlocker, Qt
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QDoubleSpinBox
@@ -25,7 +26,12 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_agent_system
 from agents_runner.agent_systems import get_default_agent_system_name
+from agents_runner.environments import load_environments
 from agents_runner.terminal_apps import detect_terminal_options
+from agents_runner.ui.pages.github_trust import (
+    collect_seed_usernames_for_cloned_environments,
+)
+from agents_runner.ui.pages.github_username_list import GitHubUsernameListWidget
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
@@ -72,6 +78,12 @@ class _SettingsFormMixin:
                 key="config_paths",
                 title="Config Paths",
                 subtitle="Host config folders used by each agent.",
+                section="Agent Setup",
+            ),
+            _SettingsPaneSpec(
+                key="github",
+                title="GitHub",
+                subtitle="GitHub polling, auto-review, and trusted actor controls.",
                 section="Agent Setup",
             ),
             _SettingsPaneSpec(
@@ -241,6 +253,31 @@ class _SettingsFormMixin:
         self._agentsnova_auto_review_enabled.setToolTip(
             "When enabled, PR/Issue mentions of @agentsnova can auto-queue tasks."
         )
+        self._github_polling_enabled = QCheckBox("Enable app-wide GitHub polling")
+        self._github_polling_enabled.setToolTip(
+            "When enabled, GitHub Issues/PRs poll in the background across enabled environments."
+        )
+        self._github_poll_startup_delay_s = QLineEdit()
+        self._github_poll_startup_delay_s.setValidator(QIntValidator(0, 3600, self))
+        self._github_poll_startup_delay_s.setPlaceholderText("35")
+        self._github_poll_startup_delay_s.setMaximumWidth(120)
+        self._github_poll_startup_delay_s.setToolTip(
+            "Seconds to wait after app startup before beginning background GitHub polling."
+        )
+        self._agentsnova_trusted_users_global = GitHubUsernameListWidget()
+        self._agentsnova_trusted_users_global.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self._setup_github_defaults_global = QToolButton()
+        self._setup_github_defaults_global.setText("Setup Defaults")
+        self._setup_github_defaults_global.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._setup_github_defaults_global.setToolTip(
+            "Seed trusted users from cloned environment owners/org members and current gh login."
+        )
+        self._setup_github_defaults_global.clicked.connect(
+            self._on_setup_global_github_defaults
+        )
 
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
@@ -334,8 +371,6 @@ class _SettingsFormMixin:
         general_body.addWidget(self._spellcheck_enabled)
         general_body.addWidget(self._gh_context_default)
         general_body.addWidget(self._append_pixelarch_context)
-        general_body.addWidget(self._github_workroom_prefer_browser)
-        general_body.addWidget(self._agentsnova_auto_review_enabled)
 
         terminal_layout = QGridLayout()
         terminal_layout.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
@@ -345,14 +380,6 @@ class _SettingsFormMixin:
         terminal_layout.addWidget(self._interactive_terminal, 0, 1)
         terminal_layout.addWidget(self._refresh_interactive_terminal, 0, 2)
         general_body.addLayout(terminal_layout)
-
-        github_write_layout = QGridLayout()
-        github_write_layout.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        github_write_layout.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        github_write_layout.setColumnStretch(1, 1)
-        github_write_layout.addWidget(QLabel("GitHub write confirmations"), 0, 0)
-        github_write_layout.addWidget(self._github_write_confirmation_mode, 0, 1)
-        general_body.addLayout(github_write_layout)
         general_body.addStretch(1)
         self._register_page("general_preferences", general_page)
 
@@ -413,6 +440,33 @@ class _SettingsFormMixin:
         paths_body.addLayout(paths_grid)
         paths_body.addStretch(1)
         self._register_page("config_paths", paths_page)
+
+        github_page, github_body = self._create_page(specs_by_key["github"])
+        github_body.addWidget(self._github_workroom_prefer_browser)
+        github_body.addWidget(self._agentsnova_auto_review_enabled)
+        github_body.addWidget(self._github_polling_enabled)
+
+        github_grid = QGridLayout()
+        github_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        github_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
+        github_grid.setColumnStretch(1, 1)
+        github_grid.addWidget(QLabel("GitHub write confirmations"), 0, 0)
+        github_grid.addWidget(self._github_write_confirmation_mode, 0, 1)
+        github_grid.addWidget(QLabel("Polling startup delay (s)"), 1, 0)
+        github_grid.addWidget(self._github_poll_startup_delay_s, 1, 1)
+        github_body.addLayout(github_grid)
+
+        trusted_heading = QLabel("Trusted GitHub users")
+        trusted_heading.setObjectName("SettingsPaneSubtitle")
+        github_body.addWidget(trusted_heading)
+        github_body.addWidget(self._agentsnova_trusted_users_global, 1)
+
+        github_actions = QHBoxLayout()
+        github_actions.setSpacing(BUTTON_ROW_SPACING)
+        github_actions.addWidget(self._setup_github_defaults_global)
+        github_actions.addStretch(1)
+        github_body.addLayout(github_actions)
+        self._register_page("github", github_page)
 
         runtime_page, runtime_body = self._create_page(specs_by_key["runtime_behavior"])
         runtime_body.addWidget(self._headless_desktop_enabled)
@@ -791,6 +845,21 @@ class _SettingsFormMixin:
             self._agentsnova_auto_review_enabled.setChecked(
                 bool(settings.get("agentsnova_auto_review_enabled", True))
             )
+            self._github_polling_enabled.setChecked(
+                bool(settings.get("github_polling_enabled") or False)
+            )
+            try:
+                poll_startup_delay_s = max(
+                    0, int(settings.get("github_poll_startup_delay_s", 35))
+                )
+            except Exception:
+                poll_startup_delay_s = 35
+            self._github_poll_startup_delay_s.setText(str(poll_startup_delay_s))
+            trusted_users_raw = settings.get("agentsnova_trusted_users_global", [])
+            trusted_users = (
+                trusted_users_raw if isinstance(trusted_users_raw, list) else []
+            )
+            self._agentsnova_trusted_users_global.set_usernames(trusted_users)
             self._headless_desktop_enabled.setChecked(
                 bool(settings.get("headless_desktop_enabled") or False)
             )
@@ -862,6 +931,14 @@ class _SettingsFormMixin:
             self._suppress_autosave = False
 
     def get_settings(self) -> dict:
+        poll_startup_delay_text = str(
+            self._github_poll_startup_delay_s.text() or "35"
+        ).strip()
+        try:
+            poll_startup_delay_s = max(0, int(poll_startup_delay_text or "35"))
+        except Exception:
+            poll_startup_delay_s = 35
+
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
@@ -900,6 +977,9 @@ class _SettingsFormMixin:
             "agentsnova_auto_review_enabled": bool(
                 self._agentsnova_auto_review_enabled.isChecked()
             ),
+            "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
+            "github_poll_startup_delay_s": poll_startup_delay_s,
+            "agentsnova_trusted_users_global": self._agentsnova_trusted_users_global.get_usernames(),
             "headless_desktop_enabled": bool(
                 self._headless_desktop_enabled.isChecked()
             ),
@@ -930,6 +1010,17 @@ class _SettingsFormMixin:
                 )
             ),
         }
+
+    def _on_setup_global_github_defaults(self) -> None:
+        environments = load_environments().values()
+        seeded = collect_seed_usernames_for_cloned_environments(environments)
+        if not seeded:
+            return
+        self._agentsnova_trusted_users_global.merge_usernames(seeded)
+        try:
+            self._queue_debounced_autosave()
+        except Exception:
+            pass
 
     def _pick_codex_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(

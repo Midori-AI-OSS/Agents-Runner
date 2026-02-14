@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import threading
-
 from datetime import datetime
 
 from PySide6.QtCore import QEasingCurve
@@ -10,7 +8,6 @@ from PySide6.QtCore import QPoint
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QUrl
-from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QEnterEvent
@@ -27,10 +24,6 @@ from PySide6.QtWidgets import QWidget
 from agents_runner.environments import Environment
 from agents_runner.environments import resolve_environment_github_repo
 from agents_runner.gh.work_items import GitHubWorkItem
-from agents_runner.gh.work_items import add_issue_comment_reaction
-from agents_runner.gh.work_items import list_issue_comments
-from agents_runner.gh.work_items import list_open_issues
-from agents_runner.gh.work_items import list_open_pull_requests
 from agents_runner.prompts import load_prompt
 from agents_runner.ui.dialogs.github_workroom_dialog import GitHubWorkroomDialog
 from agents_runner.ui.lucide_icons import lucide_icon
@@ -256,25 +249,24 @@ class _GitHubWorkSkeletonRow(QWidget):
 class GitHubWorkListPage(QWidget):
     environment_changed = Signal(str)
     prompt_append_requested = Signal(str, str)
-    auto_review_requested = Signal(str, str)
 
-    _fetch_completed = Signal(int, object, str, object, object)
-
-    def __init__(self, *, item_type: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        item_type: str,
+        coordinator,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         normalized = str(item_type or "").strip().lower()
         self._item_type = "pr" if normalized == "pr" else "issue"
+        self._coordinator = coordinator
 
         self._environments: dict[str, Environment] = {}
         self._active_env_id = ""
-        self._fetch_seq = 0
-        self._polling_enabled = False
+        self._pane_active = False
         self._prefer_browser = False
         self._confirmation_mode = "always"
-        self._auto_review_enabled = True
-        self._poll_interval_s = 30
-        self._auto_review_seen_comment_ids: set[int] = set()
-        self._auto_review_seen_item_mentions: set[str] = set()
         self._active_stain = ""
         self._last_fetch_issue = ""
 
@@ -331,11 +323,7 @@ class GitHubWorkListPage(QWidget):
         card_layout.addWidget(self._scroll, 1)
         root.addWidget(card, 1)
 
-        self._poll_timer = QTimer(self)
-        self._poll_timer.setInterval(max(5, int(self._poll_interval_s)) * 1000)
-        self._poll_timer.timeout.connect(self.refresh)
-
-        self._fetch_completed.connect(self._on_fetch_completed)
+        self._coordinator.cache_updated.connect(self._on_cache_updated)
         self._apply_environment_tints("")
 
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
@@ -348,24 +336,15 @@ class GitHubWorkListPage(QWidget):
             .strip()
             .lower()
         )
-        self._auto_review_enabled = bool(
-            settings.get("agentsnova_auto_review_enabled", True)
-        )
-
-        try:
-            interval = int(settings.get("github_poll_interval_s", 30))
-        except Exception:
-            interval = 30
-        self._poll_interval_s = max(5, interval)
-        self._poll_timer.setInterval(self._poll_interval_s * 1000)
+        self._sync_refresh_visibility()
 
     def set_polling_enabled(self, enabled: bool) -> None:
-        self._polling_enabled = bool(enabled)
-        if self._polling_enabled:
-            self._poll_timer.start()
-            self.refresh()
-            return
-        self._poll_timer.stop()
+        self.set_pane_active(enabled)
+
+    def set_pane_active(self, active: bool) -> None:
+        self._pane_active = bool(active)
+        if self._pane_active:
+            self._sync_from_cache(show_loading_if_missing=True)
 
     def set_environments(self, envs: dict[str, Environment], active_id: str) -> None:
         self._environments = dict(envs or {})
@@ -383,6 +362,8 @@ class GitHubWorkListPage(QWidget):
 
         self._active_env_id = desired
         self._sync_environment_stain()
+        self._sync_refresh_visibility()
+        self._sync_from_cache(show_loading_if_missing=self._pane_active)
 
     def set_active_environment_id(self, env_id: str) -> None:
         desired = str(env_id or "").strip()
@@ -394,7 +375,8 @@ class GitHubWorkListPage(QWidget):
             return
         self._active_env_id = desired
         self._sync_environment_stain()
-        self.refresh()
+        self._sync_refresh_visibility()
+        self._sync_from_cache(show_loading_if_missing=self._pane_active)
 
     def set_environment_stain(self, stain: str) -> None:
         normalized = str(stain or "").strip().lower()
@@ -410,198 +392,88 @@ class GitHubWorkListPage(QWidget):
             self._last_fetch_issue = ""
             return
 
-        self._fetch_seq += 1
-        seq = int(self._fetch_seq)
         load_key = self._first_load_key(env_id)
-        if load_key not in self._initial_load_seen_keys:
+        entry = self._coordinator.get_cache_entry(
+            item_type=self._item_type, env_id=env_id
+        )
+        if entry is None and load_key not in self._initial_load_seen_keys:
             self._initial_load_seen_keys.add(load_key)
             self._render_loading_rows(stain=self._current_stain())
-        queued_snapshot = set(self._auto_review_seen_comment_ids)
-        queued_item_snapshot = set(self._auto_review_seen_item_mentions)
-        auto_review_enabled = bool(self._auto_review_enabled)
 
-        worker = threading.Thread(
-            target=self._fetch_worker,
-            args=(
-                seq,
-                env_id,
-                queued_snapshot,
-                queued_item_snapshot,
-                auto_review_enabled,
-            ),
-            daemon=True,
-        )
-        worker.start()
-
-    def _fetch_worker(
-        self,
-        seq: int,
-        env_id: str,
-        queued_snapshot: set[int],
-        queued_item_snapshot: set[str],
-        auto_review_enabled: bool,
-    ) -> None:
-        repo_context = None
-        items: list[GitHubWorkItem] = []
-        auto_reviews: list[dict[str, object]] = []
-        error = ""
-
-        try:
-            env = self._environments.get(env_id)
-            repo_context = resolve_environment_github_repo(env)
-            if repo_context is None:
-                self._fetch_completed.emit(seq, items, "", None, auto_reviews)
-                return
-
-            if self._item_type == "pr":
-                items = list_open_pull_requests(
-                    repo_context.repo_owner,
-                    repo_context.repo_name,
-                    limit=30,
-                )
-            else:
-                items = list_open_issues(
-                    repo_context.repo_owner,
-                    repo_context.repo_name,
-                    limit=30,
-                )
-
-            if auto_review_enabled:
-                auto_reviews = self._collect_auto_reviews(
-                    repo_owner=repo_context.repo_owner,
-                    repo_name=repo_context.repo_name,
-                    items=items,
-                    queued_snapshot=queued_snapshot,
-                    queued_item_snapshot=queued_item_snapshot,
-                )
-        except Exception as exc:
-            error = str(exc)
-
-        self._fetch_completed.emit(seq, items, error, repo_context, auto_reviews)
-
-    def _collect_auto_reviews(
-        self,
-        *,
-        repo_owner: str,
-        repo_name: str,
-        items: list[GitHubWorkItem],
-        queued_snapshot: set[int],
-        queued_item_snapshot: set[str],
-    ) -> list[dict[str, object]]:
-        results: list[dict[str, object]] = []
-
-        for item in items:
-            item_key = self._mention_item_key(
-                repo_owner=repo_owner,
-                repo_name=repo_name,
-                item_type=item.item_type,
-                number=item.number,
-            )
-            queued_for_item = False
-
-            comments = list_issue_comments(
-                repo_owner,
-                repo_name,
-                issue_number=item.number,
-                limit=100,
-            )
-            comments = list(comments)
-            comments.reverse()
-
-            for comment in comments:
-                body = str(comment.body or "")
-                if "@agentsnova" not in body.lower():
-                    continue
-
-                if comment.comment_id in queued_snapshot:
-                    continue
-
-                reactions = comment.reactions
-                if reactions.thumbs_up > 0 or reactions.thumbs_down > 0:
-                    continue
-
-                marker = "eyes"
-                if item.item_type == "pr":
-                    if reactions.eyes > 0:
-                        continue
-                else:
-                    marker = "rocket"
-                    if reactions.rocket > 0 or reactions.hooray > 0:
-                        continue
-
-                try:
-                    add_issue_comment_reaction(
-                        repo_owner,
-                        repo_name,
-                        comment_id=comment.comment_id,
-                        reaction=marker,
-                    )
-                except Exception:
-                    continue
-
-                results.append(
-                    {
-                        "item_type": item.item_type,
-                        "number": item.number,
-                        "url": item.url,
-                        "title": item.title,
-                        "mention_comment_id": comment.comment_id,
-                        "trigger_source": "comment_mention",
-                        "item_key": item_key,
-                    }
-                )
-                queued_for_item = True
-
-                if len(results) >= 3:
-                    return results
-                break
-
-            if queued_for_item:
-                continue
-
-            if item_key in queued_item_snapshot:
-                continue
-
-            if self._item_has_agentsnova_mention(item):
-                results.append(
-                    {
-                        "item_type": item.item_type,
-                        "number": item.number,
-                        "url": item.url,
-                        "title": item.title,
-                        "mention_comment_id": 0,
-                        "trigger_source": "body_mention",
-                        "item_key": item_key,
-                    }
-                )
-                queued_item_snapshot.add(item_key)
-                if len(results) >= 3:
-                    return results
-
-        return results
-
-    def _mention_item_key(
-        self,
-        *,
-        repo_owner: str,
-        repo_name: str,
-        item_type: str,
-        number: int,
-    ) -> str:
-        try:
-            normalized_number = max(0, int(number))
-        except Exception:
-            normalized_number = 0
-        return (
-            f"{str(repo_owner or '').strip().lower()}/"
-            f"{str(repo_name or '').strip().lower()}:"
-            f"{str(item_type or '').strip().lower()}:{normalized_number}"
+        self._coordinator.request_refresh(
+            item_type=self._item_type,
+            env_id=env_id,
+            force=True,
         )
 
-    def _item_has_agentsnova_mention(self, item: GitHubWorkItem) -> bool:
-        body = str(getattr(item, "body", "") or "").strip().lower()
-        title = str(getattr(item, "title", "") or "").strip().lower()
-        return "@agentsnova" in body or "@agentsnova" in title
+    def _on_cache_updated(self, item_type: str, env_id: str) -> None:
+        if str(item_type or "").strip().lower() != self._item_type:
+            return
+        if str(env_id or "").strip() != str(self._active_env_id or "").strip():
+            return
+        self._sync_from_cache(show_loading_if_missing=False)
+
+    def _sync_from_cache(self, *, show_loading_if_missing: bool) -> None:
+        env_id = str(self._active_env_id or "").strip()
+        if not env_id:
+            self._clear_rows()
+            self._last_fetch_issue = ""
+            return
+
+        entry = self._coordinator.get_cache_entry(
+            item_type=self._item_type, env_id=env_id
+        )
+        if entry is None:
+            if show_loading_if_missing:
+                load_key = self._first_load_key(env_id)
+                if load_key not in self._initial_load_seen_keys:
+                    self._initial_load_seen_keys.add(load_key)
+                    self._render_loading_rows(stain=self._current_stain())
+            if self._pane_active:
+                self._coordinator.request_refresh(
+                    item_type=self._item_type,
+                    env_id=env_id,
+                    force=True,
+                )
+            return
+
+        if entry.repo_context is None:
+            self._clear_rows()
+            self._log_fetch_issue_once(
+                (
+                    f"[github-{self._item_type}] GitHub is unavailable for "
+                    f"environment '{self._active_env_id}'."
+                ),
+                mode="warn",
+            )
+            return
+
+        env = self._environments.get(self._active_env_id)
+        stain = (
+            self._active_stain
+            or str(getattr(env, "color", "slate") or "").strip().lower()
+        )
+        if not stain:
+            stain = "slate"
+
+        if entry.error and not entry.items:
+            self._clear_rows()
+            self._log_fetch_issue_once(
+                (
+                    f"[github-{self._item_type}] Load failed for environment "
+                    f"'{self._active_env_id}': {entry.error}"
+                ),
+                mode="error",
+            )
+            return
+
+        self._render_rows(list(entry.items), stain=stain)
+        self._last_fetch_issue = ""
+        if self._pane_active:
+            self._coordinator.request_refresh_if_stale(
+                item_type=self._item_type,
+                env_id=env_id,
+            )
 
     def _format_time(self, value: str) -> str:
         text = str(value or "").strip()
@@ -751,114 +623,11 @@ class GitHubWorkListPage(QWidget):
             TRIGGER_SOURCE=source,
         ).strip()
 
-    def _on_fetch_completed(
-        self,
-        seq: int,
-        items: object,
-        error: str,
-        repo_context: object,
-        auto_reviews: object,
-    ) -> None:
-        if int(seq) != int(self._fetch_seq):
-            return
-
-        if repo_context is None:
-            self._clear_rows()
-            self._log_fetch_issue_once(
-                (
-                    f"[github-{self._item_type}] GitHub is unavailable for "
-                    f"environment '{self._active_env_id}'."
-                ),
-                mode="warn",
-            )
-            return
-
-        rows = [
-            item
-            for item in (items if isinstance(items, list) else [])
-            if isinstance(item, GitHubWorkItem)
-        ]
-        env = self._environments.get(self._active_env_id)
-        stain = (
-            self._active_stain
-            or str(getattr(env, "color", "slate") or "").strip().lower()
+    def _sync_refresh_visibility(self) -> None:
+        hide_refresh = self._coordinator.is_polling_effective_for_env(
+            str(self._active_env_id or "").strip()
         )
-        if not stain:
-            stain = "slate"
-
-        if error:
-            self._clear_rows()
-            self._log_fetch_issue_once(
-                (
-                    f"[github-{self._item_type}] Load failed for environment "
-                    f"'{self._active_env_id}': {error}"
-                ),
-                mode="error",
-            )
-            return
-
-        self._render_rows(rows, stain=stain)
-        self._last_fetch_issue = ""
-
-        reviews = auto_reviews if isinstance(auto_reviews, list) else []
-        repo_owner = str(getattr(repo_context, "repo_owner", "") or "")
-        repo_name = str(getattr(repo_context, "repo_name", "") or "")
-        for review in reviews:
-            if not isinstance(review, dict):
-                continue
-
-            item_type = str(review.get("item_type") or self._item_type).strip().lower()
-            try:
-                number = int(review.get("number") or 0)
-            except Exception:
-                number = 0
-            if number <= 0:
-                continue
-
-            trigger_source = str(review.get("trigger_source") or "").strip().lower()
-            try:
-                mention_comment_id = int(review.get("mention_comment_id") or 0)
-            except Exception:
-                mention_comment_id = 0
-
-            if (
-                mention_comment_id > 0
-                and mention_comment_id in self._auto_review_seen_comment_ids
-            ):
-                continue
-
-            item_key = str(review.get("item_key") or "").strip()
-            if not item_key:
-                item_key = self._mention_item_key(
-                    repo_owner=repo_owner,
-                    repo_name=repo_name,
-                    item_type=item_type,
-                    number=number,
-                )
-            if (
-                trigger_source == "body_mention"
-                and item_key in self._auto_review_seen_item_mentions
-            ):
-                continue
-
-            prompt = self._build_task_prompt(
-                item_type=item_type,
-                repo_owner=repo_owner,
-                repo_name=repo_name,
-                number=number,
-                url=str(review.get("url") or "").strip(),
-                title=str(review.get("title") or "").strip(),
-                trigger_source=trigger_source,
-                mention_comment_id=mention_comment_id,
-            )
-            if not prompt:
-                continue
-
-            if mention_comment_id > 0:
-                self._auto_review_seen_comment_ids.add(mention_comment_id)
-            if trigger_source == "body_mention":
-                self._auto_review_seen_item_mentions.add(item_key)
-            self.auto_review_requested.emit(self._active_env_id, prompt)
+        self._refresh.setVisible(not hide_refresh)
 
     def _current_stain(self) -> str:
         env = self._environments.get(self._active_env_id)

@@ -514,3 +514,63 @@ def add_issue_comment_reaction(
         ],
         timeout_s=30.0,
     )
+
+
+def get_authenticated_github_login() -> str:
+    """Return the currently authenticated ``gh`` login (or empty string)."""
+    try:
+        data = _run_gh_json(
+            [
+                "api",
+                "user",
+                "-H",
+                "Accept: application/vnd.github+json",
+            ],
+            timeout_s=20.0,
+        )
+    except Exception:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    return _safe_text(data.get("login")).lower()
+
+
+def list_org_members(owner: str, *, limit: int = 100) -> list[str]:
+    """Best-effort list of org members for ``owner``.
+
+    Returns an empty list when owner is not an organization or when API access
+    is unavailable.
+    """
+    owner_text = _safe_text(owner)
+    if not owner_text:
+        return []
+    try:
+        per_page = max(1, min(100, int(limit)))
+    except Exception:
+        per_page = 100
+
+    try:
+        data = _run_gh_json(
+            [
+                "api",
+                f"orgs/{owner_text}/members?per_page={per_page}",
+                "-H",
+                "Accept: application/vnd.github+json",
+            ],
+            timeout_s=30.0,
+        )
+    except Exception:
+        return []
+
+    rows = data if isinstance(data, list) else []
+    members: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        login = _safe_text(row.get("login")).lower()
+        if not login or login in seen:
+            continue
+        members.append(login)
+        seen.add(login)
+    return members

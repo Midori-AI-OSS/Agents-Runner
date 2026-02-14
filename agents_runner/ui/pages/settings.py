@@ -149,6 +149,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._append_pixelarch_context,
             self._github_workroom_prefer_browser,
             self._agentsnova_auto_review_enabled,
+            self._github_polling_enabled,
             self._headless_desktop_enabled,
             self._popup_theme_animation_enabled,
             self._auto_navigate_on_run_agent_start,
@@ -164,6 +165,12 @@ class SettingsPage(QWidget, _SettingsFormMixin):
 
         self._radio_volume.valueChanged.connect(self._queue_debounced_autosave)
         self._radio_loudness_boost_factor.valueChanged.connect(
+            self._queue_debounced_autosave
+        )
+        self._github_poll_startup_delay_s.textChanged.connect(
+            self._queue_debounced_autosave
+        )
+        self._agentsnova_trusted_users_global.usernames_changed.connect(
             self._queue_debounced_autosave
         )
 

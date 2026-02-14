@@ -13,6 +13,26 @@ from .prompt_storage import load_prompt_from_file
 from .prompt_storage import delete_prompt_file
 
 
+def _normalize_usernames(raw: Any) -> list[str]:
+    rows = raw if isinstance(raw, list) else []
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        username = str(row or "").strip().lstrip("@").lower()
+        if not username or username in seen:
+            continue
+        cleaned.append(username)
+        seen.add(username)
+    return cleaned
+
+
+def _normalize_trusted_mode(value: Any) -> str:
+    mode = str(value or "").strip().lower()
+    if mode in {"additive", "replace"}:
+        return mode
+    return "inherit"
+
+
 def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) -> str:
     base = (desired or "").strip()
     if not base:
@@ -215,6 +235,13 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
+    github_polling_enabled = bool(payload.get("github_polling_enabled", False))
+    agentsnova_trusted_users_env = _normalize_usernames(
+        payload.get("agentsnova_trusted_users_env", [])
+    )
+    agentsnova_trusted_mode = _normalize_trusted_mode(
+        payload.get("agentsnova_trusted_mode", "inherit")
+    )
 
     # Migration: Rename gh_pr_metadata_enabled to gh_context_enabled
     # Check both old and new field names for backward compatibility
@@ -436,6 +463,9 @@ def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         gh_last_base_branch=gh_last_base_branch,
         gh_use_host_cli=gh_use_host_cli,
         gh_context_enabled=gh_context_enabled,  # Use migrated field name
+        github_polling_enabled=github_polling_enabled,
+        agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+        agentsnova_trusted_mode=agentsnova_trusted_mode,
         prompts=prompts,
         prompts_unlocked=prompts_unlocked,
         agent_selection=agent_selection,
@@ -542,6 +572,13 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         ).strip(),
         "gh_use_host_cli": bool(env.gh_use_host_cli),
         "gh_context_enabled": bool(env.gh_context_enabled),  # Save with new name
+        "github_polling_enabled": bool(getattr(env, "github_polling_enabled", False)),
+        "agentsnova_trusted_users_env": _normalize_usernames(
+            getattr(env, "agentsnova_trusted_users_env", [])
+        ),
+        "agentsnova_trusted_mode": _normalize_trusted_mode(
+            getattr(env, "agentsnova_trusted_mode", "inherit")
+        ),
         # Also save with old name for backward compatibility with older builds
         "gh_pr_metadata_enabled": bool(env.gh_context_enabled),
         "midoriai_template_likelihood": float(
