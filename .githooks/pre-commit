@@ -249,19 +249,15 @@ if [[ "${tasks_has_task_files}" -eq 1 ]]; then
   log "WARNING: Task files (.md/.txt) exist under .agents/tasks/{wip,done,taskmaster}."
 fi
 
-log "Running Python bytecode compile check (compileall)"
 if ! command -v uv >/dev/null 2>&1; then
   die "uv not found; install uv to run compile checks (or use --no-verify to bypass)"
 fi
 
 uv_project_env="${UV_PROJECT_ENVIRONMENT:-/tmp/agents-runner-precommit-uv-env}"
-log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run python -m compileall -q agents_runner main.py"
 if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run python -m compileall -q agents_runner main.py; then
   die "Compile check failed. Fix by running the command above and addressing the reported issues."
 fi
 
-log "Running import smoke test"
-log "Command: UV_PROJECT_ENVIRONMENT=${uv_project_env} uv run python -"
 if ! UV_PROJECT_ENVIRONMENT="${uv_project_env}" uv run python - <<'PY'
 import importlib
 
