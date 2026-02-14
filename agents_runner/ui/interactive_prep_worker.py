@@ -11,9 +11,8 @@ from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
 
 from agents_runner.docker.agent_worker_prompt import PromptAssembler
-from agents_runner.docker.image_builder import ensure_desktop_image
+from agents_runner.docker.cache_resolver import resolve_runtime_cache
 from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
-from agents_runner.docker.phase_image_builder import ensure_phase_image
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import cleanup_task_workspace
@@ -172,15 +171,6 @@ class InteractivePrepWorker(QObject):
         )
 
     def _resolve_runtime_image_for_launch(self) -> dict[str, object]:
-        runtime_image = self._image
-        desktop_preflight_script = str(self._extra_preflight_script or "")
-        preflights_host_dir = PREFLIGHTS_DIR.resolve()
-
-        system_preflight_cached = False
-        desktop_preflight_cached = False
-        settings_preflight_cached = False
-        environment_preflight_cached = False
-
         cache_system_enabled = bool(
             self._container_caching_enabled and self._cache_system_preflight_enabled
         )
@@ -194,91 +184,25 @@ class InteractivePrepWorker(QObject):
         def on_phase_log(line: str) -> None:
             self.log.emit(self._task_id, str(line or ""))
 
-        system_preflight_script = ""
-        system_preflight_path = preflights_host_dir / "pixelarch_yay.sh"
-        if system_preflight_path.is_file():
-            try:
-                system_preflight_script = system_preflight_path.read_text(
-                    encoding="utf-8"
-                )
-            except Exception:
-                system_preflight_script = ""
-
-        if cache_system_enabled and system_preflight_script.strip():
-            self._check_stop()
-            next_image = ensure_phase_image(
-                base_image=runtime_image,
-                phase_name="system",
-                script_content=system_preflight_script,
-                preflights_dir=preflights_host_dir,
-                on_log=on_phase_log,
-            )
-            system_preflight_cached = next_image != runtime_image
-            runtime_image = next_image
-        elif cache_system_enabled:
-            on_phase_log(
-                format_log(
-                    "phase",
-                    "cache",
-                    "WARN",
-                    "system caching enabled but system script is unavailable",
-                )
-            )
-
-        if desktop_cache_enabled:
-            self._check_stop()
-            desktop_base_image = runtime_image
-            next_image = ensure_desktop_image(desktop_base_image, on_log=on_phase_log)
-            desktop_preflight_cached = next_image != desktop_base_image
-            runtime_image = next_image
-            if desktop_preflight_cached:
-                desktop_run_path = Path(preflights_host_dir) / "desktop_run.sh"
-                try:
-                    desktop_preflight_script = desktop_run_path.read_text(
-                        encoding="utf-8"
-                    )
-                except Exception:
-                    desktop_preflight_script = ""
-                if not desktop_preflight_script.strip():
-                    on_phase_log(
-                        format_log(
-                            "desktop",
-                            "cache",
-                            "WARN",
-                            f"desktop cache active but runtime script is missing: {desktop_run_path}",
-                        )
-                    )
-                    desktop_preflight_cached = False
-                    runtime_image = desktop_base_image
-
-        if cache_settings_enabled and self._settings_preflight_script.strip():
-            self._check_stop()
-            next_image = ensure_phase_image(
-                base_image=runtime_image,
-                phase_name="settings",
-                script_content=self._settings_preflight_script,
-                preflights_dir=preflights_host_dir,
-                on_log=on_phase_log,
-            )
-            settings_preflight_cached = next_image != runtime_image
-            runtime_image = next_image
-        elif cache_settings_enabled:
-            on_phase_log(
-                format_log(
-                    "phase",
-                    "cache",
-                    "WARN",
-                    "settings caching enabled but settings script is empty",
-                )
-            )
+        result = resolve_runtime_cache(
+            base_image=self._image,
+            cache_system_enabled=cache_system_enabled,
+            cache_settings_enabled=cache_settings_enabled,
+            desktop_cache_enabled=desktop_cache_enabled,
+            extra_preflight_script=str(self._extra_preflight_script or ""),
+            settings_preflight_script=self._settings_preflight_script,
+            preflights_host_dir=PREFLIGHTS_DIR.resolve(),
+            on_log=on_phase_log,
+            check_stop=self._check_stop,
+        )
 
         return {
-            "runtime_image": runtime_image,
-            "system_preflight_cached": system_preflight_cached,
-            "desktop_preflight_cached": desktop_preflight_cached,
-            "settings_preflight_cached": settings_preflight_cached,
-            "environment_preflight_cached": environment_preflight_cached,
-            "resolved_extra_preflight_script": desktop_preflight_script,
+            "runtime_image": result.runtime_image,
+            "system_preflight_cached": result.system_preflight_cached,
+            "desktop_preflight_cached": result.desktop_preflight_cached,
+            "settings_preflight_cached": result.settings_preflight_cached,
+            "environment_preflight_cached": result.environment_preflight_cached,
+            "resolved_extra_preflight_script": result.desktop_preflight_script,
         }
 
     def _append_full_prompt_github_context(
