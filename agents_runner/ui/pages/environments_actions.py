@@ -96,9 +96,10 @@ class _EnvironmentsPageActionsMixin:
         preferred_env_id: str | None = None,
         show_validation_errors: bool = True,
     ) -> bool:
-        autosave_timer = getattr(self, "_autosave_timer", None)
-        if autosave_timer is not None and autosave_timer.isActive():
-            autosave_timer.stop()
+        for timer_name in ("_autosave_timer", "_advanced_autosave_timer"):
+            autosave_timer = getattr(self, timer_name, None)
+            if autosave_timer is not None and autosave_timer.isActive():
+                autosave_timer.stop()
 
         if bool(getattr(self, "_suppress_autosave", False)):
             return True

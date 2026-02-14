@@ -46,5 +46,9 @@ STANDARD_BUTTON_WIDTH = 100
 # Table row height
 TABLE_ROW_HEIGHT = 56
 
+# Autosave timing constants
+AUTOSAVE_DISCRETE_MS = 450
+AUTOSAVE_IDLE_MS = 15000
+
 # Standard column widths
 AGENT_COMBO_WIDTH = 170

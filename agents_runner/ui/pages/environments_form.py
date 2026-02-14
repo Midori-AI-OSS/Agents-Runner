@@ -217,10 +217,10 @@ class _EnvironmentsFormMixin:
         self._cache_settings_preflight_enabled.setEnabled(False)
 
         self._env_vars_tab = EnvVarsTabWidget()
-        self._env_vars_tab.env_vars_changed.connect(self._queue_debounced_autosave)
+        self._env_vars_tab.env_vars_changed.connect(self._queue_advanced_autosave)
 
         self._mounts_tab = MountsTabWidget()
-        self._mounts_tab.mounts_changed.connect(self._queue_debounced_autosave)
+        self._mounts_tab.mounts_changed.connect(self._queue_advanced_autosave)
 
         self._ports_tab = PortsTabWidget()
         self._ports_tab.ports_changed.connect(self._on_ports_changed)

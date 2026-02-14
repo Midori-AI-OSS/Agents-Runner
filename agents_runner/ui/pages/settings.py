@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.constants import (
+    AUTOSAVE_DISCRETE_MS,
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
     HEADER_MARGINS,
@@ -50,7 +51,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         self._suppress_autosave = False
         self._autosave_timer = QTimer(self)
         self._autosave_timer.setSingleShot(True)
-        self._autosave_timer.setInterval(450)
+        self._autosave_timer.setInterval(AUTOSAVE_DISCRETE_MS)
         self._autosave_timer.timeout.connect(self._emit_saved)
 
         self._pane_animation: QParallelAnimationGroup | None = None
@@ -141,7 +142,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._radio_quality,
             self._github_write_confirmation_mode,
         ):
-            combo.currentIndexChanged.connect(self._trigger_immediate_autosave)
+            combo.currentIndexChanged.connect(self._queue_debounced_autosave)
 
         for checkbox in (
             self._preflight_enabled,
@@ -159,17 +160,8 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._radio_autostart,
             self._radio_loudness_boost_enabled,
         ):
-            checkbox.toggled.connect(self._trigger_immediate_autosave)
+            checkbox.toggled.connect(self._queue_debounced_autosave)
 
-        for line_edit in (
-            self._host_codex_dir,
-            self._host_claude_dir,
-            self._host_copilot_dir,
-            self._host_gemini_dir,
-        ):
-            line_edit.textChanged.connect(self._queue_debounced_autosave)
-
-        self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
         self._radio_volume.valueChanged.connect(self._queue_debounced_autosave)
         self._radio_loudness_boost_factor.valueChanged.connect(
             self._queue_debounced_autosave
@@ -286,13 +278,6 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         if self._suppress_autosave:
             return
         self._autosave_timer.start()
-
-    def _trigger_immediate_autosave(self, *_args: object) -> None:
-        if self._suppress_autosave:
-            return
-        if self._autosave_timer.isActive():
-            self._autosave_timer.stop()
-        self._emit_saved()
 
     def _emit_saved(self) -> None:
         if self._suppress_autosave:
