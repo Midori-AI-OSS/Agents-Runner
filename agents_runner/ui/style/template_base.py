@@ -333,6 +333,21 @@ TEMPLATE_BASE = """
         border-radius: 0px;
     }
 
+    QScrollArea#SettingsNavScrollArea,
+    QScrollArea#SettingsPaneScrollArea {
+        background: transparent;
+        border: none;
+    }
+
+    QScrollArea#SettingsNavScrollArea > QWidget > QWidget,
+    QScrollArea#SettingsPaneScrollArea > QWidget > QWidget {
+        background: transparent;
+    }
+
+    QWidget#ScrollEdgeFadeOverlay {
+        background: transparent;
+    }
+
     QLabel#SettingsNavSection {
         color: rgba(237, 239, 245, 145);
         font-size: 11px;

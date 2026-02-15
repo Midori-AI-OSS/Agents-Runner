@@ -20,6 +20,7 @@ MAIN_LAYOUT_SPACING = 14
 # Left navigation panel constants
 LEFT_NAV_PANEL_WIDTH = 280
 LEFT_NAV_COMPACT_THRESHOLD = 1080
+LEFT_NAV_BUTTON_SPACING = 10
 
 # Header constants (GlassCard with title/subtitle/back)
 HEADER_MARGINS = (18, 16, 18, 16)

@@ -25,6 +25,7 @@ from agents_runner.ui.constants import CARD_MARGINS
 from agents_runner.ui.constants import CARD_SPACING
 from agents_runner.ui.constants import HEADER_MARGINS
 from agents_runner.ui.constants import HEADER_SPACING
+from agents_runner.ui.constants import LEFT_NAV_BUTTON_SPACING
 from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 from agents_runner.ui.constants import LEFT_NAV_PANEL_WIDTH
 from agents_runner.ui.constants import MAIN_LAYOUT_MARGINS
@@ -35,7 +36,7 @@ from agents_runner.ui.pages.github_work_list import GitHubWorkListPage
 from agents_runner.ui.pages.new_task import NewTaskPage
 from agents_runner.ui.utils import apply_environment_combo_tint
 from agents_runner.ui.utils import stain_color
-from agents_runner.ui.widgets import GlassCard
+from agents_runner.ui.widgets import EdgeFadeScrollArea, GlassCard
 
 
 _GITHUB_NAV_KEYS = ("pull_requests", "issues")
@@ -124,12 +125,16 @@ class TasksPage(QWidget):
         panes_layout.setContentsMargins(0, 0, 0, 0)
         panes_layout.setSpacing(14)
 
+        self._nav_scroll = EdgeFadeScrollArea()
+        self._nav_scroll.setObjectName("SettingsNavScrollArea")
+        self._nav_scroll.setFixedWidth(LEFT_NAV_PANEL_WIDTH)
+
         self._nav_panel = QWidget()
         self._nav_panel.setObjectName("SettingsNavPanel")
-        self._nav_panel.setFixedWidth(LEFT_NAV_PANEL_WIDTH)
         nav_layout = QVBoxLayout(self._nav_panel)
         nav_layout.setContentsMargins(10, 10, 10, 10)
-        nav_layout.setSpacing(6)
+        nav_layout.setSpacing(LEFT_NAV_BUTTON_SPACING)
+        self._nav_scroll.setWidget(self._nav_panel)
 
         self._right_panel = QWidget()
         self._right_panel.setObjectName("SettingsPaneHost")
@@ -141,7 +146,7 @@ class TasksPage(QWidget):
         self._page_stack.setObjectName("SettingsPageStack")
         right_layout.addWidget(self._page_stack, 1)
 
-        panes_layout.addWidget(self._nav_panel)
+        panes_layout.addWidget(self._nav_scroll)
         panes_layout.addWidget(self._right_panel, 1)
 
         card_layout.addLayout(panes_layout, 1)
@@ -522,7 +527,7 @@ class TasksPage(QWidget):
             and state_changed
             and self.isVisible()
             and not self._compact_mode
-            and self._nav_panel.isVisible()
+            and self._nav_scroll.isVisible()
         )
 
         if should_animate:
@@ -625,4 +630,4 @@ class TasksPage(QWidget):
             return
         self._compact_mode = compact
         self._compact_nav.setVisible(compact)
-        self._nav_panel.setVisible(not compact)
+        self._nav_scroll.setVisible(not compact)

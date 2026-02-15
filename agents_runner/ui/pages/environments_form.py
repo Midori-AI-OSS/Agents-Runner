@@ -37,6 +37,7 @@ from agents_runner.ui.pages.environments_env_vars import EnvVarsTabWidget
 from agents_runner.ui.pages.environments_mounts import MountsTabWidget
 from agents_runner.ui.pages.environments_ports import PortsTabWidget
 from agents_runner.ui.pages.environments_prompts import PromptsTabWidget
+from agents_runner.ui.widgets import EdgeFadeScrollArea
 
 
 @dataclass(frozen=True)
@@ -404,7 +405,15 @@ class EnvironmentsFormMixin:
         page = QWidget()
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.setSpacing(10)
+        page_layout.setSpacing(0)
+
+        scroll = EdgeFadeScrollArea(page)
+        scroll.setObjectName("SettingsPaneScrollArea")
+
+        content = QWidget(scroll)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(10)
 
         title = QLabel(spec.title)
         title.setObjectName("SettingsPaneTitle")
@@ -413,14 +422,17 @@ class EnvironmentsFormMixin:
         subtitle.setObjectName("SettingsPaneSubtitle")
         subtitle.setWordWrap(True)
 
-        body = QWidget(page)
+        body = QWidget(content)
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(GRID_VERTICAL_SPACING)
 
-        page_layout.addWidget(title)
-        page_layout.addWidget(subtitle)
-        page_layout.addWidget(body, 1)
+        content_layout.addWidget(title)
+        content_layout.addWidget(subtitle)
+        content_layout.addWidget(body)
+
+        scroll.setWidget(content)
+        page_layout.addWidget(scroll, 1)
         return page, body_layout
 
     def _register_page(self, key: str, widget: QWidget) -> None:

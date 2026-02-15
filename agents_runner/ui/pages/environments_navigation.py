@@ -158,4 +158,4 @@ class EnvironmentsNavigationMixin:
             return
         self._compact_mode = compact
         self._compact_nav.setVisible(compact)
-        self._nav_panel.setVisible(not compact)
+        self._nav_scroll.setVisible(not compact)
