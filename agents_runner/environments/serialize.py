@@ -211,7 +211,9 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     )
 
     env_vars_raw = payload.get("env_vars", {})
-    env_vars = cast(dict[str, Any], env_vars_raw if isinstance(env_vars_raw, dict) else {})
+    env_vars = cast(
+        dict[str, Any], env_vars_raw if isinstance(env_vars_raw, dict) else {}
+    )
 
     extra_mounts_raw = payload.get("extra_mounts", [])
     extra_mounts = cast(

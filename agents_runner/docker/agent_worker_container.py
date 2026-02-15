@@ -640,9 +640,7 @@ class ContainerExecutor:
                         chunk = fileobj.readline()
                         if chunk:
                             stream = (
-                                "stdout"
-                                if fileobj == logs_proc.stdout
-                                else "stderr"
+                                "stdout" if fileobj == logs_proc.stdout else "stderr"
                             )
                             self._on_log(
                                 wrap_container_log(

@@ -88,9 +88,7 @@ def cleanup_task_workspace(
         ) -> None:
             """Handle permission errors during removal."""
             logger.debug(
-                format_log(
-                    "cleanup", "task", "DEBUG", f"Error removing {path}: {exc}"
-                )
+                format_log("cleanup", "task", "DEBUG", f"Error removing {path}: {exc}")
             )
             # Try to make writable and retry
             try:
