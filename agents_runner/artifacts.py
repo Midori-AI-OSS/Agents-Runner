@@ -5,6 +5,8 @@ Provides secure storage of task artifacts with encryption based on task+environm
 Artifacts are stored in ~/.midoriai/agents-runner/artifacts/{task_id}/ with UUID4 filenames.
 """
 
+from __future__ import annotations
+
 import hashlib
 import json
 import logging

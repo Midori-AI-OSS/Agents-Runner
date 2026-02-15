@@ -164,7 +164,7 @@ def mark_setup_skipped() -> None:
 
 def launch_terminal_and_wait(
     option: TerminalOption, bash_script: str, cwd: str | None = None
-) -> subprocess.CompletedProcess[str]:
+) -> subprocess.CompletedProcess[bytes]:
     """Launch terminal and WAIT for it to close (blocking).
 
     This is used for sequential setup where we need to wait

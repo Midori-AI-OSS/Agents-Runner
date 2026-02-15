@@ -91,8 +91,7 @@ class FfmpegPulseRecorder:
         ):
             stderr_text = ""
             try:
-                if isinstance(stderr, (bytes, bytearray)):
-                    stderr_text = stderr.decode("utf-8", errors="replace")
+                stderr_text = stderr.decode("utf-8", errors="replace")
             except Exception:
                 stderr_text = ""
             stderr_text = (stderr_text or "").strip()
