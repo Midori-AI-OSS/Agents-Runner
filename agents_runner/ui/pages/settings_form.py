@@ -255,6 +255,19 @@ class SettingsFormMixin:
         self._agentsnova_auto_review_enabled.setToolTip(
             "When enabled, PR/Issue mentions of @agentsnova can auto-queue tasks."
         )
+        self._agentsnova_auto_marker_comments_enabled = QCheckBox(
+            "Enable @agentsnova auto marker comments"
+        )
+        self._agentsnova_auto_marker_comments_enabled.setToolTip(
+            "When enabled, queued @agentsnova tasks post a GitHub marker comment "
+            "with the task id for visibility and dedupe safety."
+        )
+        self._agentsnova_auto_reactions_enabled = QCheckBox(
+            "Enable @agentsnova auto reactions"
+        )
+        self._agentsnova_auto_reactions_enabled.setToolTip(
+            "When enabled, @agentsnova queue triggers apply GitHub `eyes` reactions."
+        )
         self._github_polling_enabled = QCheckBox("Enable app-wide GitHub polling")
         self._github_polling_enabled.setToolTip(
             "When enabled, GitHub Issues/PRs poll in the background across enabled environments."
@@ -450,6 +463,8 @@ class SettingsFormMixin:
         github_page, github_body = self._create_page(specs_by_key["github"])
         github_body.addWidget(self._github_workroom_prefer_browser)
         github_body.addWidget(self._agentsnova_auto_review_enabled)
+        github_body.addWidget(self._agentsnova_auto_marker_comments_enabled)
+        github_body.addWidget(self._agentsnova_auto_reactions_enabled)
         github_body.addWidget(self._github_polling_enabled)
 
         github_grid = QGridLayout()
@@ -863,6 +878,12 @@ class SettingsFormMixin:
             self._agentsnova_auto_review_enabled.setChecked(
                 bool(settings.get("agentsnova_auto_review_enabled", True))
             )
+            self._agentsnova_auto_marker_comments_enabled.setChecked(
+                bool(settings.get("agentsnova_auto_marker_comments_enabled", True))
+            )
+            self._agentsnova_auto_reactions_enabled.setChecked(
+                bool(settings.get("agentsnova_auto_reactions_enabled", True))
+            )
             self._github_polling_enabled.setChecked(
                 bool(settings.get("github_polling_enabled") or False)
             )
@@ -994,6 +1015,12 @@ class SettingsFormMixin:
             ),
             "agentsnova_auto_review_enabled": bool(
                 self._agentsnova_auto_review_enabled.isChecked()
+            ),
+            "agentsnova_auto_marker_comments_enabled": bool(
+                self._agentsnova_auto_marker_comments_enabled.isChecked()
+            ),
+            "agentsnova_auto_reactions_enabled": bool(
+                self._agentsnova_auto_reactions_enabled.isChecked()
             ),
             "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
             "github_poll_startup_delay_s": poll_startup_delay_s,

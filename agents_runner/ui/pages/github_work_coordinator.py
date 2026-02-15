@@ -5,6 +5,8 @@ import time
 
 from dataclasses import dataclass
 from dataclasses import replace
+from datetime import datetime
+from datetime import timezone
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QTimer
@@ -13,9 +15,11 @@ from PySide6.QtCore import Signal
 from agents_runner.environments import Environment
 from agents_runner.environments import GitHubRepoContext
 from agents_runner.environments import resolve_environment_github_repo
+from agents_runner.gh.work_items import AUTO_REVIEW_MARKER_TOKEN
 from agents_runner.gh.work_items import GitHubComment
 from agents_runner.gh.work_items import GitHubWorkItem
 from agents_runner.gh.work_items import add_issue_comment_reaction
+from agents_runner.gh.work_items import add_issue_reaction
 from agents_runner.gh.work_items import list_issue_comments
 from agents_runner.gh.work_items import list_open_issues
 from agents_runner.gh.work_items import list_open_pull_requests
@@ -40,7 +44,7 @@ class GitHubWorkCacheEntry:
 
 class GitHubWorkCoordinator(QObject):
     cache_updated = Signal(str, str)
-    auto_review_requested = Signal(str, str)
+    auto_review_requested = Signal(str, object)
 
     _fetch_completed = Signal(str, str, object, object, str, object)
     _cycle_finished = Signal()
@@ -502,7 +506,16 @@ class GitHubWorkCoordinator(QObject):
             )
             if not prompt:
                 continue
-            self.auto_review_requested.emit(env_id, prompt)
+            payload = {
+                "prompt": prompt,
+                "repo_owner": repo_owner,
+                "repo_name": repo_name,
+                "item_type": item_type,
+                "number": number,
+                "trigger_source": trigger_source,
+                "mention_comment_id": mention_comment_id,
+            }
+            self.auto_review_requested.emit(env_id, payload)
 
     def _collect_auto_reviews(
         self,
@@ -520,6 +533,10 @@ class GitHubWorkCoordinator(QObject):
         if not trusted_users:
             return []
 
+        auto_reactions_enabled = bool(
+            self._settings.get("agentsnova_auto_reactions_enabled", True)
+        )
+
         with self._state_lock:
             queued_snapshot = set(self._auto_review_seen_comment_ids)
             queued_item_snapshot = set(self._auto_review_seen_item_mentions)
@@ -533,37 +550,51 @@ class GitHubWorkCoordinator(QObject):
                 number=item.number,
             )
             queued_for_item = False
-
             comments = list_issue_comments(
                 repo_owner,
                 repo_name,
                 issue_number=item.number,
                 limit=100,
             )
-            ordered_comments = list(comments)
-            ordered_comments.reverse()
+            (
+                marker_created_at_s,
+                marker_comment_id,
+            ) = self._latest_marker_checkpoint(comments)
+            ordered_comments = sorted(
+                comments,
+                key=lambda comment: (
+                    self._parse_iso_timestamp_s(comment.created_at) or 0.0,
+                    max(0, int(getattr(comment, "comment_id", 0) or 0)),
+                ),
+                reverse=True,
+            )
 
             for comment in ordered_comments:
                 if not self._is_trusted_comment_author(comment, trusted_users):
                     continue
-                body = str(comment.body or "")
-                if "@agentsnova" not in body.lower():
+                body = str(comment.body or "").lower()
+                if "@agentsnova" not in body:
+                    continue
+                mention_created_at_s = self._parse_iso_timestamp_s(comment.created_at)
+                if not self._is_mention_newer_than_marker(
+                    mention_created_at_s=mention_created_at_s,
+                    mention_comment_id=comment.comment_id,
+                    marker_created_at_s=marker_created_at_s,
+                    marker_comment_id=marker_comment_id,
+                ):
                     continue
                 if comment.comment_id in queued_snapshot:
                     continue
-                if not self._can_apply_reaction(item=item, comment=comment):
-                    continue
-
-                marker = "eyes" if item.item_type == "pr" else "rocket"
-                try:
-                    add_issue_comment_reaction(
-                        repo_owner,
-                        repo_name,
-                        comment_id=comment.comment_id,
-                        reaction=marker,
-                    )
-                except Exception:
-                    continue
+                if auto_reactions_enabled and self._can_apply_reaction(comment=comment):
+                    try:
+                        add_issue_comment_reaction(
+                            repo_owner,
+                            repo_name,
+                            comment_id=comment.comment_id,
+                            reaction="eyes",
+                        )
+                    except Exception:
+                        pass
 
                 results.append(
                     {
@@ -587,26 +618,125 @@ class GitHubWorkCoordinator(QObject):
             if item_key in queued_item_snapshot:
                 continue
 
-            if self._item_has_agentsnova_mention(item) and self._is_trusted_item_author(
-                item=item,
-                trusted_users=trusted_users,
-            ):
-                results.append(
-                    {
-                        "item_type": item.item_type,
-                        "number": item.number,
-                        "url": item.url,
-                        "title": item.title,
-                        "mention_comment_id": 0,
-                        "trigger_source": "body_mention",
-                        "item_key": item_key,
-                    }
-                )
-                queued_item_snapshot.add(item_key)
-                if len(results) >= 3:
-                    return results
+            if not self._item_has_agentsnova_mention(item):
+                continue
+            if not self._is_trusted_item_author(item=item, trusted_users=trusted_users):
+                continue
+            if marker_created_at_s is not None or marker_comment_id > 0:
+                continue
+            if auto_reactions_enabled:
+                try:
+                    add_issue_reaction(
+                        repo_owner,
+                        repo_name,
+                        issue_number=item.number,
+                        reaction="eyes",
+                    )
+                except Exception:
+                    pass
+            results.append(
+                {
+                    "item_type": item.item_type,
+                    "number": item.number,
+                    "url": item.url,
+                    "title": item.title,
+                    "mention_comment_id": 0,
+                    "trigger_source": "body_mention",
+                    "item_key": item_key,
+                }
+            )
+            queued_item_snapshot.add(item_key)
+            if len(results) >= 3:
+                return results
 
         return results
+
+    @classmethod
+    def _latest_marker_checkpoint(
+        cls, comments: list[GitHubComment]
+    ) -> tuple[float | None, int]:
+        marker_created_at_s: float | None = None
+        marker_comment_id = 0
+
+        for comment in comments:
+            body = str(comment.body or "")
+            if AUTO_REVIEW_MARKER_TOKEN not in body:
+                continue
+
+            comment_created_at_s = cls._parse_iso_timestamp_s(comment.created_at)
+            try:
+                comment_id = max(0, int(comment.comment_id))
+            except Exception:
+                comment_id = 0
+
+            if marker_created_at_s is None and comment_created_at_s is None:
+                if comment_id > marker_comment_id:
+                    marker_comment_id = comment_id
+                continue
+
+            if marker_created_at_s is None and comment_created_at_s is not None:
+                marker_created_at_s = comment_created_at_s
+                marker_comment_id = comment_id
+                continue
+
+            if marker_created_at_s is not None and comment_created_at_s is None:
+                continue
+
+            if comment_created_at_s is None:
+                continue
+
+            current_marker_created_at_s = marker_created_at_s
+            if current_marker_created_at_s is None:
+                continue
+
+            if comment_created_at_s > current_marker_created_at_s or (
+                comment_created_at_s == current_marker_created_at_s
+                and comment_id > marker_comment_id
+            ):
+                marker_created_at_s = comment_created_at_s
+                marker_comment_id = comment_id
+
+        return marker_created_at_s, marker_comment_id
+
+    @staticmethod
+    def _is_mention_newer_than_marker(
+        *,
+        mention_created_at_s: float | None,
+        mention_comment_id: int,
+        marker_created_at_s: float | None,
+        marker_comment_id: int,
+    ) -> bool:
+        if marker_created_at_s is None and marker_comment_id <= 0:
+            return True
+
+        if marker_created_at_s is None:
+            if mention_comment_id > 0:
+                return mention_comment_id > marker_comment_id
+            return True
+
+        if mention_created_at_s is None:
+            return True
+
+        if mention_created_at_s > marker_created_at_s:
+            return True
+        if mention_created_at_s < marker_created_at_s:
+            return False
+        if mention_comment_id > 0 and marker_comment_id > 0:
+            return mention_comment_id > marker_comment_id
+        return False
+
+    @staticmethod
+    def _parse_iso_timestamp_s(value: object) -> float | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return float(parsed.timestamp())
+        except Exception:
+            return None
 
     @staticmethod
     def _is_trusted_comment_author(
@@ -626,13 +756,8 @@ class GitHubWorkCoordinator(QObject):
         return bool(author and author in trusted_users)
 
     @staticmethod
-    def _can_apply_reaction(*, item: GitHubWorkItem, comment: GitHubComment) -> bool:
-        reactions = comment.reactions
-        if reactions.thumbs_up > 0 or reactions.thumbs_down > 0:
-            return False
-        if item.item_type == "pr":
-            return reactions.eyes <= 0
-        return reactions.rocket <= 0 and reactions.hooray <= 0
+    def _can_apply_reaction(*, comment: GitHubComment) -> bool:
+        return comment.reactions.eyes <= 0
 
     @staticmethod
     def _item_has_agentsnova_mention(item: GitHubWorkItem) -> bool:
