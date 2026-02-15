@@ -196,15 +196,28 @@ class EnvironmentsPage(
             stain = (env.normalized_color() if env else "").strip().lower()
 
         if not stain:
+            self._apply_nav_button_stain("")
             self._env_select.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
             self._color.setStyleSheet("")
             return
 
+        self._apply_nav_button_stain(stain)
         apply_environment_combo_tint(self._env_select, stain)
         tint = stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
         apply_environment_combo_tint(self._color, stain)
+
+    def _apply_nav_button_stain(self, stain: str) -> None:
+        normalized = str(stain or "").strip().lower()
+        for button in self._nav_buttons.values():
+            if str(button.property("env_stain") or "") == normalized:
+                continue
+            button.setProperty("env_stain", normalized)
+            style = button.style()
+            style.unpolish(button)
+            style.polish(button)
+            button.update()
 
     def set_environments(self, envs: dict[str, Environment], active_id: str) -> None:
         self._environments = dict(envs)

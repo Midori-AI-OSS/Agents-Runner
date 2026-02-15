@@ -383,6 +383,150 @@ TEMPLATE_BASE = """
         background-color: rgba(56, 189, 248, 76);
     }
 
+    /* Environments page: tint nav hover + selected states by active environment stain. */
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="cyan"]:hover {
+        border: 1px solid rgba(56, 189, 248, 70);
+        background-color: rgba(56, 189, 248, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="cyan"]:checked {
+        border: 1px solid rgba(56, 189, 248, 110);
+        background-color: rgba(56, 189, 248, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="cyan"]:checked:hover {
+        border: 1px solid rgba(56, 189, 248, 130);
+        background-color: rgba(56, 189, 248, 76);
+    }
+
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="emerald"]:hover {
+        border: 1px solid rgba(16, 185, 129, 70);
+        background-color: rgba(16, 185, 129, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="emerald"]:checked {
+        border: 1px solid rgba(16, 185, 129, 110);
+        background-color: rgba(16, 185, 129, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="emerald"]:checked:hover {
+        border: 1px solid rgba(16, 185, 129, 130);
+        background-color: rgba(16, 185, 129, 76);
+    }
+
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="violet"]:hover {
+        border: 1px solid rgba(139, 92, 246, 70);
+        background-color: rgba(139, 92, 246, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="violet"]:checked {
+        border: 1px solid rgba(139, 92, 246, 110);
+        background-color: rgba(139, 92, 246, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="violet"]:checked:hover {
+        border: 1px solid rgba(139, 92, 246, 130);
+        background-color: rgba(139, 92, 246, 76);
+    }
+
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="rose"]:hover {
+        border: 1px solid rgba(244, 63, 94, 70);
+        background-color: rgba(244, 63, 94, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="rose"]:checked {
+        border: 1px solid rgba(244, 63, 94, 110);
+        background-color: rgba(244, 63, 94, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="rose"]:checked:hover {
+        border: 1px solid rgba(244, 63, 94, 130);
+        background-color: rgba(244, 63, 94, 76);
+    }
+
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="amber"]:hover {
+        border: 1px solid rgba(245, 158, 11, 70);
+        background-color: rgba(245, 158, 11, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="amber"]:checked {
+        border: 1px solid rgba(245, 158, 11, 110);
+        background-color: rgba(245, 158, 11, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="amber"]:checked:hover {
+        border: 1px solid rgba(245, 158, 11, 130);
+        background-color: rgba(245, 158, 11, 76);
+    }
+
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="blue"]:hover {
+        border: 1px solid rgba(59, 130, 246, 70);
+        background-color: rgba(59, 130, 246, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="blue"]:checked {
+        border: 1px solid rgba(59, 130, 246, 110);
+        background-color: rgba(59, 130, 246, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="blue"]:checked:hover {
+        border: 1px solid rgba(59, 130, 246, 130);
+        background-color: rgba(59, 130, 246, 76);
+    }
+
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="teal"]:hover {
+        border: 1px solid rgba(20, 184, 166, 70);
+        background-color: rgba(20, 184, 166, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="teal"]:checked {
+        border: 1px solid rgba(20, 184, 166, 110);
+        background-color: rgba(20, 184, 166, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="teal"]:checked:hover {
+        border: 1px solid rgba(20, 184, 166, 130);
+        background-color: rgba(20, 184, 166, 76);
+    }
+
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="lime"]:hover {
+        border: 1px solid rgba(132, 204, 22, 70);
+        background-color: rgba(132, 204, 22, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="lime"]:checked {
+        border: 1px solid rgba(132, 204, 22, 110);
+        background-color: rgba(132, 204, 22, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="lime"]:checked:hover {
+        border: 1px solid rgba(132, 204, 22, 130);
+        background-color: rgba(132, 204, 22, 76);
+    }
+
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="fuchsia"]:hover {
+        border: 1px solid rgba(217, 70, 239, 70);
+        background-color: rgba(217, 70, 239, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="fuchsia"]:checked {
+        border: 1px solid rgba(217, 70, 239, 110);
+        background-color: rgba(217, 70, 239, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="fuchsia"]:checked:hover {
+        border: 1px solid rgba(217, 70, 239, 130);
+        background-color: rgba(217, 70, 239, 76);
+    }
+
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="indigo"]:hover {
+        border: 1px solid rgba(99, 102, 241, 70);
+        background-color: rgba(99, 102, 241, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="indigo"]:checked {
+        border: 1px solid rgba(99, 102, 241, 110);
+        background-color: rgba(99, 102, 241, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="indigo"]:checked:hover {
+        border: 1px solid rgba(99, 102, 241, 130);
+        background-color: rgba(99, 102, 241, 76);
+    }
+
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="orange"]:hover {
+        border: 1px solid rgba(249, 115, 22, 70);
+        background-color: rgba(249, 115, 22, 20);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="orange"]:checked {
+        border: 1px solid rgba(249, 115, 22, 110);
+        background-color: rgba(249, 115, 22, 62);
+    }
+    QWidget#EnvironmentsPageRoot QToolButton#SettingsNavButton[env_stain="orange"]:checked:hover {
+        border: 1px solid rgba(249, 115, 22, 130);
+        background-color: rgba(249, 115, 22, 76);
+    }
+
     QLabel#SettingsPaneTitle {
         font-size: 16px;
         font-weight: 760;
