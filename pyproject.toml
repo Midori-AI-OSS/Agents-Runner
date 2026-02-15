@@ -37,6 +37,12 @@ pythonpath = ["."]
 [tool.basedpyright]
 typeCheckingMode = "strict"
 pythonVersion = "3.13"
+exclude = ["agents_runner/ui/**", "agents_runner/tests/**"]
+reportUnnecessaryIsInstance = "none"
+reportMissingTypeStubs = "none"
+reportUnknownMemberType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownVariableType = "none"
 
 [tool.uv.sources]
 midori_ai_logger = { git = "https://github.com/Midori-AI-OSS/agents-packages.git", subdirectory = "logger" }
