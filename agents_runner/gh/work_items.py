@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from dataclasses import dataclass
+from typing import Any
 
 from .errors import GhManagementError
 from .process import run_gh
@@ -107,15 +108,16 @@ def run_gh_gh(args: list[str], *, timeout_s: float = 45.0) -> None:
 
 def _parse_reaction_summary(raw: object) -> GitHubReactionSummary:
     if isinstance(raw, dict):
+        raw_dict: dict[str, Any] = raw
         return GitHubReactionSummary(
-            thumbs_up=max(0, _safe_int(raw.get("+1"))),
-            thumbs_down=max(0, _safe_int(raw.get("-1"))),
-            eyes=max(0, _safe_int(raw.get("eyes"))),
-            rocket=max(0, _safe_int(raw.get("rocket"))),
-            hooray=max(0, _safe_int(raw.get("hooray"))),
+            thumbs_up=max(0, _safe_int(raw_dict.get("+1"))),
+            thumbs_down=max(0, _safe_int(raw_dict.get("-1"))),
+            eyes=max(0, _safe_int(raw_dict.get("eyes"))),
+            rocket=max(0, _safe_int(raw_dict.get("rocket"))),
+            hooray=max(0, _safe_int(raw_dict.get("hooray"))),
         )
 
-    groups = raw if isinstance(raw, list) else []
+    groups: list[Any] = raw if isinstance(raw, list) else []
     up = 0
     down = 0
     eyes = 0
@@ -153,27 +155,28 @@ def _parse_reaction_summary(raw: object) -> GitHubReactionSummary:
 def _parse_work_item(item_type: str, raw: object) -> GitHubWorkItem | None:
     if not isinstance(raw, dict):
         return None
-
-    number = _safe_int(raw.get("number"))
+    
+    raw_dict: dict[str, Any] = raw
+    number = _safe_int(raw_dict.get("number"))
     if number <= 0:
         return None
 
     author = ""
-    raw_author = raw.get("author")
+    raw_author = raw_dict.get("author")
     if isinstance(raw_author, dict):
         author = _safe_text(raw_author.get("login"))
 
     return GitHubWorkItem(
         item_type=item_type,
         number=number,
-        title=_safe_text(raw.get("title")) or f"#{number}",
-        body=_safe_text(raw.get("body")),
-        state=_safe_text(raw.get("state")).lower() or "open",
-        url=_safe_text(raw.get("url")),
+        title=_safe_text(raw_dict.get("title")) or f"#{number}",
+        body=_safe_text(raw_dict.get("body")),
+        state=_safe_text(raw_dict.get("state")).lower() or "open",
+        url=_safe_text(raw_dict.get("url")),
         author=author,
-        created_at=_safe_text(raw.get("createdAt")),
-        updated_at=_safe_text(raw.get("updatedAt")),
-        is_draft=bool(raw.get("isDraft") or False),
+        created_at=_safe_text(raw_dict.get("createdAt")),
+        updated_at=_safe_text(raw_dict.get("updatedAt")),
+        is_draft=bool(raw_dict.get("isDraft") or False),
     )
 
 
