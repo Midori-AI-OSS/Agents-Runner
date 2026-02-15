@@ -66,6 +66,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
   - On first run (or if missing), create `~/.midoriai/agents-runner/config.toml` and fully populate it with defaults for user edits.
   - Config hygiene: load TOML into Pydantic models so missing defaults are added and obsolete keys are removed (by design). Detect changes by re-serializing the canonical config and comparing it to what was loaded; if different (upgrades/migrations or user settings updates), rewrite `config.toml` via atomic replace.
   - Env vars are allowed only for Qt/UI/runtime integration; derive them from TOML settings and apply in-process temporarily and/or only to child process `env` dicts.
+  - GitHub polling semantics: app-wide GitHub polling is authoritative for background polling participation. When app-wide polling is enabled, the per-environment GitHub polling checkbox is hidden and does not gate polling.
 - Logging:
   - Use the standardized logger package `midori_ai_logger` for application logging; do not add new ad-hoc logging wrappers/utilities.
   - Avoid `print()` for non-CLI output (exceptions: fatal startup/diagnostics paths); use structured logging instead.
