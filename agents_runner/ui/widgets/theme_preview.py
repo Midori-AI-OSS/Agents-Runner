@@ -168,9 +168,8 @@ class ThemePreviewTile(QFrame):
             return
         self.setProperty("selected", target)
         style = self.style()
-        if style is not None:
-            style.unpolish(self)
-            style.polish(self)
+        style.unpolish(self)
+        style.polish(self)
         self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:

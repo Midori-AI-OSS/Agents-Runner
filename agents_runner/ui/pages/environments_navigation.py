@@ -102,8 +102,7 @@ class _EnvironmentsNavigationMixin:
             self._pane_animation.stop()
             self._pane_animation = None
 
-        if self._pane_rest_pos is not None:
-            self._page_stack.move(self._pane_rest_pos)
+        self._page_stack.move(self._pane_rest_pos)
         self._page_stack.setGraphicsEffect(None)
 
         base_pos = self._page_stack.pos()
@@ -134,8 +133,7 @@ class _EnvironmentsNavigationMixin:
         group.addAnimation(opacity_anim)
 
         def _cleanup() -> None:
-            if self._pane_rest_pos is not None:
-                self._page_stack.move(self._pane_rest_pos)
+            self._page_stack.move(self._pane_rest_pos)
             self._page_stack.setGraphicsEffect(None)
             self._pane_animation = None
 
