@@ -289,7 +289,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     midoriai_template_detected_path = midoriai_template_detected_path or None
 
     prompts_data = payload.get("prompts", [])
-    prompts: list[Prompt] = []
+    prompts: list[PromptConfig] = []
     if isinstance(prompts_data, list):
         prompts_list: list[Any] = prompts_data
         for p in prompts_list:
@@ -316,7 +316,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
                 prompts.append(
                     PromptConfig(
-                        enabled=bool(p.get("enabled", False)),
+                        enabled=bool(p_dict.get("enabled", False)),
                         text=text,
                         prompt_path=prompt_path,
                     )
