@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QResizeEvent
@@ -70,7 +71,7 @@ class EnvironmentsPage(
         self._advanced_autosave_timer.timeout.connect(self._emit_autosave)
 
         self._pane_animation = None
-        self._pane_rest_pos = None
+        self._pane_rest_pos: QPoint | None = None
         self._compact_mode = False
         self._active_pane_key = ""
 
