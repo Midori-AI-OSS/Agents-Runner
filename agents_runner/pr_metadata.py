@@ -4,7 +4,7 @@ import tomli
 import tomli_w
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from agents_runner.persistence import strip_none_for_toml
 from agents_runner.prompts import load_prompt
@@ -243,13 +243,14 @@ def load_github_metadata(path: str) -> GitHubMetadataV2 | None:
     github_data = payload.get("github")
     github_context = None
     if isinstance(github_data, dict):
+        github_data_dict = cast(dict[str, Any], github_data)
         github_context = GitHubContext(
-            repo_url=str(github_data.get("repo_url", "")),
-            repo_owner=github_data.get("repo_owner"),
-            repo_name=github_data.get("repo_name"),
-            base_branch=str(github_data.get("base_branch", "")),
-            task_branch=github_data.get("task_branch"),
-            head_commit=str(github_data.get("head_commit", "")),
+            repo_url=str(github_data_dict.get("repo_url", "")),
+            repo_owner=github_data_dict.get("repo_owner"),
+            repo_name=github_data_dict.get("repo_name"),
+            base_branch=str(github_data_dict.get("base_branch", "")),
+            task_branch=github_data_dict.get("task_branch"),
+            head_commit=str(github_data_dict.get("head_commit", "")),
         )
 
     return GitHubMetadataV2(
