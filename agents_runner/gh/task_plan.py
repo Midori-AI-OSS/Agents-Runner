@@ -46,7 +46,7 @@ def _append_pr_attribution_footer(
     footer_content = load_prompt(
         "pr_attribution_footer",
         agent_used=agent_used,
-        agentsrun_ghner_url=_MIDORI_AI_AGENTS_RUNNER_URL,
+        agents_runner_url=_MIDORI_AI_AGENTS_RUNNER_URL,
         midori_ai_url=_MIDORI_AI_URL,
         marker=_PR_ATTRIBUTION_MARKER,
     )
