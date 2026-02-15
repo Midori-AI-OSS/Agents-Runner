@@ -66,6 +66,20 @@ class SpellHighlighter(QSyntaxHighlighter):
         # Re-highlight entire document
         self.rehighlight()
 
+    @property
+    def enabled(self) -> bool:
+        """Check if spell checking is enabled."""
+        return self._enabled
+
+    @property
+    def spell_checker(self) -> SpellChecker | None:
+        """Get the spell checker instance."""
+        return self._spell_checker
+
+    def is_misspelled(self, word: str) -> bool:
+        """Public method to check if a word is misspelled."""
+        return self._is_misspelled(word)
+
     def highlightBlock(self, text: str) -> None:
         """
         Highlight misspelled words in the given text block.

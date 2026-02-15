@@ -4,7 +4,9 @@ import json
 import os
 import platform
 import sys
+import threading
 import traceback
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -95,7 +97,11 @@ def install_exception_hooks(*, argv: list[str] | None = None) -> None:
     try:
         original_sys_hook = sys.excepthook
 
-        def _sys_hook(exc_type, exc_value, exc_tb) -> None:
+        def _sys_hook(
+            exc_type: type[BaseException] | None,
+            exc_value: BaseException | None,
+            exc_tb: types.TracebackType | None,
+        ) -> None:
             try:
                 exc = (
                     exc_value
@@ -120,11 +126,9 @@ def install_exception_hooks(*, argv: list[str] | None = None) -> None:
 
         sys.excepthook = _sys_hook
 
-        import threading
-
         original_threading_hook = getattr(threading, "excepthook", None)
 
-        def _thread_hook(args) -> None:
+        def _thread_hook(args: threading.ExceptHookArgs) -> None:
             try:
                 thread_name = getattr(getattr(args, "thread", None), "name", "unknown")
                 exc_value = getattr(args, "exc_value", None)

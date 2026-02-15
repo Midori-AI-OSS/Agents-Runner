@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtWidgets import QGraphicsOpacityEffect
+from PySide6.QtWidgets import QWidget
 
 
 class _MainWindowNavigationMixin:
@@ -15,7 +16,7 @@ class _MainWindowNavigationMixin:
         h = max(int(self.minimumHeight()), h)
         self.resize(w, h)
 
-    def _transition_to_page(self, target_page) -> None:
+    def _transition_to_page(self, target_page: QWidget) -> None:
         """Smooth cross-fade transition between pages."""
         pages = [
             self._dashboard,

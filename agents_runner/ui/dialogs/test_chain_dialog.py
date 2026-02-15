@@ -5,15 +5,21 @@ Dialog for testing agent chain availability without leaking secrets.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import QThread
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QDialogButtonBox
 from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.setup.agent_status import AgentStatus
 from agents_runner.setup.agent_status import detect_all_agents
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 from agents_runner.ui.widgets import AgentChainStatusWidget
+
+if TYPE_CHECKING:
+    from agents_runner.cooldown import CooldownManager
 
 
 class AgentStatusCheckThread(QThread):
@@ -21,7 +27,7 @@ class AgentStatusCheckThread(QThread):
 
     status_ready = Signal(dict)
 
-    def __init__(self, agents: list[str], parent=None) -> None:
+    def __init__(self, agents: list[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._agents = agents
 
@@ -38,8 +44,8 @@ class TestChainDialog(ThemedDialog):
     def __init__(
         self,
         agents: list[str],
-        cooldown_manager=None,
-        parent=None,
+        cooldown_manager: CooldownManager | None = None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._agents = agents
