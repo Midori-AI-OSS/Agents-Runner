@@ -14,8 +14,8 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
-from agents_runner.docker.process import _run_docker
-from agents_runner.docker.process import _has_image
+from agents_runner.docker.process import run_docker
+from agents_runner.docker.process import has_image
 from agents_runner.log_format import format_log
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ def _get_base_image_digest(base_image: str) -> str:
         RuntimeError: If docker inspect fails
     """
     try:
-        raw = _run_docker(["image", "inspect", base_image], timeout_s=30.0)
+        raw = run_docker(["image", "inspect", base_image], timeout_s=30.0)
         payload = json.loads(raw)
         if payload and len(payload) > 0:
             image_id = payload[0].get("Id", "")
@@ -228,6 +228,7 @@ def build_desktop_image(
         )
 
         # Build image
+        process = None
         try:
             build_args = [
                 "build",
@@ -263,7 +264,8 @@ def build_desktop_image(
             on_log(format_log("docker", "build", "INFO", f"successfully built: {tag}"))
 
         except subprocess.TimeoutExpired:
-            process.kill()
+            if process is not None:
+                process.kill()
             raise RuntimeError("Docker build timed out after 10 minutes")
         except Exception as exc:
             raise RuntimeError(f"Failed to build desktop image: {exc}") from exc
@@ -306,7 +308,7 @@ def ensure_desktop_image(
         )
 
         # Check if cached image exists
-        if _has_image(cached_image_tag):
+        if has_image(cached_image_tag):
             on_log(
                 format_log(
                     "docker", "image", "INFO", "cache HIT: reusing existing image"

@@ -525,7 +525,7 @@ class TaskSupervisor:
                 agent_cli_args = shlex.split(agent.cli_flags)
             except ValueError:
                 # Invalid flags, use empty list
-                agent_cli_args = []
+                pass
 
         config = DockerRunnerConfig(
             task_id=self._config.task_id,
@@ -542,7 +542,8 @@ class TaskSupervisor:
             headless_desktop_enabled=self._config.headless_desktop_enabled,
             desktop_cache_enabled=self._config.desktop_cache_enabled,
             container_caching_enabled=self._config.container_caching_enabled,
-            cached_preflight_script=self._config.cached_preflight_script,
+            cache_system_preflight_enabled=self._config.cache_system_preflight_enabled,
+            cache_settings_preflight_enabled=self._config.cache_settings_preflight_enabled,
             environment_id=self._config.environment_id,
             gh_context_file_path=self._config.gh_context_file_path,
             container_settings_preflight_path=self._config.container_settings_preflight_path,
@@ -687,7 +688,7 @@ class TaskSupervisor:
                     f"{agent.agent_cli}[{agent.agent_id}] until {until_s}"
                 )
 
-        parts = []
+        parts: list[str] = []
         if attempted:
             parts.append("attempted: " + ", ".join(attempted))
         if on_cooldown:

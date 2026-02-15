@@ -5,6 +5,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QEvent, Qt, QTimer
 from PySide6.QtGui import QFont
+from PySide6.QtGui import QHideEvent
+from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -231,7 +233,7 @@ class ArtifactsTab(QWidget):
         self._empty_state.show()
         self._preview_area.hide()
 
-    def showEvent(self, event) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         QTimer.singleShot(0, self._refresh_file_list)
 
@@ -578,7 +580,7 @@ class ArtifactsTab(QWidget):
             dest_path,
         )
 
-    def hideEvent(self, event) -> None:
+    def hideEvent(self, event: QHideEvent) -> None:
         super().hideEvent(event)
         cleanup_temp_files(self._temp_files)
         if self._preview_loader:

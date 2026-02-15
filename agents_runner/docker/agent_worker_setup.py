@@ -25,13 +25,14 @@ from agents_runner.docker_platform import (
 )
 from agents_runner.environments import load_environments
 from agents_runner.docker.config import DockerRunnerConfig
-from agents_runner.docker.process import _has_image, _has_platform_image, _pull_image
-from agents_runner.docker.utils import _write_preflight_script
+from agents_runner.docker.process import has_image, has_platform_image, pull_image
+from agents_runner.docker.utils import write_preflight_script
 from agents_runner.docker.image_builder import (
     ensure_desktop_image,
     compute_desktop_cache_key,
 )
-from agents_runner.docker.env_image_builder import ensure_env_image
+from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
+from agents_runner.docker.phase_image_builder import ensure_phase_image
 from agents_runner.log_format import format_log
 from agents_runner.midoriai_template import (
     MidoriAITemplateDetection,
@@ -58,6 +59,11 @@ class RuntimeEnvironment:
     environment_container_path: str
     settings_preflight_tmp_path: str | None
     environment_preflight_tmp_path: str | None
+    preflights_host_dir: str
+    system_preflight_enabled: bool
+    system_preflight_cached: bool
+    settings_preflight_cached: bool
+    environment_preflight_cached: bool
     runtime_image: str
     desktop_enabled: bool
     desktop_cached: bool
@@ -94,7 +100,7 @@ class WorkerSetup:
         )
         artifacts_staging_dir = self._create_artifacts_directory()
         preflight_config = self._prepare_preflight_scripts(preflight_tmp_paths)
-        self._pull_image_if_needed(
+        self.pull_image_if_needed(
             platform_config.forced_platform, platform_config.platform_args
         )
         caching_config = self._setup_caching()
@@ -130,6 +136,11 @@ class WorkerSetup:
             environment_container_path=preflight_config.environment_container_path,
             settings_preflight_tmp_path=preflight_config.settings_preflight_tmp_path,
             environment_preflight_tmp_path=preflight_config.environment_preflight_tmp_path,
+            preflights_host_dir=str(caching_config.preflights_host_dir),
+            system_preflight_enabled=caching_config.system_preflight_enabled,
+            system_preflight_cached=caching_config.system_preflight_cached,
+            settings_preflight_cached=caching_config.settings_preflight_cached,
+            environment_preflight_cached=caching_config.environment_preflight_cached,
             runtime_image=caching_config.runtime_image,
             desktop_enabled=caching_config.desktop_enabled,
             desktop_cached=caching_config.desktop_cached,
@@ -163,7 +174,7 @@ class WorkerSetup:
                     f"forcing Docker platform: {forced_platform}",
                 )
             )
-            rosetta_available = has_rosetta()
+            rosetta_available = has_rosetta() or False
             if not rosetta_available:
                 self._on_log(
                     format_log(
@@ -312,14 +323,14 @@ class WorkerSetup:
         environment_preflight_tmp_path = None
 
         if (self._config.settings_preflight_script or "").strip():
-            settings_preflight_tmp_path = _write_preflight_script(
+            settings_preflight_tmp_path = write_preflight_script(
                 str(self._config.settings_preflight_script),
                 "settings",
                 self._config.task_id,
                 preflight_tmp_paths,
             )
         if (self._config.environment_preflight_script or "").strip():
-            environment_preflight_tmp_path = _write_preflight_script(
+            environment_preflight_tmp_path = write_preflight_script(
                 str(self._config.environment_preflight_script),
                 "environment",
                 self._config.task_id,
@@ -337,7 +348,7 @@ class WorkerSetup:
             environment_preflight_tmp_path=environment_preflight_tmp_path,
         )
 
-    def _pull_image_if_needed(
+    def pull_image_if_needed(
         self, forced_platform: str | None, platform_args: list[str]
     ) -> None:
         """Pull Docker image if needed."""
@@ -345,9 +356,9 @@ class WorkerSetup:
             self._config.pull_before_run
             or (
                 forced_platform
-                and not _has_platform_image(self._config.image, forced_platform)
+                and not has_platform_image(self._config.image, forced_platform)
             )
-            or (not forced_platform and not _has_image(self._config.image))
+            or (not forced_platform and not has_image(self._config.image))
         )
 
         if should_pull:
@@ -358,11 +369,16 @@ class WorkerSetup:
                 else f"image missing; docker pull {self._config.image}"
             )
             self._on_log(format_log("host", "none", "INFO", msg))
-            _pull_image(self._config.image, platform_args=platform_args)
+            pull_image(self._config.image, platform_args=platform_args)
             self._on_log(format_log("host", "none", "INFO", "pull complete"))
 
     @dataclass(frozen=True)
     class _CachingConfig:
+        preflights_host_dir: Path
+        system_preflight_enabled: bool
+        system_preflight_cached: bool
+        settings_preflight_cached: bool
+        environment_preflight_cached: bool
         runtime_image: str
         desktop_enabled: bool
         desktop_cached: bool
@@ -374,10 +390,59 @@ class WorkerSetup:
         """Setup desktop and environment caching."""
         runtime_image = self._config.image
         desktop_enabled = bool(self._config.headless_desktop_enabled)
-        desktop_cached = bool(self._config.desktop_cache_enabled)
+        desktop_cached = False
         desktop_cache_key: str | None = None
+        preflights_host_dir = PREFLIGHTS_DIR.resolve()
+        system_preflight_path = preflights_host_dir / "pixelarch_yay.sh"
+        system_preflight_script = ""
+        if system_preflight_path.is_file():
+            try:
+                system_preflight_script = system_preflight_path.read_text(
+                    encoding="utf-8"
+                )
+            except Exception:
+                system_preflight_script = ""
 
-        if desktop_enabled and desktop_cached:
+        system_preflight_enabled = bool(system_preflight_script.strip())
+        system_preflight_cached = False
+        settings_preflight_cached = False
+        environment_preflight_cached = False
+        container_caching_enabled = bool(self._config.container_caching_enabled)
+
+        if (
+            container_caching_enabled
+            and self._config.cache_system_preflight_enabled
+            and system_preflight_enabled
+        ):
+            self._on_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "INFO",
+                    "system caching enabled; checking cached layer",
+                )
+            )
+            next_image = ensure_phase_image(
+                base_image=runtime_image,
+                phase_name="system",
+                script_content=system_preflight_script,
+                preflights_dir=preflights_host_dir,
+                on_log=self._on_log,
+            )
+            system_preflight_cached = next_image != runtime_image
+            runtime_image = next_image
+        elif container_caching_enabled and self._config.cache_system_preflight_enabled:
+            self._on_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "WARN",
+                    "system caching enabled but system script is unavailable",
+                )
+            )
+
+        if desktop_enabled and bool(self._config.desktop_cache_enabled):
+            desktop_base_image = runtime_image
             self._on_log(
                 format_log(
                     "desktop",
@@ -388,9 +453,10 @@ class WorkerSetup:
             )
             try:
                 runtime_image = ensure_desktop_image(
-                    self._config.image, on_log=self._on_log
+                    desktop_base_image, on_log=self._on_log
                 )
-                if runtime_image != self._config.image:
+                if runtime_image != desktop_base_image:
+                    desktop_cached = True
                     self._on_log(
                         format_log(
                             "desktop",
@@ -399,7 +465,7 @@ class WorkerSetup:
                             f"using cached image: {runtime_image}",
                         )
                     )
-                    desktop_cache_key = compute_desktop_cache_key(self._config.image)
+                    desktop_cache_key = compute_desktop_cache_key(desktop_base_image)
                 else:
                     self._on_log(
                         format_log(
@@ -418,65 +484,49 @@ class WorkerSetup:
                         f"cache error: {exc}; falling back to runtime install",
                     )
                 )
-                runtime_image = self._config.image
+                runtime_image = desktop_base_image
 
-        container_caching_enabled = bool(self._config.container_caching_enabled)
-        cached_preflight_script = (self._config.cached_preflight_script or "").strip()
-
-        if container_caching_enabled and cached_preflight_script:
+        settings_preflight_script = str(self._config.settings_preflight_script or "")
+        if (
+            container_caching_enabled
+            and self._config.cache_settings_preflight_enabled
+            and settings_preflight_script.strip()
+        ):
             self._on_log(
                 format_log(
-                    "env",
+                    "phase",
                     "cache",
                     "INFO",
-                    "container caching enabled; checking for cached image",
+                    "settings caching enabled; checking cached layer",
                 )
             )
-            try:
-                runtime_image = ensure_env_image(
-                    self._config.image,
-                    desktop_cache_key,
-                    cached_preflight_script,
-                    on_log=self._on_log,
-                )
-                if runtime_image.startswith("agent-runner-env:"):
-                    self._on_log(
-                        format_log(
-                            "env",
-                            "cache",
-                            "INFO",
-                            f"using cached environment image: {runtime_image}",
-                        )
-                    )
-                else:
-                    self._on_log(
-                        format_log(
-                            "env",
-                            "cache",
-                            "WARN",
-                            "cache build failed; falling back to runtime preflight",
-                        )
-                    )
-            except Exception as exc:
-                self._on_log(
-                    format_log(
-                        "env",
-                        "cache",
-                        "ERROR",
-                        f"error: {exc}; falling back to runtime preflight",
-                    )
-                )
-        elif container_caching_enabled and not cached_preflight_script:
+            next_image = ensure_phase_image(
+                base_image=runtime_image,
+                phase_name="settings",
+                script_content=settings_preflight_script,
+                preflights_dir=preflights_host_dir,
+                on_log=self._on_log,
+            )
+            settings_preflight_cached = next_image != runtime_image
+            runtime_image = next_image
+        elif (
+            container_caching_enabled and self._config.cache_settings_preflight_enabled
+        ):
             self._on_log(
                 format_log(
-                    "env",
+                    "phase",
                     "cache",
                     "WARN",
-                    "container caching enabled but no cached preflight script configured",
+                    "settings caching enabled but settings script is empty",
                 )
             )
 
         return self._CachingConfig(
+            preflights_host_dir=preflights_host_dir,
+            system_preflight_enabled=system_preflight_enabled,
+            system_preflight_cached=system_preflight_cached,
+            settings_preflight_cached=settings_preflight_cached,
+            environment_preflight_cached=environment_preflight_cached,
             runtime_image=runtime_image,
             desktop_enabled=desktop_enabled,
             desktop_cached=desktop_cached,

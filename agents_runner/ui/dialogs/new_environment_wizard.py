@@ -12,7 +12,6 @@ from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -33,12 +32,13 @@ from agents_runner.environments import (
     WORKSPACE_MOUNTED,
 )
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
-from agents_runner.ui.graphics import _EnvironmentTintOverlay
-from agents_runner.ui.utils import _apply_environment_combo_tint, _stain_color
+from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
+from agents_runner.ui.graphics import EnvironmentTintOverlay
+from agents_runner.ui.utils import apply_environment_combo_tint, stain_color
 from agents_runner.ui.widgets import GlassCard
 
 
-class NewEnvironmentWizard(QDialog):
+class NewEnvironmentWizard(ThemedDialog):
     environment_created = Signal(object)
 
     TEST_DIR_BASE = "/tmp/agent-runner-env-test"
@@ -46,15 +46,6 @@ class NewEnvironmentWizard(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("NewEnvironmentWizard")
-        self.setStyleSheet(
-            "\n".join(
-                [
-                    "#NewEnvironmentWizard {",
-                    "  background-color: rgba(10, 12, 18, 255);",
-                    "}",
-                ]
-            )
-        )
         self._clone_test_passed = False
         self._test_folder = ""
         self._advanced_modified = False
@@ -63,7 +54,8 @@ class NewEnvironmentWizard(QDialog):
         self.setWindowTitle("New Environment Wizard")
         self.setMinimumWidth(600)
         self.setMinimumHeight(500)
-        layout = QVBoxLayout(self)
+        layout = self.content_layout()
+        layout.setContentsMargins(10, 10, 10, 10)
         self._stack = QStackedWidget()
         layout.addWidget(self._stack)
         self._step1_widget = self._setup_step1()
@@ -71,7 +63,7 @@ class NewEnvironmentWizard(QDialog):
         self._stack.addWidget(self._step1_widget)
         self._stack.addWidget(self._step2_widget)
         self._stack.setCurrentIndex(0)
-        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=22)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=22)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
         self._apply_environment_tint()
@@ -281,9 +273,9 @@ class NewEnvironmentWizard(QDialog):
         if not stain:
             self._tint_overlay.set_tint_color(None)
             return
-        self._tint_overlay.set_tint_color(_stain_color(stain))
+        self._tint_overlay.set_tint_color(stain_color(stain))
         if hasattr(self, "_color_combo"):
-            _apply_environment_combo_tint(self._color_combo, stain)
+            apply_environment_combo_tint(self._color_combo, stain)
 
     def _on_source_changed(self, index: int) -> None:
         is_folder = index == 0

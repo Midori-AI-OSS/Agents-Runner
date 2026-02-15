@@ -6,7 +6,6 @@ from PySide6.QtCore import (
     QPoint,
     QPropertyAnimation,
     QSignalBlocker,
-    Qt,
     QTimer,
     Signal,
 )
@@ -20,18 +19,23 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.ui.widgets import GlassCard
+from agents_runner.ui.widgets import EdgeFadeScrollArea
 from agents_runner.ui.constants import (
+    AUTOSAVE_DISCRETE_MS,
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
     HEADER_MARGINS,
     HEADER_SPACING,
     CARD_MARGINS,
     CARD_SPACING,
+    LEFT_NAV_BUTTON_SPACING,
+    LEFT_NAV_COMPACT_THRESHOLD,
+    LEFT_NAV_PANEL_WIDTH,
 )
-from agents_runner.ui.pages.settings_form import _SettingsFormMixin
+from agents_runner.ui.pages.settings_form import SettingsFormMixin
 
 
-class SettingsPage(QWidget, _SettingsFormMixin):
+class SettingsPage(QWidget, SettingsFormMixin):
     back_requested = Signal()
     saved = Signal(dict)
     test_preflight_requested = Signal(dict)
@@ -49,7 +53,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         self._suppress_autosave = False
         self._autosave_timer = QTimer(self)
         self._autosave_timer.setSingleShot(True)
-        self._autosave_timer.setInterval(450)
+        self._autosave_timer.setInterval(AUTOSAVE_DISCRETE_MS)
         self._autosave_timer.timeout.connect(self._emit_saved)
 
         self._pane_animation: QParallelAnimationGroup | None = None
@@ -76,14 +80,8 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             "Settings are saved locally in:\n~/.midoriai/agents-runner/state.json"
         )
 
-        back = QToolButton()
-        back.setText("Back")
-        back.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        back.clicked.connect(self._on_back)
-
         header_layout.addWidget(title)
         header_layout.addStretch(1)
-        header_layout.addWidget(back, 0, Qt.AlignRight)
         layout.addWidget(header)
 
         card = GlassCard()
@@ -101,13 +99,16 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         panes_layout.setContentsMargins(0, 0, 0, 0)
         panes_layout.setSpacing(14)
 
+        self._nav_scroll = EdgeFadeScrollArea()
+        self._nav_scroll.setObjectName("SettingsNavScrollArea")
+        self._nav_scroll.setFixedWidth(LEFT_NAV_PANEL_WIDTH)
+
         self._nav_panel = QWidget()
         self._nav_panel.setObjectName("SettingsNavPanel")
-        self._nav_panel.setMinimumWidth(250)
-        self._nav_panel.setMaximumWidth(320)
         nav_layout = QVBoxLayout(self._nav_panel)
         nav_layout.setContentsMargins(10, 10, 10, 10)
-        nav_layout.setSpacing(6)
+        nav_layout.setSpacing(LEFT_NAV_BUTTON_SPACING)
+        self._nav_scroll.setWidget(self._nav_panel)
 
         self._right_panel = QWidget()
         self._right_panel.setObjectName("SettingsPaneHost")
@@ -119,7 +120,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         self._page_stack.setObjectName("SettingsPageStack")
         right_layout.addWidget(self._page_stack, 1)
 
-        panes_layout.addWidget(self._nav_panel)
+        panes_layout.addWidget(self._nav_scroll)
         panes_layout.addWidget(self._right_panel, 1)
 
         card_layout.addLayout(panes_layout, 1)
@@ -128,7 +129,6 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         self._build_controls()
         self._build_pages()
         self._build_navigation(nav_layout)
-        self._sync_nav_button_sizes()
         self._connect_autosave_signals()
 
         if self._pane_specs:
@@ -137,22 +137,31 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._set_current_pane(first_key, animate=False)
 
         self._update_navigation_mode()
-        QTimer.singleShot(0, self._sync_nav_button_sizes)
 
     def _connect_autosave_signals(self) -> None:
         for combo in (
             self._use,
             self._shell,
+            self._interactive_terminal,
             self._ui_theme,
             self._radio_channel,
             self._radio_quality,
+            self._github_write_confirmation_mode,
         ):
-            combo.currentIndexChanged.connect(self._trigger_immediate_autosave)
+            combo.currentIndexChanged.connect(self._queue_debounced_autosave)
 
         for checkbox in (
             self._preflight_enabled,
             self._append_pixelarch_context,
+            self._github_workroom_prefer_browser,
+            self._agentsnova_auto_review_enabled,
+            self._agentsnova_auto_marker_comments_enabled,
+            self._agentsnova_auto_reactions_enabled,
+            self._github_polling_enabled,
             self._headless_desktop_enabled,
+            self._popup_theme_animation_enabled,
+            self._auto_navigate_on_run_agent_start,
+            self._auto_navigate_on_run_interactive_start,
             self._gh_context_default,
             self._spellcheck_enabled,
             self._mount_host_cache,
@@ -160,19 +169,16 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             self._radio_autostart,
             self._radio_loudness_boost_enabled,
         ):
-            checkbox.toggled.connect(self._trigger_immediate_autosave)
+            checkbox.toggled.connect(self._queue_debounced_autosave)
 
-        for line_edit in (
-            self._host_codex_dir,
-            self._host_claude_dir,
-            self._host_copilot_dir,
-            self._host_gemini_dir,
-        ):
-            line_edit.textChanged.connect(self._queue_debounced_autosave)
-
-        self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
         self._radio_volume.valueChanged.connect(self._queue_debounced_autosave)
         self._radio_loudness_boost_factor.valueChanged.connect(
+            self._queue_debounced_autosave
+        )
+        self._github_poll_startup_delay_s.textChanged.connect(
+            self._queue_debounced_autosave
+        )
+        self._agentsnova_trusted_users_global.usernames_changed.connect(
             self._queue_debounced_autosave
         )
 
@@ -288,13 +294,6 @@ class SettingsPage(QWidget, _SettingsFormMixin):
             return
         self._autosave_timer.start()
 
-    def _trigger_immediate_autosave(self, *_args: object) -> None:
-        if self._suppress_autosave:
-            return
-        if self._autosave_timer.isActive():
-            self._autosave_timer.stop()
-        self._emit_saved()
-
     def _emit_saved(self) -> None:
         if self._suppress_autosave:
             return
@@ -306,35 +305,14 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         self._emit_saved()
         return True
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
-        self._sync_nav_button_sizes()
 
     def _update_navigation_mode(self) -> None:
-        compact = self.width() < 1080
+        compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD
         if compact == self._compact_mode:
             return
         self._compact_mode = compact
         self._compact_nav.setVisible(compact)
-        self._nav_panel.setVisible(not compact)
-        if not compact:
-            QTimer.singleShot(0, self._sync_nav_button_sizes)
-
-    def _sync_nav_button_sizes(self) -> None:
-        if self._compact_mode or not self._nav_buttons:
-            return
-
-        panel_width = self._nav_panel.width()
-        if panel_width <= 0:
-            return
-
-        inner_width = panel_width
-        nav_layout = self._nav_panel.layout()
-        if nav_layout is not None:
-            margins = nav_layout.contentsMargins()
-            inner_width -= margins.left() + margins.right()
-
-        target_width = max(1, inner_width - 2)
-        for button in self._nav_buttons.values():
-            button.setFixedWidth(target_width)
+        self._nav_scroll.setVisible(not compact)

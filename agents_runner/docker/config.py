@@ -18,7 +18,8 @@ class DockerRunnerConfig:
     headless_desktop_enabled: bool = False
     desktop_cache_enabled: bool = False
     container_caching_enabled: bool = False
-    cached_preflight_script: str | None = None
+    cache_system_preflight_enabled: bool = False
+    cache_settings_preflight_enabled: bool = False
     environment_id: str = ""
     # Use a task-specific filename by default to avoid collisions when multiple
     # runs share a container or temp directory.

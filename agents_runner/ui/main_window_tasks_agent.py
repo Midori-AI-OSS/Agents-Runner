@@ -30,6 +30,8 @@ from agents_runner.pr_metadata import pr_metadata_container_path
 from agents_runner.pr_metadata import pr_metadata_host_path
 from agents_runner.pr_metadata import pr_metadata_prompt_instructions
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.prompts.sections import compose_prompt_sections
+from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.bridges import TaskRunnerBridge
@@ -39,12 +41,12 @@ from agents_runner.ui.constants import PIXELARCH_GIT_CONTEXT_SUFFIX
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 
 logger = logging.getLogger(__name__)
 
 
-class _MainWindowTasksAgentMixin:
+class MainWindowTasksAgentMixin:
     def _clean_old_tasks(self) -> None:
         to_remove: set[str] = set()
         for task_id, task in self._tasks.items():
@@ -416,10 +418,15 @@ class _MainWindowTasksAgentMixin:
         container_caching_enabled = (
             bool(getattr(env, "container_caching_enabled", False)) if env else False
         )
-        cached_preflight_script = (
-            str(getattr(env, "cached_preflight_script", "") or "").strip()
+        cache_system_preflight_enabled = (
+            bool(getattr(env, "cache_system_preflight_enabled", False))
             if env
-            else ""
+            else False
+        )
+        cache_settings_preflight_enabled = (
+            bool(getattr(env, "cache_settings_preflight_enabled", False))
+            if env
+            else False
         )
         # Only enable cache if desktop is enabled
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
@@ -441,7 +448,7 @@ class _MainWindowTasksAgentMixin:
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
@@ -458,13 +465,13 @@ class _MainWindowTasksAgentMixin:
             # Update in-memory copy to persist across tab changes and reloads
             self._environments[env.env_id] = env
 
-        runner_prompt = prompt
+        prompt_sections: list[str] = []
         if bool(self._settings_data.get("append_pixelarch_context") or False):
-            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
+            prompt_sections.append(PIXELARCH_AGENT_CONTEXT_SUFFIX)
 
         # Inject git context when cloned workspace is used
         if workspace_type == WORKSPACE_CLONED:
-            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_GIT_CONTEXT_SUFFIX}"
+            prompt_sections.append(PIXELARCH_GIT_CONTEXT_SUFFIX)
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
@@ -475,9 +482,7 @@ class _MainWindowTasksAgentMixin:
                 enabled_env_prompts.append(sanitize_prompt(text))
 
         if enabled_env_prompts:
-            runner_prompt = f"{runner_prompt.rstrip()}\n\n" + "\n\n".join(
-                enabled_env_prompts
-            )
+            prompt_sections.append("\n\n".join(enabled_env_prompts))
             self._on_task_log(
                 task_id,
                 format_log(
@@ -487,6 +492,8 @@ class _MainWindowTasksAgentMixin:
                     f"appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)",
                 ),
             )
+        prompt_sections.append(prompt)
+        runner_prompt = compose_prompt_sections(prompt_sections)
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
         ports_for_task = list(getattr(env, "ports", []) or []) if env else []
@@ -650,10 +657,14 @@ class _MainWindowTasksAgentMixin:
                         task_branch = "(already created by runner)"
                         head_commit = "(set after clone)"
 
-                    runner_prompt = (
-                        f"{runner_prompt}"
-                        f"{github_context_prompt_instructions(repo_url=repo_url, repo_owner=repo_owner, repo_name=repo_name, base_branch=base_branch, task_branch=task_branch, head_commit=head_commit)}"
-                        f"{pr_metadata_prompt_instructions(pr_container_path)}"
+                    runner_prompt = insert_prompt_sections_before_user_prompt(
+                        runner_prompt,
+                        [
+                            (
+                                f"{github_context_prompt_instructions(repo_url=repo_url, repo_owner=repo_owner, repo_name=repo_name, base_branch=base_branch, task_branch=task_branch, head_commit=head_commit)}"
+                                f"{pr_metadata_prompt_instructions(pr_container_path)}"
+                            )
+                        ],
                     )
                     # Clarify two-phase process for cloned repo environments
                     if workspace_type == WORKSPACE_CLONED:
@@ -707,7 +718,8 @@ class _MainWindowTasksAgentMixin:
             headless_desktop_enabled=headless_desktop_enabled,
             desktop_cache_enabled=desktop_cache_enabled,
             container_caching_enabled=container_caching_enabled,
-            cached_preflight_script=cached_preflight_script or None,
+            cache_system_preflight_enabled=cache_system_preflight_enabled,
+            cache_settings_preflight_enabled=cache_settings_preflight_enabled,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,
@@ -734,7 +746,7 @@ class _MainWindowTasksAgentMixin:
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
 
-        self._show_dashboard()
+        self._maybe_auto_navigate_on_task_start(interactive=False)
         self._new_task.reset_for_new_run()
         return task_id
 
@@ -748,7 +760,7 @@ class _MainWindowTasksAgentMixin:
         task.status = "pulling"
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
         # Clean up any existing bridge/thread for this task to prevent duplicate log emissions

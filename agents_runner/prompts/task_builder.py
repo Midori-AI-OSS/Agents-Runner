@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
+
 
 @dataclass(frozen=True, slots=True)
 class RetryContext:
@@ -29,7 +31,7 @@ def build_task_prompt(base_prompt: str, *, retry_context: RetryContext | None) -
         else f"attempt {retry_context.attempt_number}"
     )
 
-    preamble = "\n".join(
+    retry_section = "\n".join(
         [
             "RETRY CONTEXT",
             f"This is a retry attempt ({attempt_line}).",
@@ -46,8 +48,8 @@ def build_task_prompt(base_prompt: str, *, retry_context: RetryContext | None) -
             "4) Avoid deleting work or resetting the workspace unless the task explicitly asks for it.",
             "",
         ]
-    )
+    ).rstrip()
 
     if not prompt:
-        return preamble.rstrip()
-    return f"{preamble}{prompt}"
+        return retry_section
+    return insert_prompt_sections_before_user_prompt(prompt, [retry_section])

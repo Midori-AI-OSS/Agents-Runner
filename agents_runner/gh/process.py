@@ -17,7 +17,7 @@ def _noninteractive_env() -> dict[str, str]:
     return env
 
 
-def _run(
+def run_gh(
     args: list[str],
     *,
     cwd: str | None = None,
@@ -40,7 +40,7 @@ def _run(
         raise GhManagementError(f"command failed: {' '.join(args)}") from exc
 
 
-def _require_ok(proc: subprocess.CompletedProcess[str], *, args: list[str]) -> None:
+def require_ok(proc: subprocess.CompletedProcess[str], *, args: list[str]) -> None:
     if proc.returncode == 0:
         return
     stderr = (proc.stderr or "").strip()
@@ -53,11 +53,11 @@ def _require_ok(proc: subprocess.CompletedProcess[str], *, args: list[str]) -> N
     raise GhManagementError(f"command failed ({proc.returncode}): {' '.join(args)}")
 
 
-def _expand_dir(path: str) -> str:
+def expand_dir(path: str) -> str:
     return os.path.abspath(os.path.expanduser((path or "").strip()))
 
 
-def _is_empty_dir(path: str) -> bool:
+def is_empty_dir(path: str) -> bool:
     try:
         return os.path.isdir(path) and not os.listdir(path)
     except OSError:

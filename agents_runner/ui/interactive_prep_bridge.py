@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Slot
@@ -12,7 +12,7 @@ class InteractivePrepBridge(QObject):
         *,
         on_stage: Callable[[str, str, str], None],
         on_log: Callable[[str, str], None],
-        on_succeeded: Callable[[str, dict], None],
+        on_succeeded: Callable[[str, dict[str, Any]], None],
         on_failed: Callable[[str, str], None],
         parent: QObject | None = None,
     ) -> None:

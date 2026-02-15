@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
@@ -20,28 +22,32 @@ from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.gh_management import is_gh_available
 from agents_runner.persistence import default_state_path
 from agents_runner.ui.constants import (
-    BUTTON_ROW_SPACING,
+    AUTOSAVE_DISCRETE_MS,
+    AUTOSAVE_IDLE_MS,
     CARD_MARGINS,
     CARD_SPACING,
     HEADER_MARGINS,
     HEADER_SPACING,
+    LEFT_NAV_BUTTON_SPACING,
+    LEFT_NAV_PANEL_WIDTH,
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
 )
-from agents_runner.ui.graphics import _EnvironmentTintOverlay
-from agents_runner.ui.pages.environments_actions import _EnvironmentsPageActionsMixin
-from agents_runner.ui.pages.environments_form import _EnvironmentsFormMixin
-from agents_runner.ui.pages.environments_navigation import _EnvironmentsNavigationMixin
-from agents_runner.ui.utils import _apply_environment_combo_tint
-from agents_runner.ui.utils import _stain_color
-from agents_runner.ui.widgets import GlassCard
+from agents_runner.ui.graphics import EnvironmentTintOverlay
+from agents_runner.ui.pages.environments_actions import EnvironmentsPageActionsMixin
+from agents_runner.ui.pages.environments_form import EnvironmentsFormMixin
+from agents_runner.ui.pages.environments_navigation import EnvironmentsNavigationMixin
+from agents_runner.ui.pages.github_trust import normalize_trusted_mode
+from agents_runner.ui.utils import apply_environment_combo_tint
+from agents_runner.ui.utils import stain_color
+from agents_runner.ui.widgets import EdgeFadeScrollArea, GlassCard
 
 
 class EnvironmentsPage(
     QWidget,
-    _EnvironmentsNavigationMixin,
-    _EnvironmentsFormMixin,
-    _EnvironmentsPageActionsMixin,
+    EnvironmentsNavigationMixin,
+    EnvironmentsFormMixin,
+    EnvironmentsPageActionsMixin,
 ):
     back_requested = Signal()
     updated = Signal(str)
@@ -58,11 +64,15 @@ class EnvironmentsPage(
         self._suppress_autosave = False
         self._autosave_timer = QTimer(self)
         self._autosave_timer.setSingleShot(True)
-        self._autosave_timer.setInterval(450)
+        self._autosave_timer.setInterval(AUTOSAVE_DISCRETE_MS)
         self._autosave_timer.timeout.connect(self._emit_autosave)
+        self._advanced_autosave_timer = QTimer(self)
+        self._advanced_autosave_timer.setSingleShot(True)
+        self._advanced_autosave_timer.setInterval(AUTOSAVE_IDLE_MS)
+        self._advanced_autosave_timer.timeout.connect(self._emit_autosave)
 
         self._pane_animation = None
-        self._pane_rest_pos = None
+        self._pane_rest_pos: QPoint | None = None
         self._compact_mode = False
         self._active_pane_key = ""
 
@@ -87,25 +97,8 @@ class EnvironmentsPage(
         )
         title.setToolTip(f"Environments are saved locally in:\n{envs_path}")
 
-        back = QToolButton()
-        back.setText("Back")
-        back.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        back.clicked.connect(self._on_back)
-
-        header_layout.addWidget(title)
-        header_layout.addStretch(1)
-        header_layout.addWidget(back, 0, Qt.AlignRight)
-        layout.addWidget(header)
-
-        card = GlassCard()
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(*CARD_MARGINS)
-        card_layout.setSpacing(CARD_SPACING)
-
-        top_row = QHBoxLayout()
-        top_row.setSpacing(BUTTON_ROW_SPACING)
-
         self._env_select = QComboBox()
+        self._env_select.setFixedWidth(240)
         self._env_select.currentIndexChanged.connect(self._on_env_selected)
 
         new_btn = QToolButton()
@@ -123,12 +116,19 @@ class EnvironmentsPage(
         test_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
         test_btn.clicked.connect(self._on_test_preflight)
 
-        top_row.addWidget(QLabel("Environment"))
-        top_row.addWidget(self._env_select, 1)
-        top_row.addWidget(new_btn)
-        top_row.addWidget(delete_btn)
-        top_row.addWidget(test_btn)
-        card_layout.addLayout(top_row)
+        header_layout.addWidget(title)
+        header_layout.addStretch(1)
+        header_layout.addWidget(QLabel("Environments"))
+        header_layout.addWidget(self._env_select)
+        header_layout.addWidget(new_btn)
+        header_layout.addWidget(delete_btn)
+        header_layout.addWidget(test_btn)
+        layout.addWidget(header)
+
+        card = GlassCard()
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(*CARD_MARGINS)
+        card_layout.setSpacing(CARD_SPACING)
 
         self._compact_nav = QComboBox()
         self._compact_nav.setObjectName("SettingsCompactNav")
@@ -140,13 +140,16 @@ class EnvironmentsPage(
         panes_layout.setContentsMargins(0, 0, 0, 0)
         panes_layout.setSpacing(14)
 
+        self._nav_scroll = EdgeFadeScrollArea()
+        self._nav_scroll.setObjectName("SettingsNavScrollArea")
+        self._nav_scroll.setFixedWidth(LEFT_NAV_PANEL_WIDTH)
+
         self._nav_panel = QWidget()
         self._nav_panel.setObjectName("SettingsNavPanel")
-        self._nav_panel.setMinimumWidth(250)
-        self._nav_panel.setMaximumWidth(320)
         nav_layout = QVBoxLayout(self._nav_panel)
         nav_layout.setContentsMargins(10, 10, 10, 10)
-        nav_layout.setSpacing(6)
+        nav_layout.setSpacing(LEFT_NAV_BUTTON_SPACING)
+        self._nav_scroll.setWidget(self._nav_panel)
 
         self._right_panel = QWidget()
         self._right_panel.setObjectName("SettingsPaneHost")
@@ -158,7 +161,7 @@ class EnvironmentsPage(
         self._page_stack.setObjectName("SettingsPageStack")
         right_layout.addWidget(self._page_stack, 1)
 
-        panes_layout.addWidget(self._nav_panel)
+        panes_layout.addWidget(self._nav_scroll)
         panes_layout.addWidget(self._right_panel, 1)
         card_layout.addLayout(panes_layout, 1)
 
@@ -167,7 +170,6 @@ class EnvironmentsPage(
         self._build_controls()
         self._build_pages()
         self._build_navigation(nav_layout)
-        self._sync_nav_button_sizes()
         self._connect_autosave_signals()
 
         if self._pane_specs:
@@ -176,15 +178,13 @@ class EnvironmentsPage(
             self._set_current_pane(first_key, animate=False)
 
         self._update_navigation_mode()
-        QTimer.singleShot(0, self._sync_nav_button_sizes)
 
-        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.raise_()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
-        self._sync_nav_button_sizes()
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
@@ -196,15 +196,28 @@ class EnvironmentsPage(
             stain = (env.normalized_color() if env else "").strip().lower()
 
         if not stain:
+            self._apply_nav_button_stain("")
             self._env_select.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
             self._color.setStyleSheet("")
             return
 
-        _apply_environment_combo_tint(self._env_select, stain)
-        tint = _stain_color(stain)
+        self._apply_nav_button_stain(stain)
+        apply_environment_combo_tint(self._env_select, stain)
+        tint = stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
-        _apply_environment_combo_tint(self._color, stain)
+        apply_environment_combo_tint(self._color, stain)
+
+    def _apply_nav_button_stain(self, stain: str) -> None:
+        normalized = str(stain or "").strip().lower()
+        for button in self._nav_buttons.values():
+            if str(button.property("env_stain") or "") == normalized:
+                continue
+            button.setProperty("env_stain", normalized)
+            style = button.style()
+            style.unpolish(button)
+            style.polish(button)
+            button.update()
 
     def set_environments(self, envs: dict[str, Environment], active_id: str) -> None:
         self._environments = dict(envs)
@@ -232,20 +245,46 @@ class EnvironmentsPage(
 
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
         self._settings_data = settings_data
-        self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
+        self._sync_headless_desktop_override_visibility()
+        self._sync_github_polling_override_visibility()
 
     def _effective_desktop_enabled(self) -> bool:
         force = bool(self._settings_data.get("headless_desktop_enabled") or False)
         env_enabled = bool(self._headless_desktop_enabled.isChecked())
         return bool(force or env_enabled)
 
+    def _sync_github_polling_override_visibility(self) -> None:
+        app_wide_polling = bool(
+            self._settings_data.get("github_polling_enabled") or False
+        )
+        self._github_polling_enabled.setVisible(not app_wide_polling)
+
+    def _sync_headless_desktop_override_visibility(self) -> None:
+        force_headless = bool(
+            self._settings_data.get("headless_desktop_enabled") or False
+        )
+
+        headless_label = getattr(self, "_headless_desktop_label", None)
+        if isinstance(headless_label, QWidget):
+            headless_label.setVisible(not force_headless)
+
+        headless_row = getattr(self, "_headless_desktop_row", None)
+        if isinstance(headless_row, QWidget):
+            headless_row.setVisible(not force_headless)
+
+        self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
+        self._cache_desktop_build.setEnabled(self._effective_desktop_enabled())
+
     def _load_selected(self) -> None:
         if self._autosave_timer.isActive():
             self._autosave_timer.stop()
+        if self._advanced_autosave_timer.isActive():
+            self._advanced_autosave_timer.stop()
 
         env_id = str(self._env_select.currentData() or "")
         env = self._environments.get(env_id)
         self._current_env_id = env_id if env else None
+        self._sync_github_polling_override_visibility()
 
         self._suppress_autosave = True
         try:
@@ -259,20 +298,31 @@ class EnvironmentsPage(
                 self._use_cross_agents.setChecked(False)
                 self._gh_context_enabled.setChecked(False)
                 self._gh_context_enabled.setEnabled(False)
-                self._gh_context_label.setVisible(False)
-                self._gh_context_row.setVisible(False)
+                self._github_polling_enabled.setChecked(False)
+                trusted_mode_idx = self._agentsnova_trusted_mode.findData("inherit")
+                if trusted_mode_idx < 0:
+                    trusted_mode_idx = 0
+                if trusted_mode_idx >= 0:
+                    self._agentsnova_trusted_mode.setCurrentIndex(trusted_mode_idx)
+                self._agentsnova_trusted_users_env.set_usernames([])
                 self._workspace_type_combo.setCurrentIndex(0)
                 self._workspace_target.setText("")
                 self._gh_use_host_cli.setChecked(bool(is_gh_available()))
                 self._preflight_enabled.setChecked(False)
                 self._preflight_script.setPlainText("")
-                self._cached_preflight_enabled.setChecked(False)
-                self._cached_preflight_script.setPlainText("")
-                self._run_preflight_enabled.setChecked(False)
-                self._run_preflight_script.setPlainText("")
-                self._preflight_stack.setCurrentIndex(0)
-                self._env_vars.setPlainText("")
-                self._mounts.setPlainText("")
+                self._cache_system_preflight_enabled.setChecked(False)
+                self._cache_settings_preflight_enabled.setChecked(False)
+                self._on_container_caching_toggled(Qt.CheckState.Unchecked.value)
+                self._env_vars_tab.set_env_vars(
+                    {},
+                    advanced_mode=False,
+                    advanced_acknowledged=False,
+                )
+                self._mounts_tab.set_mounts(
+                    [],
+                    advanced_mode=False,
+                    advanced_acknowledged=False,
+                )
                 self._ports_tab.set_desktop_effective_enabled(
                     self._effective_desktop_enabled()
                 )
@@ -280,6 +330,7 @@ class EnvironmentsPage(
                 self._prompts_tab.set_prompts([], False)
                 self._agents_tab.set_agent_selection(None)
                 self._sync_workspace_controls()
+                self._sync_headless_desktop_override_visibility()
                 return
 
             self._name.setText(env.name)
@@ -298,9 +349,7 @@ class EnvironmentsPage(
             self._cache_desktop_build.setChecked(
                 bool(getattr(env, "cache_desktop_build", False))
             )
-            self._cache_desktop_build.setEnabled(
-                bool(getattr(env, "headless_desktop_enabled", False))
-            )
+            self._cache_desktop_build.setEnabled(self._effective_desktop_enabled())
             self._container_caching_enabled.setChecked(
                 bool(getattr(env, "container_caching_enabled", False))
             )
@@ -321,8 +370,18 @@ class EnvironmentsPage(
                 bool(getattr(env, "gh_context_enabled", False))
             )
             self._gh_context_enabled.setEnabled(context_available)
-            self._gh_context_label.setVisible(context_available)
-            self._gh_context_row.setVisible(context_available)
+            self._github_polling_enabled.setChecked(
+                bool(getattr(env, "github_polling_enabled", False))
+            )
+            trusted_mode = normalize_trusted_mode(
+                getattr(env, "agentsnova_trusted_mode", "inherit")
+            )
+            trusted_mode_idx = self._agentsnova_trusted_mode.findData(trusted_mode)
+            if trusted_mode_idx >= 0:
+                self._agentsnova_trusted_mode.setCurrentIndex(trusted_mode_idx)
+            self._agentsnova_trusted_users_env.set_usernames(
+                list(getattr(env, "agentsnova_trusted_users_env", []) or [])
+            )
 
             idx = self._workspace_type_combo.findData(workspace_type)
             if idx >= 0:
@@ -333,27 +392,35 @@ class EnvironmentsPage(
             )
             self._sync_workspace_controls(env=env)
 
-            container_caching = bool(getattr(env, "container_caching_enabled", False))
-
             self._preflight_enabled.setChecked(bool(env.preflight_enabled))
             self._preflight_script.setEnabled(bool(env.preflight_enabled))
             self._preflight_script.setPlainText(env.preflight_script or "")
+            self._cache_system_preflight_enabled.setChecked(
+                bool(getattr(env, "cache_system_preflight_enabled", False))
+            )
+            self._cache_settings_preflight_enabled.setChecked(
+                bool(getattr(env, "cache_settings_preflight_enabled", False))
+            )
+            self._on_container_caching_toggled(
+                Qt.CheckState.Checked.value
+                if bool(getattr(env, "container_caching_enabled", False))
+                else Qt.CheckState.Unchecked.value
+            )
 
-            cached_script = str(getattr(env, "cached_preflight_script", "") or "")
-            has_cached = bool(cached_script.strip())
-            self._cached_preflight_enabled.setChecked(has_cached)
-            self._cached_preflight_script.setEnabled(has_cached)
-            self._cached_preflight_script.setPlainText(cached_script)
-
-            self._run_preflight_enabled.setChecked(bool(env.preflight_enabled))
-            self._run_preflight_script.setEnabled(bool(env.preflight_enabled))
-            self._run_preflight_script.setPlainText(env.preflight_script or "")
-
-            self._preflight_stack.setCurrentIndex(1 if container_caching else 0)
-
-            env_lines = "\n".join(f"{k}={v}" for k, v in sorted(env.env_vars.items()))
-            self._env_vars.setPlainText(env_lines)
-            self._mounts.setPlainText("\n".join(env.extra_mounts))
+            self._env_vars_tab.set_env_vars(
+                env.env_vars,
+                advanced_mode=bool(getattr(env, "env_vars_advanced_mode", False)),
+                advanced_acknowledged=bool(
+                    getattr(env, "env_vars_advanced_acknowledged", False)
+                ),
+            )
+            self._mounts_tab.set_mounts(
+                env.extra_mounts,
+                advanced_mode=bool(getattr(env, "mounts_advanced_mode", False)),
+                advanced_acknowledged=bool(
+                    getattr(env, "mounts_advanced_acknowledged", False)
+                ),
+            )
             self._ports_tab.set_ports(
                 getattr(env, "ports", []) or [],
                 bool(getattr(env, "ports_unlocked", False)),
@@ -368,28 +435,39 @@ class EnvironmentsPage(
             self._agents_tab.set_cross_agent_allowlist(cross_agent_allowlist)
             self._agents_tab.set_agent_selection(env.agent_selection)
             self._agents_tab.set_cross_agents_enabled(use_cross_agents)
+            self._sync_headless_desktop_override_visibility()
         finally:
             self._suppress_autosave = False
 
     def _on_prompts_changed(self) -> None:
-        self._queue_debounced_autosave()
+        self._queue_advanced_autosave()
 
     def _on_agents_changed(self) -> None:
-        self._queue_debounced_autosave()
+        self._queue_advanced_autosave()
 
     def _on_ports_changed(self) -> None:
-        self._queue_debounced_autosave()
+        self._queue_advanced_autosave()
+
+    def _queue_advanced_autosave(self, *_args: object) -> None:
+        if self._suppress_autosave:
+            return
+        self._advanced_autosave_timer.start()
 
     def _on_headless_desktop_toggled(self, state: int) -> None:
-        is_enabled = state == Qt.CheckState.Checked.value
-        self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
-        self._cache_desktop_build.setEnabled(is_enabled)
-        if not is_enabled:
+        _ = state
+        effective_desktop_enabled = self._effective_desktop_enabled()
+        self._ports_tab.set_desktop_effective_enabled(effective_desktop_enabled)
+        self._cache_desktop_build.setEnabled(effective_desktop_enabled)
+        if not effective_desktop_enabled:
             self._cache_desktop_build.setChecked(False)
 
     def _on_container_caching_toggled(self, state: int) -> None:
         is_enabled = state == Qt.CheckState.Checked.value
-        self._preflight_stack.setCurrentIndex(1 if is_enabled else 0)
+        for checkbox in (
+            self._cache_system_preflight_enabled,
+            self._cache_settings_preflight_enabled,
+        ):
+            checkbox.setEnabled(is_enabled)
 
     def _on_use_cross_agents_toggled(self, state: int) -> None:
         is_enabled = state == Qt.CheckState.Checked.value

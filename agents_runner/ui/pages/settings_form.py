@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from PySide6.QtCore import QSignalBlocker, Qt
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QDoubleSpinBox
@@ -25,10 +27,17 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_agent_system
 from agents_runner.agent_systems import get_default_agent_system_name
+from agents_runner.environments import load_environments
+from agents_runner.terminal_apps import detect_terminal_options
+from agents_runner.ui.pages.github_trust import (
+    collect_seed_usernames_for_cloned_environments,
+)
+from agents_runner.ui.pages.github_username_list import GitHubUsernameListWidget
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
 from agents_runner.ui.graphics import normalize_ui_theme_name
+from agents_runner.ui.widgets import EdgeFadeScrollArea
 from agents_runner.ui.widgets.theme_preview import ThemePreviewTile
 from agents_runner.ui.constants import (
     GRID_HORIZONTAL_SPACING,
@@ -46,7 +55,7 @@ class _SettingsPaneSpec:
     section: str
 
 
-class _SettingsFormMixin:
+class SettingsFormMixin:
     def _default_pane_specs(self) -> list[_SettingsPaneSpec]:
         specs = [
             _SettingsPaneSpec(
@@ -72,6 +81,18 @@ class _SettingsFormMixin:
                 title="Config Paths",
                 subtitle="Host config folders used by each agent.",
                 section="Agent Setup",
+            ),
+            _SettingsPaneSpec(
+                key="github_config",
+                title="Config",
+                subtitle="GitHub polling, auto-review, and write confirmation controls.",
+                section="GitHub",
+            ),
+            _SettingsPaneSpec(
+                key="github_trusted_users",
+                title="Trusted Users",
+                subtitle="Global trusted usernames for @agentsnova auto-review checks.",
+                section="GitHub",
             ),
             _SettingsPaneSpec(
                 key="runtime_behavior",
@@ -111,11 +132,30 @@ class _SettingsFormMixin:
         ]:
             self._shell.addItem(label, value)
 
+        self._interactive_terminal = QComboBox()
+        self._interactive_terminal.setToolTip(
+            "Default terminal used by Run Interactive and Get Agent Help."
+        )
+        self._refresh_terminal_options(selected_terminal_id="")
+
+        self._refresh_interactive_terminal = QToolButton()
+        self._refresh_interactive_terminal.setText("Refresh")
+        self._refresh_interactive_terminal.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._refresh_interactive_terminal.clicked.connect(
+            self._on_refresh_terminal_options_clicked
+        )
+
         self._ui_theme = QComboBox()
         self._ui_theme.setToolTip(
             "Auto syncs background theme to the active agent.\n"
             "Select a specific theme to force an override."
         )
+        self._popup_theme_animation_enabled = QCheckBox("Animate popup backgrounds")
+        self._popup_theme_animation_enabled.setToolTip(
+            "When enabled, themed popup backgrounds stay animated. "
+            "Disable to render popups as static backgrounds."
+        )
+        self._popup_theme_animation_enabled.setChecked(True)
         self._theme_preview_tiles: dict[str, ThemePreviewTile] = {}
         self._theme_preview_order: list[str] = []
         self._theme_preview_grid: QGridLayout | None = None
@@ -166,6 +206,18 @@ class _SettingsFormMixin:
         self._headless_desktop_enabled.setToolTip(
             "When enabled, this overrides per-environment headless desktop settings."
         )
+        self._auto_navigate_on_run_agent_start = QCheckBox(
+            "Auto-navigate to Home when Run Agent starts"
+        )
+        self._auto_navigate_on_run_agent_start.setToolTip(
+            "When enabled, starting a Run Agent task switches to the Home dashboard."
+        )
+        self._auto_navigate_on_run_interactive_start = QCheckBox(
+            "Auto-navigate to Home when Run Interactive starts"
+        )
+        self._auto_navigate_on_run_interactive_start.setToolTip(
+            "When enabled, starting a Run Interactive task switches to the Home dashboard."
+        )
 
         self._gh_context_default = QCheckBox(
             "Enable GitHub context by default for new environments"
@@ -182,6 +234,74 @@ class _SettingsFormMixin:
         self._mount_host_cache = QCheckBox("Mount host cache into containers")
         self._mount_host_cache.setToolTip(
             "Mounts ~/.cache to speed up package manager installs across environments."
+        )
+
+        self._github_workroom_prefer_browser = QCheckBox(
+            "Prefer browser for GitHub workroom"
+        )
+        self._github_workroom_prefer_browser.setToolTip(
+            "When enabled, opening an issue or pull request goes directly to the system browser."
+        )
+
+        self._github_write_confirmation_mode = QComboBox()
+        self._github_write_confirmation_mode.addItem("Always confirm", "always")
+        self._github_write_confirmation_mode.addItem(
+            "Confirm destructive only",
+            "destructive_only",
+        )
+        self._github_write_confirmation_mode.addItem("No confirmations", "never")
+        self._github_write_confirmation_mode.setToolTip(
+            "Controls confirmation prompts for GitHub write actions "
+            "(open/close, comments, reaction markers)."
+        )
+
+        self._agentsnova_auto_review_enabled = QCheckBox(
+            "Enable @agentsnova auto-review queueing"
+        )
+        self._agentsnova_auto_review_enabled.setToolTip(
+            "When enabled, PR/Issue mentions of @agentsnova can auto-queue tasks."
+        )
+        self._agentsnova_auto_marker_comments_enabled = QCheckBox(
+            "Enable @agentsnova auto marker comments"
+        )
+        self._agentsnova_auto_marker_comments_enabled.setToolTip(
+            "When enabled, queued @agentsnova tasks post a GitHub marker comment "
+            "with the task id for visibility and dedupe safety."
+        )
+        self._agentsnova_auto_reactions_enabled = QCheckBox(
+            "Enable @agentsnova auto reactions"
+        )
+        self._agentsnova_auto_reactions_enabled.setToolTip(
+            "When enabled, @agentsnova queue triggers apply GitHub `eyes` reactions."
+        )
+        self._github_polling_enabled = QCheckBox("Enable app-wide GitHub polling")
+        self._github_polling_enabled.setToolTip(
+            "When enabled, GitHub Issues/PRs poll in the background across enabled environments."
+        )
+        self._github_poll_startup_delay_s = QLineEdit()
+        self._github_poll_startup_delay_s.setValidator(QIntValidator(0, 3600, self))
+        self._github_poll_startup_delay_s.setPlaceholderText("35")
+        self._github_poll_startup_delay_s.setMaximumWidth(120)
+        self._github_poll_startup_delay_s.setToolTip(
+            "Seconds to wait after app startup before beginning background GitHub polling."
+        )
+        self._agentsnova_trusted_users_global = GitHubUsernameListWidget()
+        self._agentsnova_trusted_users_global.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self._agentsnova_trusted_users_global.set_add_button_visible(False)
+        self._add_trusted_user_global = (
+            self._agentsnova_trusted_users_global.create_add_button(self)
+        )
+        self._setup_github_defaults_global = QToolButton()
+        self._setup_github_defaults_global.setText("Setup Defaults")
+        self._setup_github_defaults_global.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._setup_github_defaults_global.setToolTip(
+            "Seed trusted users from cloned environment owners/org members and current gh login."
+        )
+        self._setup_github_defaults_global.clicked.connect(
+            self._on_setup_global_github_defaults
         )
 
         self._preflight_script = QPlainTextEdit()
@@ -276,6 +396,15 @@ class _SettingsFormMixin:
         general_body.addWidget(self._spellcheck_enabled)
         general_body.addWidget(self._gh_context_default)
         general_body.addWidget(self._append_pixelarch_context)
+
+        terminal_layout = QGridLayout()
+        terminal_layout.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        terminal_layout.setVerticalSpacing(GRID_VERTICAL_SPACING)
+        terminal_layout.setColumnStretch(1, 1)
+        terminal_layout.addWidget(QLabel("Interactive terminal"), 0, 0)
+        terminal_layout.addWidget(self._interactive_terminal, 0, 1)
+        terminal_layout.addWidget(self._refresh_interactive_terminal, 0, 2)
+        general_body.addLayout(terminal_layout)
         general_body.addStretch(1)
         self._register_page("general_preferences", general_page)
 
@@ -287,6 +416,7 @@ class _SettingsFormMixin:
         themes_grid.addWidget(QLabel("Theme"), 0, 0)
         themes_grid.addWidget(self._ui_theme, 0, 1)
         themes_body.addLayout(themes_grid)
+        themes_body.addWidget(self._popup_theme_animation_enabled)
         previews_heading = QLabel("Theme previews")
         previews_heading.setObjectName("SettingsPaneSubtitle")
         themes_body.addWidget(previews_heading)
@@ -309,7 +439,7 @@ class _SettingsFormMixin:
         agent_grid.setColumnStretch(1, 1)
         agent_grid.addWidget(QLabel("Agent CLI"), 0, 0)
         agent_grid.addWidget(self._use, 0, 1)
-        agent_grid.addWidget(QLabel("Shell"), 1, 0)
+        agent_grid.addWidget(QLabel("Agent Shell"), 1, 0)
         agent_grid.addWidget(self._shell, 1, 1)
         agent_body.addLayout(agent_grid)
         agent_body.addStretch(1)
@@ -336,8 +466,44 @@ class _SettingsFormMixin:
         paths_body.addStretch(1)
         self._register_page("config_paths", paths_page)
 
+        github_config_page, github_config_body = self._create_page(
+            specs_by_key["github_config"]
+        )
+        github_config_body.addWidget(self._github_workroom_prefer_browser)
+        github_config_body.addWidget(self._agentsnova_auto_review_enabled)
+        github_config_body.addWidget(self._agentsnova_auto_marker_comments_enabled)
+        github_config_body.addWidget(self._agentsnova_auto_reactions_enabled)
+        github_config_body.addWidget(self._github_polling_enabled)
+
+        github_grid = QGridLayout()
+        github_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        github_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
+        github_grid.setColumnStretch(1, 1)
+        github_grid.addWidget(QLabel("GitHub write confirmations"), 0, 0)
+        github_grid.addWidget(self._github_write_confirmation_mode, 0, 1)
+        github_grid.addWidget(QLabel("Polling startup delay (s)"), 1, 0)
+        github_grid.addWidget(self._github_poll_startup_delay_s, 1, 1)
+        github_config_body.addLayout(github_grid)
+        github_config_body.addStretch(1)
+        self._register_page("github_config", github_config_page)
+
+        github_trusted_page, github_trusted_body = self._create_page(
+            specs_by_key["github_trusted_users"]
+        )
+        github_trusted_body.addWidget(self._agentsnova_trusted_users_global, 1)
+
+        github_actions = QHBoxLayout()
+        github_actions.setSpacing(BUTTON_ROW_SPACING)
+        github_actions.addWidget(self._add_trusted_user_global)
+        github_actions.addStretch(1)
+        github_actions.addWidget(self._setup_github_defaults_global)
+        github_trusted_body.addLayout(github_actions)
+        self._register_page("github_trusted_users", github_trusted_page)
+
         runtime_page, runtime_body = self._create_page(specs_by_key["runtime_behavior"])
         runtime_body.addWidget(self._headless_desktop_enabled)
+        runtime_body.addWidget(self._auto_navigate_on_run_agent_start)
+        runtime_body.addWidget(self._auto_navigate_on_run_interactive_start)
         runtime_body.addWidget(self._mount_host_cache)
         runtime_body.addStretch(1)
         self._register_page("runtime_behavior", runtime_page)
@@ -414,7 +580,7 @@ class _SettingsFormMixin:
                 button.setToolButtonStyle(Qt.ToolButtonTextOnly)
                 button.setFixedHeight(40)
                 button.setSizePolicy(
-                    QSizePolicy.Policy.Fixed,
+                    QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Fixed,
                 )
                 button.clicked.connect(
@@ -422,7 +588,7 @@ class _SettingsFormMixin:
                 )
                 nav_layout.addWidget(button)
                 self._nav_buttons[spec.key] = button
-                self._compact_nav.addItem(spec.title, spec.key)
+                self._compact_nav.addItem(button_label, spec.key)
 
         nav_layout.addStretch(1)
 
@@ -430,23 +596,29 @@ class _SettingsFormMixin:
         page = QWidget()
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.setSpacing(10)
+        page_layout.setSpacing(0)
+
+        scroll = EdgeFadeScrollArea(page)
+        scroll.setObjectName("SettingsPaneScrollArea")
+
+        content = QWidget(scroll)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(10)
 
         title = QLabel(spec.title)
         title.setObjectName("SettingsPaneTitle")
 
-        subtitle = QLabel(spec.subtitle)
-        subtitle.setObjectName("SettingsPaneSubtitle")
-        subtitle.setWordWrap(True)
-
-        body = QWidget(page)
+        body = QWidget(content)
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(GRID_VERTICAL_SPACING)
 
-        page_layout.addWidget(title)
-        page_layout.addWidget(subtitle)
-        page_layout.addWidget(body, 1)
+        content_layout.addWidget(title)
+        content_layout.addWidget(body)
+
+        scroll.setWidget(content)
+        page_layout.addWidget(scroll, 1)
         return page, body_layout
 
     def _register_page(self, key: str, widget: QWidget) -> None:
@@ -578,7 +750,7 @@ class _SettingsFormMixin:
             return "Midori AI (Dark Theme)"
         if normalized == "midoriai_light":
             return "Midori AI (Light Theme)"
-        return _SettingsFormMixin._format_key_label(normalized)
+        return SettingsFormMixin._format_key_label(normalized)
 
     @staticmethod
     def _format_key_label(value: str) -> str:
@@ -644,7 +816,7 @@ class _SettingsFormMixin:
         )
         return max(0, int(round(raw * factor)))
 
-    def set_settings(self, settings: dict) -> None:
+    def set_settings(self, settings: dict[str, Any]) -> None:
         self._suppress_autosave = True
         try:
             self._populate_agent_combo()
@@ -657,6 +829,11 @@ class _SettingsFormMixin:
 
             shell_value = str(settings.get("shell") or "bash").strip().lower()
             self._set_combo_value(self._shell, shell_value, fallback="bash")
+            self._refresh_terminal_options(
+                selected_terminal_id=str(
+                    settings.get("interactive_terminal_id") or ""
+                ).strip()
+            )
 
             self._host_codex_dir.setText(
                 os.path.expanduser(
@@ -700,8 +877,49 @@ class _SettingsFormMixin:
             self._append_pixelarch_context.setChecked(
                 bool(settings.get("append_pixelarch_context") or False)
             )
+            self._github_workroom_prefer_browser.setChecked(
+                bool(settings.get("github_workroom_prefer_browser") or False)
+            )
+            self._agentsnova_auto_review_enabled.setChecked(
+                bool(settings.get("agentsnova_auto_review_enabled", True))
+            )
+            self._agentsnova_auto_marker_comments_enabled.setChecked(
+                bool(settings.get("agentsnova_auto_marker_comments_enabled", True))
+            )
+            self._agentsnova_auto_reactions_enabled.setChecked(
+                bool(settings.get("agentsnova_auto_reactions_enabled", True))
+            )
+            self._github_polling_enabled.setChecked(
+                bool(settings.get("github_polling_enabled") or False)
+            )
+            try:
+                poll_startup_delay_s = max(
+                    0, int(settings.get("github_poll_startup_delay_s", 35))
+                )
+            except Exception:
+                poll_startup_delay_s = 35
+            self._github_poll_startup_delay_s.setText(str(poll_startup_delay_s))
+            trusted_users_raw = settings.get("agentsnova_trusted_users_global", [])
+            trusted_users = (
+                trusted_users_raw if isinstance(trusted_users_raw, list) else []
+            )
+            self._agentsnova_trusted_users_global.set_usernames(trusted_users)
             self._headless_desktop_enabled.setChecked(
                 bool(settings.get("headless_desktop_enabled") or False)
+            )
+            self._auto_navigate_on_run_agent_start.setChecked(
+                bool(settings.get("auto_navigate_on_run_agent_start") or False)
+            )
+            self._auto_navigate_on_run_interactive_start.setChecked(
+                bool(settings.get("auto_navigate_on_run_interactive_start") or False)
+            )
+            confirmation_mode = str(
+                settings.get("github_write_confirmation_mode") or "always"
+            ).strip()
+            self._set_combo_value(
+                self._github_write_confirmation_mode,
+                confirmation_mode,
+                fallback="always",
             )
             self._gh_context_default.setChecked(
                 bool(settings.get("gh_context_default_enabled") or False)
@@ -717,6 +935,9 @@ class _SettingsFormMixin:
                 settings.get("ui_theme"), allow_auto=True
             )
             self._refresh_theme_options(selected=theme_value)
+            self._popup_theme_animation_enabled.setChecked(
+                bool(settings.get("popup_theme_animation_enabled", True))
+            )
 
             radio_enabled = bool(settings.get("radio_enabled") or False)
             self._radio_enabled.setChecked(radio_enabled)
@@ -753,12 +974,26 @@ class _SettingsFormMixin:
         finally:
             self._suppress_autosave = False
 
-    def get_settings(self) -> dict:
+    def get_settings(self) -> dict[str, Any]:
+        poll_startup_delay_text = str(
+            self._github_poll_startup_delay_s.text() or "35"
+        ).strip()
+        try:
+            poll_startup_delay_s = max(0, int(poll_startup_delay_text or "35"))
+        except Exception:
+            poll_startup_delay_s = 35
+
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
+            "interactive_terminal_id": str(
+                self._interactive_terminal.currentData() or ""
+            ),
             "ui_theme": normalize_ui_theme_name(
                 str(self._ui_theme.currentData() or "auto"), allow_auto=True
+            ),
+            "popup_theme_animation_enabled": bool(
+                self._popup_theme_animation_enabled.isChecked()
             ),
             "host_codex_dir": os.path.expanduser(
                 str(self._host_codex_dir.text() or "").strip()
@@ -777,8 +1012,32 @@ class _SettingsFormMixin:
             "append_pixelarch_context": bool(
                 self._append_pixelarch_context.isChecked()
             ),
+            "github_workroom_prefer_browser": bool(
+                self._github_workroom_prefer_browser.isChecked()
+            ),
+            "github_write_confirmation_mode": str(
+                self._github_write_confirmation_mode.currentData() or "always"
+            ),
+            "agentsnova_auto_review_enabled": bool(
+                self._agentsnova_auto_review_enabled.isChecked()
+            ),
+            "agentsnova_auto_marker_comments_enabled": bool(
+                self._agentsnova_auto_marker_comments_enabled.isChecked()
+            ),
+            "agentsnova_auto_reactions_enabled": bool(
+                self._agentsnova_auto_reactions_enabled.isChecked()
+            ),
+            "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
+            "github_poll_startup_delay_s": poll_startup_delay_s,
+            "agentsnova_trusted_users_global": self._agentsnova_trusted_users_global.get_usernames(),
             "headless_desktop_enabled": bool(
                 self._headless_desktop_enabled.isChecked()
+            ),
+            "auto_navigate_on_run_agent_start": bool(
+                self._auto_navigate_on_run_agent_start.isChecked()
+            ),
+            "auto_navigate_on_run_interactive_start": bool(
+                self._auto_navigate_on_run_interactive_start.isChecked()
             ),
             "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
             "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),
@@ -801,6 +1060,17 @@ class _SettingsFormMixin:
                 )
             ),
         }
+
+    def _on_setup_global_github_defaults(self) -> None:
+        environments = load_environments().values()
+        seeded = collect_seed_usernames_for_cloned_environments(environments)
+        if not seeded:
+            return
+        self._agentsnova_trusted_users_global.merge_usernames(seeded)
+        try:
+            self._queue_debounced_autosave()
+        except Exception:
+            pass
 
     def _pick_codex_dir(self) -> None:
         path = QFileDialog.getExistingDirectory(
@@ -837,6 +1107,38 @@ class _SettingsFormMixin:
         )
         if path:
             self._host_gemini_dir.setText(path)
+
+    def _refresh_terminal_options(self, *, selected_terminal_id: str) -> None:
+        selected_id = str(selected_terminal_id or "").strip()
+        current_id = str(self._interactive_terminal.currentData() or "").strip()
+        options = detect_terminal_options()
+
+        with QSignalBlocker(self._interactive_terminal):
+            self._interactive_terminal.clear()
+            if not options:
+                self._interactive_terminal.addItem("No terminals detected", "")
+                self._interactive_terminal.setCurrentIndex(0)
+                return
+
+            for option in options:
+                self._interactive_terminal.addItem(option.label, option.terminal_id)
+
+            desired = selected_id or current_id
+            if not desired:
+                desired = str(options[0].terminal_id or "").strip()
+            self._set_combo_value(
+                self._interactive_terminal,
+                desired,
+                fallback=str(options[0].terminal_id or "").strip(),
+            )
+
+    def _on_refresh_terminal_options_clicked(self) -> None:
+        self._refresh_terminal_options(
+            selected_terminal_id=str(
+                self._interactive_terminal.currentData() or ""
+            ).strip()
+        )
+        self._queue_debounced_autosave()
 
     @staticmethod
     def _set_combo_value(combo: QComboBox, value: str, fallback: str) -> None:

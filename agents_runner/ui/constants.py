@@ -17,6 +17,11 @@ PIXELARCH_GIT_CONTEXT_SUFFIX = load_prompt(
 MAIN_LAYOUT_MARGINS = (0, 0, 0, 0)
 MAIN_LAYOUT_SPACING = 14
 
+# Left navigation panel constants
+LEFT_NAV_PANEL_WIDTH = 280
+LEFT_NAV_COMPACT_THRESHOLD = 1080
+LEFT_NAV_BUTTON_SPACING = 10
+
 # Header constants (GlassCard with title/subtitle/back)
 HEADER_MARGINS = (18, 16, 18, 16)
 HEADER_SPACING = 10
@@ -41,6 +46,10 @@ STANDARD_BUTTON_WIDTH = 100
 
 # Table row height
 TABLE_ROW_HEIGHT = 56
+
+# Autosave timing constants
+AUTOSAVE_DISCRETE_MS = 450
+AUTOSAVE_IDLE_MS = 15000
 
 # Standard column widths
 AGENT_COMBO_WIDTH = 170

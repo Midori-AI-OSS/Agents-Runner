@@ -90,6 +90,7 @@ class GitHubOperations:
         on_log: Callable[[str], None],
     ) -> None:
         """Update GitHub context file after repository clone."""
+        assert config.gh_context_file_path is not None
         try:
             from agents_runner.environments.git_operations import get_git_info
             from agents_runner.pr_metadata import GitHubContext

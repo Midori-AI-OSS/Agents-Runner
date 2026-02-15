@@ -4,13 +4,15 @@ import json
 import os
 import platform
 import sys
+import threading
 import traceback
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 
-_HOOKS_INSTALLED = False
+_hooks_installed = False
 
 
 def crash_reports_dir() -> Path:
@@ -87,15 +89,19 @@ def install_exception_hooks(*, argv: list[str] | None = None) -> None:
 
     This is intentionally best-effort and will not raise.
     """
-    global _HOOKS_INSTALLED
-    if _HOOKS_INSTALLED:
+    global _hooks_installed
+    if _hooks_installed:
         return
-    _HOOKS_INSTALLED = True
+    _hooks_installed = True
 
     try:
         original_sys_hook = sys.excepthook
 
-        def _sys_hook(exc_type, exc_value, exc_tb) -> None:
+        def _sys_hook(
+            exc_type: type[BaseException] | None,
+            exc_value: BaseException | None,
+            exc_tb: types.TracebackType | None,
+        ) -> None:
             try:
                 exc = (
                     exc_value
@@ -114,17 +120,16 @@ def install_exception_hooks(*, argv: list[str] | None = None) -> None:
             except Exception:
                 pass
             try:
-                original_sys_hook(exc_type, exc_value, exc_tb)
+                if exc_type is not None and exc_value is not None:
+                    original_sys_hook(exc_type, exc_value, exc_tb)
             except Exception:
                 pass
 
         sys.excepthook = _sys_hook
 
-        import threading
-
         original_threading_hook = getattr(threading, "excepthook", None)
 
-        def _thread_hook(args) -> None:
+        def _thread_hook(args: threading.ExceptHookArgs) -> None:
             try:
                 thread_name = getattr(getattr(args, "thread", None), "name", "unknown")
                 exc_value = getattr(args, "exc_value", None)

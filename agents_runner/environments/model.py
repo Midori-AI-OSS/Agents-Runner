@@ -82,11 +82,16 @@ class Environment:
     headless_desktop_enabled: bool = False
     cache_desktop_build: bool = False
     container_caching_enabled: bool = False
-    cached_preflight_script: str = ""
+    cache_system_preflight_enabled: bool = False
+    cache_settings_preflight_enabled: bool = False
     preflight_enabled: bool = False
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
+    env_vars_advanced_mode: bool = False
+    mounts_advanced_mode: bool = False
+    env_vars_advanced_acknowledged: bool = False
+    mounts_advanced_acknowledged: bool = False
     ports: list[str] = field(default_factory=list)
     ports_unlocked: bool = False
     ports_advanced_acknowledged: bool = False
@@ -96,6 +101,9 @@ class Environment:
     gh_last_base_branch: str = ""
     gh_use_host_cli: bool = True
     gh_context_enabled: bool = False  # Renamed from gh_pr_metadata_enabled
+    github_polling_enabled: bool = False
+    agentsnova_trusted_users_env: list[str] = field(default_factory=list)
+    agentsnova_trusted_mode: str = "inherit"
     prompts: list[PromptConfig] = field(default_factory=list)
     prompts_unlocked: bool = False
     agent_selection: AgentSelection | None = None

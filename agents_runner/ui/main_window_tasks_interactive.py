@@ -14,6 +14,7 @@ import threading
 import time
 from datetime import datetime
 from datetime import timezone
+from typing import Any
 from uuid import uuid4
 
 from PySide6.QtCore import Qt
@@ -27,6 +28,7 @@ from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.log_format import format_log
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.prompts.sections import compose_prompt_sections
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.constants import PIXELARCH_AGENT_CONTEXT_SUFFIX
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
@@ -40,13 +42,13 @@ from agents_runner.ui.main_window_tasks_interactive_docker import (
 )
 from agents_runner.ui.interactive_prep_worker import InteractivePrepWorker
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 from midori_ai_logger import MidoriAiLogger
 
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class _MainWindowTasksInteractiveMixin:
+class MainWindowTasksInteractiveMixin:
     def _start_interactive_task_from_ui(
         self,
         prompt: str,
@@ -284,7 +286,7 @@ class _MainWindowTasksInteractiveMixin:
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
@@ -292,7 +294,7 @@ class _MainWindowTasksInteractiveMixin:
             task.workspace_type = env.workspace_type
 
         prep_id = uuid4().hex[:8]
-        self._show_dashboard()
+        self._maybe_auto_navigate_on_task_start(interactive=True)
         self._new_task.reset_for_new_run()
 
         prep_worker = InteractivePrepWorker(
@@ -313,6 +315,20 @@ class _MainWindowTasksInteractiveMixin:
             is_help_launch=is_help_launch,
             apply_full_prompting=apply_full_prompting,
             desktop_enabled=desktop_enabled,
+            settings_preflight_script=settings_preflight_script,
+            extra_preflight_script=extra_preflight_script,
+            container_caching_enabled=bool(
+                env and getattr(env, "container_caching_enabled", False)
+            ),
+            cache_system_preflight_enabled=bool(
+                env and getattr(env, "cache_system_preflight_enabled", False)
+            ),
+            cache_settings_preflight_enabled=bool(
+                env and getattr(env, "cache_settings_preflight_enabled", False)
+            ),
+            cache_desktop_build=bool(
+                env and getattr(env, "cache_desktop_build", False)
+            ),
             prep_id=prep_id,
         )
         prep_thread = QThread(self)
@@ -374,13 +390,13 @@ class _MainWindowTasksInteractiveMixin:
         env: object | None,
         task_id: str,
     ) -> str:
-        runner_prompt = str(prompt or "")
+        prompt_sections: list[str] = []
 
         if bool(self._settings_data.get("append_pixelarch_context") or False):
-            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
+            prompt_sections.append(PIXELARCH_AGENT_CONTEXT_SUFFIX)
 
         if workspace_type == WORKSPACE_CLONED:
-            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_GIT_CONTEXT_SUFFIX}"
+            prompt_sections.append(PIXELARCH_GIT_CONTEXT_SUFFIX)
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
@@ -391,9 +407,7 @@ class _MainWindowTasksInteractiveMixin:
                 enabled_env_prompts.append(sanitize_prompt(text))
 
         if enabled_env_prompts:
-            runner_prompt = f"{runner_prompt.rstrip()}\n\n" + "\n\n".join(
-                enabled_env_prompts
-            )
+            prompt_sections.append("\n\n".join(enabled_env_prompts))
             self._on_task_log(
                 task_id,
                 format_log(
@@ -404,7 +418,8 @@ class _MainWindowTasksInteractiveMixin:
                 ),
             )
 
-        return runner_prompt
+        prompt_sections.append(prompt)
+        return compose_prompt_sections(prompt_sections)
 
     def _interactive_prep_id(self, task_id: str) -> str:
         task_id = str(task_id or "").strip()
@@ -432,7 +447,7 @@ class _MainWindowTasksInteractiveMixin:
     def _refresh_interactive_prep_task_card(self, task: Task) -> None:
         env_for_task = self._environments.get(task.environment_id)
         task_stain = env_for_task.color if env_for_task else None
-        task_spinner = _stain_color(env_for_task.color) if env_for_task else None
+        task_spinner = stain_color(env_for_task.color) if env_for_task else None
         self._dashboard.upsert_task(task, stain=task_stain, spinner_color=task_spinner)
         self._details.update_task(task)
         self._schedule_save()
@@ -496,7 +511,9 @@ class _MainWindowTasksInteractiveMixin:
         self._refresh_interactive_prep_task_card(task)
         self._clear_interactive_prep_refs(task_id)
 
-    def _on_interactive_prep_succeeded(self, task_id: str, payload: dict) -> None:
+    def _on_interactive_prep_succeeded(
+        self, task_id: str, payload: dict[str, Any]
+    ) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
             return
@@ -536,6 +553,24 @@ class _MainWindowTasksInteractiveMixin:
         if pr_metadata_mount:
             launch_mounts.append(pr_metadata_mount)
 
+        cache_override_keys = {
+            "runtime_image",
+            "system_preflight_cached",
+            "desktop_preflight_cached",
+            "settings_preflight_cached",
+            "environment_preflight_cached",
+        }
+        has_runtime_cache_overrides = all(
+            key in payload and payload.get(key) is not None
+            for key in cache_override_keys
+        )
+        runtime_image = str(payload.get("runtime_image") or context.get("image") or "")
+        resolved_extra_preflight_script = str(
+            payload.get("resolved_extra_preflight_script")
+            or context.get("extra_preflight_script")
+            or ""
+        )
+
         try:
             launch_docker_terminal_task(
                 main_window=self,
@@ -552,7 +587,7 @@ class _MainWindowTasksInteractiveMixin:
                 host_codex=context.get("host_codex") or "",
                 host_workdir=context.get("host_workdir") or "",
                 config_extra_mounts=launch_mounts,
-                image=context.get("image") or "",
+                image=runtime_image,
                 container_name=context.get("container_name") or "",
                 container_agent_dir=context.get("container_agent_dir") or "",
                 container_workdir=context.get("container_workdir") or "",
@@ -560,11 +595,37 @@ class _MainWindowTasksInteractiveMixin:
                 environment_preflight_script=context.get(
                     "environment_preflight_script"
                 ),
-                extra_preflight_script=context.get("extra_preflight_script") or "",
+                extra_preflight_script=resolved_extra_preflight_script,
                 stain=context.get("stain"),
                 spinner=context.get("spinner"),
                 desired_base=context.get("desired_base") or "",
                 skip_image_pull=True,
+                runtime_image_override=runtime_image
+                if has_runtime_cache_overrides
+                else None,
+                system_preflight_cached_override=bool(
+                    payload.get("system_preflight_cached")
+                )
+                if has_runtime_cache_overrides
+                else None,
+                desktop_preflight_cached_override=bool(
+                    payload.get("desktop_preflight_cached")
+                )
+                if has_runtime_cache_overrides
+                else None,
+                settings_preflight_cached_override=bool(
+                    payload.get("settings_preflight_cached")
+                )
+                if has_runtime_cache_overrides
+                else None,
+                environment_preflight_cached_override=bool(
+                    payload.get("environment_preflight_cached")
+                )
+                if has_runtime_cache_overrides
+                else None,
+                desktop_preflight_script_override=resolved_extra_preflight_script
+                if has_runtime_cache_overrides
+                else None,
             )
         except Exception as exc:
             self._on_interactive_prep_failed(task_id, str(exc))

@@ -11,14 +11,13 @@ from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import delete_environment
 from agents_runner.environments import load_environments
-from agents_runner.environments import parse_env_vars_text
-from agents_runner.environments import parse_mounts_text
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
+from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 
 
-class _EnvironmentsPageActionsMixin:
+class EnvironmentsPageActionsMixin:
     def _sync_workspace_controls(
         self, *_: object, env: Environment | None = None
     ) -> None:
@@ -98,9 +97,10 @@ class _EnvironmentsPageActionsMixin:
         preferred_env_id: str | None = None,
         show_validation_errors: bool = True,
     ) -> bool:
-        autosave_timer = getattr(self, "_autosave_timer", None)
-        if autosave_timer is not None and autosave_timer.isActive():
-            autosave_timer.stop()
+        for timer_name in ("_autosave_timer", "_advanced_autosave_timer"):
+            autosave_timer = getattr(self, timer_name, None)
+            if autosave_timer is not None and autosave_timer.isActive():
+                autosave_timer.stop()
 
         if bool(getattr(self, "_suppress_autosave", False)):
             return True
@@ -151,8 +151,15 @@ class _EnvironmentsPageActionsMixin:
                 gh_context_enabled = False
         else:
             gh_context_enabled = False
+        github_polling_enabled = bool(self._github_polling_enabled.isChecked())
+        agentsnova_trusted_mode = normalize_trusted_mode(
+            self._agentsnova_trusted_mode.currentData() or "inherit"
+        )
+        agentsnova_trusted_users_env = (
+            self._agentsnova_trusted_users_env.get_usernames()
+        )
 
-        env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
+        env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
             if show_validation_errors:
                 QMessageBox.warning(
@@ -160,7 +167,21 @@ class _EnvironmentsPageActionsMixin:
                 )
             return False
 
-        mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        mounts, mount_errors = self._mounts_tab.get_mounts()
+        if mount_errors:
+            if show_validation_errors:
+                QMessageBox.warning(
+                    self,
+                    "Invalid mounts",
+                    "Fix mounts:\n" + "\n".join(mount_errors[:12]),
+                )
+            return False
+        env_vars_advanced_mode = bool(self._env_vars_tab.is_advanced_mode())
+        mounts_advanced_mode = bool(self._mounts_tab.is_advanced_mode())
+        env_vars_advanced_acknowledged = bool(
+            self._env_vars_tab.is_advanced_acknowledged()
+        )
+        mounts_advanced_acknowledged = bool(self._mounts_tab.is_advanced_acknowledged())
         ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
             self._ports_tab.get_ports()
         )
@@ -177,23 +198,14 @@ class _EnvironmentsPageActionsMixin:
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
-        # Read preflight scripts based on container caching state
-        container_caching_enabled = bool(self._container_caching_enabled.isChecked())
-
-        if container_caching_enabled:
-            # Dual-editor mode: read from both editors
-            cached_preflight_script = (
-                str(self._cached_preflight_script.toPlainText() or "")
-                if self._cached_preflight_enabled.isChecked()
-                else ""
-            )
-            preflight_enabled = bool(self._run_preflight_enabled.isChecked())
-            preflight_script = str(self._run_preflight_script.toPlainText() or "")
-        else:
-            # Single-editor mode: read from single editor only
-            cached_preflight_script = ""
-            preflight_enabled = bool(self._preflight_enabled.isChecked())
-            preflight_script = str(self._preflight_script.toPlainText() or "")
+        preflight_enabled = bool(self._preflight_enabled.isChecked())
+        preflight_script = str(self._preflight_script.toPlainText() or "")
+        cache_system_preflight_enabled = bool(
+            self._cache_system_preflight_enabled.isChecked()
+        )
+        cache_settings_preflight_enabled = bool(
+            self._cache_settings_preflight_enabled.isChecked()
+        )
 
         if base_env is None:
             env = Environment(
@@ -209,11 +221,16 @@ class _EnvironmentsPageActionsMixin:
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
-                cached_preflight_script=cached_preflight_script,
+                cache_system_preflight_enabled=cache_system_preflight_enabled,
+                cache_settings_preflight_enabled=cache_settings_preflight_enabled,
                 preflight_enabled=preflight_enabled,
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                env_vars_advanced_mode=env_vars_advanced_mode,
+                mounts_advanced_mode=mounts_advanced_mode,
+                env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+                mounts_advanced_acknowledged=mounts_advanced_acknowledged,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
                 ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -222,6 +239,9 @@ class _EnvironmentsPageActionsMixin:
                 workspace_target=workspace_target,
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
+                github_polling_enabled=github_polling_enabled,
+                agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+                agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
@@ -241,11 +261,16 @@ class _EnvironmentsPageActionsMixin:
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
-                cached_preflight_script=cached_preflight_script,
+                cache_system_preflight_enabled=cache_system_preflight_enabled,
+                cache_settings_preflight_enabled=cache_settings_preflight_enabled,
                 preflight_enabled=preflight_enabled,
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                env_vars_advanced_mode=env_vars_advanced_mode,
+                mounts_advanced_mode=mounts_advanced_mode,
+                env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+                mounts_advanced_acknowledged=mounts_advanced_acknowledged,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
                 ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -254,6 +279,9 @@ class _EnvironmentsPageActionsMixin:
                 workspace_target=workspace_target,
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
+                github_polling_enabled=github_polling_enabled,
+                agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+                agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
@@ -305,15 +333,33 @@ class _EnvironmentsPageActionsMixin:
                 gh_context_enabled = False
         else:
             gh_context_enabled = False
+        github_polling_enabled = bool(self._github_polling_enabled.isChecked())
+        agentsnova_trusted_mode = normalize_trusted_mode(
+            self._agentsnova_trusted_mode.currentData() or "inherit"
+        )
+        agentsnova_trusted_users_env = (
+            self._agentsnova_trusted_users_env.get_usernames()
+        )
 
-        env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
+        env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
             QMessageBox.warning(
                 self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
             )
             return None
 
-        mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        mounts, mount_errors = self._mounts_tab.get_mounts()
+        if mount_errors:
+            QMessageBox.warning(
+                self, "Invalid mounts", "Fix mounts:\n" + "\n".join(mount_errors[:12])
+            )
+            return None
+        env_vars_advanced_mode = bool(self._env_vars_tab.is_advanced_mode())
+        mounts_advanced_mode = bool(self._mounts_tab.is_advanced_mode())
+        env_vars_advanced_acknowledged = bool(
+            self._env_vars_tab.is_advanced_acknowledged()
+        )
+        mounts_advanced_acknowledged = bool(self._mounts_tab.is_advanced_acknowledged())
         ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
             self._ports_tab.get_ports()
         )
@@ -330,23 +376,14 @@ class _EnvironmentsPageActionsMixin:
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
-        # Read preflight scripts based on container caching state
-        container_caching_enabled = bool(self._container_caching_enabled.isChecked())
-
-        if container_caching_enabled:
-            # Dual-editor mode: read from both editors
-            cached_preflight_script = (
-                str(self._cached_preflight_script.toPlainText() or "")
-                if self._cached_preflight_enabled.isChecked()
-                else ""
-            )
-            preflight_enabled = bool(self._run_preflight_enabled.isChecked())
-            preflight_script = str(self._run_preflight_script.toPlainText() or "")
-        else:
-            # Single-editor mode: read from single editor only
-            cached_preflight_script = ""
-            preflight_enabled = bool(self._preflight_enabled.isChecked())
-            preflight_script = str(self._preflight_script.toPlainText() or "")
+        preflight_enabled = bool(self._preflight_enabled.isChecked())
+        preflight_script = str(self._preflight_script.toPlainText() or "")
+        cache_system_preflight_enabled = bool(
+            self._cache_system_preflight_enabled.isChecked()
+        )
+        cache_settings_preflight_enabled = bool(
+            self._cache_settings_preflight_enabled.isChecked()
+        )
 
         if existing is None:
             return Environment(
@@ -362,11 +399,16 @@ class _EnvironmentsPageActionsMixin:
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
-                cached_preflight_script=cached_preflight_script,
+                cache_system_preflight_enabled=cache_system_preflight_enabled,
+                cache_settings_preflight_enabled=cache_settings_preflight_enabled,
                 preflight_enabled=preflight_enabled,
                 preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                env_vars_advanced_mode=env_vars_advanced_mode,
+                mounts_advanced_mode=mounts_advanced_mode,
+                env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+                mounts_advanced_acknowledged=mounts_advanced_acknowledged,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
                 ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -375,6 +417,9 @@ class _EnvironmentsPageActionsMixin:
                 workspace_target=workspace_target,
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
+                github_polling_enabled=github_polling_enabled,
+                agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+                agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
@@ -390,11 +435,16 @@ class _EnvironmentsPageActionsMixin:
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
-            cached_preflight_script=cached_preflight_script,
+            cache_system_preflight_enabled=cache_system_preflight_enabled,
+            cache_settings_preflight_enabled=cache_settings_preflight_enabled,
             preflight_enabled=preflight_enabled,
             preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
+            env_vars_advanced_mode=env_vars_advanced_mode,
+            mounts_advanced_mode=mounts_advanced_mode,
+            env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+            mounts_advanced_acknowledged=mounts_advanced_acknowledged,
             ports=ports,
             ports_unlocked=ports_unlocked,
             ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -403,6 +453,9 @@ class _EnvironmentsPageActionsMixin:
             workspace_target=workspace_target,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=gh_context_enabled,
+            github_polling_enabled=github_polling_enabled,
+            agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+            agentsnova_trusted_mode=agentsnova_trusted_mode,
             prompts=prompts,
             prompts_unlocked=prompts_unlocked,
             agent_selection=agent_selection,

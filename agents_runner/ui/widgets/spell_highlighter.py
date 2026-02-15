@@ -13,9 +13,9 @@ if TYPE_CHECKING:
 try:
     from spellchecker import SpellChecker
 
-    SPELLCHECK_AVAILABLE = True
+    _SPELLCHECK_AVAILABLE = True
 except ImportError:
-    SPELLCHECK_AVAILABLE = False
+    _SPELLCHECK_AVAILABLE = False
     SpellChecker = None  # type: ignore
 
 
@@ -36,7 +36,7 @@ class SpellHighlighter(QSyntaxHighlighter):
         self._enabled = enabled
         self._spell_checker: SpellChecker | None = None
 
-        if SPELLCHECK_AVAILABLE and enabled:
+        if _SPELLCHECK_AVAILABLE and enabled:
             try:
                 self._spell_checker = SpellChecker()
             except Exception:
@@ -57,7 +57,7 @@ class SpellHighlighter(QSyntaxHighlighter):
 
         self._enabled = enabled
 
-        if enabled and self._spell_checker is None and SPELLCHECK_AVAILABLE:
+        if enabled and self._spell_checker is None and _SPELLCHECK_AVAILABLE:
             try:
                 self._spell_checker = SpellChecker()
             except Exception:
@@ -65,6 +65,20 @@ class SpellHighlighter(QSyntaxHighlighter):
 
         # Re-highlight entire document
         self.rehighlight()
+
+    @property
+    def enabled(self) -> bool:
+        """Check if spell checking is enabled."""
+        return self._enabled
+
+    @property
+    def spell_checker(self) -> SpellChecker | None:
+        """Get the spell checker instance."""
+        return self._spell_checker
+
+    def is_misspelled(self, word: str) -> bool:
+        """Public method to check if a word is misspelled."""
+        return self._is_misspelled(word)
 
     def highlightBlock(self, text: str) -> None:
         """

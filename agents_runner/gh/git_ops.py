@@ -1,23 +1,23 @@
 import os
 
-from .process import _expand_dir, _run
+from .process import expand_dir, run_gh
 
 
 def is_git_repo(path: str) -> bool:
-    path = _expand_dir(path)
+    path = expand_dir(path)
     if not os.path.isdir(path):
         return False
-    proc = _run(
+    proc = run_gh(
         ["git", "-C", path, "rev-parse", "--is-inside-work-tree"], timeout_s=8.0
     )
     return proc.returncode == 0 and (proc.stdout or "").strip().lower() == "true"
 
 
 def git_repo_root(path: str) -> str | None:
-    path = _expand_dir(path)
+    path = expand_dir(path)
     if not os.path.isdir(path):
         return None
-    proc = _run(["git", "-C", path, "rev-parse", "--show-toplevel"], timeout_s=8.0)
+    proc = run_gh(["git", "-C", path, "rev-parse", "--show-toplevel"], timeout_s=8.0)
     if proc.returncode != 0:
         return None
     root = (proc.stdout or "").strip()
@@ -25,8 +25,8 @@ def git_repo_root(path: str) -> str | None:
 
 
 def git_current_branch(repo_root: str) -> str | None:
-    repo_root = _expand_dir(repo_root)
-    proc = _run(
+    repo_root = expand_dir(repo_root)
+    proc = run_gh(
         ["git", "-C", repo_root, "rev-parse", "--abbrev-ref", "HEAD"], timeout_s=8.0
     )
     if proc.returncode != 0:
@@ -38,8 +38,8 @@ def git_current_branch(repo_root: str) -> str | None:
 
 
 def git_default_base_branch(repo_root: str) -> str | None:
-    repo_root = _expand_dir(repo_root)
-    proc = _run(
+    repo_root = expand_dir(repo_root)
+    proc = run_gh(
         ["git", "-C", repo_root, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
         timeout_s=8.0,
     )
@@ -53,16 +53,16 @@ def git_default_base_branch(repo_root: str) -> str | None:
 
 
 def git_is_clean(repo_root: str) -> bool:
-    repo_root = _expand_dir(repo_root)
-    proc = _run(["git", "-C", repo_root, "status", "--porcelain"], timeout_s=15.0)
+    repo_root = expand_dir(repo_root)
+    proc = run_gh(["git", "-C", repo_root, "status", "--porcelain"], timeout_s=15.0)
     if proc.returncode != 0:
         return False
     return not (proc.stdout or "").strip()
 
 
 def git_list_branches(repo_root: str) -> list[str]:
-    repo_root = _expand_dir(repo_root)
-    proc = _run(
+    repo_root = expand_dir(repo_root)
+    proc = run_gh(
         [
             "git",
             "-C",
@@ -103,7 +103,7 @@ def git_list_remote_heads(repo: str) -> list[str]:
         and " " not in url
     ):
         url = f"https://github.com/{url}.git"
-    proc = _run(["git", "ls-remote", "--heads", url], timeout_s=20.0)
+    proc = run_gh(["git", "ls-remote", "--heads", url], timeout_s=20.0)
     if proc.returncode != 0:
         return []
     branches: list[str] = []
@@ -129,8 +129,8 @@ def git_head_commit(repo_root: str) -> str | None:
     Returns full 40-character SHA if successful, None on error.
     Timeout: 8 seconds.
     """
-    repo_root = _expand_dir(repo_root)
-    proc = _run(["git", "-C", repo_root, "rev-parse", "HEAD"], timeout_s=8.0)
+    repo_root = expand_dir(repo_root)
+    proc = run_gh(["git", "-C", repo_root, "rev-parse", "HEAD"], timeout_s=8.0)
     if proc.returncode != 0:
         return None
     sha = (proc.stdout or "").strip()
@@ -143,8 +143,8 @@ def git_remote_url(repo_root: str, remote: str = "origin") -> str | None:
     Returns URL string if remote exists, None otherwise.
     Timeout: 8 seconds.
     """
-    repo_root = _expand_dir(repo_root)
-    proc = _run(["git", "-C", repo_root, "remote", "get-url", remote], timeout_s=8.0)
+    repo_root = expand_dir(repo_root)
+    proc = run_gh(["git", "-C", repo_root, "remote", "get-url", remote], timeout_s=8.0)
     if proc.returncode != 0:
         return None
     url = (proc.stdout or "").strip()

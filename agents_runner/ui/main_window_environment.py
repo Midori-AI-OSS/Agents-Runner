@@ -17,7 +17,7 @@ from agents_runner.gh_management import git_list_remote_heads
 from agents_runner.gh_management import is_gh_available
 
 
-class _MainWindowEnvironmentMixin:
+class MainWindowEnvironmentMixin:
     @staticmethod
     def _is_internal_environment_id(env_id: str) -> bool:
         return str(env_id or "").strip() == SYSTEM_ENV_ID
@@ -91,7 +91,7 @@ class _MainWindowEnvironmentMixin:
         )
 
     def _sync_new_task_repo_controls(self, env: Environment | None) -> None:
-        workdir, ready, _ = self._new_task_workspace(env)
+        _workdir, ready, _ = self._new_task_workspace(env)
         if not ready:
             self._new_task.set_repo_controls_visible(False)
             self._new_task.set_repo_branches([])
@@ -178,6 +178,8 @@ class _MainWindowEnvironmentMixin:
         self._dashboard.set_environment_filter_options(
             [(e.env_id, e.name or e.env_id) for e in envs]
         )
+        if hasattr(self, "_tasks_page"):
+            self._tasks_page.set_environments(self._user_environment_map(), active_id)
 
         self._syncing_environment = True
         try:
@@ -229,98 +231,12 @@ class _MainWindowEnvironmentMixin:
         self._new_task.set_defaults(host_codex=host_codex)
         self._new_task.set_workspace_status(path=workdir, ready=ready, message=message)
         self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)
-        self._update_new_task_agent_chain(env)
         self._sync_new_task_repo_controls(env)
         self._new_task.set_interactive_defaults(
             terminal_id=str(self._settings_data.get("interactive_terminal_id") or ""),
             command=self._default_interactive_command(agent_cli),
         )
         self._populate_environment_pickers()
-
-    def _update_new_task_agent_chain(self, env: Environment | None) -> None:
-        """Update the agent chain display in the new task page.
-
-        Args:
-            env: Current environment, or None for default
-        """
-        from agents_runner.agent_cli import normalize_agent
-
-        # Get agent chain from environment or settings
-        selection_mode = ""
-        if env and env.agent_selection and env.agent_selection.agents:
-            # Environment has custom agent configuration
-            selection = env.agent_selection
-            mode = str(selection.selection_mode or "round-robin")
-            selection_mode = mode
-
-            if mode == "fallback":
-                # Build fallback chain
-                agent_ids = {a.agent_id for a in selection.agents}
-                fallback_targets = set(selection.agent_fallbacks.values())
-                primary_agents = agent_ids - fallback_targets
-
-                # Build chain from first primary agent
-                chains: list[list[str]] = []
-                for primary in primary_agents:
-                    chain = [primary]
-                    current = primary
-                    visited = {primary}
-                    while current in selection.agent_fallbacks:
-                        next_id = selection.agent_fallbacks[current]
-                        if next_id in visited:
-                            break  # Circular reference
-                        chain.append(next_id)
-                        visited.add(next_id)
-                        current = next_id
-                    chains.append(chain)
-
-                # Convert agent IDs to CLI names
-                id_to_cli = {a.agent_id: a.agent_cli for a in selection.agents}
-                if chains:
-                    agent_names = [
-                        normalize_agent(id_to_cli.get(agent_id, agent_id))
-                        for agent_id in chains[0]
-                    ]
-                else:
-                    agent_names = []
-            elif mode == "pinned":
-                pinned_id = str(getattr(selection, "pinned_agent_id", "") or "").strip()
-                pinned_inst = None
-                if pinned_id:
-                    pinned_lower = pinned_id.lower()
-                    pinned_inst = next(
-                        (a for a in selection.agents if a.agent_id == pinned_id), None
-                    ) or next(
-                        (
-                            a
-                            for a in selection.agents
-                            if str(a.agent_id or "").lower() == pinned_lower
-                        ),
-                        None,
-                    )
-                if pinned_inst is not None:
-                    agent_names = [normalize_agent(pinned_inst.agent_cli)]
-                else:
-                    agent_names = []
-            else:
-                # Round-robin or least-used: show all agents in priority order
-                agent_names = [normalize_agent(a.agent_cli) for a in selection.agents]
-
-            # If environment config produced no agents, fall back to default
-            if not agent_names:
-                default_agent = normalize_agent(
-                    str(self._settings_data.get("agent_cli") or "codex")
-                )
-                agent_names = [default_agent]
-                selection_mode = ""  # Reset mode for default agent
-        else:
-            # No environment or no agents configured: use global default
-            default_agent = normalize_agent(
-                str(self._settings_data.get("agent_cli") or "codex")
-            )
-            agent_names = [default_agent]
-
-        self._new_task.set_agent_chain(agent_names, selection_mode)
 
     def _on_new_task_env_changed(self, env_id: str) -> None:
         if self._syncing_environment:
@@ -404,14 +320,14 @@ class _MainWindowEnvironmentMixin:
             if not task.environment_id:
                 task.environment_id = self._active_environment_id()
         if self._envs_page.isVisible():
+            current_selected = self._envs_page.selected_environment_id()
             selected = (
-                preferred_env_id
-                or self._envs_page.selected_environment_id()
-                or self._active_environment_id()
+                preferred_env_id or current_selected or self._active_environment_id()
             )
             if self._is_internal_environment_id(selected):
                 selected = self._active_environment_id()
-            self._envs_page.set_environments(self._user_environment_map(), selected)
+            if not (preferred_env_id and preferred_env_id == current_selected):
+                self._envs_page.set_environments(self._user_environment_map(), selected)
         self._apply_active_environment_to_new_task()
         self._refresh_task_rows()
         self._schedule_save()

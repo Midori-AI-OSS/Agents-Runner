@@ -4,6 +4,8 @@ import logging
 import os
 import shlex
 
+from typing import Any
+
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import normalize_agent
@@ -11,18 +13,21 @@ from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import available_agents
 from agents_runner.ui.radio import RadioController
-from agents_runner.ui.utils import _looks_like_agent_help_command
+from agents_runner.ui.utils import looks_like_agent_help_command
 from agents_runner.environments import Environment
 
 logger = logging.getLogger(__name__)
 
 
-class _MainWindowSettingsMixin:
+class MainWindowSettingsMixin:
     def _apply_settings_to_pages(self) -> None:
-        self._settings.set_settings(self._settings_data)
+        if not self._settings.isVisible():
+            self._settings.set_settings(self._settings_data)
         self._envs_page.set_settings_data(
             self._settings_data
         )  # Pass settings to environments page
+        if hasattr(self, "_tasks_page"):
+            self._tasks_page.set_settings_data(self._settings_data)
         self._apply_active_environment_to_new_task()
 
         # Apply spellcheck setting to new task page
@@ -30,7 +35,7 @@ class _MainWindowSettingsMixin:
         self._new_task.set_spellcheck_enabled(spellcheck_enabled)
         self._new_task.set_stt_mode("offline")
 
-    def _apply_settings(self, settings: dict) -> None:
+    def _apply_settings(self, settings: dict[str, Any]) -> None:
         previous_radio_enabled = bool(self._settings_data.get("radio_enabled") or False)
         merged = dict(self._settings_data)
         merged.update(settings or {})
@@ -72,6 +77,9 @@ class _MainWindowSettingsMixin:
 
         merged["preflight_enabled"] = bool(merged.get("preflight_enabled") or False)
         merged["preflight_script"] = str(merged.get("preflight_script") or "")
+        merged["interactive_terminal_id"] = str(
+            merged.get("interactive_terminal_id") or ""
+        ).strip()
         merged["interactive_command"] = str(
             merged.get("interactive_command") or "--sandbox danger-full-access"
         )
@@ -94,8 +102,69 @@ class _MainWindowSettingsMixin:
         merged["append_pixelarch_context"] = bool(
             merged.get("append_pixelarch_context") or False
         )
+        merged["github_workroom_prefer_browser"] = bool(
+            merged.get("github_workroom_prefer_browser") or False
+        )
+        confirmation_mode = (
+            str(merged.get("github_write_confirmation_mode") or "always")
+            .strip()
+            .lower()
+        )
+        if confirmation_mode not in {"always", "destructive_only", "never"}:
+            confirmation_mode = "always"
+        merged["github_write_confirmation_mode"] = confirmation_mode
+        merged["agentsnova_auto_review_enabled"] = bool(
+            merged.get("agentsnova_auto_review_enabled", True)
+        )
+        merged["agentsnova_auto_marker_comments_enabled"] = bool(
+            merged.get("agentsnova_auto_marker_comments_enabled", True)
+        )
+        merged["agentsnova_auto_reactions_enabled"] = bool(
+            merged.get("agentsnova_auto_reactions_enabled", True)
+        )
+        try:
+            merged["github_poll_interval_s"] = max(
+                5, int(merged.get("github_poll_interval_s", 30))
+            )
+        except Exception:
+            merged["github_poll_interval_s"] = 30
+        merged["github_polling_enabled"] = bool(
+            merged.get("github_polling_enabled") or False
+        )
+        try:
+            merged["github_poll_startup_delay_s"] = max(
+                0, int(merged.get("github_poll_startup_delay_s", 35))
+            )
+        except Exception:
+            merged["github_poll_startup_delay_s"] = 35
+        trusted_users_raw = merged.get("agentsnova_trusted_users_global")
+        trusted_users_rows = (
+            trusted_users_raw if isinstance(trusted_users_raw, list) else []
+        )
+        trusted_users: list[str] = []
+        seen_trusted_users: set[str] = set()
+        for row in trusted_users_rows:
+            username = str(row or "").strip().lstrip("@").lower()
+            if not username or username in seen_trusted_users:
+                continue
+            trusted_users.append(username)
+            seen_trusted_users.add(username)
+        merged["agentsnova_trusted_users_global"] = trusted_users
+        merged["agentsnova_review_guard_mode"] = (
+            str(merged.get("agentsnova_review_guard_mode") or "reaction").strip()
+            or "reaction"
+        )
         merged["headless_desktop_enabled"] = bool(
             merged.get("headless_desktop_enabled") or False
+        )
+        merged["popup_theme_animation_enabled"] = bool(
+            merged.get("popup_theme_animation_enabled", True)
+        )
+        merged["auto_navigate_on_run_agent_start"] = bool(
+            merged.get("auto_navigate_on_run_agent_start") or False
+        )
+        merged["auto_navigate_on_run_interactive_start"] = bool(
+            merged.get("auto_navigate_on_run_interactive_start") or False
         )
         merged["radio_enabled"] = bool(merged.get("radio_enabled") or False)
         merged["radio_autostart"] = bool(merged.get("radio_autostart") or False)
@@ -190,7 +259,7 @@ class _MainWindowSettingsMixin:
                 pass
             value = " ".join(shlex.quote(part) for part in cmd_parts)
 
-        if _looks_like_agent_help_command(value):
+        if looks_like_agent_help_command(value):
             from agents_runner.agent_systems import get_default_agent_system_name
 
             agent_cli = get_default_agent_system_name()
@@ -209,7 +278,7 @@ class _MainWindowSettingsMixin:
         prompt = str(prompt or "").strip().lower()
         if prompt.startswith("get agent help"):
             return True
-        return _looks_like_agent_help_command(command)
+        return looks_like_agent_help_command(command)
 
     def _resolve_config_dir_for_agent(
         self,

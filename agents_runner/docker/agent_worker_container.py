@@ -26,6 +26,7 @@ import shlex
 import time
 import selectors
 import subprocess
+from pathlib import Path
 from typing import Any, Callable
 
 from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
@@ -35,7 +36,7 @@ from agents_runner.log_format import format_log, wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
 
 from agents_runner.docker.config import DockerRunnerConfig
-from agents_runner.docker.process import _run_docker, _inspect_state
+from agents_runner.docker.process import run_docker, inspect_state
 from agents_runner.docker.agent_worker_setup import RuntimeEnvironment
 from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.environments import load_environments
@@ -154,10 +155,14 @@ class ContainerExecutor:
             )
 
             # Start container
-            self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
+            self._container_id = run_docker(args, timeout_s=60.0, env=docker_env)
+            if not self._container_id:
+                raise RuntimeError(
+                    "Failed to start container: no container ID returned"
+                )
 
             # Setup desktop port mapping if enabled
-            if self._runtime_env.desktop_enabled and self._container_id:
+            if self._runtime_env.desktop_enabled:
                 self._setup_desktop_port_mapping(desktop_state, docker_env)
 
             # Report initial state
@@ -194,6 +199,15 @@ class ContainerExecutor:
         preflight_clause = ""
         preflight_mounts: list[str] = []
 
+        # System preflight
+        if (
+            self._runtime_env.system_preflight_enabled
+            and not self._runtime_env.system_preflight_cached
+        ):
+            clause, mounts = self._build_system_preflight()
+            preflight_clause += clause
+            preflight_mounts.extend(mounts)
+
         # Desktop preflight
         if self._runtime_env.desktop_enabled:
             preflight_clause += self._build_desktop_preflight_clause()
@@ -205,7 +219,10 @@ class ContainerExecutor:
             )
 
         # Settings preflight
-        if self._runtime_env.settings_preflight_tmp_path is not None:
+        if (
+            self._runtime_env.settings_preflight_tmp_path is not None
+            and not self._runtime_env.settings_preflight_cached
+        ):
             clause, mounts = self._build_settings_preflight(
                 self._runtime_env.settings_preflight_tmp_path,
                 self._runtime_env.settings_container_path,
@@ -214,7 +231,10 @@ class ContainerExecutor:
             preflight_mounts.extend(mounts)
 
         # Environment preflight
-        if self._runtime_env.environment_preflight_tmp_path is not None:
+        if (
+            self._runtime_env.environment_preflight_tmp_path is not None
+            and not self._runtime_env.environment_preflight_cached
+        ):
             clause, mounts = self._build_environment_preflight(
                 self._runtime_env.environment_preflight_tmp_path,
                 self._runtime_env.environment_container_path,
@@ -224,9 +244,33 @@ class ContainerExecutor:
 
         return preflight_clause, preflight_mounts
 
+    def _build_system_preflight(self) -> tuple[str, list[str]]:
+        """Build system preflight clause and mounts."""
+        host_preflights_dir = Path(self._runtime_env.preflights_host_dir).resolve()
+        if not host_preflights_dir.is_dir():
+            self._on_log(
+                format_log(
+                    "docker",
+                    "preflight",
+                    "WARN",
+                    f"system preflight skipped; preflights dir not found: {host_preflights_dir}",
+                )
+            )
+            return "", []
+        container_dir = "/tmp/agents-runner-preflights"
+        return (
+            f"PREFLIGHTS_DIR={shlex.quote(container_dir)}; "
+            'export AGENTS_RUNNER_PREFLIGHTS_DIR="${PREFLIGHTS_DIR}"; '
+            'PREFLIGHT_SYSTEM="${PREFLIGHTS_DIR}/pixelarch_yay.sh"; '
+            f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: starting')}; "
+            '/bin/bash "${PREFLIGHT_SYSTEM}"; '
+            f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: done')}; ",
+            ["-v", f"{host_preflights_dir}:{container_dir}:ro"],
+        )
+
     def _build_desktop_preflight_clause(self) -> str:
         """Build desktop preflight clause based on cached vs runtime setup."""
-        using_cached_image = self._runtime_env.runtime_image != self._config.image
+        using_cached_image = bool(self._runtime_env.desktop_cached)
         if using_cached_image:
             self._on_log(
                 format_log(
@@ -358,6 +402,7 @@ class ContainerExecutor:
             k = str(key).strip()
             if k:
                 env_args.extend(["-e", f"{k}={value}"])
+        env_args.extend(["-e", "MIDORI_AI_AGENTS_RUNNER_INTERACTIVE=false"])
 
         # Forward GitHub tokens if needed
         needs_token = (
@@ -508,8 +553,9 @@ class ContainerExecutor:
         self, desktop_state: dict[str, Any], docker_env: dict[str, str] | None
     ) -> None:
         """Setup desktop port mapping and noVNC URL."""
+        assert self._container_id is not None
         try:
-            mapping = _run_docker(
+            mapping = run_docker(
                 ["port", self._container_id, "6080/tcp"], timeout_s=10.0, env=docker_env
             )
             first = (
@@ -533,8 +579,9 @@ class ContainerExecutor:
 
     def _report_state(self, desktop_state: dict[str, Any]) -> None:
         """Report current container state."""
+        assert self._container_id is not None
         try:
-            state = _inspect_state(self._container_id)
+            state = inspect_state(self._container_id)
             if desktop_state:
                 state = dict(state)
                 state.update(desktop_state)
@@ -544,6 +591,7 @@ class ContainerExecutor:
 
     def _monitor_container(self, desktop_state: dict[str, Any]) -> int:
         """Monitor container execution and stream logs. Returns exit code."""
+        assert self._container_id is not None
         logs_proc = subprocess.Popen(
             ["docker", "logs", "-f", self._container_id],
             stdout=subprocess.PIPE,
@@ -563,7 +611,7 @@ class ContainerExecutor:
                 if now - last_poll >= 0.75:
                     last_poll = now
                     try:
-                        state = _inspect_state(self._container_id)
+                        state = inspect_state(self._container_id)
                         if state:
                             if desktop_state:
                                 state = dict(state)
@@ -609,7 +657,7 @@ class ContainerExecutor:
 
         # Get final state and exit code
         try:
-            final_state = _inspect_state(self._container_id)
+            final_state = inspect_state(self._container_id)
             if desktop_state and final_state:
                 final_state = dict(final_state)
                 final_state.update(desktop_state)
@@ -620,7 +668,8 @@ class ContainerExecutor:
 
     def _cleanup_container(self) -> None:
         """Cleanup container if auto-remove is enabled."""
+        assert self._container_id is not None
         try:
-            _run_docker(["rm", "-f", self._container_id], timeout_s=30.0)
+            run_docker(["rm", "-f", self._container_id], timeout_s=30.0)
         except Exception:
             pass

@@ -3,6 +3,7 @@ from .animated_button import AnimatedPushButton, AnimatedToolButton
 from .animated_checkbox import AnimatedCheckBox
 from .arc_spinner import ArcSpinner
 from .artifact_highlighter import ArtifactSyntaxHighlighter, detect_language
+from .edge_fade_scroll_area import EdgeFadeScrollArea
 from .glass_card import GlassCard
 from .loading_bar import BouncingLoadingBar
 from .log_highlighter import LogHighlighter
@@ -21,6 +22,7 @@ __all__ = [
     "ArcSpinner",
     "ArtifactSyntaxHighlighter",
     "BouncingLoadingBar",
+    "EdgeFadeScrollArea",
     "GlassCard",
     "LogHighlighter",
     "SmoothScrollArea",

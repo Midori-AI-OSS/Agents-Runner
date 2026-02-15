@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
+from PySide6.QtCore import QEasingCurve
+from PySide6.QtCore import QParallelAnimationGroup
+from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QSize
 from PySide6.QtCore import Signal
@@ -16,11 +19,13 @@ from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QMenu
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
+from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
@@ -28,11 +33,10 @@ from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.icons import mic_icon
-from agents_runner.ui.graphics import _EnvironmentTintOverlay
+from agents_runner.ui.graphics import EnvironmentTintOverlay
 from agents_runner.ui.lucide_icons import lucide_icon
-from agents_runner.ui.utils import _apply_environment_combo_tint
-from agents_runner.ui.utils import _stain_color
-from agents_runner.ui.widgets import GlassCard
+from agents_runner.ui.utils import apply_environment_combo_tint
+from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import SpellTextEdit
 from agents_runner.ui.widgets import StainedGlassButton
 from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
@@ -53,35 +57,37 @@ class NewTaskPage(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._env_stains: dict[str, str] = {}
+        self._known_environment_ids: set[str] = set()
+        self._active_env_id = ""
         self._env_workspace_types: dict[
             str, str
         ] = {}  # Track workspace types for environments
         self._env_template_injection: dict[str, bool] = {}
         self._env_desktop_enabled: dict[str, bool] = {}
+        self._repo_controls_visible = False
+        self._base_branch_host_active = False
         self._host_codex_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
         self._spellcheck_enabled = True  # Default to enabled
+        self._terminal_id = ""
+        self._terminal_options: dict[str, str] = {}
+        self._terminal_available = False
         self._stt_mode = "offline"
         self._mic_recording: MicRecording | None = None
         self._stt_thread: QThread | None = None
         self._stt_worker: SttWorker | None = None
-        self._current_interactive_slot: Callable | None = None
+        self._current_interactive_slot: Callable[..., Any] | None = None
+        self._base_branch_visibility_animation: QParallelAnimationGroup | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(14)
+        layout.setSpacing(0)
 
-        self._environment = QComboBox()
-        self._environment.setFixedWidth(240)
-        self._environment.currentIndexChanged.connect(self._on_environment_changed)
-
-        header = GlassCard()
-        header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(18, 16, 18, 16)
-        header_layout.setSpacing(6)
-
-        # Base branch dropdown (will be added to title bar later)
+        self._base_branch_controls = QWidget(self)
+        base_branch_layout = QHBoxLayout(self._base_branch_controls)
+        base_branch_layout.setContentsMargins(0, 0, 0, 0)
+        base_branch_layout.setSpacing(6)
         self._base_branch_label = QLabel("Base branch")
         self._base_branch = QComboBox()
         self._base_branch.setFixedWidth(240)
@@ -89,28 +95,14 @@ class NewTaskPage(QWidget):
             "Base branch for the per-task branch (only shown for repo environments)."
         )
         self.set_repo_branches([])
-        self._base_branch.setVisible(False)  # Initially hidden
+        self._base_branch_controls.setVisible(False)
+        base_branch_layout.addWidget(self._base_branch_label)
+        base_branch_layout.addWidget(self._base_branch)
+        base_branch_opacity = QGraphicsOpacityEffect(self._base_branch_controls)
+        base_branch_opacity.setOpacity(0.0)
+        self._base_branch_controls.setGraphicsEffect(base_branch_opacity)
 
-        # Separator label for title bar
-        self._title_separator = QLabel("::")
-        self._title_separator.setStyleSheet("color: rgba(237, 239, 245, 160);")
-        self._title_separator.setVisible(False)  # Initially hidden
-
-        top_row = QHBoxLayout()
-        top_row.setSpacing(10)
-        title = QLabel("New task")
-        title.setStyleSheet("font-size: 18px; font-weight: 750;")
-
-        top_row.addWidget(title)
-        top_row.addStretch(1)
-        top_row.addWidget(self._environment)
-        top_row.addWidget(self._title_separator)
-        top_row.addWidget(self._base_branch)
-
-        header_layout.addLayout(top_row)
-        layout.addWidget(header)
-
-        card = GlassCard()
+        card = QWidget()
         card_layout = QVBoxLayout(card)
         card_layout.setContentsMargins(18, 16, 18, 16)
         card_layout.setSpacing(10)
@@ -180,13 +172,9 @@ class NewTaskPage(QWidget):
         )
         interactive_hint.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
-        self._terminal = QComboBox()
-        self._refresh_terminals()
-
-        refresh_terminals = QToolButton()
-        refresh_terminals.setText("Refresh")
-        refresh_terminals.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        refresh_terminals.clicked.connect(self._refresh_terminals)
+        self._terminal_display = QLabel("No terminals detected")
+        self._terminal_display.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._terminal_display.setStyleSheet("color: rgba(237, 239, 245, 200);")
 
         self._command = QLineEdit("--sandbox danger-full-access")
         self._command.setPlaceholderText(
@@ -199,17 +187,17 @@ class NewTaskPage(QWidget):
         interactive_grid.setHorizontalSpacing(10)
         interactive_grid.setVerticalSpacing(10)
         interactive_grid.setColumnStretch(1, 1)
+        interactive_grid.setColumnStretch(3, 1)
         interactive_grid.addWidget(QLabel("Terminal"), 0, 0)
-        interactive_grid.addWidget(self._terminal, 0, 1)
-        interactive_grid.addWidget(refresh_terminals, 0, 2)
+        interactive_grid.addWidget(self._terminal_display, 0, 1)
 
         # Workspace display for mounted folder environments (shown on terminal line)
         self._terminal_workspace_label = QLabel("Workspace")
         self._terminal_workspace = QLabel("—")
         self._terminal_workspace.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._terminal_workspace.setStyleSheet("color: rgba(237, 239, 245, 200);")
-        interactive_grid.addWidget(self._terminal_workspace_label, 0, 3)
-        interactive_grid.addWidget(self._terminal_workspace, 0, 4)
+        interactive_grid.addWidget(self._terminal_workspace_label, 0, 2)
+        interactive_grid.addWidget(self._terminal_workspace, 0, 3)
         # Initially hidden, shown for mounted folder environments
         self._terminal_workspace_label.setVisible(False)
         self._terminal_workspace.setVisible(False)
@@ -267,10 +255,12 @@ class NewTaskPage(QWidget):
 
         layout.addWidget(card, 1)
 
-        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.raise_()
+        self._refresh_terminal_selection("")
+        self._update_run_buttons()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
@@ -308,37 +298,58 @@ class NewTaskPage(QWidget):
         return reply == QMessageBox.Yes
 
     def _update_run_buttons(self) -> None:
-        has_terminal = bool(str(self._terminal.currentData() or "").strip())
+        has_terminal = bool(self._terminal_available and self._terminal_id)
         can_launch = bool(self._workspace_ready and has_terminal)
         self._run_agent.setEnabled(self._workspace_ready)
         self._run_interactive.setEnabled(can_launch)
         self._get_agent_help.setEnabled(can_launch)
 
-    def _refresh_terminals(self) -> None:
-        current = str(self._terminal.currentData() or "")
+    def _refresh_terminal_selection(self, terminal_id: str) -> None:
         options = detect_terminal_options()
-        self._terminal.blockSignals(True)
-        try:
-            self._terminal.clear()
-            if not options:
-                self._terminal.addItem("No terminals detected", "")
-                self._terminal.setCurrentIndex(0)
-            else:
-                selected = False
-                for opt in options:
-                    self._terminal.addItem(opt.label, opt.terminal_id)
-                desired = current
-                if desired:
-                    idx = self._terminal.findData(desired)
-                    if idx >= 0:
-                        self._terminal.setCurrentIndex(idx)
-                        selected = True
-                if not selected and self._terminal.count() > 0:
-                    self._terminal.setCurrentIndex(0)
-        finally:
-            self._terminal.blockSignals(False)
+        self._terminal_options = {opt.terminal_id: opt.label for opt in options}
+
+        selected_id = str(terminal_id or "").strip()
+        if selected_id and selected_id in self._terminal_options:
+            self._terminal_id = selected_id
+        elif self._terminal_id and self._terminal_id in self._terminal_options:
+            pass
+        elif options:
+            self._terminal_id = str(options[0].terminal_id or "").strip()
+        else:
+            self._terminal_id = ""
+
+        self._terminal_available = bool(
+            self._terminal_id and self._terminal_id in self._terminal_options
+        )
+
+        if self._terminal_available:
+            label = str(
+                self._terminal_options.get(self._terminal_id, self._terminal_id) or ""
+            )
+            self._terminal_display.setText(label)
+            self._terminal_display.setToolTip(label)
+        elif self._terminal_id:
+            unavailable = f"{self._terminal_id} (not detected)"
+            self._terminal_display.setText(unavailable)
+            self._terminal_display.setToolTip(unavailable)
+        else:
+            self._terminal_display.setText("No terminals detected")
+            self._terminal_display.setToolTip("No terminals detected")
+
         if hasattr(self, "_run_interactive"):
             self._update_run_buttons()
+
+    def _resolve_terminal_for_launch(self) -> str:
+        self._refresh_terminal_selection(self._terminal_id)
+        terminal_id = str(self._terminal_id or "").strip()
+        if terminal_id and terminal_id in self._terminal_options:
+            return terminal_id
+        QMessageBox.warning(
+            self,
+            "No terminals found",
+            "Could not detect an installed terminal emulator to launch.",
+        )
+        return ""
 
     def _on_run(self) -> None:
         prompt = (self._prompt.toPlainText() or "").strip()
@@ -358,7 +369,7 @@ class NewTaskPage(QWidget):
 
         host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
 
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         base_branch = str(self._base_branch.currentData() or "")
 
         # Confirm auto base branch for cloned repo environments
@@ -386,13 +397,8 @@ class NewTaskPage(QWidget):
             )
             return
 
-        terminal_id = str(self._terminal.currentData() or "").strip()
+        terminal_id = self._resolve_terminal_for_launch()
         if not terminal_id:
-            QMessageBox.warning(
-                self,
-                "No terminals found",
-                "Could not detect an installed terminal emulator to launch.",
-            )
             return
 
         helpme_path = (
@@ -409,7 +415,7 @@ class NewTaskPage(QWidget):
             return
 
         host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         base_branch = str(self._base_branch.currentData() or "")
 
         # Confirm auto base branch for cloned repo environments
@@ -432,7 +438,7 @@ class NewTaskPage(QWidget):
             helpme_script,
         )
 
-    def _reconnect_interactive_button(self, new_slot) -> None:
+    def _reconnect_interactive_button(self, new_slot: object) -> None:
         """Safely reconnect the interactive button click handler."""
         if (
             hasattr(self, "_current_interactive_slot")
@@ -446,7 +452,7 @@ class NewTaskPage(QWidget):
         self._current_interactive_slot = new_slot
 
     def _sync_interactive_options(self) -> None:
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         desktop_enabled = self._env_desktop_enabled.get(env_id, False)
 
         if env_id and desktop_enabled:
@@ -475,16 +481,11 @@ class NewTaskPage(QWidget):
 
         host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
 
-        terminal_id = str(self._terminal.currentData() or "").strip()
+        terminal_id = self._resolve_terminal_for_launch()
         if not terminal_id:
-            QMessageBox.warning(
-                self,
-                "No terminals found",
-                "Could not detect an installed terminal emulator to launch.",
-            )
             return
 
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         base_branch = str(self._base_branch.currentData() or "")
 
         # Confirm auto base branch for cloned repo environments
@@ -524,18 +525,10 @@ class NewTaskPage(QWidget):
             return
         self._emit_interactive_launch(extra_preflight_script=desktop_script)
 
-    def _on_environment_changed(self, index: int) -> None:
-        self._apply_environment_tints()
-        self._sync_interactive_options()
-        self._update_workspace_visibility()
-        self._sync_template_prompt_indicator()
-        self.environment_changed.emit(str(self._environment.currentData() or ""))
-
     def _apply_environment_tints(self) -> None:
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         stain = (self._env_stains.get(env_id) or "").strip().lower() if env_id else ""
         if not stain:
-            self._environment.setStyleSheet("")
             self._base_branch.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
             self._get_agent_help.set_tint_color(None)
@@ -543,9 +536,8 @@ class NewTaskPage(QWidget):
             self._run_agent.set_tint_color(None)
             return
 
-        _apply_environment_combo_tint(self._environment, stain)
-        _apply_environment_combo_tint(self._base_branch, stain)
-        tint = _stain_color(stain)
+        apply_environment_combo_tint(self._base_branch, stain)
+        tint = stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
         self._get_agent_help.set_tint_color(tint)
         self._run_interactive.set_tint_color(tint)
@@ -588,13 +580,13 @@ class NewTaskPage(QWidget):
         self._sync_interactive_options()
 
     def _sync_template_prompt_indicator(self) -> None:
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         should_show = bool(self._env_template_injection.get(env_id, False))
         self._template_prompt_indicator.setVisible(should_show)
 
     def _update_workspace_visibility(self) -> None:
         """Update workspace line visibility based on workspace type."""
-        env_id = str(self._environment.currentData() or "")
+        env_id = self._active_env_id
         workspace_type = self._env_workspace_types.get(env_id, WORKSPACE_NONE)
 
         # Cloned environments: hide workspace line completely
@@ -620,26 +612,37 @@ class NewTaskPage(QWidget):
             self._terminal_workspace.setVisible(False)
 
     def set_environments(self, envs: list[tuple[str, str]], active_id: str) -> None:
-        current = str(self._environment.currentData() or "")
-        self._environment.blockSignals(True)
-        try:
-            self._environment.clear()
-            for env_id, name in envs:
-                self._environment.addItem(name, env_id)
-            desired = active_id or current
-            idx = self._environment.findData(desired)
-            if idx >= 0:
-                self._environment.setCurrentIndex(idx)
-        finally:
-            self._environment.blockSignals(False)
-        self._apply_environment_tints()
-        self._sync_interactive_options()
+        ordered_ids: list[str] = []
+        for env_id, _name in envs:
+            parsed_env_id = str(env_id or "").strip()
+            if parsed_env_id:
+                ordered_ids.append(parsed_env_id)
+
+        self._known_environment_ids = set(ordered_ids)
+        desired = str(active_id or "").strip() or self._active_env_id
+        if desired not in self._known_environment_ids and ordered_ids:
+            desired = ordered_ids[0]
+        if desired not in self._known_environment_ids:
+            desired = ""
+
+        self.set_environment_id(desired)
 
     def set_environment_id(self, env_id: str) -> None:
-        idx = self._environment.findData(env_id)
-        if idx >= 0:
-            self._environment.setCurrentIndex(idx)
+        desired = str(env_id or "").strip()
+        if (
+            desired
+            and self._known_environment_ids
+            and desired not in self._known_environment_ids
+        ):
+            desired = ""
+        previous = self._active_env_id
+        self._active_env_id = desired
         self._apply_environment_tints()
+        self._sync_interactive_options()
+        self._update_workspace_visibility()
+        self._sync_template_prompt_indicator()
+        if previous != self._active_env_id:
+            self.environment_changed.emit(self._active_env_id)
 
     def set_defaults(self, host_codex: str) -> None:
         if host_codex:
@@ -837,9 +840,120 @@ class NewTaskPage(QWidget):
         )
 
     def set_repo_controls_visible(self, visible: bool) -> None:
-        visible = bool(visible)
-        self._title_separator.setVisible(visible)
-        self._base_branch.setVisible(visible)
+        desired = bool(visible)
+        changed = desired != self._repo_controls_visible
+        self._repo_controls_visible = desired
+        self._sync_base_branch_controls_visibility(
+            animate_transition=bool(changed and self._base_branch_host_active)
+        )
+
+    def set_base_branch_host_active(self, active: bool) -> None:
+        self._base_branch_host_active = bool(active)
+        self._sync_base_branch_controls_visibility(animate_transition=False)
+
+    def base_branch_controls_widget(self) -> QWidget:
+        return self._base_branch_controls
+
+    def _base_branch_opacity_effect(self) -> QGraphicsOpacityEffect:
+        effect = self._base_branch_controls.graphicsEffect()
+        if isinstance(effect, QGraphicsOpacityEffect):
+            return effect
+        effect = QGraphicsOpacityEffect(self._base_branch_controls)
+        effect.setOpacity(1.0 if self._base_branch_controls.isVisible() else 0.0)
+        self._base_branch_controls.setGraphicsEffect(effect)
+        return effect
+
+    def _set_base_branch_visibility_immediate(self, *, visible: bool) -> None:
+        if self._base_branch_visibility_animation is not None:
+            self._base_branch_visibility_animation.stop()
+            self._base_branch_visibility_animation = None
+        effect = self._base_branch_opacity_effect()
+        if visible:
+            target_width = max(1, int(self._base_branch_controls.sizeHint().width()))
+            self._base_branch_controls.setMaximumWidth(target_width)
+            self._base_branch_controls.setVisible(True)
+            effect.setOpacity(1.0)
+            return
+        self._base_branch_controls.setMaximumWidth(0)
+        self._base_branch_controls.setVisible(False)
+        effect.setOpacity(0.0)
+
+    def _animate_base_branch_visibility(self, *, show: bool) -> None:
+        if show and self._base_branch_controls.isVisible():
+            return
+        if not show and not self._base_branch_controls.isVisible():
+            return
+
+        if self._base_branch_visibility_animation is not None:
+            self._base_branch_visibility_animation.stop()
+            self._base_branch_visibility_animation = None
+
+        effect = self._base_branch_opacity_effect()
+        target_width = max(1, int(self._base_branch_controls.sizeHint().width()))
+        if show:
+            start_width = 0
+            end_width = target_width
+            start_opacity = 0.0
+            end_opacity = 1.0
+            self._base_branch_controls.setVisible(True)
+            self._base_branch_controls.setMaximumWidth(start_width)
+        else:
+            start_width = int(
+                self._base_branch_controls.maximumWidth() or target_width or 0
+            )
+            if start_width <= 0:
+                start_width = target_width
+            end_width = 0
+            start_opacity = float(effect.opacity())
+            if start_opacity < 0.01:
+                start_opacity = 1.0
+            end_opacity = 0.0
+            self._base_branch_controls.setMaximumWidth(start_width)
+
+        effect.setOpacity(start_opacity)
+
+        width_animation = QPropertyAnimation(
+            self._base_branch_controls, b"maximumWidth", self
+        )
+        width_animation.setDuration(220)
+        width_animation.setStartValue(start_width)
+        width_animation.setEndValue(end_width)
+        width_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        opacity_animation = QPropertyAnimation(effect, b"opacity", self)
+        opacity_animation.setDuration(220)
+        opacity_animation.setStartValue(start_opacity)
+        opacity_animation.setEndValue(end_opacity)
+        opacity_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        animation = QParallelAnimationGroup(self)
+        animation.addAnimation(width_animation)
+        animation.addAnimation(opacity_animation)
+
+        def _on_finished() -> None:
+            self._base_branch_visibility_animation = None
+            if show:
+                effect.setOpacity(1.0)
+                self._base_branch_controls.setMaximumWidth(target_width)
+                return
+            self._base_branch_controls.setMaximumWidth(0)
+            self._base_branch_controls.setVisible(False)
+            effect.setOpacity(0.0)
+
+        animation.finished.connect(_on_finished)
+        animation.start()
+        self._base_branch_visibility_animation = animation
+
+    def _sync_base_branch_controls_visibility(
+        self, *, animate_transition: bool
+    ) -> None:
+        should_show = bool(
+            self._repo_controls_visible and self._base_branch_host_active
+        )
+        if animate_transition:
+            self._animate_base_branch_visibility(show=should_show)
+            return
+        self._set_base_branch_visibility_immediate(visible=should_show)
 
     def set_repo_branches(
         self, branches: list[str], selected: str | None = None
@@ -866,71 +980,74 @@ class NewTaskPage(QWidget):
     def set_interactive_defaults(self, terminal_id: str, command: str) -> None:
         if command:
             self._command.setText(command)
-        terminal_id = str(terminal_id or "")
-        if terminal_id:
-            idx = self._terminal.findData(terminal_id)
-            if idx >= 0:
-                self._terminal.setCurrentIndex(idx)
+        self._refresh_terminal_selection(str(terminal_id or ""))
+
+    @staticmethod
+    def _friendly_agent_label(label: str) -> str:
+        raw = str(label or "").strip()
+        if not raw:
+            return ""
+
+        lower = raw.lower()
+        if lower.startswith("fallback:"):
+            raw = raw[len("fallback:") :].strip()
+
+        cli = raw
+        suffix = ""
+        split_idx = raw.find(" (")
+        if split_idx > 0 and raw.endswith(")"):
+            cli = raw[:split_idx].strip()
+            suffix = raw[split_idx:]
+
+        friendly = str(get_agent_display_name(cli) or cli).strip()
+        return f"{friendly}{suffix}"
+
+    def _format_agent_info_text(self, agent: str, next_agent: str = "") -> str:
+        current = self._friendly_agent_label(agent)
+        upcoming = self._friendly_agent_label(next_agent)
+        if upcoming and current and upcoming == current:
+            upcoming = ""
+        if current and upcoming:
+            return f"{current} | {upcoming}"
+        if current:
+            return current
+        return upcoming
 
     def set_agent_info(self, agent: str, next_agent: str = "") -> None:
-        """Set tooltip info showing current and next agent."""
-        agent = str(agent or "").strip()
-        next_agent = str(next_agent or "").strip()
+        """Update inline and tooltip labels using the selected and next agent."""
+        display_text = self._format_agent_info_text(agent, next_agent)
 
-        if next_agent and next_agent != agent:
-            if str(next_agent).startswith("Fallback:"):
-                tooltip = f"Using: {agent} | {next_agent}"
-            else:
-                tooltip = f"Using: {agent} | Next: {next_agent}"
-        elif agent:
-            tooltip = f"Using: {agent}"
+        if display_text:
+            self._agent_chain.setText(display_text)
+            self._agent_chain.setVisible(True)
+            self._prompt_separator.setVisible(True)
         else:
-            tooltip = ""
-
-        self._run_interactive.setToolTip(tooltip)
-        self._run_agent.setToolTip(tooltip)
-
-    def set_agent_chain(self, agents: list[str], selection_mode: str = "") -> None:
-        """Set the agent chain display for the selected environment.
-
-        Args:
-            agents: List of agent names in priority order
-            selection_mode: Agent selection mode ("fallback", "round-robin", "least-used", or empty)
-        """
-        # Hide chain display when empty or single agent
-        if not agents or len(agents) <= 1:
+            self._agent_chain.setText("")
             self._agent_chain.setVisible(False)
             self._prompt_separator.setVisible(False)
-            return
 
-        # Show chain display for multiple agents
-        self._agent_chain.setVisible(True)
-        self._prompt_separator.setVisible(True)
-
-        # If more than 3 items, show first 2 + "..."
-        if len(agents) > 3:
-            display_agents = agents[:2]
-            chain_text = " → ".join(a.title() for a in display_agents) + " → ..."
-        else:
-            chain_text = " → ".join(a.title() for a in agents)
-
-        self._agent_chain.setText(chain_text)
-
-        # Build tooltip based on selection mode
-        is_fallback_mode = str(selection_mode or "").strip() == "fallback"
-        tooltip = "Agents will be used in this order:\n"
-        for i, agent in enumerate(agents, 1):
-            if i == 1:
-                tooltip += f"{i}. {agent.title()} (Primary)\n"
-            else:
-                if is_fallback_mode:
-                    tooltip += f"{i}. {agent.title()} (Fallback {i - 1})\n"
-                else:
-                    tooltip += f"{i}. {agent.title()} (Priority {i})\n"
-        self._agent_chain.setToolTip(tooltip.strip())
+        self._agent_chain.setToolTip(display_text)
+        self._run_interactive.setToolTip(display_text)
+        self._run_agent.setToolTip(display_text)
 
     def reset_for_new_run(self) -> None:
         self._prompt.setPlainText("")
+        self._prompt.setFocus(Qt.OtherFocusReason)
+
+    def append_prompt_text(self, text: str) -> None:
+        addition = str(text or "").strip()
+        if not addition:
+            return
+
+        current = str(self._prompt.toPlainText() or "").rstrip()
+        if current:
+            combined = f"{current}\n\n{addition}"
+        else:
+            combined = addition
+        self._prompt.setPlainText(combined)
+        cursor = self._prompt.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        self._prompt.setTextCursor(cursor)
         self._prompt.setFocus(Qt.OtherFocusReason)
 
     def focus_prompt(self) -> None:

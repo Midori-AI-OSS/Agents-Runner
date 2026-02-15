@@ -2,7 +2,7 @@ import os
 import subprocess
 
 
-def _is_git_repo_root(path: str) -> bool:
+def is_git_repo_root(path: str) -> bool:
     path = os.path.abspath(os.path.expanduser(str(path or "").strip() or "."))
     if not os.path.isdir(path):
         return False

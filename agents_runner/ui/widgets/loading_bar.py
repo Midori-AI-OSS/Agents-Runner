@@ -2,7 +2,7 @@ import math
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
-from PySide6.QtGui import QColor, QPaintEvent
+from PySide6.QtGui import QColor, QLinearGradient, QPaintEvent
 from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import QWidget
 from typing import NamedTuple
@@ -69,7 +69,7 @@ class BouncingLoadingBar(QWidget):
 
     def set_mode(self, mode: str) -> None:
         mode = str(mode or "").strip().lower()
-        if mode not in {"bounce", "pulse_full", "dotted"}:
+        if mode not in {"bounce", "pulse_full", "dotted", "shimmer_sweep"}:
             mode = "bounce"
         if self._mode == mode:
             return
@@ -81,6 +81,9 @@ class BouncingLoadingBar(QWidget):
             self._dotted_time_s = 0.0
             self._dotted_lines = []
             self._dotted_line_count = 0
+        elif mode == "shimmer_sweep":
+            self._timer.setInterval(28)
+            self._phase = 0.0
         else:
             self._timer.setInterval(30)
         self.update()
@@ -103,6 +106,12 @@ class BouncingLoadingBar(QWidget):
             self._dotted_time_s += dt_s
             if self._dotted_time_s >= 3600.0:
                 self._dotted_time_s %= 3600.0
+            self.update()
+            return
+        if self._mode == "shimmer_sweep":
+            dt_s = max(0.001, float(self._timer.interval()) / 1000.0)
+            cycle_s = 1.85
+            self._phase = (self._phase + (dt_s / cycle_s)) % 1.0
             self.update()
             return
 
@@ -178,6 +187,33 @@ class BouncingLoadingBar(QWidget):
                 painter.drawRect(
                     int(x), int(inner.top()), int(line_w), int(inner.height())
                 )
+            return
+
+        if self._mode == "shimmer_sweep":
+            r, g, b = self._color.red(), self._color.green(), self._color.blue()
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(r, g, b, 14))
+            painter.drawRect(inner)
+
+            sweep_w = max(18, int(inner.width() * 0.46))
+            travel_w = inner.width() + sweep_w
+            sweep_x = int(inner.left() - sweep_w + (travel_w * self._phase))
+
+            gradient = QLinearGradient(
+                float(sweep_x),
+                float(inner.top()),
+                float(sweep_x + sweep_w),
+                float(inner.top()),
+            )
+            gradient.setColorAt(0.00, QColor(r, g, b, 0))
+            gradient.setColorAt(0.32, QColor(r, g, b, 20))
+            gradient.setColorAt(0.50, QColor(r, g, b, 42))
+            gradient.setColorAt(0.68, QColor(r, g, b, 20))
+            gradient.setColorAt(1.00, QColor(r, g, b, 0))
+            painter.setBrush(gradient)
+            painter.drawRect(
+                sweep_x, int(inner.top()), int(sweep_w), int(inner.height())
+            )
             return
 
         chunk = QColor(self._color.red(), self._color.green(), self._color.blue(), 215)
