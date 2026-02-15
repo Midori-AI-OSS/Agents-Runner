@@ -102,7 +102,8 @@ class EnvironmentsNavigationMixin:
             self._pane_animation.stop()
             self._pane_animation = None
 
-        self._page_stack.move(self._pane_rest_pos)
+        if self._pane_rest_pos is not None:
+            self._page_stack.move(self._pane_rest_pos)
         self._page_stack.setGraphicsEffect(None)
 
         base_pos = self._page_stack.pos()
