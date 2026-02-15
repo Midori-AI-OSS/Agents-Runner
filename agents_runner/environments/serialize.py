@@ -71,8 +71,9 @@ def _validate_cross_agent_allowlist(
     # Coerce to list[str]
     if not isinstance(raw_allowlist, list):
         return []
-
-    allowlist = [str(item).strip() for item in raw_allowlist if str(item).strip()]
+    
+    raw_list: list[Any] = raw_allowlist
+    allowlist = [str(item).strip() for item in raw_list if str(item).strip()]
 
     # If no agents configured, return empty list
     if not agents:
@@ -368,8 +369,9 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
             agent_config_dirs_raw = selection_dict.get("agent_config_dirs", {})
             if isinstance(agent_config_dirs_raw, dict):
+                agent_config_dirs_dict: dict[str, Any] = agent_config_dirs_raw
                 agent_config_dirs = {
-                    str(k): str(v) for k, v in agent_config_dirs_raw.items()
+                    str(k): str(v) for k, v in agent_config_dirs_dict.items()
                 }
             else:
                 agent_config_dirs = {}
@@ -400,7 +402,8 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
         agent_fallbacks_raw = selection_dict.get("agent_fallbacks", {})
         if isinstance(agent_fallbacks_raw, dict):
-            agent_fallbacks = {str(k): str(v) for k, v in agent_fallbacks_raw.items()}
+            agent_fallbacks_dict: dict[str, Any] = agent_fallbacks_raw
+            agent_fallbacks = {str(k): str(v) for k, v in agent_fallbacks_dict.items()}
         else:
             agent_fallbacks = {}
 
