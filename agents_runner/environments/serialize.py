@@ -363,7 +363,10 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         if not agents:
             enabled_agents_raw = selection_dict.get("enabled_agents", [])
             if isinstance(enabled_agents_raw, list):
-                enabled_agents = [str(a) for a in enabled_agents_raw if str(a).strip()]
+                enabled_agents_list: list[Any] = enabled_agents_raw
+                enabled_agents = [
+                    str(a) for a in enabled_agents_list if str(a).strip()
+                ]
             else:
                 enabled_agents: list[str] = []
 
