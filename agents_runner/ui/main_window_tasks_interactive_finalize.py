@@ -81,6 +81,9 @@ class MainWindowTasksInteractiveFinalizeMixin:
             format_log("host", "interactive", "INFO", f"exited with {task.exit_code}"),
         )
 
+        # Collect staged artifacts and emit UUIDs back through host_artifacts.
+        self._start_artifact_finalization(task)
+
         # Interactive tasks handle PR creation immediately via user dialog, then mark finalization done
         # This is different from agent tasks which queue finalization work for background processing
         if (

@@ -19,6 +19,8 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.agent_cli import available_agents
 from agents_runner.agent_cli import verify_cli_clause
+from agents_runner.artifacts import get_staging_dir
+from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
@@ -332,25 +334,35 @@ def launch_docker_terminal_task(
             port_args.extend(["-p", spec])
 
         # Prepare extra mounts
-        extra_mount_args: list[str] = []
+        all_mounts: list[str] = []
+
+        # Required per-task artifacts mount; must win destination conflicts.
+        artifacts_staging_dir = get_staging_dir(task_id)
+        artifacts_staging_dir.mkdir(parents=True, exist_ok=True)
+        all_mounts.append(f"{artifacts_staging_dir}:/tmp/agents-artifacts")
 
         # Add host cache mount if enabled in settings
         if main_window._settings_data.get("mount_host_cache", False):
             host_cache = os.path.expanduser("~/.cache")
             container_cache = "/home/midori-ai/.cache"
-            extra_mount_args.extend(["-v", f"{host_cache}:{container_cache}:rw"])
+            all_mounts.append(f"{host_cache}:{container_cache}:rw")
 
         # Add environment-specific mounts
         for mount in (env.extra_mounts or []) if env else []:
             m = str(mount).strip()
             if not m:
                 continue
-            extra_mount_args.extend(["-v", m])
+            all_mounts.append(m)
         for mount in config_extra_mounts:
             m = str(mount).strip()
             if not m:
                 continue
-            extra_mount_args.extend(["-v", m])
+            all_mounts.append(m)
+
+        deduplicated_mounts = deduplicate_mounts(all_mounts)
+        extra_mount_args: list[str] = []
+        for mount in deduplicated_mounts:
+            extra_mount_args.extend(["-v", mount])
 
         # Build container script with preflight and command
         target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
