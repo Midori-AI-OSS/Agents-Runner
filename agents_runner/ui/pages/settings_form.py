@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtGui import QIntValidator

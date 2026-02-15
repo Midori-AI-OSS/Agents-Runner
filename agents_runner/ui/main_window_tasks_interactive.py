@@ -14,6 +14,7 @@ import threading
 import time
 from datetime import datetime
 from datetime import timezone
+from typing import Any
 from uuid import uuid4
 
 from PySide6.QtCore import Qt

@@ -14,7 +14,7 @@ import subprocess
 import tempfile
 
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable
 
 from agents_runner.setup.commands import get_setup_command
 from agents_runner.terminal_apps import (

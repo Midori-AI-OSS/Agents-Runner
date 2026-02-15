@@ -4,6 +4,7 @@ import tomli
 import tomli_w
 
 from dataclasses import dataclass
+from typing import Any
 
 from agents_runner.persistence import strip_none_for_toml
 from agents_runner.prompts import load_prompt
