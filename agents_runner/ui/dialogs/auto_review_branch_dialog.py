@@ -34,6 +34,12 @@ class AutoReviewBranchDialog(ThemedDialog):
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
+        content_card = GlassCard()
+        content_layout = QVBoxLayout(content_card)
+        content_layout.setContentsMargins(14, 12, 14, 12)
+        content_layout.setSpacing(8)
+        layout.addWidget(content_card)
+
         message = QLabel(
             "Saved base branch "
             f"'{previous_branch or '(none)'}' is no longer available for "
@@ -41,26 +47,20 @@ class AutoReviewBranchDialog(ThemedDialog):
         )
         message.setStyleSheet("font-size: 15px; font-weight: 700;")
         message.setWordWrap(True)
-        layout.addWidget(message)
-
-        branch_card = GlassCard()
-        branch_layout = QVBoxLayout(branch_card)
-        branch_layout.setContentsMargins(14, 12, 14, 12)
-        branch_layout.setSpacing(6)
+        content_layout.addWidget(message)
 
         branch_label = QLabel("Base branch")
         branch_label.setStyleSheet("font-weight: 650;")
         self._branch_combo = QComboBox()
         self.set_branches(branches=branches, selected=previous_branch)
-        branch_layout.addWidget(branch_label)
-        branch_layout.addWidget(self._branch_combo)
-        layout.addWidget(branch_card)
+        content_layout.addWidget(branch_label)
+        content_layout.addWidget(self._branch_combo)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         self._ok_button = buttons.button(QDialogButtonBox.Ok)
-        layout.addWidget(buttons)
+        content_layout.addWidget(buttons)
 
         self._update_countdown_text()
         self._timeout_timer.start(1000)
