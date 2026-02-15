@@ -209,11 +209,13 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         payload.get("cache_settings_preflight_enabled", False)
     )
 
-    env_vars = payload.get("env_vars", {})
-    env_vars: dict[str, Any] = env_vars if isinstance(env_vars, dict) else {}
+    env_vars_raw = payload.get("env_vars", {})
+    env_vars: dict[str, Any] = env_vars_raw if isinstance(env_vars_raw, dict) else {}
 
-    extra_mounts = payload.get("extra_mounts", [])
-    extra_mounts: list[Any] = extra_mounts if isinstance(extra_mounts, list) else []
+    extra_mounts_raw = payload.get("extra_mounts", [])
+    extra_mounts: list[Any] = (
+        extra_mounts_raw if isinstance(extra_mounts_raw, list) else []
+    )
     env_vars_advanced_mode = bool(payload.get("env_vars_advanced_mode", False))
     mounts_advanced_mode = bool(payload.get("mounts_advanced_mode", False))
     env_vars_advanced_acknowledged = bool(
@@ -223,8 +225,8 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         payload.get("mounts_advanced_acknowledged", False)
     ) or bool(mounts_advanced_mode)
 
-    ports = payload.get("ports", [])
-    ports: list[Any] = ports if isinstance(ports, list) else []
+    ports_raw = payload.get("ports", [])
+    ports: list[Any] = ports_raw if isinstance(ports_raw, list) else []
     ports_unlocked = bool(payload.get("ports_unlocked", False))
     ports_advanced_acknowledged = bool(
         payload.get("ports_advanced_acknowledged", False)
