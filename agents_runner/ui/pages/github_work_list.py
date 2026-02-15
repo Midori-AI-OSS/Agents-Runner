@@ -256,7 +256,7 @@ class GitHubWorkListPage(QWidget):
         self,
         *,
         item_type: str,
-        coordinator,
+        coordinator: object,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)

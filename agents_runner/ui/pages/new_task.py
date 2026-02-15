@@ -260,7 +260,7 @@ class NewTaskPage(QWidget):
         self._refresh_terminal_selection("")
         self._update_run_buttons()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
@@ -438,7 +438,7 @@ class NewTaskPage(QWidget):
             helpme_script,
         )
 
-    def _reconnect_interactive_button(self, new_slot) -> None:
+    def _reconnect_interactive_button(self, new_slot: object) -> None:
         """Safely reconnect the interactive button click handler."""
         if (
             hasattr(self, "_current_interactive_slot")

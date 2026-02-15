@@ -297,7 +297,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._emit_saved()
         return True
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
 

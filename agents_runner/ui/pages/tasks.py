@@ -608,13 +608,13 @@ class TasksPage(QWidget):
     def is_new_task_tab_active(self) -> bool:
         return self._active_pane_key == "new_task"
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
-    def showEvent(self, event) -> None:
+    def showEvent(self, event: object) -> None:
         super().showEvent(event)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
