@@ -132,7 +132,7 @@ def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
     Returns:
         List of serialized prompt dictionaries
     """
-    prompts_data = []
+    prompts_data: list[dict[str, Any]] = []
     for p in prompts:
         prompt_path = p.prompt_path or ""
         text = p.text or ""
@@ -287,7 +287,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     midoriai_template_detected_path = midoriai_template_detected_path or None
 
     prompts_data = payload.get("prompts", [])
-    prompts = []
+    prompts: list[Prompt] = []
     if isinstance(prompts_data, list):
         for p in prompts_data:
             if isinstance(p, dict):
@@ -359,7 +359,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
             if isinstance(enabled_agents, list):
                 enabled_agents = [str(a) for a in enabled_agents if str(a).strip()]
             else:
-                enabled_agents = []
+                enabled_agents: list[str] = []
 
             agent_config_dirs = agent_selection_data.get("agent_config_dirs", {})
             if isinstance(agent_config_dirs, dict):
