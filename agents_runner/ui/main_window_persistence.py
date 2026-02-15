@@ -41,11 +41,11 @@ class MainWindowPersistenceMixin:
         if not container_id:
             return False
         try:
-            from agents_runner.docker.process import _inspect_state
+            from agents_runner.docker.process import inspect_state
         except Exception:
             return False
         try:
-            state = _inspect_state(container_id)
+            state = inspect_state(container_id)
         except Exception as exc:
             if MainWindowPersistenceMixin._is_missing_container_error(exc):
                 status = (task.status or "").lower()
