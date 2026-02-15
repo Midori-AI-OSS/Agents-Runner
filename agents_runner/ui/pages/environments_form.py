@@ -70,10 +70,16 @@ class EnvironmentsFormMixin:
                 section="Collaboration",
             ),
             _EnvironmentPaneSpec(
-                key="github",
-                title="GitHub",
-                subtitle="GitHub context, polling, and trusted actor controls for this environment.",
-                section="Collaboration",
+                key="github_config",
+                title="Config",
+                subtitle="GitHub context, polling, and trust mode controls for this environment.",
+                section="GitHub",
+            ),
+            _EnvironmentPaneSpec(
+                key="github_trusted_users",
+                title="Trusted Users",
+                subtitle="Environment-specific trusted usernames for @agentsnova checks.",
+                section="GitHub",
             ),
             _EnvironmentPaneSpec(
                 key="env_vars",
@@ -309,8 +315,10 @@ class EnvironmentsFormMixin:
         grid.addWidget(self._color, 1, 1, 1, 2)
         grid.addWidget(QLabel("Max agents running"), 3, 0)
         grid.addWidget(max_agents_row, 3, 1, 1, 2)
-        grid.addWidget(QLabel("Headless desktop"), 4, 0)
-        grid.addWidget(headless_desktop_row, 4, 1, 1, 2)
+        self._headless_desktop_label = QLabel("Headless desktop")
+        self._headless_desktop_row = headless_desktop_row
+        grid.addWidget(self._headless_desktop_label, 4, 0)
+        grid.addWidget(self._headless_desktop_row, 4, 1, 1, 2)
         grid.addWidget(QLabel("Cross agents"), 5, 0)
         grid.addWidget(cross_agents_row, 5, 1, 1, 2)
 
@@ -326,23 +334,27 @@ class EnvironmentsFormMixin:
         prompts_body.addWidget(self._prompts_tab, 1)
         self._register_page("prompts", prompts_page)
 
-        github_page, github_body = self._create_page(specs_by_key["github"])
-        github_body.addWidget(self._gh_context_enabled)
-        github_body.addWidget(self._github_polling_enabled)
+        github_config_page, github_config_body = self._create_page(
+            specs_by_key["github_config"]
+        )
+        github_config_body.addWidget(self._gh_context_enabled)
+        github_config_body.addWidget(self._github_polling_enabled)
+        github_config_body.addWidget(self._agentsnova_trusted_mode)
+        github_config_body.addStretch(1)
+        self._register_page("github_config", github_config_page)
 
-        trusted_label = QLabel("Trusted GitHub users")
-        trusted_label.setObjectName("SettingsPaneSubtitle")
-        github_body.addWidget(trusted_label)
-        github_body.addWidget(self._agentsnova_trusted_users_env, 1)
+        github_trusted_page, github_trusted_body = self._create_page(
+            specs_by_key["github_trusted_users"]
+        )
+        github_trusted_body.addWidget(self._agentsnova_trusted_users_env, 1)
 
         github_actions = QHBoxLayout()
         github_actions.setSpacing(BUTTON_ROW_SPACING)
         github_actions.addWidget(self._add_trusted_user_env)
         github_actions.addStretch(1)
         github_actions.addWidget(self._setup_github_defaults_env)
-        github_actions.addWidget(self._agentsnova_trusted_mode)
-        github_body.addLayout(github_actions)
-        self._register_page("github", github_page)
+        github_trusted_body.addLayout(github_actions)
+        self._register_page("github_trusted_users", github_trusted_page)
 
         env_vars_page, env_vars_body = self._create_page(specs_by_key["env_vars"])
         env_vars_body.addWidget(self._env_vars_tab, 1)
@@ -419,17 +431,12 @@ class EnvironmentsFormMixin:
         title = QLabel(spec.title)
         title.setObjectName("SettingsPaneTitle")
 
-        subtitle = QLabel(spec.subtitle)
-        subtitle.setObjectName("SettingsPaneSubtitle")
-        subtitle.setWordWrap(True)
-
         body = QWidget(content)
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(GRID_VERTICAL_SPACING)
 
         content_layout.addWidget(title)
-        content_layout.addWidget(subtitle)
         content_layout.addWidget(body)
 
         scroll.setWidget(content)
