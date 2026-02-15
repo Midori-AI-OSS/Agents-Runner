@@ -246,11 +246,18 @@ class EnvironmentsPage(
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
         self._settings_data = settings_data
         self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
+        self._sync_github_polling_override_visibility()
 
     def _effective_desktop_enabled(self) -> bool:
         force = bool(self._settings_data.get("headless_desktop_enabled") or False)
         env_enabled = bool(self._headless_desktop_enabled.isChecked())
         return bool(force or env_enabled)
+
+    def _sync_github_polling_override_visibility(self) -> None:
+        app_wide_polling = bool(
+            self._settings_data.get("github_polling_enabled") or False
+        )
+        self._github_polling_enabled.setVisible(not app_wide_polling)
 
     def _load_selected(self) -> None:
         if self._autosave_timer.isActive():
@@ -261,6 +268,7 @@ class EnvironmentsPage(
         env_id = str(self._env_select.currentData() or "")
         env = self._environments.get(env_id)
         self._current_env_id = env_id if env else None
+        self._sync_github_polling_override_visibility()
 
         self._suppress_autosave = True
         try:
