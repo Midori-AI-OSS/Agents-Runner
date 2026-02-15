@@ -14,7 +14,7 @@ from .git_ops import (
     git_repo_root,
 )
 from .pr_retry import with_retry
-from .process import _expand_dir, _require_ok, _run
+from .process import expand_dir, require_ok, run_gh
 
 _TASK_BRANCH_PREFIXES: tuple[str, ...] = ("midoriaiagents/",)
 _COMMON_BASE_BRANCHES: tuple[str, ...] = ("main", "master", "trunk", "develop")
@@ -46,7 +46,7 @@ def _append_pr_attribution_footer(
     footer_content = load_prompt(
         "pr_attribution_footer",
         agent_used=agent_used,
-        agents_runner_url=_MIDORI_AI_AGENTS_RUNNER_URL,
+        agentsrun_ghner_url=_MIDORI_AI_AGENTS_RUNNER_URL,
         midori_ai_url=_MIDORI_AI_URL,
         marker=_PR_ATTRIBUTION_MARKER,
     )
@@ -71,7 +71,7 @@ def _is_task_branch(branch: str) -> bool:
 
 
 def _pick_auto_base_branch(repo_root: str) -> str:
-    repo_root = _expand_dir(repo_root)
+    repo_root = expand_dir(repo_root)
     default = git_default_base_branch(repo_root)
     if default:
         return default
@@ -88,11 +88,11 @@ def _pick_auto_base_branch(repo_root: str) -> str:
 
 
 def _has_origin_branch(repo_root: str, branch: str) -> bool:
-    repo_root = _expand_dir(repo_root)
+    repo_root = expand_dir(repo_root)
     branch = (branch or "").strip()
     if not branch:
         return False
-    proc = _run(
+    proc = run_gh(
         [
             "git",
             "-C",
@@ -108,14 +108,14 @@ def _has_origin_branch(repo_root: str, branch: str) -> bool:
 
 
 def _update_base_branch_from_origin(repo_root: str, base_branch: str) -> None:
-    repo_root = _expand_dir(repo_root)
+    repo_root = expand_dir(repo_root)
     base_branch = (base_branch or "").strip()
     if not base_branch:
         return
     if not _has_origin_branch(repo_root, base_branch):
         return
-    _require_ok(
-        _run(
+    require_ok(
+        run_gh(
             ["git", "-C", repo_root, "merge", "--ff-only", f"origin/{base_branch}"],
             timeout_s=120.0,
         ),
@@ -129,12 +129,12 @@ def prepare_branch_for_task(
     branch: str,
     base_branch: str | None = None,
 ) -> tuple[str, str]:
-    repo_root = _expand_dir(repo_root)
+    repo_root = expand_dir(repo_root)
 
     # Fetch with retry for transient network issues
     def _fetch_with_retry() -> None:
-        proc = _run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0)
-        _require_ok(proc, args=["git", "fetch"])
+        proc = run_gh(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0)
+        require_ok(proc, args=["git", "fetch"])
 
     with_retry(
         _fetch_with_retry,
@@ -143,12 +143,12 @@ def prepare_branch_for_task(
     )
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
-    checkout_proc = _run(
+    checkout_proc = run_gh(
         ["git", "-C", repo_root, "checkout", "-f", base_branch], timeout_s=20.0
     )
     if checkout_proc.returncode != 0:
-        _require_ok(
-            _run(
+        require_ok(
+            run_gh(
                 [
                     "git",
                     "-C",
@@ -169,8 +169,8 @@ def prepare_branch_for_task(
             "repo has uncommitted changes; commit/stash before running"
         )
 
-    _require_ok(
-        _run(["git", "-C", repo_root, "checkout", "-B", branch], timeout_s=20.0),
+    require_ok(
+        run_gh(["git", "-C", repo_root, "checkout", "-B", branch], timeout_s=20.0),
         args=["git", "checkout", "-B"],
     )
     return base_branch, branch
@@ -244,7 +244,7 @@ def plan_repo_task(
     task_id: str,
     base_branch: str | None = None,
 ) -> RepoPlan | None:
-    workdir = _expand_dir(workdir)
+    workdir = expand_dir(workdir)
     repo_root = git_repo_root(workdir)
     if repo_root is None:
         return None
@@ -268,34 +268,34 @@ def commit_push_and_pr(
     agent_cli: str = "",
     agent_cli_args: str = "",
 ) -> str | None:
-    repo_root = _expand_dir(repo_root)
+    repo_root = expand_dir(repo_root)
     base_branch = str(base_branch or "").strip() or _pick_auto_base_branch(repo_root)
     body = _append_pr_attribution_footer(
         body, agent_cli=agent_cli, agent_cli_args=agent_cli_args
     )
 
     def _porcelain_status() -> str:
-        proc = _run(["git", "-C", repo_root, "status", "--porcelain"], timeout_s=15.0)
-        _require_ok(proc, args=["git", "status"])
+        proc = run_gh(["git", "-C", repo_root, "status", "--porcelain"], timeout_s=15.0)
+        require_ok(proc, args=["git", "status"])
         return str(proc.stdout or "")
 
     def _ensure_local_branch() -> None:
         branch_ref = f"refs/heads/{branch}"
-        exists_proc = _run(
+        exists_proc = run_gh(
             ["git", "-C", repo_root, "show-ref", "--verify", "--quiet", branch_ref],
             timeout_s=8.0,
         )
         if exists_proc.returncode == 0:
             return
-        create_proc = _run(
+        create_proc = run_gh(
             ["git", "-C", repo_root, "branch", branch, base_branch], timeout_s=20.0
         )
         if create_proc.returncode != 0:
-            create_proc = _run(
+            create_proc = run_gh(
                 ["git", "-C", repo_root, "branch", branch, f"origin/{base_branch}"],
                 timeout_s=20.0,
             )
-        _require_ok(create_proc, args=["git", "branch"])
+        require_ok(create_proc, args=["git", "branch"])
 
     def _checkout_branch_for_commit() -> None:
         current = git_current_branch(repo_root)
@@ -304,8 +304,8 @@ def commit_push_and_pr(
 
         _ensure_local_branch()
         if not _porcelain_status().strip():
-            _require_ok(
-                _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
+            require_ok(
+                run_gh(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
                 args=["git", "checkout"],
             )
             return
@@ -314,7 +314,7 @@ def commit_push_and_pr(
         # has no unique commits yet, reset it to the current HEAD so we can
         # switch branches without overwriting local changes.
         if current == base_branch:
-            ahead_proc = _run(
+            ahead_proc = run_gh(
                 [
                     "git",
                     "-C",
@@ -332,8 +332,8 @@ def commit_push_and_pr(
                 except ValueError:
                     ahead = None
             if ahead == 0:
-                _require_ok(
-                    _run(
+                require_ok(
+                    run_gh(
                         ["git", "-C", repo_root, "checkout", "-B", branch, "HEAD"],
                         timeout_s=20.0,
                     ),
@@ -341,7 +341,7 @@ def commit_push_and_pr(
                 )
                 return
 
-        merge_proc = _run(
+        merge_proc = run_gh(
             ["git", "-C", repo_root, "checkout", "--merge", branch], timeout_s=20.0
         )
         if merge_proc.returncode != 0:
@@ -353,8 +353,10 @@ def commit_push_and_pr(
                 "commit/stash your work (or switch back to the base branch) and rerun PR creation.\n"
                 f"{combined}".rstrip()
             )
-        unmerged_proc = _run(["git", "-C", repo_root, "ls-files", "-u"], timeout_s=8.0)
-        _require_ok(unmerged_proc, args=["git", "ls-files", "-u"])
+        unmerged_proc = run_gh(
+            ["git", "-C", repo_root, "ls-files", "-u"], timeout_s=8.0
+        )
+        require_ok(unmerged_proc, args=["git", "ls-files", "-u"])
         if (unmerged_proc.stdout or "").strip():
             raise GhManagementError(
                 "switching branches resulted in merge conflicts; resolve them and rerun PR creation."
@@ -365,21 +367,21 @@ def commit_push_and_pr(
     has_worktree_changes = bool(_porcelain_status().strip())
 
     if has_worktree_changes:
-        _require_ok(
-            _run(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0),
+        require_ok(
+            run_gh(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0),
             args=["git", "add"],
         )
-        commit_proc = _run(
+        commit_proc = run_gh(
             ["git", "-C", repo_root, "commit", "-m", title], timeout_s=60.0
         )
         if commit_proc.returncode != 0:
             combined = (commit_proc.stdout or "") + "\n" + (commit_proc.stderr or "")
             if "nothing to commit" not in combined.lower():
-                _require_ok(commit_proc, args=["git", "commit"])
+                require_ok(commit_proc, args=["git", "commit"])
 
     ahead_count = None
     for base_ref in (base_branch, f"origin/{base_branch}"):
-        count_proc = _run(
+        count_proc = run_gh(
             ["git", "-C", repo_root, "rev-list", "--count", f"{base_ref}..HEAD"],
             timeout_s=15.0,
         )
@@ -395,10 +397,10 @@ def commit_push_and_pr(
 
     # Push with retry for transient network issues
     def _push_with_retry() -> None:
-        proc = _run(
+        proc = run_gh(
             ["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0
         )
-        _require_ok(proc, args=["git", "push"])
+        require_ok(proc, args=["git", "push"])
 
     with_retry(
         _push_with_retry,
@@ -409,7 +411,7 @@ def commit_push_and_pr(
     if not use_gh or not is_gh_available():
         return ""
 
-    auth_proc = _run(["gh", "auth", "status"], timeout_s=10.0)
+    auth_proc = run_gh(["gh", "auth", "status"], timeout_s=10.0)
     if auth_proc.returncode != 0:
         raise GhManagementError("`gh` is not authenticated; run `gh auth login`")
 
@@ -418,7 +420,7 @@ def commit_push_and_pr(
 
     def _create_pr_with_retry() -> None:
         nonlocal pr_url
-        proc = _run(
+        proc = run_gh(
             [
                 "gh",
                 "pr",
@@ -442,7 +444,7 @@ def commit_push_and_pr(
                 if line.startswith("http"):
                     pr_url = line
                     return
-            _require_ok(proc, args=["gh", "pr", "create"])
+            require_ok(proc, args=["gh", "pr", "create"])
         else:
             out = (proc.stdout or "").strip()
             if out.startswith("http"):

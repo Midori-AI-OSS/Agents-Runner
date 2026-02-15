@@ -36,7 +36,7 @@ from agents_runner.log_format import format_log, wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
 
 from agents_runner.docker.config import DockerRunnerConfig
-from agents_runner.docker.process import _run_docker, _inspect_state
+from agents_runner.docker.process import run_docker, inspect_state
 from agents_runner.docker.agent_worker_setup import RuntimeEnvironment
 from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.environments import load_environments
@@ -155,10 +155,14 @@ class ContainerExecutor:
             )
 
             # Start container
-            self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
+            self._container_id = run_docker(args, timeout_s=60.0, env=docker_env)
+            if not self._container_id:
+                raise RuntimeError(
+                    "Failed to start container: no container ID returned"
+                )
 
             # Setup desktop port mapping if enabled
-            if self._runtime_env.desktop_enabled and self._container_id:
+            if self._runtime_env.desktop_enabled:
                 self._setup_desktop_port_mapping(desktop_state, docker_env)
 
             # Report initial state
@@ -549,8 +553,9 @@ class ContainerExecutor:
         self, desktop_state: dict[str, Any], docker_env: dict[str, str] | None
     ) -> None:
         """Setup desktop port mapping and noVNC URL."""
+        assert self._container_id is not None
         try:
-            mapping = _run_docker(
+            mapping = run_docker(
                 ["port", self._container_id, "6080/tcp"], timeout_s=10.0, env=docker_env
             )
             first = (
@@ -574,8 +579,9 @@ class ContainerExecutor:
 
     def _report_state(self, desktop_state: dict[str, Any]) -> None:
         """Report current container state."""
+        assert self._container_id is not None
         try:
-            state = _inspect_state(self._container_id)
+            state = inspect_state(self._container_id)
             if desktop_state:
                 state = dict(state)
                 state.update(desktop_state)
@@ -585,6 +591,7 @@ class ContainerExecutor:
 
     def _monitor_container(self, desktop_state: dict[str, Any]) -> int:
         """Monitor container execution and stream logs. Returns exit code."""
+        assert self._container_id is not None
         logs_proc = subprocess.Popen(
             ["docker", "logs", "-f", self._container_id],
             stdout=subprocess.PIPE,
@@ -604,7 +611,7 @@ class ContainerExecutor:
                 if now - last_poll >= 0.75:
                     last_poll = now
                     try:
-                        state = _inspect_state(self._container_id)
+                        state = inspect_state(self._container_id)
                         if state:
                             if desktop_state:
                                 state = dict(state)
@@ -650,7 +657,7 @@ class ContainerExecutor:
 
         # Get final state and exit code
         try:
-            final_state = _inspect_state(self._container_id)
+            final_state = inspect_state(self._container_id)
             if desktop_state and final_state:
                 final_state = dict(final_state)
                 final_state.update(desktop_state)
@@ -661,7 +668,8 @@ class ContainerExecutor:
 
     def _cleanup_container(self) -> None:
         """Cleanup container if auto-remove is enabled."""
+        assert self._container_id is not None
         try:
-            _run_docker(["rm", "-f", self._container_id], timeout_s=30.0)
+            run_docker(["rm", "-f", self._container_id], timeout_s=30.0)
         except Exception:
             pass

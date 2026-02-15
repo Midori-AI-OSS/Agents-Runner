@@ -115,8 +115,7 @@ class AutoReviewBranchDialog(ThemedDialog):
                 f"{self._seconds_left}s using the currently selected branch."
             )
         )
-        if self._ok_button is not None:
-            self._ok_button.setText(f"OK ({self._seconds_left}s)")
+        self._ok_button.setText(f"OK ({self._seconds_left}s)")
 
     def _on_timeout_tick(self) -> None:
         self._seconds_left -= 1

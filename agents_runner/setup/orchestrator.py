@@ -14,13 +14,13 @@ import subprocess
 import tempfile
 
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable
 
 from agents_runner.setup.commands import get_setup_command
 from agents_runner.terminal_apps import (
     detect_terminal_options,
     TerminalOption,
-    _linux_terminal_args,
+    linux_terminal_args,
 )
 
 
@@ -54,7 +54,7 @@ def check_setup_complete() -> bool:
         return False
 
 
-def load_setup_state() -> dict:
+def load_setup_state() -> dict[str, Any]:
     """Load setup state from file.
 
     Returns:
@@ -99,7 +99,7 @@ def load_setup_state() -> dict:
         }
 
 
-def save_setup_state(state: dict) -> None:
+def save_setup_state(state: dict[str, Any]) -> None:
     """Save setup state to file atomically.
 
     Args:
@@ -164,7 +164,7 @@ def mark_setup_skipped() -> None:
 
 def launch_terminal_and_wait(
     option: TerminalOption, bash_script: str, cwd: str | None = None
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Launch terminal and WAIT for it to close (blocking).
 
     This is used for sequential setup where we need to wait
@@ -181,7 +181,7 @@ def launch_terminal_and_wait(
     cwd = os.path.abspath(os.path.expanduser(cwd)) if cwd else None
 
     if option.kind == "linux-exe":
-        args = _linux_terminal_args(
+        args = linux_terminal_args(
             option.terminal_id, option.exe or option.terminal_id, bash_script, cwd=cwd
         )
         return subprocess.run(args, start_new_session=True)

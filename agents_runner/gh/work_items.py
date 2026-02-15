@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 
 from dataclasses import dataclass
+from typing import Any
 
 from .errors import GhManagementError
-from .process import _run
+from .process import run_gh
 
 
 @dataclass(frozen=True)
@@ -71,8 +72,8 @@ def _safe_text(value: object) -> str:
     return str(value or "").strip()
 
 
-def _run_gh_json(args: list[str], *, timeout_s: float = 45.0) -> object:
-    proc = _run(["gh", *args], timeout_s=timeout_s)
+def run_gh_gh_json(args: list[str], *, timeout_s: float = 45.0) -> object:
+    proc = run_gh(["gh", *args], timeout_s=timeout_s)
     if proc.returncode != 0:
         stderr = _safe_text(proc.stderr)
         stdout = _safe_text(proc.stdout)
@@ -93,8 +94,8 @@ def _run_gh_json(args: list[str], *, timeout_s: float = 45.0) -> object:
         ) from exc
 
 
-def _run_gh(args: list[str], *, timeout_s: float = 45.0) -> None:
-    proc = _run(["gh", *args], timeout_s=timeout_s)
+def run_gh_gh(args: list[str], *, timeout_s: float = 45.0) -> None:
+    proc = run_gh(["gh", *args], timeout_s=timeout_s)
     if proc.returncode == 0:
         return
     stderr = _safe_text(proc.stderr)
@@ -107,15 +108,16 @@ def _run_gh(args: list[str], *, timeout_s: float = 45.0) -> None:
 
 def _parse_reaction_summary(raw: object) -> GitHubReactionSummary:
     if isinstance(raw, dict):
+        raw_dict: dict[str, Any] = raw
         return GitHubReactionSummary(
-            thumbs_up=max(0, _safe_int(raw.get("+1"))),
-            thumbs_down=max(0, _safe_int(raw.get("-1"))),
-            eyes=max(0, _safe_int(raw.get("eyes"))),
-            rocket=max(0, _safe_int(raw.get("rocket"))),
-            hooray=max(0, _safe_int(raw.get("hooray"))),
+            thumbs_up=max(0, _safe_int(raw_dict.get("+1"))),
+            thumbs_down=max(0, _safe_int(raw_dict.get("-1"))),
+            eyes=max(0, _safe_int(raw_dict.get("eyes"))),
+            rocket=max(0, _safe_int(raw_dict.get("rocket"))),
+            hooray=max(0, _safe_int(raw_dict.get("hooray"))),
         )
 
-    groups = raw if isinstance(raw, list) else []
+    groups: list[Any] = raw if isinstance(raw, list) else []
     up = 0
     down = 0
     eyes = 0
@@ -154,26 +156,27 @@ def _parse_work_item(item_type: str, raw: object) -> GitHubWorkItem | None:
     if not isinstance(raw, dict):
         return None
 
-    number = _safe_int(raw.get("number"))
+    raw_dict: dict[str, Any] = raw
+    number = _safe_int(raw_dict.get("number"))
     if number <= 0:
         return None
 
     author = ""
-    raw_author = raw.get("author")
+    raw_author = raw_dict.get("author")
     if isinstance(raw_author, dict):
         author = _safe_text(raw_author.get("login"))
 
     return GitHubWorkItem(
         item_type=item_type,
         number=number,
-        title=_safe_text(raw.get("title")) or f"#{number}",
-        body=_safe_text(raw.get("body")),
-        state=_safe_text(raw.get("state")).lower() or "open",
-        url=_safe_text(raw.get("url")),
+        title=_safe_text(raw_dict.get("title")) or f"#{number}",
+        body=_safe_text(raw_dict.get("body")),
+        state=_safe_text(raw_dict.get("state")).lower() or "open",
+        url=_safe_text(raw_dict.get("url")),
         author=author,
-        created_at=_safe_text(raw.get("createdAt")),
-        updated_at=_safe_text(raw.get("updatedAt")),
-        is_draft=bool(raw.get("isDraft") or False),
+        created_at=_safe_text(raw_dict.get("createdAt")),
+        updated_at=_safe_text(raw_dict.get("updatedAt")),
+        is_draft=bool(raw_dict.get("isDraft") or False),
     )
 
 
@@ -192,7 +195,7 @@ def list_open_pull_requests(
     limit: int = 30,
 ) -> list[GitHubWorkItem]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = _run_gh_json(
+    data = run_gh_gh_json(
         [
             "pr",
             "list",
@@ -225,7 +228,7 @@ def list_open_issues(
     limit: int = 30,
 ) -> list[GitHubWorkItem]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = _run_gh_json(
+    data = run_gh_gh_json(
         [
             "issue",
             "list",
@@ -259,7 +262,7 @@ def list_issue_comments(
     limit: int = 100,
 ) -> list[GitHubComment]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = _run_gh_json(
+    data = run_gh_gh_json(
         [
             "api",
             f"repos/{repo}/issues/{int(issue_number)}/comments?per_page={max(1, int(limit))}",
@@ -305,7 +308,7 @@ def get_pull_request_workroom(
     number: int,
 ) -> GitHubWorkroom:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = _run_gh_json(
+    data = run_gh_gh_json(
         [
             "pr",
             "view",
@@ -356,7 +359,7 @@ def get_issue_workroom(
     number: int,
 ) -> GitHubWorkroom:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = _run_gh_json(
+    data = run_gh_gh_json(
         [
             "issue",
             "view",
@@ -415,7 +418,7 @@ def post_comment(
 
     normalized = _safe_text(item_type).lower()
     if normalized == "pr":
-        _run_gh(
+        run_gh_gh(
             [
                 "pr",
                 "comment",
@@ -430,7 +433,7 @@ def post_comment(
         return
 
     if normalized == "issue":
-        _run_gh(
+        run_gh_gh(
             [
                 "issue",
                 "comment",
@@ -460,7 +463,7 @@ def set_item_open_state(
 
     if normalized == "pr":
         subcommand = "reopen" if bool(open_state) else "close"
-        _run_gh(
+        run_gh_gh(
             [
                 "pr",
                 subcommand,
@@ -474,7 +477,7 @@ def set_item_open_state(
 
     if normalized == "issue":
         subcommand = "reopen" if bool(open_state) else "close"
-        _run_gh(
+        run_gh_gh(
             [
                 "issue",
                 subcommand,
@@ -501,7 +504,7 @@ def add_issue_comment_reaction(
     if reaction_value not in {"+1", "-1", "eyes", "rocket", "hooray"}:
         raise GhManagementError(f"unsupported reaction: {reaction_value}")
 
-    _run_gh_json(
+    run_gh_gh_json(
         [
             "api",
             "--method",
@@ -519,7 +522,7 @@ def add_issue_comment_reaction(
 def get_authenticated_github_login() -> str:
     """Return the currently authenticated ``gh`` login (or empty string)."""
     try:
-        data = _run_gh_json(
+        data = run_gh_gh_json(
             [
                 "api",
                 "user",
@@ -550,7 +553,7 @@ def list_org_members(owner: str, *, limit: int = 100) -> list[str]:
         per_page = 100
 
     try:
-        data = _run_gh_json(
+        data = run_gh_gh_json(
             [
                 "api",
                 f"orgs/{owner_text}/members?per_page={per_page}",

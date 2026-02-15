@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
@@ -31,7 +33,7 @@ class TaskRunnerBridge(QObject):
         mode: str = "codex",
         agent_selection: AgentSelection | None = None,
         use_supervisor: bool = True,
-        watch_states: dict | None = None,
+        watch_states: dict[str, Any] | None = None,
     ) -> None:
         super().__init__()
         self.task_id = task_id

@@ -68,7 +68,7 @@ class PromptAssembler:
 
     def _load_template_parts(self, agent_cli: str) -> list[str]:
         """Load all template parts."""
-        template_parts = []
+        template_parts: list[str] = []
 
         for template_name in [
             "templates/midoriaibasetemplate",
@@ -133,7 +133,7 @@ class PromptAssembler:
             environments = load_environments()
             env = environments.get(str(self._environment_id))
             if env is not None:
-                cross_agents_enabled = (
+                cross_agents_enabled = bool(
                     env.use_cross_agents is True
                     and env.cross_agent_allowlist
                     and len(env.cross_agent_allowlist) > 0

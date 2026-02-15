@@ -12,7 +12,7 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.log_format import format_log
 
 
-class _MainWindowTaskReviewMixin:
+class MainWindowTaskReviewMixin:
     def _on_task_pr_requested(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         task = self._tasks.get(task_id)
@@ -68,7 +68,7 @@ class _MainWindowTaskReviewMixin:
         if not repo_root and task.requires_git_metadata():
             from agents_runner.ui.task_repair import repair_task_git_metadata
 
-            success, msg = repair_task_git_metadata(
+            success, _msg = repair_task_git_metadata(
                 task,
                 state_path=self._state_path,
                 environments=self._environments,

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from midori_ai_logger import MidoriAiLogger
 
-_FAULT_LOG_HANDLE = None
+_fault_log_handle = None
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
@@ -39,8 +39,8 @@ def _maybe_enable_faulthandler() -> None:
         handle = open(log_path, "a", encoding="utf-8")
         faulthandler.enable(file=handle, all_threads=True)
 
-        global _FAULT_LOG_HANDLE
-        _FAULT_LOG_HANDLE = handle
+        global _fault_log_handle
+        _fault_log_handle = handle
     except Exception:
         # Best-effort: never block startup on diagnostics.
         pass
@@ -157,7 +157,7 @@ def _configure_qt_logging_runtime() -> None:
     )
 
 
-def _configure_qtwebengine_runtime() -> None:
+def configure_qtwebengine_runtime() -> None:
     fontconfig_file = os.environ.get("FONTCONFIG_FILE")
     if not fontconfig_file:
         candidate = Path("/etc/fonts/fonts.conf")
@@ -196,7 +196,7 @@ def _initialize_qtwebengine() -> None:
 def run_app(argv: list[str]) -> None:
     _maybe_enable_faulthandler()
     _configure_qt_logging_runtime()
-    _configure_qtwebengine_runtime()
+    configure_qtwebengine_runtime()
 
     from agents_runner.diagnostics.crash_reporting import install_exception_hooks
 
@@ -211,7 +211,7 @@ def run_app(argv: list[str]) -> None:
     from agents_runner.ui.constants import APP_TITLE
     from agents_runner.ui.dialogs.first_run_setup import FirstRunSetupDialog
     from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
-    from agents_runner.ui.icons import _app_icon
+    from agents_runner.ui.icons import app_icon
     from agents_runner.ui.main_window import MainWindow
 
     # Clean up stale temporary files from previous runs
@@ -224,7 +224,7 @@ def run_app(argv: list[str]) -> None:
     install_qt_message_handler()
     app.setApplicationDisplayName(APP_TITLE)
     app.setApplicationName(APP_TITLE)
-    icon = _app_icon()
+    icon = app_icon()
     if icon is not None:
         app.setWindowIcon(icon)
     app.setStyleSheet(app_stylesheet())

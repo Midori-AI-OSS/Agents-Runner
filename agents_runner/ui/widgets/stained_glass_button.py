@@ -38,7 +38,7 @@ def _scale_rgb(color: QColor, scale: float) -> QColor:
     )
 
 
-def _blend_rgb(a: QColor, b: QColor, t: float) -> QColor:
+def blend_rgb(a: QColor, b: QColor, t: float) -> QColor:
     tt = float(min(max(t, 0.0), 1.0))
     return QColor(
         int(round(a.red() + (b.red() - a.red()) * tt)),
@@ -216,7 +216,7 @@ class StainedGlassButton(QPushButton):
         elif self.underMouse():
             brightness *= 1.03
 
-        tinted = _blend_rgb(base, env, 0.34)
+        tinted = blend_rgb(base, env, 0.34)
         tinted = _scale_rgb(tinted, brightness)
 
         if self._glass_enabled:
@@ -247,7 +247,7 @@ class StainedGlassButton(QPushButton):
                 env.red(), env.green(), env.blue(), 22 + int(12 * pulse)
             )
             shard_color_2 = QColor(
-                *_blend_rgb(env, QColor(255, 255, 255), 0.25).getRgb()[:3],
+                *blend_rgb(env, QColor(255, 255, 255), 0.25).getRgb()[:3],
                 16 + int(10 * pulse),
             )
             edge = QColor(255, 255, 255, 12 + int(6 * pulse))

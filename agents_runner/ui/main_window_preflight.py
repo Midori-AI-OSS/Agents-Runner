@@ -4,6 +4,7 @@ import os
 import shutil
 import time
 
+from typing import Any
 from uuid import uuid4
 
 from PySide6.QtCore import Qt
@@ -20,10 +21,10 @@ from agents_runner.gh_management import is_gh_available
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 
 
-class _MainWindowPreflightMixin:
+class MainWindowPreflightMixin:
     def _start_preflight_task(
         self,
         *,
@@ -90,7 +91,7 @@ class _MainWindowPreflightMixin:
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
@@ -198,7 +199,7 @@ class _MainWindowPreflightMixin:
         self._maybe_auto_navigate_on_task_start(interactive=False)
         self._schedule_save()
 
-    def _on_settings_test_preflight(self, settings: dict) -> None:
+    def _on_settings_test_preflight(self, settings: dict[str, Any]) -> None:
         settings_enabled = bool(settings.get("preflight_enabled") or False)
         settings_script: str | None = None
         if settings_enabled:

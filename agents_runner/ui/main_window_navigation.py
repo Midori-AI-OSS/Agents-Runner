@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QWidget
 
 
-class _MainWindowNavigationMixin:
+class MainWindowNavigationMixin:
     def _apply_window_prefs(self) -> None:
         try:
             w = int(self._settings_data.get("window_w") or 1280)

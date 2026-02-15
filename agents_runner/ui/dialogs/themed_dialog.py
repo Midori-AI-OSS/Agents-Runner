@@ -42,7 +42,7 @@ def _find_parent_settings(parent: QWidget | None) -> dict[str, object] | None:
         cursor = cursor.parentWidget()
 
     window = parent.window()
-    if window is not None and id(window) not in visited:
+    if id(window) not in visited:
         parsed = _as_settings_dict(getattr(window, "_settings_data", None))
         if parsed is not None:
             return parsed

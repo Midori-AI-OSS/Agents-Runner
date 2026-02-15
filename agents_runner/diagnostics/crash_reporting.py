@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 
-_HOOKS_INSTALLED = False
+_hooks_installed = False
 
 
 def crash_reports_dir() -> Path:
@@ -89,10 +89,10 @@ def install_exception_hooks(*, argv: list[str] | None = None) -> None:
 
     This is intentionally best-effort and will not raise.
     """
-    global _HOOKS_INSTALLED
-    if _HOOKS_INSTALLED:
+    global _hooks_installed
+    if _hooks_installed:
         return
-    _HOOKS_INSTALLED = True
+    _hooks_installed = True
 
     try:
         original_sys_hook = sys.excepthook
@@ -120,7 +120,8 @@ def install_exception_hooks(*, argv: list[str] | None = None) -> None:
             except Exception:
                 pass
             try:
-                original_sys_hook(exc_type, exc_value, exc_tb)
+                if exc_type is not None and exc_value is not None:
+                    original_sys_hook(exc_type, exc_value, exc_tb)
             except Exception:
                 pass
 

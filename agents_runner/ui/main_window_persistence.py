@@ -12,11 +12,11 @@ from agents_runner.persistence import save_state
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.radio import RadioController
-from agents_runner.ui.utils import _parse_docker_time
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import parse_docker_time
+from agents_runner.ui.utils import stain_color
 
 
-class _MainWindowPersistenceMixin:
+class MainWindowPersistenceMixin:
     @staticmethod
     def _is_missing_container_error(exc: Exception) -> bool:
         text = str(exc or "").lower()
@@ -41,13 +41,13 @@ class _MainWindowPersistenceMixin:
         if not container_id:
             return False
         try:
-            from agents_runner.docker.process import _inspect_state
+            from agents_runner.docker.process import inspect_state
         except Exception:
             return False
         try:
-            state = _inspect_state(container_id)
+            state = inspect_state(container_id)
         except Exception as exc:
-            if _MainWindowPersistenceMixin._is_missing_container_error(exc):
+            if MainWindowPersistenceMixin._is_missing_container_error(exc):
                 status = (task.status or "").lower()
                 # Interactive tasks can briefly lack a container during launch; avoid
                 # marking them failed while they are still starting/running.
@@ -81,8 +81,8 @@ class _MainWindowPersistenceMixin:
         if incoming and (task.status or "").lower() not in {"cancelled", "killed"}:
             task.status = incoming
 
-        started_at = _parse_docker_time(state.get("StartedAt"))
-        finished_at = _parse_docker_time(state.get("FinishedAt"))
+        started_at = parse_docker_time(state.get("StartedAt"))
+        finished_at = parse_docker_time(state.get("FinishedAt"))
         if started_at:
             task.started_at = started_at
         if finished_at:
@@ -321,7 +321,7 @@ class _MainWindowPersistenceMixin:
             if task.requires_git_metadata() and not task.git:
                 from agents_runner.ui.task_repair import repair_task_git_metadata
 
-                success, msg = repair_task_git_metadata(
+                success, _msg = repair_task_git_metadata(
                     task,
                     state_path=self._state_path,
                     environments=self._environments,
@@ -345,7 +345,7 @@ class _MainWindowPersistenceMixin:
             self._tasks[task.task_id] = task
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
-            spinner = _stain_color(env.color) if env else None
+            spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
         # Run startup reconciliation once

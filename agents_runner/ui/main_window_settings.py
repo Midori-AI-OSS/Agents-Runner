@@ -4,6 +4,8 @@ import logging
 import os
 import shlex
 
+from typing import Any
+
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import normalize_agent
@@ -11,13 +13,13 @@ from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import available_agents
 from agents_runner.ui.radio import RadioController
-from agents_runner.ui.utils import _looks_like_agent_help_command
+from agents_runner.ui.utils import looks_like_agent_help_command
 from agents_runner.environments import Environment
 
 logger = logging.getLogger(__name__)
 
 
-class _MainWindowSettingsMixin:
+class MainWindowSettingsMixin:
     def _apply_settings_to_pages(self) -> None:
         if not self._settings.isVisible():
             self._settings.set_settings(self._settings_data)
@@ -33,7 +35,7 @@ class _MainWindowSettingsMixin:
         self._new_task.set_spellcheck_enabled(spellcheck_enabled)
         self._new_task.set_stt_mode("offline")
 
-    def _apply_settings(self, settings: dict) -> None:
+    def _apply_settings(self, settings: dict[str, Any]) -> None:
         previous_radio_enabled = bool(self._settings_data.get("radio_enabled") or False)
         merged = dict(self._settings_data)
         merged.update(settings or {})
@@ -251,7 +253,7 @@ class _MainWindowSettingsMixin:
                 pass
             value = " ".join(shlex.quote(part) for part in cmd_parts)
 
-        if _looks_like_agent_help_command(value):
+        if looks_like_agent_help_command(value):
             from agents_runner.agent_systems import get_default_agent_system_name
 
             agent_cli = get_default_agent_system_name()
@@ -270,7 +272,7 @@ class _MainWindowSettingsMixin:
         prompt = str(prompt or "").strip().lower()
         if prompt.startswith("get agent help"):
             return True
-        return _looks_like_agent_help_command(command)
+        return looks_like_agent_help_command(command)
 
     def _resolve_config_dir_for_agent(
         self,

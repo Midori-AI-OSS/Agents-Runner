@@ -52,7 +52,7 @@ def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
     return " ".join(tokens).strip()
 
 
-_DESKTOP_VIEWER_FAULT_LOG_HANDLE = None
+_desktop_viewer_fault_log_handle = None
 
 
 def _maybe_enable_desktop_viewer_faulthandler() -> Path | None:
@@ -71,8 +71,8 @@ def _maybe_enable_desktop_viewer_faulthandler() -> Path | None:
         handle = open(log_path, "a", encoding="utf-8")
         faulthandler.enable(file=handle, all_threads=True)
 
-        global _DESKTOP_VIEWER_FAULT_LOG_HANDLE
-        _DESKTOP_VIEWER_FAULT_LOG_HANDLE = handle
+        global _desktop_viewer_fault_log_handle
+        _desktop_viewer_fault_log_handle = handle
         return log_path
     except Exception:
         return None
@@ -80,9 +80,9 @@ def _maybe_enable_desktop_viewer_faulthandler() -> Path | None:
 
 def _configure_webengine_runtime() -> None:
     try:
-        from agents_runner.ui.runtime.app import _configure_qtwebengine_runtime
+        from agents_runner.ui.runtime.app import configure_qtwebengine_runtime
 
-        _configure_qtwebengine_runtime()
+        configure_qtwebengine_runtime()
     except Exception:
         pass
 

@@ -29,7 +29,7 @@ from agents_runner.gh.work_items import GitHubWorkItem
 from agents_runner.prompts import load_prompt
 from agents_runner.ui.dialogs.github_workroom_dialog import GitHubWorkroomDialog
 from agents_runner.ui.lucide_icons import lucide_icon
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import BouncingLoadingBar
 from midori_ai_logger import MidoriAiLogger
 
@@ -241,7 +241,7 @@ class _GitHubWorkSkeletonRow(QWidget):
             self.style().unpolish(self)
             self.style().polish(self)
             self.update()
-        tint = _stain_color(value)
+        tint = stain_color(value)
         self._pulse.set_color(tint)
 
     def stop(self) -> None:
@@ -256,7 +256,7 @@ class GitHubWorkListPage(QWidget):
         self,
         *,
         item_type: str,
-        coordinator,
+        coordinator: object,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -656,7 +656,7 @@ class GitHubWorkListPage(QWidget):
             self._list.setStyleSheet("")
             return
 
-        tint = _stain_color(stain)
+        tint = stain_color(stain)
         r = int(tint.red())
         g = int(tint.green())
         b = int(tint.blue())

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from PySide6.QtCore import QEasingCurve
 from PySide6.QtCore import QParallelAnimationGroup
@@ -33,10 +33,10 @@ from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.icons import mic_icon
-from agents_runner.ui.graphics import _EnvironmentTintOverlay
+from agents_runner.ui.graphics import EnvironmentTintOverlay
 from agents_runner.ui.lucide_icons import lucide_icon
-from agents_runner.ui.utils import _apply_environment_combo_tint
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import apply_environment_combo_tint
+from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import SpellTextEdit
 from agents_runner.ui.widgets import StainedGlassButton
 from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
@@ -77,7 +77,7 @@ class NewTaskPage(QWidget):
         self._mic_recording: MicRecording | None = None
         self._stt_thread: QThread | None = None
         self._stt_worker: SttWorker | None = None
-        self._current_interactive_slot: Callable | None = None
+        self._current_interactive_slot: Callable[..., Any] | None = None
         self._base_branch_visibility_animation: QParallelAnimationGroup | None = None
 
         layout = QVBoxLayout(self)
@@ -255,12 +255,12 @@ class NewTaskPage(QWidget):
 
         layout.addWidget(card, 1)
 
-        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.raise_()
         self._refresh_terminal_selection("")
         self._update_run_buttons()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
@@ -438,7 +438,7 @@ class NewTaskPage(QWidget):
             helpme_script,
         )
 
-    def _reconnect_interactive_button(self, new_slot) -> None:
+    def _reconnect_interactive_button(self, new_slot: object) -> None:
         """Safely reconnect the interactive button click handler."""
         if (
             hasattr(self, "_current_interactive_slot")
@@ -536,8 +536,8 @@ class NewTaskPage(QWidget):
             self._run_agent.set_tint_color(None)
             return
 
-        _apply_environment_combo_tint(self._base_branch, stain)
-        tint = _stain_color(stain)
+        apply_environment_combo_tint(self._base_branch, stain)
+        tint = stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
         self._get_agent_help.set_tint_color(tint)
         self._run_interactive.set_tint_color(tint)

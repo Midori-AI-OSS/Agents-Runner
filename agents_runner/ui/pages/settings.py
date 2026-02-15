@@ -30,10 +30,10 @@ from agents_runner.ui.constants import (
     LEFT_NAV_COMPACT_THRESHOLD,
     LEFT_NAV_PANEL_WIDTH,
 )
-from agents_runner.ui.pages.settings_form import _SettingsFormMixin
+from agents_runner.ui.pages.settings_form import SettingsFormMixin
 
 
-class SettingsPage(QWidget, _SettingsFormMixin):
+class SettingsPage(QWidget, SettingsFormMixin):
     back_requested = Signal()
     saved = Signal(dict)
     test_preflight_requested = Signal(dict)
@@ -297,7 +297,7 @@ class SettingsPage(QWidget, _SettingsFormMixin):
         self._emit_saved()
         return True
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
 

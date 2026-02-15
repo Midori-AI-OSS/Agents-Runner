@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtGui import QIntValidator
@@ -53,7 +54,7 @@ class _SettingsPaneSpec:
     section: str
 
 
-class _SettingsFormMixin:
+class SettingsFormMixin:
     def _default_pane_specs(self) -> list[_SettingsPaneSpec]:
         specs = [
             _SettingsPaneSpec(
@@ -717,7 +718,7 @@ class _SettingsFormMixin:
             return "Midori AI (Dark Theme)"
         if normalized == "midoriai_light":
             return "Midori AI (Light Theme)"
-        return _SettingsFormMixin._format_key_label(normalized)
+        return SettingsFormMixin._format_key_label(normalized)
 
     @staticmethod
     def _format_key_label(value: str) -> str:
@@ -783,7 +784,7 @@ class _SettingsFormMixin:
         )
         return max(0, int(round(raw * factor)))
 
-    def set_settings(self, settings: dict) -> None:
+    def set_settings(self, settings: dict[str, Any]) -> None:
         self._suppress_autosave = True
         try:
             self._populate_agent_combo()
@@ -935,7 +936,7 @@ class _SettingsFormMixin:
         finally:
             self._suppress_autosave = False
 
-    def get_settings(self) -> dict:
+    def get_settings(self) -> dict[str, Any]:
         poll_startup_delay_text = str(
             self._github_poll_startup_delay_s.text() or "35"
         ).strip()

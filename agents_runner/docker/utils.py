@@ -2,7 +2,7 @@ import os
 import tempfile
 
 
-def _write_preflight_script(
+def write_preflight_script(
     script: str,
     label: str,
     task_id: str,
@@ -64,7 +64,7 @@ def deduplicate_mounts(mounts: list[str]) -> list[str]:
     return result
 
 
-def _resolve_workspace_mount(
+def resolve_workspace_mount(
     host_workdir: str,
     *,
     container_mount: str,

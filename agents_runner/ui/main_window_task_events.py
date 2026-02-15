@@ -6,6 +6,7 @@ import time
 
 from datetime import datetime
 from datetime import timezone
+from typing import Any
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
@@ -23,11 +24,11 @@ from agents_runner.artifacts import collect_artifacts_from_container_with_timeou
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.task_git_metadata import derive_task_git_metadata
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _parse_docker_time
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import parse_docker_time
+from agents_runner.ui.utils import stain_color
 
 
-class _MainWindowTaskEventsMixin:
+class MainWindowTaskEventsMixin:
     def _open_task_details(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
@@ -137,7 +138,7 @@ class _MainWindowTaskEventsMixin:
 
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
-            spinner = _stain_color(env.color) if env else None
+            spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._details.update_task(task)
             self._schedule_save()
@@ -197,7 +198,7 @@ class _MainWindowTaskEventsMixin:
         self._try_sync_container_state(task)
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
@@ -328,7 +329,7 @@ class _MainWindowTaskEventsMixin:
             on_log=None,  # Silent cleanup (no UI updates)
         )
 
-    def _on_bridge_state(self, task_id: str, state: dict) -> None:
+    def _on_bridge_state(self, task_id: str, state: dict[str, Any]) -> None:
         self._on_task_state(task_id, state)
 
     def _on_bridge_log(self, task_id: str, line: str) -> None:
@@ -356,7 +357,7 @@ class _MainWindowTaskEventsMixin:
         task.status = f"retrying (attempt {attempt_number})"
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
     def _on_bridge_agent_switched(
@@ -381,7 +382,7 @@ class _MainWindowTaskEventsMixin:
         task.agent_cli = to_agent
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
     def _on_bridge_done(
@@ -389,8 +390,8 @@ class _MainWindowTaskEventsMixin:
         task_id: str,
         exit_code: int,
         error: object,
-        artifacts: list,
-        metadata: dict | None = None,
+        artifacts: list[Any],
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         bridge = self._bridges.get(task_id)
         task = self._tasks.get(task_id)
@@ -452,7 +453,7 @@ class _MainWindowTaskEventsMixin:
         task.git = derive_task_git_metadata(task)
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
@@ -469,7 +470,7 @@ class _MainWindowTaskEventsMixin:
         task.artifacts = artifact_uuids
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
@@ -492,17 +493,17 @@ class _MainWindowTaskEventsMixin:
                 self._dashboard_log_refresh_s[task_id] = now_s
                 env = self._environments.get(task.environment_id)
                 stain = env.color if env else None
-                spinner = _stain_color(env.color) if env else None
+                spinner = stain_color(env.color) if env else None
                 self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         if "docker pull" in cleaned and (task.status or "").lower() != "pulling":
             task.status = "pulling"
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
-            spinner = _stain_color(env.color) if env else None
+            spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
 
-    def _on_task_state(self, task_id: str, state: dict) -> None:
+    def _on_task_state(self, task_id: str, state: dict[str, Any]) -> None:
         task = self._tasks.get(task_id)
         bridge = self._bridges.get(task_id)
         if task is None:
@@ -512,7 +513,7 @@ class _MainWindowTaskEventsMixin:
         if current in {"cancelled", "killed"}:
             if bridge and bridge.container_id:
                 task.container_id = bridge.container_id
-            finished_at = _parse_docker_time(state.get("FinishedAt"))
+            finished_at = parse_docker_time(state.get("FinishedAt"))
             if finished_at and task.finished_at is None:
                 task.finished_at = finished_at
             exit_code = state.get("ExitCode")
@@ -529,8 +530,8 @@ class _MainWindowTaskEventsMixin:
         if bridge and bridge.container_id:
             task.container_id = bridge.container_id
 
-        started_at = _parse_docker_time(state.get("StartedAt"))
-        finished_at = _parse_docker_time(state.get("FinishedAt"))
+        started_at = parse_docker_time(state.get("StartedAt"))
+        finished_at = parse_docker_time(state.get("FinishedAt"))
         if started_at:
             task.started_at = started_at
         if finished_at:
@@ -568,7 +569,7 @@ class _MainWindowTaskEventsMixin:
 
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
@@ -579,7 +580,7 @@ class _MainWindowTaskEventsMixin:
         exit_code: int,
         error: object,
         *,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         task = self._tasks.get(task_id)
         if task is None:
@@ -643,7 +644,7 @@ class _MainWindowTaskEventsMixin:
 
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
-            spinner = _stain_color(env.color) if env else None
+            spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._details.update_task(task)
             self._schedule_save()

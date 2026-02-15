@@ -120,7 +120,7 @@ class PromptsTabWidget(QWidget):
     def _calculate_visible_count(self) -> int:
         """Calculate how many tabs should be visible based on prompt content."""
         last_nonempty_index = -1
-        for i, (tab, enabled_cb, text_edit) in enumerate(self._prompt_tabs):
+        for i, (_tab, _enabled_cb, text_edit) in enumerate(self._prompt_tabs):
             if text_edit.toPlainText().strip():
                 last_nonempty_index = i
         return min(last_nonempty_index + 2, self.MAX_PROMPTS)
@@ -150,7 +150,7 @@ class PromptsTabWidget(QWidget):
         self._current_visible_count = visible_count
 
         for i in range(visible_count):
-            tab, enabled_cb, text_edit = self._prompt_tabs[i]
+            tab, _enabled_cb, _text_edit = self._prompt_tabs[i]
             self._tabs.addTab(tab, f"Prompt {i + 1}")
 
     def set_prompts(self, prompts: list[PromptConfig], unlocked: bool) -> None:
@@ -169,7 +169,7 @@ class PromptsTabWidget(QWidget):
             self._warning_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
             self._tabs.setVisible(False)
 
-        for i, (tab, enabled_cb, text_edit) in enumerate(self._prompt_tabs):
+        for i, (_tab, enabled_cb, text_edit) in enumerate(self._prompt_tabs):
             if i < len(prompts):
                 p = prompts[i]
                 enabled_cb.blockSignals(True)
@@ -190,7 +190,7 @@ class PromptsTabWidget(QWidget):
 
     def get_prompts(self) -> tuple[list[PromptConfig], bool]:
         prompts = []
-        for tab, enabled_cb, text_edit in self._prompt_tabs:
+        for _tab, enabled_cb, text_edit in self._prompt_tabs:
             text = text_edit.toPlainText().strip()
             if text:
                 prompts.append(PromptConfig(enabled=enabled_cb.isChecked(), text=text))

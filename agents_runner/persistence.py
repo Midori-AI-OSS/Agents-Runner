@@ -16,13 +16,13 @@ TASKS_DIR_NAME = "tasks"
 TASKS_DONE_DIR_NAME = "done"
 
 
-def _strip_none_for_toml(value: Any) -> Any:
+def strip_none_for_toml(value: Any) -> Any:
     if isinstance(value, dict):
         cleaned: dict[str, Any] = {}
         for key, item in value.items():
             if item is None:
                 continue
-            cleaned_item = _strip_none_for_toml(item)
+            cleaned_item = strip_none_for_toml(item)
             if cleaned_item is None:
                 continue
             cleaned[str(key)] = cleaned_item
@@ -32,7 +32,7 @@ def _strip_none_for_toml(value: Any) -> Any:
         for item in value:
             if item is None:
                 continue
-            cleaned_item = _strip_none_for_toml(item)
+            cleaned_item = strip_none_for_toml(item)
             if cleaned_item is None:
                 continue
             cleaned_list.append(cleaned_item)
@@ -121,7 +121,7 @@ def save_state(path: str, payload: dict[str, Any]) -> None:
     )
     try:
         with os.fdopen(fd, "wb") as f:
-            tomli_w.dump(_strip_none_for_toml(payload), f)
+            tomli_w.dump(strip_none_for_toml(payload), f)
         os.replace(tmp_path, path)
     finally:
         try:
@@ -170,7 +170,7 @@ def _atomic_write_json(path: str, payload: dict[str, Any]) -> None:
     )
     try:
         with os.fdopen(fd, "wb") as f:
-            tomli_w.dump(_strip_none_for_toml(payload), f)
+            tomli_w.dump(strip_none_for_toml(payload), f)
         os.replace(tmp_path, path)
     finally:
         try:

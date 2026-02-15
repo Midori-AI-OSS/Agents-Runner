@@ -29,12 +29,12 @@ from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 from agents_runner.ui.constants import LEFT_NAV_PANEL_WIDTH
 from agents_runner.ui.constants import MAIN_LAYOUT_MARGINS
 from agents_runner.ui.constants import MAIN_LAYOUT_SPACING
-from agents_runner.ui.graphics import _EnvironmentTintOverlay
+from agents_runner.ui.graphics import EnvironmentTintOverlay
 from agents_runner.ui.pages.github_work_coordinator import GitHubWorkCoordinator
 from agents_runner.ui.pages.github_work_list import GitHubWorkListPage
 from agents_runner.ui.pages.new_task import NewTaskPage
-from agents_runner.ui.utils import _apply_environment_combo_tint
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import apply_environment_combo_tint
+from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import GlassCard
 
 
@@ -175,7 +175,7 @@ class TasksPage(QWidget):
 
         self._update_navigation_mode()
 
-        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.raise_()
 
     def _default_pane_specs(self) -> list[_TasksPaneSpec]:
@@ -429,9 +429,9 @@ class TasksPage(QWidget):
             self._issues.set_environment_stain("")
             return
 
-        _apply_environment_combo_tint(self._env_select, stain)
-        _apply_environment_combo_tint(self._compact_nav, stain)
-        tint = _stain_color(stain)
+        apply_environment_combo_tint(self._env_select, stain)
+        apply_environment_combo_tint(self._compact_nav, stain)
+        tint = stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
         self._prs.set_environment_stain(stain)
         self._issues.set_environment_stain(stain)
@@ -608,13 +608,13 @@ class TasksPage(QWidget):
     def is_new_task_tab_active(self) -> bool:
         return self._active_pane_key == "new_task"
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
-    def showEvent(self, event) -> None:
+    def showEvent(self, event: object) -> None:
         super().showEvent(event)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()

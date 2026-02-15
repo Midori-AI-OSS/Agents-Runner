@@ -10,7 +10,7 @@ from midori_ai_logger import MidoriAiLogger
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class _MainWindowAutoReviewMixin:
+class MainWindowAutoReviewMixin:
     def _on_auto_review_requested(self, env_id: str, prompt: str) -> None:
         selected_env_id = str(env_id or "").strip() or self._active_environment_id()
         if not selected_env_id:
