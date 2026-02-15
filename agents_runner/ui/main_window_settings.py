@@ -4,6 +4,8 @@ import logging
 import os
 import shlex
 
+from typing import Any
+
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_cli import normalize_agent

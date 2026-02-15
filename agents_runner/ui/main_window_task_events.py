@@ -6,6 +6,7 @@ import time
 
 from datetime import datetime
 from datetime import timezone
+from typing import Any
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
