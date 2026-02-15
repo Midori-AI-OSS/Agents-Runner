@@ -115,7 +115,7 @@ def ensure_github_context_file(
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
     # Build payload
-    payload: dict = {
+    payload: dict[str, Any] = {
         "version": GITHUB_CONTEXT_VERSION,
         "task_id": str(task_id or ""),
         "title": "",

@@ -198,7 +198,7 @@ class _MainWindowPreflightMixin:
         self._maybe_auto_navigate_on_task_start(interactive=False)
         self._schedule_save()
 
-    def _on_settings_test_preflight(self, settings: dict) -> None:
+    def _on_settings_test_preflight(self, settings: dict[str, Any]) -> None:
         settings_enabled = bool(settings.get("preflight_enabled") or False)
         settings_script: str | None = None
         if settings_enabled:

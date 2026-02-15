@@ -77,7 +77,7 @@ class NewTaskPage(QWidget):
         self._mic_recording: MicRecording | None = None
         self._stt_thread: QThread | None = None
         self._stt_worker: SttWorker | None = None
-        self._current_interactive_slot: Callable | None = None
+        self._current_interactive_slot: Callable[..., Any] | None = None
         self._base_branch_visibility_animation: QParallelAnimationGroup | None = None
 
         layout = QVBoxLayout(self)

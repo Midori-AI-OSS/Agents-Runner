@@ -31,7 +31,7 @@ class TaskRunnerBridge(QObject):
         mode: str = "codex",
         agent_selection: AgentSelection | None = None,
         use_supervisor: bool = True,
-        watch_states: dict | None = None,
+        watch_states: dict[str, Any] | None = None,
     ) -> None:
         super().__init__()
         self.task_id = task_id

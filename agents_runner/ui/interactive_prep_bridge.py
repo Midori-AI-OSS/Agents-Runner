@@ -12,7 +12,7 @@ class InteractivePrepBridge(QObject):
         *,
         on_stage: Callable[[str, str, str], None],
         on_log: Callable[[str, str], None],
-        on_succeeded: Callable[[str, dict], None],
+        on_succeeded: Callable[[str, dict[str, Any]], None],
         on_failed: Callable[[str, str], None],
         parent: QObject | None = None,
     ) -> None:

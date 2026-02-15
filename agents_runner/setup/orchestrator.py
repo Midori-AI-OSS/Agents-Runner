@@ -54,7 +54,7 @@ def check_setup_complete() -> bool:
         return False
 
 
-def load_setup_state() -> dict:
+def load_setup_state() -> dict[str, Any]:
     """Load setup state from file.
 
     Returns:
@@ -99,7 +99,7 @@ def load_setup_state() -> dict:
         }
 
 
-def save_setup_state(state: dict) -> None:
+def save_setup_state(state: dict[str, Any]) -> None:
     """Save setup state to file atomically.
 
     Args:
@@ -164,7 +164,7 @@ def mark_setup_skipped() -> None:
 
 def launch_terminal_and_wait(
     option: TerminalOption, bash_script: str, cwd: str | None = None
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """Launch terminal and WAIT for it to close (blocking).
 
     This is used for sequential setup where we need to wait

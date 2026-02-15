@@ -510,7 +510,7 @@ class _MainWindowTasksInteractiveMixin:
         self._refresh_interactive_prep_task_card(task)
         self._clear_interactive_prep_refs(task_id)
 
-    def _on_interactive_prep_succeeded(self, task_id: str, payload: dict) -> None:
+    def _on_interactive_prep_succeeded(self, task_id: str, payload: dict[str, Any]) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
             return

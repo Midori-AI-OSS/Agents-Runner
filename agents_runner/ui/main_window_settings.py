@@ -33,7 +33,7 @@ class _MainWindowSettingsMixin:
         self._new_task.set_spellcheck_enabled(spellcheck_enabled)
         self._new_task.set_stt_mode("offline")
 
-    def _apply_settings(self, settings: dict) -> None:
+    def _apply_settings(self, settings: dict[str, Any]) -> None:
         previous_radio_enabled = bool(self._settings_data.get("radio_enabled") or False)
         merged = dict(self._settings_data)
         merged.update(settings or {})

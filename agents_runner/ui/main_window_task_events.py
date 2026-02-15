@@ -328,7 +328,7 @@ class _MainWindowTaskEventsMixin:
             on_log=None,  # Silent cleanup (no UI updates)
         )
 
-    def _on_bridge_state(self, task_id: str, state: dict) -> None:
+    def _on_bridge_state(self, task_id: str, state: dict[str, Any]) -> None:
         self._on_task_state(task_id, state)
 
     def _on_bridge_log(self, task_id: str, line: str) -> None:
@@ -389,8 +389,8 @@ class _MainWindowTaskEventsMixin:
         task_id: str,
         exit_code: int,
         error: object,
-        artifacts: list,
-        metadata: dict | None = None,
+        artifacts: list[Any],
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         bridge = self._bridges.get(task_id)
         task = self._tasks.get(task_id)
@@ -502,7 +502,7 @@ class _MainWindowTaskEventsMixin:
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
 
-    def _on_task_state(self, task_id: str, state: dict) -> None:
+    def _on_task_state(self, task_id: str, state: dict[str, Any]) -> None:
         task = self._tasks.get(task_id)
         bridge = self._bridges.get(task_id)
         if task is None:
@@ -579,7 +579,7 @@ class _MainWindowTaskEventsMixin:
         exit_code: int,
         error: object,
         *,
-        metadata: dict | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
         task = self._tasks.get(task_id)
         if task is None:

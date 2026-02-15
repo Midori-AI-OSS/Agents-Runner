@@ -783,7 +783,7 @@ class _SettingsFormMixin:
         )
         return max(0, int(round(raw * factor)))
 
-    def set_settings(self, settings: dict) -> None:
+    def set_settings(self, settings: dict[str, Any]) -> None:
         self._suppress_autosave = True
         try:
             self._populate_agent_combo()
@@ -935,7 +935,7 @@ class _SettingsFormMixin:
         finally:
             self._suppress_autosave = False
 
-    def get_settings(self) -> dict:
+    def get_settings(self) -> dict[str, Any]:
         poll_startup_delay_text = str(
             self._github_poll_startup_delay_s.text() or "35"
         ).strip()
