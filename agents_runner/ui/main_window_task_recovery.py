@@ -12,7 +12,7 @@ from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 
 
 class _MainWindowTaskRecoveryMixin:
@@ -136,7 +136,7 @@ class _MainWindowTaskRecoveryMixin:
     def _update_task_ui(self, task: Task) -> None:
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()

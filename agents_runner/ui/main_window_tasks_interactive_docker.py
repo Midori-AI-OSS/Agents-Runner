@@ -32,7 +32,7 @@ from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.core.shell_templates import git_identity_clause
 from agents_runner.core.shell_templates import shell_log_statement
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _safe_str
+from agents_runner.ui.utils import safe_str
 
 
 def _publishes_container_port(spec: str, port: int) -> bool:
@@ -464,7 +464,7 @@ def launch_docker_terminal_task(
                 "ui",
                 "launch",
                 "INFO",
-                f"launched in {_safe_str(getattr(terminal_opt, 'label', 'Terminal'))}",
+                f"launched in {safe_str(getattr(terminal_opt, 'label', 'Terminal'))}",
             ),
         )
 

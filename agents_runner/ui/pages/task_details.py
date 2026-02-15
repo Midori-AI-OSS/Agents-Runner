@@ -27,10 +27,10 @@ from agents_runner.artifacts import get_artifact_info
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.task_model import _task_display_status
-from agents_runner.ui.utils import _format_duration
-from agents_runner.ui.utils import _rgba
-from agents_runner.ui.utils import _status_color
+from agents_runner.ui.task_model import task_display_status
+from agents_runner.ui.utils import format_duration
+from agents_runner.ui.utils import rgba
+from agents_runner.ui.utils import status_color
 from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.widgets import LogHighlighter
 from agents_runner.ui.widgets import StatusGlyph
@@ -632,11 +632,11 @@ class TaskDetailsPage(QWidget):
             self._artifacts_tab.set_task(self._last_task)
 
     def _apply_status(self, task: Task) -> None:
-        status = _task_display_status(task)
-        color = _status_color(task.status)
+        status = task_display_status(task)
+        color = status_color(task.status)
         self._status.setText(status)
         self._status.setStyleSheet(
-            f"font-size: 16px; font-weight: 750; color: {_rgba(color, 235)};"
+            f"font-size: 16px; font-weight: 750; color: {rgba(color, 235)};"
         )
         if task.is_active():
             self._glyph.set_mode("spinner", color)
@@ -658,7 +658,7 @@ class TaskDetailsPage(QWidget):
         if not task:
             self._uptime.setText("—")
             return
-        self._uptime.setText(_format_duration(task.elapsed_seconds()))
+        self._uptime.setText(format_duration(task.elapsed_seconds()))
 
     def cleanup(self) -> None:
         """Clean up resources, including external viewer process."""

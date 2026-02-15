@@ -20,7 +20,7 @@ from agents_runner.gh_management import is_gh_available
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 
 
 class _MainWindowPreflightMixin:
@@ -90,7 +90,7 @@ class _MainWindowPreflightMixin:
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 

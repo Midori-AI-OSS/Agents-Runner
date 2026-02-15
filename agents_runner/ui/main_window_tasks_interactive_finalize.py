@@ -20,7 +20,7 @@ from agents_runner.log_format import format_log
 from agents_runner.pr_metadata import load_pr_metadata
 from agents_runner.pr_metadata import normalize_pr_title
 from agents_runner.ui.task_git_metadata import derive_task_git_metadata
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 
 
 class _MainWindowTasksInteractiveFinalizeMixin:
@@ -71,7 +71,7 @@ class _MainWindowTasksInteractiveFinalizeMixin:
 
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()

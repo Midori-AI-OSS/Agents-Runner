@@ -41,7 +41,7 @@ from agents_runner.ui.constants import PIXELARCH_GIT_CONTEXT_SUFFIX
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 
 logger = logging.getLogger(__name__)
 
@@ -448,7 +448,7 @@ class _MainWindowTasksAgentMixin:
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
@@ -760,7 +760,7 @@ class _MainWindowTasksAgentMixin:
         task.status = "pulling"
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
         # Clean up any existing bridge/thread for this task to prevent duplicate log emissions

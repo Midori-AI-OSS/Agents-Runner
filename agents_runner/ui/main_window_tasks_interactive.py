@@ -41,7 +41,7 @@ from agents_runner.ui.main_window_tasks_interactive_docker import (
 )
 from agents_runner.ui.interactive_prep_worker import InteractivePrepWorker
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 from midori_ai_logger import MidoriAiLogger
 
 logger = MidoriAiLogger(channel=None, name=__name__)
@@ -285,7 +285,7 @@ class _MainWindowTasksInteractiveMixin:
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
@@ -446,7 +446,7 @@ class _MainWindowTasksInteractiveMixin:
     def _refresh_interactive_prep_task_card(self, task: Task) -> None:
         env_for_task = self._environments.get(task.environment_id)
         task_stain = env_for_task.color if env_for_task else None
-        task_spinner = _stain_color(env_for_task.color) if env_for_task else None
+        task_spinner = stain_color(env_for_task.color) if env_for_task else None
         self._dashboard.upsert_task(task, stain=task_stain, spinner_color=task_spinner)
         self._details.update_task(task)
         self._schedule_save()

@@ -7,7 +7,7 @@ from datetime import datetime
 
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import WORKSPACE_CLONED
-from agents_runner.ui.utils import _format_duration
+from agents_runner.ui.utils import format_duration
 
 
 @dataclass
@@ -97,17 +97,17 @@ class Task:
                 last_line = self.last_nonblank_log_line()
                 if last_line:
                     return last_line
-                return f"elapsed {_format_duration(duration)}"
+                return f"elapsed {format_duration(duration)}"
             return ""
         if self.exit_code == 0:
             last_line = self.last_nonblank_log_line()
-            dur = _format_duration(duration)
+            dur = format_duration(duration)
             if last_line and dur != "—":
                 return f"{last_line} • {dur}"
             if last_line:
                 return last_line
             return f"ok • {dur}"
-        return f"exit {self.exit_code} • {_format_duration(duration)}"
+        return f"exit {self.exit_code} • {format_duration(duration)}"
 
     def is_active(self) -> bool:
         return (self.status or "").lower() in {
@@ -142,7 +142,7 @@ class Task:
         return self.workspace_type == WORKSPACE_CLONED
 
 
-def _task_display_status(task: Task) -> str:
+def task_display_status(task: Task) -> str:
     status = (task.status or "").lower()
     if status == "done":
         return "Done"

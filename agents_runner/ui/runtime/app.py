@@ -211,7 +211,7 @@ def run_app(argv: list[str]) -> None:
     from agents_runner.ui.constants import APP_TITLE
     from agents_runner.ui.dialogs.first_run_setup import FirstRunSetupDialog
     from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
-    from agents_runner.ui.icons import _app_icon
+    from agents_runner.ui.icons import app_icon
     from agents_runner.ui.main_window import MainWindow
 
     # Clean up stale temporary files from previous runs
@@ -224,7 +224,7 @@ def run_app(argv: list[str]) -> None:
     install_qt_message_handler()
     app.setApplicationDisplayName(APP_TITLE)
     app.setApplicationName(APP_TITLE)
-    icon = _app_icon()
+    icon = app_icon()
     if icon is not None:
         app.setWindowIcon(icon)
     app.setStyleSheet(app_stylesheet())

@@ -174,7 +174,7 @@ def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
     return prompts_data
 
 
-def _environment_from_payload(payload: dict[str, Any]) -> Environment | None:
+def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     """Deserialize environment from JSON payload."""
     if not isinstance(payload, dict):
         return None

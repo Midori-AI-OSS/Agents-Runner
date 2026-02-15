@@ -34,7 +34,7 @@ from agents_runner.environments import (
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
-from agents_runner.ui.utils import _apply_environment_combo_tint, _stain_color
+from agents_runner.ui.utils import apply_environment_combo_tint, stain_color
 from agents_runner.ui.widgets import GlassCard
 
 
@@ -273,9 +273,9 @@ class NewEnvironmentWizard(ThemedDialog):
         if not stain:
             self._tint_overlay.set_tint_color(None)
             return
-        self._tint_overlay.set_tint_color(_stain_color(stain))
+        self._tint_overlay.set_tint_color(stain_color(stain))
         if hasattr(self, "_color_combo"):
-            _apply_environment_combo_tint(self._color_combo, stain)
+            apply_environment_combo_tint(self._color_combo, stain)
 
     def _on_source_changed(self, index: int) -> None:
         is_folder = index == 0

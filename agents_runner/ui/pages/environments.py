@@ -36,8 +36,8 @@ from agents_runner.ui.pages.environments_actions import _EnvironmentsPageActions
 from agents_runner.ui.pages.environments_form import _EnvironmentsFormMixin
 from agents_runner.ui.pages.environments_navigation import _EnvironmentsNavigationMixin
 from agents_runner.ui.pages.github_trust import normalize_trusted_mode
-from agents_runner.ui.utils import _apply_environment_combo_tint
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import apply_environment_combo_tint
+from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import GlassCard
 
 
@@ -195,10 +195,10 @@ class EnvironmentsPage(
             self._color.setStyleSheet("")
             return
 
-        _apply_environment_combo_tint(self._env_select, stain)
-        tint = _stain_color(stain)
+        apply_environment_combo_tint(self._env_select, stain)
+        tint = stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
-        _apply_environment_combo_tint(self._color, stain)
+        apply_environment_combo_tint(self._color, stain)
 
     def set_environments(self, envs: dict[str, Environment], active_id: str) -> None:
         self._environments = dict(envs)

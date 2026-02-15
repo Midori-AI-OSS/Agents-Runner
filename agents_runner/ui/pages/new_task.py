@@ -35,8 +35,8 @@ from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.icons import mic_icon
 from agents_runner.ui.graphics import _EnvironmentTintOverlay
 from agents_runner.ui.lucide_icons import lucide_icon
-from agents_runner.ui.utils import _apply_environment_combo_tint
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import apply_environment_combo_tint
+from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import SpellTextEdit
 from agents_runner.ui.widgets import StainedGlassButton
 from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
@@ -536,8 +536,8 @@ class NewTaskPage(QWidget):
             self._run_agent.set_tint_color(None)
             return
 
-        _apply_environment_combo_tint(self._base_branch, stain)
-        tint = _stain_color(stain)
+        apply_environment_combo_tint(self._base_branch, stain)
+        tint = stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
         self._get_agent_help.set_tint_color(tint)
         self._run_interactive.set_tint_color(tint)
