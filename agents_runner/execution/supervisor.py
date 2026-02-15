@@ -525,7 +525,7 @@ class TaskSupervisor:
                 agent_cli_args = shlex.split(agent.cli_flags)
             except ValueError:
                 # Invalid flags, use empty list
-                agent_cli_args: list[str] = []
+                pass
 
         config = DockerRunnerConfig(
             task_id=self._config.task_id,

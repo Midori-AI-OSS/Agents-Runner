@@ -107,7 +107,7 @@ def cleanup_task_workspace(
                     )
                 )
 
-        shutil.rmtree(task_workspace, onerror=handle_remove_error)
+        shutil.rmtree(task_workspace, onexc=handle_remove_error)
 
         logger.info(
             format_log(
@@ -260,7 +260,7 @@ def get_task_workspace_size(
 
     try:
         total_size = 0
-        for dirpath, dirnames, filenames in os.walk(task_workspace):
+        for dirpath, _dirnames, filenames in os.walk(task_workspace):
             for filename in filenames:
                 filepath = os.path.join(dirpath, filename)
                 try:

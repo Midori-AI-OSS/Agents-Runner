@@ -91,7 +91,7 @@ class MainWindowEnvironmentMixin:
         )
 
     def _sync_new_task_repo_controls(self, env: Environment | None) -> None:
-        workdir, ready, _ = self._new_task_workspace(env)
+        _workdir, ready, _ = self._new_task_workspace(env)
         if not ready:
             self._new_task.set_repo_controls_visible(False)
             self._new_task.set_repo_branches([])

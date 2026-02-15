@@ -321,7 +321,7 @@ class MainWindowPersistenceMixin:
             if task.requires_git_metadata() and not task.git:
                 from agents_runner.ui.task_repair import repair_task_git_metadata
 
-                success, msg = repair_task_git_metadata(
+                success, _msg = repair_task_git_metadata(
                     task,
                     state_path=self._state_path,
                     environments=self._environments,

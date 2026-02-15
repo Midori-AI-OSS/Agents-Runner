@@ -64,7 +64,7 @@ def deduplicate_mounts(mounts: list[str]) -> list[str]:
     return result
 
 
-def _resolve_workspace_mount(
+def resolve_workspace_mount(
     host_workdir: str,
     *,
     container_mount: str,
