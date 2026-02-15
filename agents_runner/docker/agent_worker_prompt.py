@@ -68,7 +68,7 @@ class PromptAssembler:
 
     def _load_template_parts(self, agent_cli: str) -> list[str]:
         """Load all template parts."""
-        template_parts = []
+        template_parts: list[str] = []
 
         for template_name in [
             "templates/midoriaibasetemplate",
