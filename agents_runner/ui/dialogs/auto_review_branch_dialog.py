@@ -34,24 +34,14 @@ class AutoReviewBranchDialog(ThemedDialog):
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
-        title = QLabel("Saved base branch is no longer available.")
-        title.setStyleSheet("font-size: 15px; font-weight: 700;")
-        title.setWordWrap(True)
-        layout.addWidget(title)
-
-        details = QLabel(
-            "\n".join(
-                [
-                    f"Environment: {environment_name or '(unknown)'}",
-                    f"Saved branch: {previous_branch or '(none)'}",
-                    "Pick a branch for this auto-review task. If no action is taken,",
-                    "the current selection will be used automatically.",
-                ]
-            )
+        message = QLabel(
+            "Saved base branch "
+            f"'{previous_branch or '(none)'}' is no longer available for "
+            f"{environment_name or '(unknown)'}."
         )
-        details.setStyleSheet("color: rgba(237, 239, 245, 175);")
-        details.setWordWrap(True)
-        layout.addWidget(details)
+        message.setStyleSheet("font-size: 15px; font-weight: 700;")
+        message.setWordWrap(True)
+        layout.addWidget(message)
 
         branch_card = GlassCard()
         branch_layout = QVBoxLayout(branch_card)
@@ -65,11 +55,6 @@ class AutoReviewBranchDialog(ThemedDialog):
         branch_layout.addWidget(branch_label)
         branch_layout.addWidget(self._branch_combo)
         layout.addWidget(branch_card)
-
-        self._countdown = QLabel("")
-        self._countdown.setStyleSheet("color: rgba(237, 239, 245, 160);")
-        self._countdown.setWordWrap(True)
-        layout.addWidget(self._countdown)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -109,12 +94,6 @@ class AutoReviewBranchDialog(ThemedDialog):
             self._branch_combo.blockSignals(False)
 
     def _update_countdown_text(self) -> None:
-        self._countdown.setText(
-            (
-                "Auto-review will continue in "
-                f"{self._seconds_left}s using the currently selected branch."
-            )
-        )
         self._ok_button.setText(f"OK ({self._seconds_left}s)")
 
     def _on_timeout_tick(self) -> None:
