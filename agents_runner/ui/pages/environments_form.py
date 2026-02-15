@@ -336,9 +336,9 @@ class _EnvironmentsFormMixin:
         github_actions = QHBoxLayout()
         github_actions.setSpacing(BUTTON_ROW_SPACING)
         github_actions.addWidget(self._add_trusted_user_env)
+        github_actions.addStretch(1)
         github_actions.addWidget(self._setup_github_defaults_env)
         github_actions.addWidget(self._agentsnova_trusted_mode)
-        github_actions.addStretch(1)
         github_body.addLayout(github_actions)
         self._register_page("github", github_page)
 

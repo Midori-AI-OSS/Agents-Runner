@@ -468,8 +468,8 @@ class _SettingsFormMixin:
         github_actions = QHBoxLayout()
         github_actions.setSpacing(BUTTON_ROW_SPACING)
         github_actions.addWidget(self._add_trusted_user_global)
-        github_actions.addWidget(self._setup_github_defaults_global)
         github_actions.addStretch(1)
+        github_actions.addWidget(self._setup_github_defaults_global)
         github_body.addLayout(github_actions)
         self._register_page("github", github_page)
 
