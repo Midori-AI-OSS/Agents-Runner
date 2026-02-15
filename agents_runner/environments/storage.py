@@ -56,7 +56,8 @@ def _load_environments_items(path: str) -> list[dict[str, Any]]:
 
     raw: object
     if isinstance(payload, dict):
-        raw = payload.get("environments")
+        payload_dict: dict[str, Any] = payload
+        raw = payload_dict.get("environments")
     elif isinstance(payload, list):
         raw = payload
     else:
@@ -65,8 +66,9 @@ def _load_environments_items(path: str) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         return []
 
+    raw_list: list[Any] = raw
     items: list[dict[str, Any]] = []
-    for item in raw:
+    for item in raw_list:
         if isinstance(item, dict):
             items.append(item)
     return items
