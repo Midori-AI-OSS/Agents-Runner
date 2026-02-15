@@ -31,10 +31,10 @@ from agents_runner.ui.constants import (
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
 )
-from agents_runner.ui.graphics import _EnvironmentTintOverlay
-from agents_runner.ui.pages.environments_actions import _EnvironmentsPageActionsMixin
-from agents_runner.ui.pages.environments_form import _EnvironmentsFormMixin
-from agents_runner.ui.pages.environments_navigation import _EnvironmentsNavigationMixin
+from agents_runner.ui.graphics import EnvironmentTintOverlay
+from agents_runner.ui.pages.environments_actions import EnvironmentsPageActionsMixin
+from agents_runner.ui.pages.environments_form import EnvironmentsFormMixin
+from agents_runner.ui.pages.environments_navigation import EnvironmentsNavigationMixin
 from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 from agents_runner.ui.utils import apply_environment_combo_tint
 from agents_runner.ui.utils import stain_color
@@ -43,9 +43,9 @@ from agents_runner.ui.widgets import GlassCard
 
 class EnvironmentsPage(
     QWidget,
-    _EnvironmentsNavigationMixin,
-    _EnvironmentsFormMixin,
-    _EnvironmentsPageActionsMixin,
+    EnvironmentsNavigationMixin,
+    EnvironmentsFormMixin,
+    EnvironmentsPageActionsMixin,
 ):
     back_requested = Signal()
     updated = Signal(str)
@@ -173,7 +173,7 @@ class EnvironmentsPage(
 
         self._update_navigation_mode()
 
-        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.raise_()
 
     def resizeEvent(self, event: QResizeEvent) -> None:

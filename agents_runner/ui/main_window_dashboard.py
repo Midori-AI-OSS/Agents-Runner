@@ -11,7 +11,7 @@ from agents_runner.ui.utils import stain_color
 PAST_TASK_PAGE_SIZE = 10
 
 
-class _MainWindowDashboardMixin:
+class MainWindowDashboardMixin:
     def _refresh_task_rows(self) -> None:
         for task in self._tasks.values():
             env = self._environments.get(task.environment_id)

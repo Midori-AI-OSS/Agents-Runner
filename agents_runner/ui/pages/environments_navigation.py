@@ -12,7 +12,7 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect
 from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 
 
-class _EnvironmentsNavigationMixin:
+class EnvironmentsNavigationMixin:
     def _on_back(self) -> None:
         if not self.try_autosave():
             return

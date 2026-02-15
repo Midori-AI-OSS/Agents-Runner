@@ -16,7 +16,7 @@ from agents_runner.ui.utils import parse_docker_time
 from agents_runner.ui.utils import stain_color
 
 
-class _MainWindowPersistenceMixin:
+class MainWindowPersistenceMixin:
     @staticmethod
     def _is_missing_container_error(exc: Exception) -> bool:
         text = str(exc or "").lower()
@@ -47,7 +47,7 @@ class _MainWindowPersistenceMixin:
         try:
             state = _inspect_state(container_id)
         except Exception as exc:
-            if _MainWindowPersistenceMixin._is_missing_container_error(exc):
+            if MainWindowPersistenceMixin._is_missing_container_error(exc):
                 status = (task.status or "").lower()
                 # Interactive tasks can briefly lack a container during launch; avoid
                 # marking them failed while they are still starting/running.

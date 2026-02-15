@@ -53,7 +53,7 @@ class _SettingsPaneSpec:
     section: str
 
 
-class _SettingsFormMixin:
+class SettingsFormMixin:
     def _default_pane_specs(self) -> list[_SettingsPaneSpec]:
         specs = [
             _SettingsPaneSpec(
@@ -717,7 +717,7 @@ class _SettingsFormMixin:
             return "Midori AI (Dark Theme)"
         if normalized == "midoriai_light":
             return "Midori AI (Light Theme)"
-        return _SettingsFormMixin._format_key_label(normalized)
+        return SettingsFormMixin._format_key_label(normalized)
 
     @staticmethod
     def _format_key_label(value: str) -> str:

@@ -17,7 +17,7 @@ from agents_runner.environments import Environment
 logger = logging.getLogger(__name__)
 
 
-class _MainWindowSettingsMixin:
+class MainWindowSettingsMixin:
     def _apply_settings_to_pages(self) -> None:
         if not self._settings.isVisible():
             self._settings.set_settings(self._settings_data)

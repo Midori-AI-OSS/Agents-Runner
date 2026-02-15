@@ -47,7 +47,7 @@ class _EnvironmentPaneSpec:
     section: str
 
 
-class _EnvironmentsFormMixin:
+class EnvironmentsFormMixin:
     def _default_pane_specs(self) -> list[_EnvironmentPaneSpec]:
         return [
             _EnvironmentPaneSpec(

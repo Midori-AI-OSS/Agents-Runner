@@ -23,7 +23,7 @@ from agents_runner.ui.task_git_metadata import derive_task_git_metadata
 from agents_runner.ui.utils import stain_color
 
 
-class _MainWindowTasksInteractiveFinalizeMixin:
+class MainWindowTasksInteractiveFinalizeMixin:
     def _on_interactive_finished(self, task_id: str, exit_code: int) -> None:
         task_id = str(task_id or "").strip()
         watch = self._interactive_watch.pop(task_id, None)

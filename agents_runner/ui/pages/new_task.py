@@ -33,7 +33,7 @@ from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.icons import mic_icon
-from agents_runner.ui.graphics import _EnvironmentTintOverlay
+from agents_runner.ui.graphics import EnvironmentTintOverlay
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.utils import apply_environment_combo_tint
 from agents_runner.ui.utils import stain_color
@@ -255,7 +255,7 @@ class NewTaskPage(QWidget):
 
         layout.addWidget(card, 1)
 
-        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.raise_()
         self._refresh_terminal_selection("")
         self._update_run_buttons()

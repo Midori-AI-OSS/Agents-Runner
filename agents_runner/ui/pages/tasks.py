@@ -29,7 +29,7 @@ from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 from agents_runner.ui.constants import LEFT_NAV_PANEL_WIDTH
 from agents_runner.ui.constants import MAIN_LAYOUT_MARGINS
 from agents_runner.ui.constants import MAIN_LAYOUT_SPACING
-from agents_runner.ui.graphics import _EnvironmentTintOverlay
+from agents_runner.ui.graphics import EnvironmentTintOverlay
 from agents_runner.ui.pages.github_work_coordinator import GitHubWorkCoordinator
 from agents_runner.ui.pages.github_work_list import GitHubWorkListPage
 from agents_runner.ui.pages.new_task import NewTaskPage
@@ -175,7 +175,7 @@ class TasksPage(QWidget):
 
         self._update_navigation_mode()
 
-        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.raise_()
 
     def _default_pane_specs(self) -> list[_TasksPaneSpec]:

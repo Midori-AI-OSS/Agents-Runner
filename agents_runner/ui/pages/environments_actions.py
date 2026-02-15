@@ -17,7 +17,7 @@ from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
 from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 
 
-class _EnvironmentsPageActionsMixin:
+class EnvironmentsPageActionsMixin:
     def _sync_workspace_controls(
         self, *_: object, env: Environment | None = None
     ) -> None:

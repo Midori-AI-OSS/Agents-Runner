@@ -23,7 +23,7 @@ from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import stain_color
 
 
-class _MainWindowPreflightMixin:
+class MainWindowPreflightMixin:
     def _start_preflight_task(
         self,
         *,

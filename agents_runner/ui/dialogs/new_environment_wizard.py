@@ -33,7 +33,7 @@ from agents_runner.environments import (
 )
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
-from agents_runner.ui.graphics import _EnvironmentTintOverlay
+from agents_runner.ui.graphics import EnvironmentTintOverlay
 from agents_runner.ui.utils import apply_environment_combo_tint, stain_color
 from agents_runner.ui.widgets import GlassCard
 
@@ -63,7 +63,7 @@ class NewEnvironmentWizard(ThemedDialog):
         self._stack.addWidget(self._step1_widget)
         self._stack.addWidget(self._step2_widget)
         self._stack.setCurrentIndex(0)
-        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=22)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=22)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
         self._apply_environment_tint()

@@ -12,7 +12,7 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.log_format import format_log
 
 
-class _MainWindowTaskReviewMixin:
+class MainWindowTaskReviewMixin:
     def _on_task_pr_requested(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         task = self._tasks.get(task_id)

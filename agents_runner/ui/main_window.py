@@ -33,42 +33,42 @@ from agents_runner.ui.task_model import Task
 from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.widgets.radio_control import RadioControlWidget
 
-from agents_runner.ui.main_window_capacity import _MainWindowCapacityMixin
-from agents_runner.ui.main_window_dashboard import _MainWindowDashboardMixin
-from agents_runner.ui.main_window_auto_review import _MainWindowAutoReviewMixin
-from agents_runner.ui.main_window_environment import _MainWindowEnvironmentMixin
-from agents_runner.ui.main_window_navigation import _MainWindowNavigationMixin
-from agents_runner.ui.main_window_persistence import _MainWindowPersistenceMixin
-from agents_runner.ui.main_window_preflight import _MainWindowPreflightMixin
-from agents_runner.ui.main_window_settings import _MainWindowSettingsMixin
-from agents_runner.ui.main_window_task_events import _MainWindowTaskEventsMixin
-from agents_runner.ui.main_window_task_recovery import _MainWindowTaskRecoveryMixin
-from agents_runner.ui.main_window_task_review import _MainWindowTaskReviewMixin
-from agents_runner.ui.main_window_tasks_agent import _MainWindowTasksAgentMixin
+from agents_runner.ui.main_window_capacity import MainWindowCapacityMixin
+from agents_runner.ui.main_window_dashboard import MainWindowDashboardMixin
+from agents_runner.ui.main_window_auto_review import MainWindowAutoReviewMixin
+from agents_runner.ui.main_window_environment import MainWindowEnvironmentMixin
+from agents_runner.ui.main_window_navigation import MainWindowNavigationMixin
+from agents_runner.ui.main_window_persistence import MainWindowPersistenceMixin
+from agents_runner.ui.main_window_preflight import MainWindowPreflightMixin
+from agents_runner.ui.main_window_settings import MainWindowSettingsMixin
+from agents_runner.ui.main_window_task_events import MainWindowTaskEventsMixin
+from agents_runner.ui.main_window_task_recovery import MainWindowTaskRecoveryMixin
+from agents_runner.ui.main_window_task_review import MainWindowTaskReviewMixin
+from agents_runner.ui.main_window_tasks_agent import MainWindowTasksAgentMixin
 from agents_runner.ui.main_window_tasks_interactive import (
-    _MainWindowTasksInteractiveMixin,
+    MainWindowTasksInteractiveMixin,
 )
 from agents_runner.ui.main_window_tasks_interactive_finalize import (
-    _MainWindowTasksInteractiveFinalizeMixin,
+    MainWindowTasksInteractiveFinalizeMixin,
 )
 
 
 class MainWindow(
     QMainWindow,
-    _MainWindowCapacityMixin,
-    _MainWindowNavigationMixin,
-    _MainWindowSettingsMixin,
-    _MainWindowEnvironmentMixin,
-    _MainWindowDashboardMixin,
-    _MainWindowAutoReviewMixin,
-    _MainWindowTasksAgentMixin,
-    _MainWindowTasksInteractiveMixin,
-    _MainWindowTasksInteractiveFinalizeMixin,
-    _MainWindowPreflightMixin,
-    _MainWindowTaskReviewMixin,
-    _MainWindowTaskRecoveryMixin,
-    _MainWindowTaskEventsMixin,
-    _MainWindowPersistenceMixin,
+    MainWindowCapacityMixin,
+    MainWindowNavigationMixin,
+    MainWindowSettingsMixin,
+    MainWindowEnvironmentMixin,
+    MainWindowDashboardMixin,
+    MainWindowAutoReviewMixin,
+    MainWindowTasksAgentMixin,
+    MainWindowTasksInteractiveMixin,
+    MainWindowTasksInteractiveFinalizeMixin,
+    MainWindowPreflightMixin,
+    MainWindowTaskReviewMixin,
+    MainWindowTaskRecoveryMixin,
+    MainWindowTaskEventsMixin,
+    MainWindowPersistenceMixin,
 ):
     host_log = Signal(str, str)
     host_pr_url = Signal(str, str)

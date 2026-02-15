@@ -27,7 +27,7 @@ from agents_runner.ui.utils import parse_docker_time
 from agents_runner.ui.utils import stain_color
 
 
-class _MainWindowTaskEventsMixin:
+class MainWindowTaskEventsMixin:
     def _open_task_details(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:

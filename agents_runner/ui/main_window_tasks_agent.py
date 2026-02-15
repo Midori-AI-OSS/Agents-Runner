@@ -46,7 +46,7 @@ from agents_runner.ui.utils import stain_color
 logger = logging.getLogger(__name__)
 
 
-class _MainWindowTasksAgentMixin:
+class MainWindowTasksAgentMixin:
     def _clean_old_tasks(self) -> None:
         to_remove: set[str] = set()
         for task_id, task in self._tasks.items():

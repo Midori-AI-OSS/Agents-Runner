@@ -165,7 +165,7 @@ def _theme_name_for_agent(agent_cli: str) -> str:
     return theme_name.lower() or _fallback_theme_name()
 
 
-class _EnvironmentTintOverlay(QWidget):
+class EnvironmentTintOverlay(QWidget):
     def __init__(self, parent: QWidget | None = None, alpha: int = 13) -> None:
         super().__init__(parent)
         self._alpha = int(min(max(alpha, 0), 255))

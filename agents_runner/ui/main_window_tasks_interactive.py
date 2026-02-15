@@ -47,7 +47,7 @@ from midori_ai_logger import MidoriAiLogger
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class _MainWindowTasksInteractiveMixin:
+class MainWindowTasksInteractiveMixin:
     def _start_interactive_task_from_ui(
         self,
         prompt: str,

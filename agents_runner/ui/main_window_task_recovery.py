@@ -15,7 +15,7 @@ from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import stain_color
 
 
-class _MainWindowTaskRecoveryMixin:
+class MainWindowTaskRecoveryMixin:
     def _reconcile_tasks_after_restart(self) -> None:
         """Reconcile tasks after app restart.
 
