@@ -122,6 +122,8 @@ class MainWindow(
             "github_polling_enabled": False,
             "github_poll_startup_delay_s": 35,
             "agentsnova_auto_review_enabled": True,
+            "agentsnova_auto_marker_comments_enabled": True,
+            "agentsnova_auto_reactions_enabled": True,
             "agentsnova_trusted_users_global": [],
             "agentsnova_review_guard_mode": "reaction",
         }

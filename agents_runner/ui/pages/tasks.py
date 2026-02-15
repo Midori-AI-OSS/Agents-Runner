@@ -50,7 +50,7 @@ class _TasksPaneSpec:
 
 
 class TasksPage(QWidget):
-    auto_review_requested = Signal(str, str)
+    auto_review_requested = Signal(str, object)
 
     def __init__(
         self,
