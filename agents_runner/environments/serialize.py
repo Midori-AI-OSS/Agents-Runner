@@ -71,7 +71,7 @@ def _validate_cross_agent_allowlist(
     # Coerce to list[str]
     if not isinstance(raw_allowlist, list):
         return []
-    
+
     raw_list: list[Any] = raw_allowlist
     allowlist = [str(item).strip() for item in raw_list if str(item).strip()]
 
@@ -364,9 +364,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
             enabled_agents_raw = selection_dict.get("enabled_agents", [])
             if isinstance(enabled_agents_raw, list):
                 enabled_agents_list: list[Any] = enabled_agents_raw
-                enabled_agents = [
-                    str(a) for a in enabled_agents_list if str(a).strip()
-                ]
+                enabled_agents = [str(a) for a in enabled_agents_list if str(a).strip()]
             else:
                 enabled_agents: list[str] = []
 

@@ -20,7 +20,7 @@ from agents_runner.setup.commands import get_setup_command
 from agents_runner.terminal_apps import (
     detect_terminal_options,
     TerminalOption,
-    _linux_terminal_args,
+    linux_terminal_args,
 )
 
 
@@ -181,7 +181,7 @@ def launch_terminal_and_wait(
     cwd = os.path.abspath(os.path.expanduser(cwd)) if cwd else None
 
     if option.kind == "linux-exe":
-        args = _linux_terminal_args(
+        args = linux_terminal_args(
             option.terminal_id, option.exe or option.terminal_id, bash_script, cwd=cwd
         )
         return subprocess.run(args, start_new_session=True)

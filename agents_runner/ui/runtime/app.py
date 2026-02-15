@@ -157,7 +157,7 @@ def _configure_qt_logging_runtime() -> None:
     )
 
 
-def _configure_qtwebengine_runtime() -> None:
+def configure_qtwebengine_runtime() -> None:
     fontconfig_file = os.environ.get("FONTCONFIG_FILE")
     if not fontconfig_file:
         candidate = Path("/etc/fonts/fonts.conf")
@@ -196,7 +196,7 @@ def _initialize_qtwebengine() -> None:
 def run_app(argv: list[str]) -> None:
     _maybe_enable_faulthandler()
     _configure_qt_logging_runtime()
-    _configure_qtwebengine_runtime()
+    configure_qtwebengine_runtime()
 
     from agents_runner.diagnostics.crash_reporting import install_exception_hooks
 

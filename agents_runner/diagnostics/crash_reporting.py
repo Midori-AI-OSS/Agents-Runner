@@ -120,7 +120,8 @@ def install_exception_hooks(*, argv: list[str] | None = None) -> None:
             except Exception:
                 pass
             try:
-                original_sys_hook(exc_type, exc_value, exc_tb)
+                if exc_type is not None and exc_value is not None:
+                    original_sys_hook(exc_type, exc_value, exc_tb)
             except Exception:
                 pass
 

@@ -80,9 +80,9 @@ def _maybe_enable_desktop_viewer_faulthandler() -> Path | None:
 
 def _configure_webengine_runtime() -> None:
     try:
-        from agents_runner.ui.runtime.app import _configure_qtwebengine_runtime
+        from agents_runner.ui.runtime.app import configure_qtwebengine_runtime
 
-        _configure_qtwebengine_runtime()
+        configure_qtwebengine_runtime()
     except Exception:
         pass
 

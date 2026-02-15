@@ -174,7 +174,7 @@ class WorkerSetup:
                     f"forcing Docker platform: {forced_platform}",
                 )
             )
-            rosetta_available = has_rosetta()
+            rosetta_available = has_rosetta() or False
             if not rosetta_available:
                 self._on_log(
                     format_log(

@@ -91,7 +91,7 @@ def launch_in_terminal(
     cwd = os.path.abspath(os.path.expanduser(cwd)) if cwd else None
 
     if option.kind == "linux-exe":
-        args = _linux_terminal_args(
+        args = linux_terminal_args(
             option.terminal_id, option.exe or option.terminal_id, bash_script, cwd=cwd
         )
         subprocess.Popen(args, start_new_session=True)
@@ -108,7 +108,7 @@ def launch_in_terminal(
     raise RuntimeError(f"Unsupported terminal kind: {option.kind}")
 
 
-def _linux_terminal_args(
+def linux_terminal_args(
     terminal_id: str, exe: str, bash_script: str, cwd: str | None
 ) -> list[str]:
     command = bash_script

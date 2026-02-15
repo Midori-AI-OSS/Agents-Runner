@@ -20,7 +20,7 @@ from agents_runner.ui.themes.types import ThemeBackground
 _BACKGROUND_CACHE: dict[str, ThemeBackground | None] = {}
 
 
-def _load_background(theme_name: str) -> ThemeBackground | None:
+def load_background(theme_name: str) -> ThemeBackground | None:
     theme_name = str(theme_name or "").strip().lower()
     if not theme_name:
         return None
@@ -62,7 +62,7 @@ def discover_theme_module_names() -> list[str]:
         name = str(entry.name or "").strip().lower()
         if not name:
             continue
-        if _load_background(name) is None:
+        if load_background(name) is None:
             continue
         discovered.append(name)
     return discovered
@@ -88,7 +88,7 @@ def discover_plugin_theme_names() -> list[str]:
         normalized = theme_name.lower()
         if not normalized or normalized in discovered:
             continue
-        if _load_background(normalized) is None:
+        if load_background(normalized) is None:
             continue
         discovered.append(normalized)
     return discovered
@@ -104,7 +104,7 @@ def available_ui_theme_names() -> list[str]:
         if name not in ordered:
             ordered.append(name)
     fallback = _fallback_theme_name()
-    if fallback not in ordered and _load_background(fallback) is not None:
+    if fallback not in ordered and load_background(fallback) is not None:
         ordered.append(fallback)
     return ordered
 
@@ -124,14 +124,14 @@ def normalize_ui_theme_name(theme_name: str | None, *, allow_auto: bool = True) 
     return _fallback_theme_name()
 
 
-def _resolve_theme_name(theme_name: str) -> str:
+def resolve_theme_name(theme_name: str) -> str:
     candidate = str(theme_name or "").strip().lower()
     if not candidate:
         candidate = _fallback_theme_name()
-    if _load_background(candidate) is not None:
+    if load_background(candidate) is not None:
         return candidate
     fallback = _fallback_theme_name()
-    if candidate != fallback and _load_background(fallback) is not None:
+    if candidate != fallback and load_background(fallback) is not None:
         return fallback
     return candidate
 
@@ -141,10 +141,10 @@ def resolve_effective_ui_theme_name(settings: Mapping[str, object] | None) -> st
     payload = settings or {}
     selected = normalize_ui_theme_name(payload.get("ui_theme"), allow_auto=True)
     if selected != "auto":
-        return _resolve_theme_name(selected)
+        return resolve_theme_name(selected)
 
     agent_cli = str(payload.get("use") or "codex").strip().lower() or "codex"
-    return _resolve_theme_name(_theme_name_for_agent(agent_cli))
+    return resolve_theme_name(_theme_name_for_agent(agent_cli))
 
 
 def _theme_name_for_agent(agent_cli: str) -> str:
@@ -210,8 +210,8 @@ class GlassRoot(QWidget):
         self._ticker.start()
 
     def _ensure_theme_runtime(self, theme_name: str) -> object | None:
-        resolved = _resolve_theme_name(theme_name)
-        background = _load_background(resolved)
+        resolved = resolve_theme_name(theme_name)
+        background = load_background(resolved)
         if background is None:
             return None
         if resolved not in self._theme_runtimes:
@@ -222,9 +222,9 @@ class GlassRoot(QWidget):
         return self._theme_runtimes.get(resolved)
 
     def _paint_theme(self, painter: QPainter, theme_name: str) -> int:
-        resolved = _resolve_theme_name(theme_name)
+        resolved = resolve_theme_name(theme_name)
         rect = self.rect()
-        background = _load_background(resolved)
+        background = load_background(resolved)
         runtime = self._ensure_theme_runtime(resolved)
 
         if background is None or runtime is None:
@@ -242,12 +242,12 @@ class GlassRoot(QWidget):
             return 32
 
     def _transition_to_theme(self, theme_name: str) -> None:
-        theme_name = _resolve_theme_name(theme_name)
+        theme_name = resolve_theme_name(theme_name)
         if theme_name == self._theme_name:
             return
 
         self._ensure_theme_runtime(theme_name)
-        background = _load_background(theme_name)
+        background = load_background(theme_name)
         runtime = self._theme_runtimes.get(theme_name)
         if background is not None and runtime is not None:
             try:
@@ -279,12 +279,12 @@ class GlassRoot(QWidget):
         self._theme_anim = anim
 
     def _apply_theme_immediately(self, theme_name: str) -> None:
-        resolved = _resolve_theme_name(theme_name)
+        resolved = resolve_theme_name(theme_name)
         if resolved == self._theme_name and self._theme_to_name is None:
             return
 
         self._ensure_theme_runtime(resolved)
-        background = _load_background(resolved)
+        background = load_background(resolved)
         runtime = self._theme_runtimes.get(resolved)
         if background is not None and runtime is not None:
             try:
@@ -344,8 +344,8 @@ class GlassRoot(QWidget):
             candidates.add(self._theme_to_name)
 
         for theme_name in candidates:
-            resolved = _resolve_theme_name(theme_name)
-            background = _load_background(resolved)
+            resolved = resolve_theme_name(theme_name)
+            background = load_background(resolved)
             runtime = self._theme_runtimes.get(resolved)
             if background is None or runtime is None:
                 continue
@@ -379,8 +379,8 @@ class GlassRoot(QWidget):
             candidates.append(self._theme_to_name)
 
         for theme_name in candidates:
-            resolved = _resolve_theme_name(theme_name)
-            background = _load_background(resolved)
+            resolved = resolve_theme_name(theme_name)
+            background = load_background(resolved)
             runtime = self._ensure_theme_runtime(resolved)
             if background is None or runtime is None:
                 continue
