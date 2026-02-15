@@ -170,7 +170,8 @@ class EnvironmentsFormMixin:
             "Enable background GitHub polling for this environment"
         )
         self._github_polling_enabled.setToolTip(
-            "Requires global GitHub polling in Settings. When enabled, this environment participates in app-wide polling."
+            "Used only when app-wide GitHub polling is disabled. "
+            "This control is hidden while app-wide polling is enabled."
         )
         self._agentsnova_trusted_mode = QComboBox()
         self._agentsnova_trusted_mode.addItem("Inherit global trusted users", "inherit")

@@ -50,6 +50,7 @@ class GitHubWorkCoordinator(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._settings: dict[str, object] = {}
+        self._settings_initialized = False
         self._environments: dict[str, Environment] = {}
         self._cache: dict[tuple[str, str], GitHubWorkCacheEntry] = {}
         self._inflight_keys: set[tuple[str, str]] = set()
@@ -74,9 +75,18 @@ class GitHubWorkCoordinator(QObject):
         self._cycle_finished.connect(self._on_cycle_finished)
 
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
+        previous_global_polling_enabled = (
+            self.is_global_polling_enabled() if self._settings_initialized else None
+        )
         self._settings = dict(settings_data or {})
         self._poll_timer.setInterval(self._poll_interval_s() * 1000)
-        self._reconfigure_polling_timers()
+        runtime_enable_requested = bool(
+            self._settings_initialized
+            and previous_global_polling_enabled is False
+            and self.is_global_polling_enabled()
+        )
+        self._reconfigure_polling_timers(start_immediately=runtime_enable_requested)
+        self._settings_initialized = True
 
     def set_environments(self, environments: dict[str, Environment]) -> None:
         self._environments = dict(environments or {})
@@ -147,11 +157,9 @@ class GitHubWorkCoordinator(QObject):
         env = self._environments.get(str(env_id or "").strip())
         if env is None:
             return False
-        if not bool(getattr(env, "github_polling_enabled", False)):
-            return False
         return resolve_environment_github_repo(env) is not None
 
-    def _reconfigure_polling_timers(self) -> None:
+    def _reconfigure_polling_timers(self, *, start_immediately: bool = False) -> None:
         if not self.is_global_polling_enabled():
             self._poll_timer.stop()
             self._startup_timer.stop()
@@ -160,6 +168,14 @@ class GitHubWorkCoordinator(QObject):
 
         self._poll_timer.setInterval(self._poll_interval_s() * 1000)
         if self._startup_poll_started:
+            if not self._poll_timer.isActive():
+                self._poll_timer.start()
+            return
+
+        if start_immediately:
+            self._startup_timer.stop()
+            self._startup_poll_started = True
+            self._start_poll_cycle()
             if not self._poll_timer.isActive():
                 self._poll_timer.start()
             return
