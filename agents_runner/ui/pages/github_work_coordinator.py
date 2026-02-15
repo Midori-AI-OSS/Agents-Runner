@@ -190,22 +190,33 @@ class GitHubWorkCoordinator(QObject):
         if not self.is_global_polling_enabled():
             return
 
+        def _clear_cycle_running_flag() -> None:
+            with self._state_lock:
+                self._poll_cycle_running = False
+
         with self._state_lock:
             if self._poll_cycle_running:
                 return
             self._poll_cycle_running = True
 
-        env_ids = self._eligible_poll_environment_ids()
-        if not env_ids:
-            with self._state_lock:
-                self._poll_cycle_running = False
+        try:
+            env_ids = self._eligible_poll_environment_ids()
+        except Exception:
+            _clear_cycle_running_flag()
             return
 
-        threading.Thread(
-            target=self._run_poll_cycle,
-            args=(env_ids,),
-            daemon=True,
-        ).start()
+        if not env_ids:
+            _clear_cycle_running_flag()
+            return
+
+        try:
+            threading.Thread(
+                target=self._run_poll_cycle,
+                args=(env_ids,),
+                daemon=True,
+            ).start()
+        except Exception:
+            _clear_cycle_running_flag()
 
     def _run_poll_cycle(self, env_ids: list[str]) -> None:
         try:
