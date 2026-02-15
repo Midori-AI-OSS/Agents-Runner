@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.ui.widgets import GlassCard
+from agents_runner.ui.widgets import EdgeFadeScrollArea
 from agents_runner.ui.constants import (
     AUTOSAVE_DISCRETE_MS,
     MAIN_LAYOUT_MARGINS,
@@ -27,6 +28,7 @@ from agents_runner.ui.constants import (
     HEADER_SPACING,
     CARD_MARGINS,
     CARD_SPACING,
+    LEFT_NAV_BUTTON_SPACING,
     LEFT_NAV_COMPACT_THRESHOLD,
     LEFT_NAV_PANEL_WIDTH,
 )
@@ -97,12 +99,16 @@ class SettingsPage(QWidget, SettingsFormMixin):
         panes_layout.setContentsMargins(0, 0, 0, 0)
         panes_layout.setSpacing(14)
 
+        self._nav_scroll = EdgeFadeScrollArea()
+        self._nav_scroll.setObjectName("SettingsNavScrollArea")
+        self._nav_scroll.setFixedWidth(LEFT_NAV_PANEL_WIDTH)
+
         self._nav_panel = QWidget()
         self._nav_panel.setObjectName("SettingsNavPanel")
-        self._nav_panel.setFixedWidth(LEFT_NAV_PANEL_WIDTH)
         nav_layout = QVBoxLayout(self._nav_panel)
         nav_layout.setContentsMargins(10, 10, 10, 10)
-        nav_layout.setSpacing(6)
+        nav_layout.setSpacing(LEFT_NAV_BUTTON_SPACING)
+        self._nav_scroll.setWidget(self._nav_panel)
 
         self._right_panel = QWidget()
         self._right_panel.setObjectName("SettingsPaneHost")
@@ -114,7 +120,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._page_stack.setObjectName("SettingsPageStack")
         right_layout.addWidget(self._page_stack, 1)
 
-        panes_layout.addWidget(self._nav_panel)
+        panes_layout.addWidget(self._nav_scroll)
         panes_layout.addWidget(self._right_panel, 1)
 
         card_layout.addLayout(panes_layout, 1)
@@ -307,4 +313,4 @@ class SettingsPage(QWidget, SettingsFormMixin):
             return
         self._compact_mode = compact
         self._compact_nav.setVisible(compact)
-        self._nav_panel.setVisible(not compact)
+        self._nav_scroll.setVisible(not compact)

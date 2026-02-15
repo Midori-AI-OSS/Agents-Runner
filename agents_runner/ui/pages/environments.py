@@ -28,6 +28,7 @@ from agents_runner.ui.constants import (
     CARD_SPACING,
     HEADER_MARGINS,
     HEADER_SPACING,
+    LEFT_NAV_BUTTON_SPACING,
     LEFT_NAV_PANEL_WIDTH,
     MAIN_LAYOUT_MARGINS,
     MAIN_LAYOUT_SPACING,
@@ -39,7 +40,7 @@ from agents_runner.ui.pages.environments_navigation import EnvironmentsNavigatio
 from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 from agents_runner.ui.utils import apply_environment_combo_tint
 from agents_runner.ui.utils import stain_color
-from agents_runner.ui.widgets import GlassCard
+from agents_runner.ui.widgets import EdgeFadeScrollArea, GlassCard
 
 
 class EnvironmentsPage(
@@ -139,12 +140,16 @@ class EnvironmentsPage(
         panes_layout.setContentsMargins(0, 0, 0, 0)
         panes_layout.setSpacing(14)
 
+        self._nav_scroll = EdgeFadeScrollArea()
+        self._nav_scroll.setObjectName("SettingsNavScrollArea")
+        self._nav_scroll.setFixedWidth(LEFT_NAV_PANEL_WIDTH)
+
         self._nav_panel = QWidget()
         self._nav_panel.setObjectName("SettingsNavPanel")
-        self._nav_panel.setFixedWidth(LEFT_NAV_PANEL_WIDTH)
         nav_layout = QVBoxLayout(self._nav_panel)
         nav_layout.setContentsMargins(10, 10, 10, 10)
-        nav_layout.setSpacing(6)
+        nav_layout.setSpacing(LEFT_NAV_BUTTON_SPACING)
+        self._nav_scroll.setWidget(self._nav_panel)
 
         self._right_panel = QWidget()
         self._right_panel.setObjectName("SettingsPaneHost")
@@ -156,7 +161,7 @@ class EnvironmentsPage(
         self._page_stack.setObjectName("SettingsPageStack")
         right_layout.addWidget(self._page_stack, 1)
 
-        panes_layout.addWidget(self._nav_panel)
+        panes_layout.addWidget(self._nav_scroll)
         panes_layout.addWidget(self._right_panel, 1)
         card_layout.addLayout(panes_layout, 1)
 
@@ -191,15 +196,28 @@ class EnvironmentsPage(
             stain = (env.normalized_color() if env else "").strip().lower()
 
         if not stain:
+            self._apply_nav_button_stain("")
             self._env_select.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
             self._color.setStyleSheet("")
             return
 
+        self._apply_nav_button_stain(stain)
         apply_environment_combo_tint(self._env_select, stain)
         tint = stain_color(stain)
         self._tint_overlay.set_tint_color(tint)
         apply_environment_combo_tint(self._color, stain)
+
+    def _apply_nav_button_stain(self, stain: str) -> None:
+        normalized = str(stain or "").strip().lower()
+        for button in self._nav_buttons.values():
+            if str(button.property("env_stain") or "") == normalized:
+                continue
+            button.setProperty("env_stain", normalized)
+            style = button.style()
+            style.unpolish(button)
+            style.polish(button)
+            button.update()
 
     def set_environments(self, envs: dict[str, Environment], active_id: str) -> None:
         self._environments = dict(envs)
