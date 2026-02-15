@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 
 from PySide6.QtCore import Qt
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.gh.work_items import GitHubWorkroom
 from agents_runner.gh.work_items import get_issue_workroom
@@ -39,7 +41,7 @@ class GitHubWorkroomDialog(ThemedDialog):
         number: int,
         item_url: str = "",
         confirmation_mode: str,
-        parent=None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._repo_owner = str(repo_owner or "").strip()
@@ -231,7 +233,7 @@ class GitHubWorkroomDialog(ThemedDialog):
         self._timeline.setTextCursor(cursor)
         self._status.setText(f"Loaded {len(room.comments)} comment(s).")
 
-    def _with_wait_cursor(self, fn) -> None:
+    def _with_wait_cursor(self, fn: Callable[[], None]) -> None:
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
             fn()

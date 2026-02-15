@@ -5,6 +5,7 @@ import os
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
@@ -175,7 +176,7 @@ class EnvironmentsPage(
         self._tint_overlay = _EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.raise_()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
         self._tint_overlay.setGeometry(self.rect())

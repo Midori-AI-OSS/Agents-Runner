@@ -9,9 +9,11 @@ from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QUrl
 from PySide6.QtCore import Signal
+from PySide6.QtCore import QEvent
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QEnterEvent
 from PySide6.QtGui import QMouseEvent
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QLabel
@@ -198,7 +200,7 @@ class _GitHubWorkRow(QWidget):
             self.clicked.emit(self._item)
         super().mousePressEvent(event)
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._layout_actions_panel()
 
@@ -206,7 +208,7 @@ class _GitHubWorkRow(QWidget):
         self._set_actions_visible(True, animate=True)
         super().enterEvent(event)
 
-    def leaveEvent(self, event) -> None:
+    def leaveEvent(self, event: QEvent) -> None:
         self._set_actions_visible(False, animate=True)
         super().leaveEvent(event)
 
@@ -228,7 +230,7 @@ class _GitHubWorkSkeletonRow(QWidget):
         self._pulse.start()
         layout.addWidget(self._pulse, 1)
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._pulse.setFixedWidth(max(120, int(self.width()) - 24))
 

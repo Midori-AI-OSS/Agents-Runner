@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from PySide6.QtGui import QTextCursor
-from PySide6.QtWidgets import QPlainTextEdit
+from PySide6.QtWidgets import QPlainTextEdit, QWidget
 
 from agents_runner.ui.widgets.spell_highlighter import SpellHighlighter
 
@@ -22,7 +22,9 @@ class SpellTextEdit(QPlainTextEdit):
     - Can be enabled/disabled dynamically
     """
 
-    def __init__(self, parent=None, spellcheck_enabled: bool = True) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, spellcheck_enabled: bool = True
+    ) -> None:
         super().__init__(parent)
 
         # Create spell highlighter
@@ -53,11 +55,11 @@ class SpellTextEdit(QPlainTextEdit):
         # If we have a word and spell checking is enabled, add suggestions
         if (
             word
-            and self._spell_highlighter._enabled
-            and self._spell_highlighter._spell_checker
+            and self._spell_highlighter.enabled
+            and self._spell_highlighter.spell_checker
         ):
             # Check if word is misspelled
-            if self._spell_highlighter._is_misspelled(word):
+            if self._spell_highlighter.is_misspelled(word):
                 # Get suggestions
                 suggestions = self._spell_highlighter.get_suggestions(word)
 

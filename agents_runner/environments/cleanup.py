@@ -8,7 +8,8 @@ import logging
 import os
 import shutil
 import time
-from typing import Callable
+import types
+from typing import Any, Callable
 
 from agents_runner.log_format import format_log
 from .paths import managed_repo_checkout_path
@@ -81,7 +82,11 @@ def cleanup_task_workspace(
             on_log(msg)
 
         # Use shutil.rmtree with error handler for better cleanup
-        def handle_remove_error(func, path, exc_info):
+        def handle_remove_error(
+            func: Callable[..., Any],
+            path: str,
+            exc_info: tuple[type[BaseException], BaseException, types.TracebackType],
+        ) -> None:
             """Handle permission errors during removal."""
             logger.debug(
                 format_log(

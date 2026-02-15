@@ -8,6 +8,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QMainWindow
 from PySide6.QtWidgets import QToolButton
@@ -292,14 +294,14 @@ class MainWindow(
         self._on_radio_state_changed(self._radio_controller.state_snapshot())
         self._try_start_queued_tasks()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._settings_data["window_w"] = int(self.width())
         self._settings_data["window_h"] = int(self.height())
         if hasattr(self, "_save_timer"):
             self._schedule_save()
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         try:
             self._settings.try_autosave()
         except Exception:
