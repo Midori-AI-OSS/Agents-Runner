@@ -116,6 +116,12 @@ class MainWindowSettingsMixin:
         merged["agentsnova_auto_review_enabled"] = bool(
             merged.get("agentsnova_auto_review_enabled", True)
         )
+        merged["agentsnova_auto_marker_comments_enabled"] = bool(
+            merged.get("agentsnova_auto_marker_comments_enabled", True)
+        )
+        merged["agentsnova_auto_reactions_enabled"] = bool(
+            merged.get("agentsnova_auto_reactions_enabled", True)
+        )
         try:
             merged["github_poll_interval_s"] = max(
                 5, int(merged.get("github_poll_interval_s", 30))

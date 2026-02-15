@@ -83,10 +83,16 @@ class SettingsFormMixin:
                 section="Agent Setup",
             ),
             _SettingsPaneSpec(
-                key="github",
-                title="GitHub",
-                subtitle="GitHub polling, auto-review, and trusted actor controls.",
-                section="Agent Setup",
+                key="github_config",
+                title="Config",
+                subtitle="GitHub polling, auto-review, and write confirmation controls.",
+                section="GitHub",
+            ),
+            _SettingsPaneSpec(
+                key="github_trusted_users",
+                title="Trusted Users",
+                subtitle="Global trusted usernames for @agentsnova auto-review checks.",
+                section="GitHub",
             ),
             _SettingsPaneSpec(
                 key="runtime_behavior",
@@ -254,6 +260,19 @@ class SettingsFormMixin:
         )
         self._agentsnova_auto_review_enabled.setToolTip(
             "When enabled, PR/Issue mentions of @agentsnova can auto-queue tasks."
+        )
+        self._agentsnova_auto_marker_comments_enabled = QCheckBox(
+            "Enable @agentsnova auto marker comments"
+        )
+        self._agentsnova_auto_marker_comments_enabled.setToolTip(
+            "When enabled, queued @agentsnova tasks post a GitHub marker comment "
+            "with the task id for visibility and dedupe safety."
+        )
+        self._agentsnova_auto_reactions_enabled = QCheckBox(
+            "Enable @agentsnova auto reactions"
+        )
+        self._agentsnova_auto_reactions_enabled.setToolTip(
+            "When enabled, @agentsnova queue triggers apply GitHub `eyes` reactions."
         )
         self._github_polling_enabled = QCheckBox("Enable app-wide GitHub polling")
         self._github_polling_enabled.setToolTip(
@@ -447,10 +466,14 @@ class SettingsFormMixin:
         paths_body.addStretch(1)
         self._register_page("config_paths", paths_page)
 
-        github_page, github_body = self._create_page(specs_by_key["github"])
-        github_body.addWidget(self._github_workroom_prefer_browser)
-        github_body.addWidget(self._agentsnova_auto_review_enabled)
-        github_body.addWidget(self._github_polling_enabled)
+        github_config_page, github_config_body = self._create_page(
+            specs_by_key["github_config"]
+        )
+        github_config_body.addWidget(self._github_workroom_prefer_browser)
+        github_config_body.addWidget(self._agentsnova_auto_review_enabled)
+        github_config_body.addWidget(self._agentsnova_auto_marker_comments_enabled)
+        github_config_body.addWidget(self._agentsnova_auto_reactions_enabled)
+        github_config_body.addWidget(self._github_polling_enabled)
 
         github_grid = QGridLayout()
         github_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
@@ -460,20 +483,22 @@ class SettingsFormMixin:
         github_grid.addWidget(self._github_write_confirmation_mode, 0, 1)
         github_grid.addWidget(QLabel("Polling startup delay (s)"), 1, 0)
         github_grid.addWidget(self._github_poll_startup_delay_s, 1, 1)
-        github_body.addLayout(github_grid)
+        github_config_body.addLayout(github_grid)
+        github_config_body.addStretch(1)
+        self._register_page("github_config", github_config_page)
 
-        trusted_heading = QLabel("Trusted GitHub users")
-        trusted_heading.setObjectName("SettingsPaneSubtitle")
-        github_body.addWidget(trusted_heading)
-        github_body.addWidget(self._agentsnova_trusted_users_global, 1)
+        github_trusted_page, github_trusted_body = self._create_page(
+            specs_by_key["github_trusted_users"]
+        )
+        github_trusted_body.addWidget(self._agentsnova_trusted_users_global, 1)
 
         github_actions = QHBoxLayout()
         github_actions.setSpacing(BUTTON_ROW_SPACING)
         github_actions.addWidget(self._add_trusted_user_global)
         github_actions.addStretch(1)
         github_actions.addWidget(self._setup_github_defaults_global)
-        github_body.addLayout(github_actions)
-        self._register_page("github", github_page)
+        github_trusted_body.addLayout(github_actions)
+        self._register_page("github_trusted_users", github_trusted_page)
 
         runtime_page, runtime_body = self._create_page(specs_by_key["runtime_behavior"])
         runtime_body.addWidget(self._headless_desktop_enabled)
@@ -584,17 +609,12 @@ class SettingsFormMixin:
         title = QLabel(spec.title)
         title.setObjectName("SettingsPaneTitle")
 
-        subtitle = QLabel(spec.subtitle)
-        subtitle.setObjectName("SettingsPaneSubtitle")
-        subtitle.setWordWrap(True)
-
         body = QWidget(content)
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(GRID_VERTICAL_SPACING)
 
         content_layout.addWidget(title)
-        content_layout.addWidget(subtitle)
         content_layout.addWidget(body)
 
         scroll.setWidget(content)
@@ -863,6 +883,12 @@ class SettingsFormMixin:
             self._agentsnova_auto_review_enabled.setChecked(
                 bool(settings.get("agentsnova_auto_review_enabled", True))
             )
+            self._agentsnova_auto_marker_comments_enabled.setChecked(
+                bool(settings.get("agentsnova_auto_marker_comments_enabled", True))
+            )
+            self._agentsnova_auto_reactions_enabled.setChecked(
+                bool(settings.get("agentsnova_auto_reactions_enabled", True))
+            )
             self._github_polling_enabled.setChecked(
                 bool(settings.get("github_polling_enabled") or False)
             )
@@ -994,6 +1020,12 @@ class SettingsFormMixin:
             ),
             "agentsnova_auto_review_enabled": bool(
                 self._agentsnova_auto_review_enabled.isChecked()
+            ),
+            "agentsnova_auto_marker_comments_enabled": bool(
+                self._agentsnova_auto_marker_comments_enabled.isChecked()
+            ),
+            "agentsnova_auto_reactions_enabled": bool(
+                self._agentsnova_auto_reactions_enabled.isChecked()
             ),
             "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
             "github_poll_startup_delay_s": poll_startup_delay_s,

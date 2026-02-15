@@ -8,6 +8,8 @@ from typing import Any
 from .errors import GhManagementError
 from .process import run_gh
 
+AUTO_REVIEW_MARKER_TOKEN = "<!-- midori-ai-agents-runner-auto-review-marker -->"
+
 
 @dataclass(frozen=True)
 class GitHubReactionSummary:
@@ -510,6 +512,33 @@ def add_issue_comment_reaction(
             "--method",
             "POST",
             f"repos/{repo}/issues/comments/{int(comment_id)}/reactions",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-f",
+            f"content={reaction_value}",
+        ],
+        timeout_s=30.0,
+    )
+
+
+def add_issue_reaction(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    issue_number: int,
+    reaction: str,
+) -> None:
+    repo = _repo_full_name(repo_owner, repo_name)
+    reaction_value = _safe_text(reaction)
+    if reaction_value not in {"+1", "-1", "eyes", "rocket", "hooray"}:
+        raise GhManagementError(f"unsupported reaction: {reaction_value}")
+
+    run_gh_gh_json(
+        [
+            "api",
+            "--method",
+            "POST",
+            f"repos/{repo}/issues/{int(issue_number)}/reactions",
             "-H",
             "Accept: application/vnd.github+json",
             "-f",

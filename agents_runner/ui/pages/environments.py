@@ -245,7 +245,7 @@ class EnvironmentsPage(
 
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
         self._settings_data = settings_data
-        self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
+        self._sync_headless_desktop_override_visibility()
         self._sync_github_polling_override_visibility()
 
     def _effective_desktop_enabled(self) -> bool:
@@ -258,6 +258,22 @@ class EnvironmentsPage(
             self._settings_data.get("github_polling_enabled") or False
         )
         self._github_polling_enabled.setVisible(not app_wide_polling)
+
+    def _sync_headless_desktop_override_visibility(self) -> None:
+        force_headless = bool(
+            self._settings_data.get("headless_desktop_enabled") or False
+        )
+
+        headless_label = getattr(self, "_headless_desktop_label", None)
+        if isinstance(headless_label, QWidget):
+            headless_label.setVisible(not force_headless)
+
+        headless_row = getattr(self, "_headless_desktop_row", None)
+        if isinstance(headless_row, QWidget):
+            headless_row.setVisible(not force_headless)
+
+        self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
+        self._cache_desktop_build.setEnabled(self._effective_desktop_enabled())
 
     def _load_selected(self) -> None:
         if self._autosave_timer.isActive():
@@ -314,6 +330,7 @@ class EnvironmentsPage(
                 self._prompts_tab.set_prompts([], False)
                 self._agents_tab.set_agent_selection(None)
                 self._sync_workspace_controls()
+                self._sync_headless_desktop_override_visibility()
                 return
 
             self._name.setText(env.name)
@@ -332,9 +349,7 @@ class EnvironmentsPage(
             self._cache_desktop_build.setChecked(
                 bool(getattr(env, "cache_desktop_build", False))
             )
-            self._cache_desktop_build.setEnabled(
-                bool(getattr(env, "headless_desktop_enabled", False))
-            )
+            self._cache_desktop_build.setEnabled(self._effective_desktop_enabled())
             self._container_caching_enabled.setChecked(
                 bool(getattr(env, "container_caching_enabled", False))
             )
@@ -420,6 +435,7 @@ class EnvironmentsPage(
             self._agents_tab.set_cross_agent_allowlist(cross_agent_allowlist)
             self._agents_tab.set_agent_selection(env.agent_selection)
             self._agents_tab.set_cross_agents_enabled(use_cross_agents)
+            self._sync_headless_desktop_override_visibility()
         finally:
             self._suppress_autosave = False
 
@@ -438,10 +454,11 @@ class EnvironmentsPage(
         self._advanced_autosave_timer.start()
 
     def _on_headless_desktop_toggled(self, state: int) -> None:
-        is_enabled = state == Qt.CheckState.Checked.value
-        self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
-        self._cache_desktop_build.setEnabled(is_enabled)
-        if not is_enabled:
+        _ = state
+        effective_desktop_enabled = self._effective_desktop_enabled()
+        self._ports_tab.set_desktop_effective_enabled(effective_desktop_enabled)
+        self._cache_desktop_build.setEnabled(effective_desktop_enabled)
+        if not effective_desktop_enabled:
             self._cache_desktop_build.setChecked(False)
 
     def _on_container_caching_toggled(self, state: int) -> None:

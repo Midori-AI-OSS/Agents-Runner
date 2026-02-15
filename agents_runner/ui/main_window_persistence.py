@@ -193,6 +193,8 @@ class MainWindowPersistenceMixin:
         self._settings_data.setdefault("github_polling_enabled", False)
         self._settings_data.setdefault("github_poll_startup_delay_s", 35)
         self._settings_data.setdefault("agentsnova_auto_review_enabled", True)
+        self._settings_data.setdefault("agentsnova_auto_marker_comments_enabled", True)
+        self._settings_data.setdefault("agentsnova_auto_reactions_enabled", True)
         self._settings_data.setdefault("agentsnova_trusted_users_global", [])
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
         host_codex_dir = os.path.normpath(
@@ -258,6 +260,12 @@ class MainWindowPersistenceMixin:
             RadioController.normalize_loudness_boost_factor(
                 self._settings_data.get("radio_loudness_boost_factor")
             )
+        )
+        self._settings_data["agentsnova_auto_marker_comments_enabled"] = bool(
+            self._settings_data.get("agentsnova_auto_marker_comments_enabled", True)
+        )
+        self._settings_data["agentsnova_auto_reactions_enabled"] = bool(
+            self._settings_data.get("agentsnova_auto_reactions_enabled", True)
         )
         self._settings_data["github_polling_enabled"] = bool(
             self._settings_data.get("github_polling_enabled") or False

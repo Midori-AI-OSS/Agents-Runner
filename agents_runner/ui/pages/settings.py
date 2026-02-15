@@ -155,6 +155,8 @@ class SettingsPage(QWidget, SettingsFormMixin):
             self._append_pixelarch_context,
             self._github_workroom_prefer_browser,
             self._agentsnova_auto_review_enabled,
+            self._agentsnova_auto_marker_comments_enabled,
+            self._agentsnova_auto_reactions_enabled,
             self._github_polling_enabled,
             self._headless_desktop_enabled,
             self._popup_theme_animation_enabled,

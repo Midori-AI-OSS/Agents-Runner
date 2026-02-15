@@ -8,10 +8,11 @@ Review GitHub pull request #{PR_NUMBER} for repository {REPO_OWNER}/{REPO_NAME}.
 PR title: {PR_TITLE}
 PR URL: {PR_URL}
 
-Required workflow:
+Suggested workflow:
 1. Read and follow this repository's standards first, especially AGENTS.md and any repo-specific contribution/review instructions.
-2. Review the pull request against those repository standards.
-3. Run full local verification/tests.
-4. You are running in a PixelArch container with passwordless sudo available.
-5. Produce your review using the target repository's required format.
-6. If repository standards are missing or unclear, choose a clear review format and proceed.
+2. Prefer using `gh` to review and manage PR context (PR details, changed files, commits, and discussion), unless this repository explicitly asks for a different method.
+3. Review the pull request against repository standards and expected behavior.
+4. Run relevant local verification/tests as required by repository rules.
+5. Produce your review in the repository's expected format.
+6. If standards are missing or unclear, choose a clear review format and proceed.
+7. At the end, update GitHub so the user is informed: post the appropriate issue / PR / comment update with review outcome, key findings, and current status.
