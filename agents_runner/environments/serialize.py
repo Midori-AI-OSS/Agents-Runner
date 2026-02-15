@@ -398,9 +398,9 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
                     )
                 )
 
-        agent_fallbacks = agent_selection_data.get("agent_fallbacks", {})
-        if isinstance(agent_fallbacks, dict):
-            agent_fallbacks = {str(k): str(v) for k, v in agent_fallbacks.items()}
+        agent_fallbacks_raw = selection_dict.get("agent_fallbacks", {})
+        if isinstance(agent_fallbacks_raw, dict):
+            agent_fallbacks = {str(k): str(v) for k, v in agent_fallbacks_raw.items()}
         else:
             agent_fallbacks = {}
 
