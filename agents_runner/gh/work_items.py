@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from .errors import GhManagementError
 from .process import run_gh
@@ -63,7 +63,7 @@ class GitHubWorkroom:
 
 def _safe_int(value: object, default: int = 0) -> int:
     try:
-        return int(value)
+        return int(cast(Any, value))
     except Exception:
         return int(default)
 
@@ -108,7 +108,7 @@ def run_gh_gh(args: list[str], *, timeout_s: float = 45.0) -> None:
 
 def _parse_reaction_summary(raw: object) -> GitHubReactionSummary:
     if isinstance(raw, dict):
-        raw_dict: dict[str, Any] = raw
+        raw_dict = cast(dict[str, Any], raw)
         return GitHubReactionSummary(
             thumbs_up=max(0, _safe_int(raw_dict.get("+1"))),
             thumbs_down=max(0, _safe_int(raw_dict.get("-1"))),
@@ -117,7 +117,7 @@ def _parse_reaction_summary(raw: object) -> GitHubReactionSummary:
             hooray=max(0, _safe_int(raw_dict.get("hooray"))),
         )
 
-    groups: list[Any] = raw if isinstance(raw, list) else []
+    groups = cast(list[Any], raw if isinstance(raw, list) else [])
     up = 0
     down = 0
     eyes = 0
@@ -126,11 +126,13 @@ def _parse_reaction_summary(raw: object) -> GitHubReactionSummary:
     for item in groups:
         if not isinstance(item, dict):
             continue
-        content = _safe_text(item.get("content")).upper()
+        item_dict = cast(dict[str, Any], item)
+        content = _safe_text(item_dict.get("content")).upper()
         total = 0
-        users = item.get("users")
+        users = item_dict.get("users")
         if isinstance(users, dict):
-            total = _safe_int(users.get("totalCount"))
+            users_dict = cast(dict[str, Any], users)
+            total = _safe_int(users_dict.get("totalCount"))
         total = max(0, total)
         if content == "THUMBS_UP":
             up = total
@@ -156,7 +158,7 @@ def _parse_work_item(item_type: str, raw: object) -> GitHubWorkItem | None:
     if not isinstance(raw, dict):
         return None
 
-    raw_dict: dict[str, Any] = raw
+    raw_dict = cast(dict[str, Any], raw)
     number = _safe_int(raw_dict.get("number"))
     if number <= 0:
         return None
@@ -164,7 +166,8 @@ def _parse_work_item(item_type: str, raw: object) -> GitHubWorkItem | None:
     author = ""
     raw_author = raw_dict.get("author")
     if isinstance(raw_author, dict):
-        author = _safe_text(raw_author.get("login"))
+        author_dict = cast(dict[str, Any], raw_author)
+        author = _safe_text(author_dict.get("login"))
 
     return GitHubWorkItem(
         item_type=item_type,
@@ -211,10 +214,10 @@ def list_open_pull_requests(
         timeout_s=45.0,
     )
 
-    rows = data if isinstance(data, list) else []
+    rows = cast(list[Any], data if isinstance(data, list) else [])
     items: list[GitHubWorkItem] = []
     for row in rows:
-        parsed = _parse_work_item("pr", row)
+        parsed = _parse_work_item("pr", cast(object, row))
         if parsed is None:
             continue
         items.append(parsed)
@@ -244,10 +247,10 @@ def list_open_issues(
         timeout_s=45.0,
     )
 
-    rows = data if isinstance(data, list) else []
+    rows = cast(list[Any], data if isinstance(data, list) else [])
     items: list[GitHubWorkItem] = []
     for row in rows:
-        parsed = _parse_work_item("issue", row)
+        parsed = _parse_work_item("issue", cast(object, row))
         if parsed is None:
             continue
         items.append(parsed)
@@ -272,29 +275,34 @@ def list_issue_comments(
         timeout_s=45.0,
     )
 
-    rows = data if isinstance(data, list) else []
+    rows = cast(list[Any], data if isinstance(data, list) else [])
     comments: list[GitHubComment] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
 
-        comment_id = _safe_int(row.get("id"))
+        row_dict = cast(dict[str, Any], row)
+        comment_id = _safe_int(row_dict.get("id"))
         if comment_id <= 0:
             continue
 
-        user = row.get("user")
-        author = _safe_text(user.get("login") if isinstance(user, dict) else "")
+        user = row_dict.get("user")
+        if isinstance(user, dict):
+            user_dict = cast(dict[str, Any], user)
+            author = _safe_text(user_dict.get("login"))
+        else:
+            author = ""
 
         comments.append(
             GitHubComment(
                 comment_id=comment_id,
-                node_id=_safe_text(row.get("node_id")),
-                body=_safe_text(row.get("body")),
+                node_id=_safe_text(row_dict.get("node_id")),
+                body=_safe_text(row_dict.get("body")),
                 author=author,
-                created_at=_safe_text(row.get("created_at")),
-                updated_at=_safe_text(row.get("updated_at")),
-                url=_safe_text(row.get("html_url")),
-                reactions=_parse_reaction_summary(row.get("reactions")),
+                created_at=_safe_text(row_dict.get("created_at")),
+                updated_at=_safe_text(row_dict.get("updated_at")),
+                url=_safe_text(row_dict.get("html_url")),
+                reactions=_parse_reaction_summary(row_dict.get("reactions")),
             )
         )
 
@@ -323,10 +331,12 @@ def get_pull_request_workroom(
     if not isinstance(data, dict):
         raise GhManagementError("invalid pull request payload")
 
+    data_dict = cast(dict[str, Any], data)
     author = ""
-    raw_author = data.get("author")
+    raw_author = data_dict.get("author")
     if isinstance(raw_author, dict):
-        author = _safe_text(raw_author.get("login"))
+        author_dict = cast(dict[str, Any], raw_author)
+        author = _safe_text(author_dict.get("login"))
 
     comments = list_issue_comments(
         repo_owner,
@@ -339,15 +349,15 @@ def get_pull_request_workroom(
         item_type="pr",
         repo_owner=_safe_text(repo_owner),
         repo_name=_safe_text(repo_name),
-        number=max(1, _safe_int(data.get("number"), int(number))),
-        title=_safe_text(data.get("title")) or f"PR #{int(number)}",
-        body=_safe_text(data.get("body")),
-        state=_safe_text(data.get("state")).lower() or "open",
-        url=_safe_text(data.get("url")),
+        number=max(1, _safe_int(data_dict.get("number"), int(number))),
+        title=_safe_text(data_dict.get("title")) or f"PR #{int(number)}",
+        body=_safe_text(data_dict.get("body")),
+        state=_safe_text(data_dict.get("state")).lower() or "open",
+        url=_safe_text(data_dict.get("url")),
         author=author,
-        created_at=_safe_text(data.get("createdAt")),
-        updated_at=_safe_text(data.get("updatedAt")),
-        is_draft=bool(data.get("isDraft") or False),
+        created_at=_safe_text(data_dict.get("createdAt")),
+        updated_at=_safe_text(data_dict.get("updatedAt")),
+        is_draft=bool(data_dict.get("isDraft") or False),
         comments=comments,
     )
 
@@ -374,10 +384,12 @@ def get_issue_workroom(
     if not isinstance(data, dict):
         raise GhManagementError("invalid issue payload")
 
+    data_dict = cast(dict[str, Any], data)
     author = ""
-    raw_author = data.get("author")
+    raw_author = data_dict.get("author")
     if isinstance(raw_author, dict):
-        author = _safe_text(raw_author.get("login"))
+        author_dict = cast(dict[str, Any], raw_author)
+        author = _safe_text(author_dict.get("login"))
 
     comments = list_issue_comments(
         repo_owner,
@@ -390,14 +402,14 @@ def get_issue_workroom(
         item_type="issue",
         repo_owner=_safe_text(repo_owner),
         repo_name=_safe_text(repo_name),
-        number=max(1, _safe_int(data.get("number"), int(number))),
-        title=_safe_text(data.get("title")) or f"Issue #{int(number)}",
-        body=_safe_text(data.get("body")),
-        state=_safe_text(data.get("state")).lower() or "open",
-        url=_safe_text(data.get("url")),
+        number=max(1, _safe_int(data_dict.get("number"), int(number))),
+        title=_safe_text(data_dict.get("title")) or f"Issue #{int(number)}",
+        body=_safe_text(data_dict.get("body")),
+        state=_safe_text(data_dict.get("state")).lower() or "open",
+        url=_safe_text(data_dict.get("url")),
         author=author,
-        created_at=_safe_text(data.get("createdAt")),
-        updated_at=_safe_text(data.get("updatedAt")),
+        created_at=_safe_text(data_dict.get("createdAt")),
+        updated_at=_safe_text(data_dict.get("updatedAt")),
         is_draft=False,
         comments=comments,
     )
@@ -535,7 +547,8 @@ def get_authenticated_github_login() -> str:
         return ""
     if not isinstance(data, dict):
         return ""
-    return _safe_text(data.get("login")).lower()
+    data_dict = cast(dict[str, Any], data)
+    return _safe_text(data_dict.get("login")).lower()
 
 
 def list_org_members(owner: str, *, limit: int = 100) -> list[str]:
@@ -565,13 +578,14 @@ def list_org_members(owner: str, *, limit: int = 100) -> list[str]:
     except Exception:
         return []
 
-    rows = data if isinstance(data, list) else []
+    rows = cast(list[Any], data if isinstance(data, list) else [])
     members: list[str] = []
     seen: set[str] = set()
     for row in rows:
         if not isinstance(row, dict):
             continue
-        login = _safe_text(row.get("login")).lower()
+        row_dict = cast(dict[str, Any], row)
+        login = _safe_text(row_dict.get("login")).lower()
         if not login or login in seen:
             continue
         members.append(login)

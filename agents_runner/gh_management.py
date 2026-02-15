@@ -244,3 +244,6 @@ def prepare_github_repo_for_task(
                 _delete_checkout_dir(dest_dir, on_log=on_log)
                 continue
             raise
+
+    # This should never be reached, but satisfies type checker
+    raise GhManagementError("Failed to prepare repository after retries")

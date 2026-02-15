@@ -8,7 +8,6 @@ import logging
 import os
 import shutil
 import time
-import types
 from typing import Any, Callable
 
 from agents_runner.log_format import format_log
@@ -85,12 +84,12 @@ def cleanup_task_workspace(
         def handle_remove_error(
             func: Callable[..., Any],
             path: str,
-            exc_info: tuple[type[BaseException], BaseException, types.TracebackType],
+            exc: BaseException,
         ) -> None:
             """Handle permission errors during removal."""
             logger.debug(
                 format_log(
-                    "cleanup", "task", "DEBUG", f"Error removing {path}: {exc_info[1]}"
+                    "cleanup", "task", "DEBUG", f"Error removing {path}: {exc}"
                 )
             )
             # Try to make writable and retry

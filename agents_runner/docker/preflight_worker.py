@@ -5,6 +5,7 @@ import shlex
 import selectors
 import subprocess
 
+from io import TextIOWrapper
 from typing import Any
 from typing import Callable
 
@@ -457,8 +458,11 @@ class DockerPreflightWorker:
                         continue
 
                     for key, _ in selector.select(timeout=0.05):
+                        chunk = ""
                         try:
-                            chunk = key.fileobj.readline()
+                            fileobj = key.fileobj
+                            if isinstance(fileobj, TextIOWrapper):
+                                chunk = fileobj.readline()
                         except Exception:
                             chunk = ""
                         if chunk:

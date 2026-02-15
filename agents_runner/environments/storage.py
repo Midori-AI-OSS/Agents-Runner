@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 
-from typing import Any
+from typing import Any, cast
 
 from agents_runner.persistence import default_state_path
 
@@ -54,23 +54,23 @@ def _load_environments_items(path: str) -> list[dict[str, Any]]:
     except Exception:
         return []
 
-    raw: object
+    raw: object = None
     if isinstance(payload, dict):
-        payload_dict: dict[str, Any] = payload
+        payload_dict = cast(dict[str, Any], payload)
         raw = payload_dict.get("environments")
     elif isinstance(payload, list):
-        raw = payload
+        raw = cast(list[Any], payload)
     else:
         return []
 
     if not isinstance(raw, list):
         return []
 
-    raw_list: list[Any] = raw
+    raw_list = cast(list[Any], raw)
     items: list[dict[str, Any]] = []
     for item in raw_list:
         if isinstance(item, dict):
-            items.append(item)
+            items.append(cast(dict[str, Any], item))
     return items
 
 

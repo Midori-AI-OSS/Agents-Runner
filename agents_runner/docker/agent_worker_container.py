@@ -26,6 +26,7 @@ import shlex
 import time
 import selectors
 import subprocess
+from io import TextIOWrapper
 from pathlib import Path
 from typing import Any, Callable
 
@@ -633,11 +634,14 @@ class ContainerExecutor:
                 # Read log output
                 for key, _ in selector.select(timeout=0.05):
                     try:
-                        chunk = key.fileobj.readline()
+                        fileobj = key.fileobj
+                        if not isinstance(fileobj, TextIOWrapper):
+                            continue
+                        chunk = fileobj.readline()
                         if chunk:
                             stream = (
                                 "stdout"
-                                if key.fileobj == logs_proc.stdout
+                                if fileobj == logs_proc.stdout
                                 else "stderr"
                             )
                             self._on_log(

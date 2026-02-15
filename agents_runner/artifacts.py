@@ -397,7 +397,7 @@ def collect_artifacts_from_container(
 
 
 def _collect_artifacts_child(
-    result_q: multiprocessing.Queue,  # type: ignore[type-arg]
+    result_q: multiprocessing.Queue[tuple[str, str | list[str]]],
     container_id: str,
     task_dict: dict[str, Any],
     env_name: str,
@@ -429,7 +429,7 @@ def collect_artifacts_from_container_with_timeout(
         raise ValueError("timeout_s must be > 0")
 
     ctx = multiprocessing.get_context("spawn")
-    result_q = ctx.Queue()
+    result_q: multiprocessing.Queue[tuple[str, str | list[str]]] = ctx.Queue()
     proc = ctx.Process(
         target=_collect_artifacts_child,
         args=(result_q, container_id, task_dict, env_name),
