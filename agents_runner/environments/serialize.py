@@ -14,7 +14,7 @@ from .prompt_storage import delete_prompt_file
 
 
 def _normalize_usernames(raw: Any) -> list[str]:
-    rows = raw if isinstance(raw, list) else []
+    rows: list[Any] = raw if isinstance(raw, list) else []
     cleaned: list[str] = []
     seen: set[str] = set()
     for row in rows:
@@ -176,8 +176,6 @@ def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
 
 def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     """Deserialize environment from JSON payload."""
-    if not isinstance(payload, dict):
-        return None
     version = int(payload.get("version", ENVIRONMENT_VERSION))
     if version != ENVIRONMENT_VERSION:
         return None
@@ -212,10 +210,10 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     )
 
     env_vars = payload.get("env_vars", {})
-    env_vars = env_vars if isinstance(env_vars, dict) else {}
+    env_vars: dict[str, Any] = env_vars if isinstance(env_vars, dict) else {}
 
     extra_mounts = payload.get("extra_mounts", [])
-    extra_mounts = extra_mounts if isinstance(extra_mounts, list) else []
+    extra_mounts: list[Any] = extra_mounts if isinstance(extra_mounts, list) else []
     env_vars_advanced_mode = bool(payload.get("env_vars_advanced_mode", False))
     mounts_advanced_mode = bool(payload.get("mounts_advanced_mode", False))
     env_vars_advanced_acknowledged = bool(
@@ -226,7 +224,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     ) or bool(mounts_advanced_mode)
 
     ports = payload.get("ports", [])
-    ports = ports if isinstance(ports, list) else []
+    ports: list[Any] = ports if isinstance(ports, list) else []
     ports_unlocked = bool(payload.get("ports_unlocked", False))
     ports_advanced_acknowledged = bool(
         payload.get("ports_advanced_acknowledged", False)
