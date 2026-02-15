@@ -7,7 +7,7 @@ from pathlib import Path
 
 from midori_ai_logger import MidoriAiLogger
 
-_FAULT_LOG_HANDLE = None
+_fault_log_handle = None
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
@@ -39,8 +39,8 @@ def _maybe_enable_faulthandler() -> None:
         handle = open(log_path, "a", encoding="utf-8")
         faulthandler.enable(file=handle, all_threads=True)
 
-        global _FAULT_LOG_HANDLE
-        _FAULT_LOG_HANDLE = handle
+        global _fault_log_handle
+        _fault_log_handle = handle
     except Exception:
         # Best-effort: never block startup on diagnostics.
         pass
