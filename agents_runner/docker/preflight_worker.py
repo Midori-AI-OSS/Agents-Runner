@@ -23,17 +23,17 @@ from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.github_token import resolve_github_token
 
 from agents_runner.docker.config import DockerRunnerConfig
-from agents_runner.docker.process import _has_image
-from agents_runner.docker.process import _has_platform_image
-from agents_runner.docker.process import _inspect_state
-from agents_runner.docker.process import _pull_image
-from agents_runner.docker.process import _run_docker
+from agents_runner.docker.process import has_image
+from agents_runner.docker.process import has_platform_image
+from agents_runner.docker.process import inspect_state
+from agents_runner.docker.process import pull_image
+from agents_runner.docker.process import run_docker
 from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause
 from agents_runner.core.shell_templates import shell_log_statement
-from agents_runner.docker.utils import _write_preflight_script
+from agents_runner.docker.utils import write_preflight_script
 from agents_runner.midoriai_template import MidoriAITemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
 
@@ -95,10 +95,10 @@ class DockerPreflightWorker:
         self._stop.set()
         if self._container_id:
             try:
-                _run_docker(["stop", "-t", "1", self._container_id], timeout_s=10.0)
+                run_docker(["stop", "-t", "1", self._container_id], timeout_s=10.0)
             except Exception:
                 try:
-                    _run_docker(["kill", self._container_id], timeout_s=10.0)
+                    run_docker(["kill", self._container_id], timeout_s=10.0)
                 except Exception:
                     pass
 
@@ -106,7 +106,7 @@ class DockerPreflightWorker:
         self._stop.set()
         if self._container_id:
             try:
-                _run_docker(["kill", self._container_id], timeout_s=10.0)
+                run_docker(["kill", self._container_id], timeout_s=10.0)
             except Exception:
                 pass
 
@@ -238,7 +238,7 @@ class DockerPreflightWorker:
 
             settings_preflight_tmp_path: str | None = None
             if (self._config.settings_preflight_script or "").strip():
-                settings_preflight_tmp_path = _write_preflight_script(
+                settings_preflight_tmp_path = write_preflight_script(
                     str(self._config.settings_preflight_script or ""),
                     "settings",
                     self._config.task_id,
@@ -247,7 +247,7 @@ class DockerPreflightWorker:
 
             environment_preflight_tmp_path: str | None = None
             if (self._config.environment_preflight_script or "").strip():
-                environment_preflight_tmp_path = _write_preflight_script(
+                environment_preflight_tmp_path = write_preflight_script(
                     str(self._config.environment_preflight_script or ""),
                     "environment",
                     self._config.task_id,
@@ -261,9 +261,9 @@ class DockerPreflightWorker:
                         "host", "none", "INFO", f"docker pull {self._config.image}"
                     )
                 )
-                _pull_image(self._config.image, platform_args=platform_args)
+                pull_image(self._config.image, platform_args=platform_args)
                 self._on_log(format_log("host", "none", "INFO", "pull complete"))
-            elif forced_platform and not _has_platform_image(
+            elif forced_platform and not has_platform_image(
                 self._config.image, forced_platform
             ):
                 self._on_state({"Status": "pulling"})
@@ -275,9 +275,9 @@ class DockerPreflightWorker:
                         f"image missing; docker pull {self._config.image}",
                     )
                 )
-                _pull_image(self._config.image, platform_args=platform_args)
+                pull_image(self._config.image, platform_args=platform_args)
                 self._on_log(format_log("host", "none", "INFO", "pull complete"))
-            elif not forced_platform and not _has_image(self._config.image):
+            elif not forced_platform and not has_image(self._config.image):
                 self._on_state({"Status": "pulling"})
                 self._on_log(
                     format_log(
@@ -287,7 +287,7 @@ class DockerPreflightWorker:
                         f"image missing; docker pull {self._config.image}",
                     )
                 )
-                _pull_image(self._config.image, platform_args=platform_args)
+                pull_image(self._config.image, platform_args=platform_args)
                 self._on_log(format_log("host", "none", "INFO", "pull complete"))
 
             preflight_clause = ""
@@ -419,9 +419,9 @@ class DockerPreflightWorker:
                 f"{preflight_clause}"
                 f"{shell_log_statement('docker', 'preflight', 'INFO', 'complete')}; ",
             ]
-            self._container_id = _run_docker(args, timeout_s=60.0, env=docker_env)
+            self._container_id = run_docker(args, timeout_s=60.0, env=docker_env)
             try:
-                self._on_state(_inspect_state(self._container_id))
+                self._on_state(inspect_state(self._container_id))
             except Exception:
                 pass
 
@@ -443,7 +443,7 @@ class DockerPreflightWorker:
                     if now - last_poll >= 0.75:
                         last_poll = now
                         try:
-                            state = _inspect_state(self._container_id)
+                            state = inspect_state(self._container_id)
                         except Exception:
                             state = {}
                         if state:
@@ -481,7 +481,7 @@ class DockerPreflightWorker:
                         logs_proc.kill()
 
             try:
-                final_state = _inspect_state(self._container_id)
+                final_state = inspect_state(self._container_id)
             except Exception:
                 final_state = {}
             self._on_state(final_state)
@@ -489,7 +489,7 @@ class DockerPreflightWorker:
 
             if self._config.auto_remove:
                 try:
-                    _run_docker(["rm", "-f", self._container_id], timeout_s=30.0)
+                    run_docker(["rm", "-f", self._container_id], timeout_s=30.0)
                 except Exception:
                     pass
 

@@ -65,26 +65,26 @@ class DockerAgentWorker:
 
     def request_stop(self) -> None:
         """Request graceful container stop."""
-        from agents_runner.docker.process import _run_docker
+        from agents_runner.docker.process import run_docker
 
         self._stop.set()
         if self._container_id:
             try:
-                _run_docker(["stop", "-t", "1", self._container_id], timeout_s=10.0)
+                run_docker(["stop", "-t", "1", self._container_id], timeout_s=10.0)
             except Exception:
                 try:
-                    _run_docker(["kill", self._container_id], timeout_s=10.0)
+                    run_docker(["kill", self._container_id], timeout_s=10.0)
                 except Exception:
                     pass
 
     def request_kill(self) -> None:
         """Force-kill the container immediately."""
-        from agents_runner.docker.process import _run_docker
+        from agents_runner.docker.process import run_docker
 
         self._stop.set()
         if self._container_id:
             try:
-                _run_docker(["kill", self._container_id], timeout_s=10.0)
+                run_docker(["kill", self._container_id], timeout_s=10.0)
             except Exception:
                 pass
 

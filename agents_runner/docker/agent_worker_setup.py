@@ -25,8 +25,8 @@ from agents_runner.docker_platform import (
 )
 from agents_runner.environments import load_environments
 from agents_runner.docker.config import DockerRunnerConfig
-from agents_runner.docker.process import _has_image, _has_platform_image, _pull_image
-from agents_runner.docker.utils import _write_preflight_script
+from agents_runner.docker.process import has_image, has_platform_image, pull_image
+from agents_runner.docker.utils import write_preflight_script
 from agents_runner.docker.image_builder import (
     ensure_desktop_image,
     compute_desktop_cache_key,
@@ -100,7 +100,7 @@ class WorkerSetup:
         )
         artifacts_staging_dir = self._create_artifacts_directory()
         preflight_config = self._prepare_preflight_scripts(preflight_tmp_paths)
-        self._pull_image_if_needed(
+        self.pull_image_if_needed(
             platform_config.forced_platform, platform_config.platform_args
         )
         caching_config = self._setup_caching()
@@ -323,14 +323,14 @@ class WorkerSetup:
         environment_preflight_tmp_path = None
 
         if (self._config.settings_preflight_script or "").strip():
-            settings_preflight_tmp_path = _write_preflight_script(
+            settings_preflight_tmp_path = write_preflight_script(
                 str(self._config.settings_preflight_script),
                 "settings",
                 self._config.task_id,
                 preflight_tmp_paths,
             )
         if (self._config.environment_preflight_script or "").strip():
-            environment_preflight_tmp_path = _write_preflight_script(
+            environment_preflight_tmp_path = write_preflight_script(
                 str(self._config.environment_preflight_script),
                 "environment",
                 self._config.task_id,
@@ -348,7 +348,7 @@ class WorkerSetup:
             environment_preflight_tmp_path=environment_preflight_tmp_path,
         )
 
-    def _pull_image_if_needed(
+    def pull_image_if_needed(
         self, forced_platform: str | None, platform_args: list[str]
     ) -> None:
         """Pull Docker image if needed."""
@@ -356,9 +356,9 @@ class WorkerSetup:
             self._config.pull_before_run
             or (
                 forced_platform
-                and not _has_platform_image(self._config.image, forced_platform)
+                and not has_platform_image(self._config.image, forced_platform)
             )
-            or (not forced_platform and not _has_image(self._config.image))
+            or (not forced_platform and not has_image(self._config.image))
         )
 
         if should_pull:
@@ -369,7 +369,7 @@ class WorkerSetup:
                 else f"image missing; docker pull {self._config.image}"
             )
             self._on_log(format_log("host", "none", "INFO", msg))
-            _pull_image(self._config.image, platform_args=platform_args)
+            pull_image(self._config.image, platform_args=platform_args)
             self._on_log(format_log("host", "none", "INFO", "pull complete"))
 
     @dataclass(frozen=True)

@@ -2,7 +2,7 @@ import os
 import tempfile
 
 
-def _write_preflight_script(
+def write_preflight_script(
     script: str,
     label: str,
     task_id: str,
