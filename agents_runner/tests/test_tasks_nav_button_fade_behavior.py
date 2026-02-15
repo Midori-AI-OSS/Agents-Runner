@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import os
+import socket
 import time
+from pathlib import Path
 
+import pytest
 from PySide6.QtCore import Signal
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -18,6 +21,39 @@ from agents_runner.ui.pages.tasks import TasksPage
 # DISPLAY=:1 QT_QPA_PLATFORM=xcb uv run pytest agents_runner/tests/test_tasks_nav_button_fade_behavior.py -q
 # or xvfb-run -s "-screen 0 1280x800x24" uv run pytest agents_runner/tests/test_tasks_nav_button_fade_behavior.py -q
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+_HEADLESS_SKIP_REASON = (
+    "No live X display detected. This Qt test can abort in headless shells. "
+    "Run with DISPLAY=:1 QT_QPA_PLATFORM=xcb or with xvfb-run."
+)
+
+
+def _display_socket_path() -> Path | None:
+    display = str(os.environ.get("DISPLAY") or "").strip()
+    if not display.startswith(":"):
+        return None
+    display_number = display[1:].split(".", 1)[0]
+    if not display_number.isdigit():
+        return None
+    return Path("/tmp/.X11-unix") / f"X{display_number}"
+
+
+def _has_live_x_display() -> bool:
+    socket_path = _display_socket_path()
+    if socket_path is None:
+        return False
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(0.2)
+            client.connect(str(socket_path))
+        return True
+    except OSError:
+        return False
+
+
+def _require_live_display() -> None:
+    if not _has_live_x_display():
+        pytest.skip(_HEADLESS_SKIP_REASON)
 
 
 class _DummyNewTaskPage(QWidget):
@@ -99,6 +135,8 @@ def _build_envs() -> dict[str, Environment]:
 
 
 def test_tasks_github_buttons_fade_only_on_support_flip() -> None:
+    _require_live_display()
+
     app = QApplication.instance() or QApplication([])
 
     page = TasksPage(new_task_page=_DummyNewTaskPage())
@@ -143,6 +181,8 @@ def test_tasks_github_buttons_fade_only_on_support_flip() -> None:
 
 
 def test_tasks_github_button_fade_ignores_mid_animation_changes() -> None:
+    _require_live_display()
+
     app = QApplication.instance() or QApplication([])
 
     page = TasksPage(new_task_page=_DummyNewTaskPage())
