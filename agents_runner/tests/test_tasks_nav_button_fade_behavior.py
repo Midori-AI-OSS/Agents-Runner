@@ -13,6 +13,10 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.ui.pages.tasks import TasksPage
 
+# Keep tests on offscreen by default for regular CI runs.
+# If Qt aborts in a headless shell, run under a live X display instead:
+# DISPLAY=:1 QT_QPA_PLATFORM=xcb uv run pytest agents_runner/tests/test_tasks_nav_button_fade_behavior.py -q
+# or xvfb-run -s "-screen 0 1280x800x24" uv run pytest agents_runner/tests/test_tasks_nav_button_fade_behavior.py -q
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
