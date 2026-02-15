@@ -155,7 +155,7 @@ def _parse_reaction_summary(raw: object) -> GitHubReactionSummary:
 def _parse_work_item(item_type: str, raw: object) -> GitHubWorkItem | None:
     if not isinstance(raw, dict):
         return None
-    
+
     raw_dict: dict[str, Any] = raw
     number = _safe_int(raw_dict.get("number"))
     if number <= 0:

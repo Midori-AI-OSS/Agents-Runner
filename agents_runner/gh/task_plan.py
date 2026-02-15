@@ -353,7 +353,9 @@ def commit_push_and_pr(
                 "commit/stash your work (or switch back to the base branch) and rerun PR creation.\n"
                 f"{combined}".rstrip()
             )
-        unmerged_proc = run_gh(["git", "-C", repo_root, "ls-files", "-u"], timeout_s=8.0)
+        unmerged_proc = run_gh(
+            ["git", "-C", repo_root, "ls-files", "-u"], timeout_s=8.0
+        )
         require_ok(unmerged_proc, args=["git", "ls-files", "-u"])
         if (unmerged_proc.stdout or "").strip():
             raise GhManagementError(

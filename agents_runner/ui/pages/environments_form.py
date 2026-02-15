@@ -184,8 +184,8 @@ class EnvironmentsFormMixin:
         )
         self._agentsnova_trusted_users_env = GitHubUsernameListWidget()
         self._agentsnova_trusted_users_env.set_add_button_visible(False)
-        self._add_trusted_user_env = self._agentsnova_trusted_users_env.create_add_button(
-            self
+        self._add_trusted_user_env = (
+            self._agentsnova_trusted_users_env.create_add_button(self)
         )
         self._setup_github_defaults_env = QToolButton()
         self._setup_github_defaults_env.setText("Setup Defaults")
