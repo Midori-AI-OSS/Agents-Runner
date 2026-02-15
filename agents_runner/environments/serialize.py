@@ -360,16 +360,16 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
         # Legacy format: enabled_agents + agent_config_dirs
         if not agents:
-            enabled_agents = agent_selection_data.get("enabled_agents", [])
-            if isinstance(enabled_agents, list):
-                enabled_agents = [str(a) for a in enabled_agents if str(a).strip()]
+            enabled_agents_raw = selection_dict.get("enabled_agents", [])
+            if isinstance(enabled_agents_raw, list):
+                enabled_agents = [str(a) for a in enabled_agents_raw if str(a).strip()]
             else:
                 enabled_agents: list[str] = []
 
-            agent_config_dirs = agent_selection_data.get("agent_config_dirs", {})
-            if isinstance(agent_config_dirs, dict):
+            agent_config_dirs_raw = selection_dict.get("agent_config_dirs", {})
+            if isinstance(agent_config_dirs_raw, dict):
                 agent_config_dirs = {
-                    str(k): str(v) for k, v in agent_config_dirs.items()
+                    str(k): str(v) for k, v in agent_config_dirs_raw.items()
                 }
             else:
                 agent_config_dirs = {}
