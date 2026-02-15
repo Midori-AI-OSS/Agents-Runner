@@ -5,7 +5,7 @@ import time
 from .errors import GhManagementError
 from .gh_cli import is_gh_available
 from .git_ops import is_git_repo
-from .process import _expand_dir, _is_empty_dir, _require_ok, _run
+from .process import expand_dir, is_empty_dir, require_ok, run_gh
 
 
 def _normalize_repo_slug(value: str) -> str:
@@ -33,7 +33,7 @@ def _normalize_repo_slug(value: str) -> str:
 
 
 def _read_origin_url(dest_dir: str) -> str:
-    dest_dir = _expand_dir(dest_dir)
+    dest_dir = expand_dir(dest_dir)
     git_path = os.path.join(dest_dir, ".git")
     git_dir = ""
     if os.path.isdir(git_path):
@@ -95,7 +95,7 @@ def ensure_github_clone(
     repo = (repo or "").strip()
     if not repo:
         raise GhManagementError("missing GitHub repo")
-    dest_dir = _expand_dir(dest_dir)
+    dest_dir = expand_dir(dest_dir)
     parent = os.path.dirname(dest_dir)
     os.makedirs(parent, exist_ok=True)
     if os.path.exists(dest_dir):
@@ -120,7 +120,7 @@ def ensure_github_clone(
             return
         if os.path.isfile(dest_dir):
             raise GhManagementError(f"destination exists but is a file: {dest_dir}")
-        if _is_empty_dir(dest_dir):
+        if is_empty_dir(dest_dir):
             try:
                 os.rmdir(dest_dir)
             except OSError:
@@ -142,11 +142,11 @@ def ensure_github_clone(
 
     proc: subprocess.CompletedProcess[str]
     if prefer_gh and is_gh_available():
-        proc = _run(["gh", "repo", "clone", repo, dest_dir], timeout_s=300.0)
+        proc = run_gh(["gh", "repo", "clone", repo, dest_dir], timeout_s=300.0)
     else:
         proc = subprocess.CompletedProcess(
             args=["gh"], returncode=127, stdout="", stderr="gh not found"
         )
     if proc.returncode != 0:
-        proc = _run(["git", "clone", repo, dest_dir], timeout_s=300.0)
-    _require_ok(proc, args=["clone", repo, dest_dir])
+        proc = run_gh(["git", "clone", repo, dest_dir], timeout_s=300.0)
+    require_ok(proc, args=["clone", repo, dest_dir])

@@ -34,7 +34,7 @@ def _get_log_path() -> Path:
     return _qt_diagnostics_log
 
 
-def _qt_message_handler(msg_type: QtMsgType, context, message: str) -> None:
+def _qt_message_handler(msg_type: QtMsgType, context: object, message: str) -> None:
     """
     Custom Qt message handler that captures warnings with stack traces.
 

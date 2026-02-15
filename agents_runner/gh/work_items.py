@@ -5,7 +5,7 @@ import json
 from dataclasses import dataclass
 
 from .errors import GhManagementError
-from .process import _run
+from .process import run_gh
 
 
 @dataclass(frozen=True)
@@ -71,8 +71,8 @@ def _safe_text(value: object) -> str:
     return str(value or "").strip()
 
 
-def _run_gh_json(args: list[str], *, timeout_s: float = 45.0) -> object:
-    proc = _run(["gh", *args], timeout_s=timeout_s)
+def run_gh_gh_json(args: list[str], *, timeout_s: float = 45.0) -> object:
+    proc = run_gh(["gh", *args], timeout_s=timeout_s)
     if proc.returncode != 0:
         stderr = _safe_text(proc.stderr)
         stdout = _safe_text(proc.stdout)
@@ -93,8 +93,8 @@ def _run_gh_json(args: list[str], *, timeout_s: float = 45.0) -> object:
         ) from exc
 
 
-def _run_gh(args: list[str], *, timeout_s: float = 45.0) -> None:
-    proc = _run(["gh", *args], timeout_s=timeout_s)
+def run_gh_gh(args: list[str], *, timeout_s: float = 45.0) -> None:
+    proc = run_gh(["gh", *args], timeout_s=timeout_s)
     if proc.returncode == 0:
         return
     stderr = _safe_text(proc.stderr)
@@ -192,7 +192,7 @@ def list_open_pull_requests(
     limit: int = 30,
 ) -> list[GitHubWorkItem]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = _run_gh_json(
+    data = run_gh_gh_json(
         [
             "pr",
             "list",
@@ -225,7 +225,7 @@ def list_open_issues(
     limit: int = 30,
 ) -> list[GitHubWorkItem]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = _run_gh_json(
+    data = run_gh_gh_json(
         [
             "issue",
             "list",
@@ -259,7 +259,7 @@ def list_issue_comments(
     limit: int = 100,
 ) -> list[GitHubComment]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = _run_gh_json(
+    data = run_gh_gh_json(
         [
             "api",
             f"repos/{repo}/issues/{int(issue_number)}/comments?per_page={max(1, int(limit))}",
@@ -305,7 +305,7 @@ def get_pull_request_workroom(
     number: int,
 ) -> GitHubWorkroom:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = _run_gh_json(
+    data = run_gh_gh_json(
         [
             "pr",
             "view",
@@ -356,7 +356,7 @@ def get_issue_workroom(
     number: int,
 ) -> GitHubWorkroom:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = _run_gh_json(
+    data = run_gh_gh_json(
         [
             "issue",
             "view",
@@ -415,7 +415,7 @@ def post_comment(
 
     normalized = _safe_text(item_type).lower()
     if normalized == "pr":
-        _run_gh(
+        run_gh_gh(
             [
                 "pr",
                 "comment",
@@ -430,7 +430,7 @@ def post_comment(
         return
 
     if normalized == "issue":
-        _run_gh(
+        run_gh_gh(
             [
                 "issue",
                 "comment",
@@ -460,7 +460,7 @@ def set_item_open_state(
 
     if normalized == "pr":
         subcommand = "reopen" if bool(open_state) else "close"
-        _run_gh(
+        run_gh_gh(
             [
                 "pr",
                 subcommand,
@@ -474,7 +474,7 @@ def set_item_open_state(
 
     if normalized == "issue":
         subcommand = "reopen" if bool(open_state) else "close"
-        _run_gh(
+        run_gh_gh(
             [
                 "issue",
                 subcommand,
@@ -501,7 +501,7 @@ def add_issue_comment_reaction(
     if reaction_value not in {"+1", "-1", "eyes", "rocket", "hooray"}:
         raise GhManagementError(f"unsupported reaction: {reaction_value}")
 
-    _run_gh_json(
+    run_gh_gh_json(
         [
             "api",
             "--method",
@@ -519,7 +519,7 @@ def add_issue_comment_reaction(
 def get_authenticated_github_login() -> str:
     """Return the currently authenticated ``gh`` login (or empty string)."""
     try:
-        data = _run_gh_json(
+        data = run_gh_gh_json(
             [
                 "api",
                 "user",
@@ -550,7 +550,7 @@ def list_org_members(owner: str, *, limit: int = 100) -> list[str]:
         per_page = 100
 
     try:
-        data = _run_gh_json(
+        data = run_gh_gh_json(
             [
                 "api",
                 f"orgs/{owner_text}/members?per_page={per_page}",

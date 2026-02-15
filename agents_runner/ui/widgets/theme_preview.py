@@ -54,7 +54,7 @@ class ThemePreviewWidget(QWidget):
         self._notify_resize()
         self.update()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._notify_resize()
 
