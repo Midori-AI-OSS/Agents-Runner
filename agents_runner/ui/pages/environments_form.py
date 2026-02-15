@@ -183,6 +183,10 @@ class _EnvironmentsFormMixin:
             "Controls how this environment resolves trusted usernames for auto-review mention checks."
         )
         self._agentsnova_trusted_users_env = GitHubUsernameListWidget()
+        self._agentsnova_trusted_users_env.set_add_button_visible(False)
+        self._add_trusted_user_env = self._agentsnova_trusted_users_env.create_add_button(
+            self
+        )
         self._setup_github_defaults_env = QToolButton()
         self._setup_github_defaults_env.setText("Setup Defaults")
         self._setup_github_defaults_env.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -331,9 +335,10 @@ class _EnvironmentsFormMixin:
 
         github_actions = QHBoxLayout()
         github_actions.setSpacing(BUTTON_ROW_SPACING)
-        github_actions.addStretch(1)
+        github_actions.addWidget(self._add_trusted_user_env)
         github_actions.addWidget(self._setup_github_defaults_env)
         github_actions.addWidget(self._agentsnova_trusted_mode)
+        github_actions.addStretch(1)
         github_body.addLayout(github_actions)
         self._register_page("github", github_page)
 

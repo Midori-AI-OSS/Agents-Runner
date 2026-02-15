@@ -269,6 +269,10 @@ class _SettingsFormMixin:
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
+        self._agentsnova_trusted_users_global.set_add_button_visible(False)
+        self._add_trusted_user_global = (
+            self._agentsnova_trusted_users_global.create_add_button(self)
+        )
         self._setup_github_defaults_global = QToolButton()
         self._setup_github_defaults_global.setText("Setup Defaults")
         self._setup_github_defaults_global.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -463,6 +467,7 @@ class _SettingsFormMixin:
 
         github_actions = QHBoxLayout()
         github_actions.setSpacing(BUTTON_ROW_SPACING)
+        github_actions.addWidget(self._add_trusted_user_global)
         github_actions.addWidget(self._setup_github_defaults_global)
         github_actions.addStretch(1)
         github_body.addLayout(github_actions)

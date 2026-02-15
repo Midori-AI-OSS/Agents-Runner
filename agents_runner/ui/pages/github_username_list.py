@@ -55,19 +55,22 @@ class GitHubUsernameListWidget(QWidget):
         self._table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self._table, 1)
 
-        actions = QWidget()
-        actions_layout = QHBoxLayout(actions)
+        self._actions = QWidget()
+        actions_layout = QHBoxLayout(self._actions)
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.setSpacing(BUTTON_ROW_SPACING)
-        add_btn = QToolButton()
-        add_btn.setText("Add")
-        add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        add_btn.clicked.connect(self._on_add_row)
-        actions_layout.addWidget(add_btn)
+        self._add_btn = self._build_add_button(self._actions)
+        actions_layout.addWidget(self._add_btn)
         actions_layout.addStretch(1)
-        layout.addWidget(actions)
+        layout.addWidget(self._actions)
 
         self._render_table()
+
+    def set_add_button_visible(self, visible: bool) -> None:
+        self._actions.setVisible(bool(visible))
+
+    def create_add_button(self, parent: QWidget | None = None) -> QToolButton:
+        return self._build_add_button(parent)
 
     def set_usernames(self, usernames: list[str]) -> None:
         cleaned: list[str] = []
@@ -102,6 +105,13 @@ class GitHubUsernameListWidget(QWidget):
         self._rows.append("")
         self._render_table()
         self.usernames_changed.emit()
+
+    def _build_add_button(self, parent: QWidget | None = None) -> QToolButton:
+        add_btn = QToolButton(parent)
+        add_btn.setText("Add")
+        add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        add_btn.clicked.connect(self._on_add_row)
+        return add_btn
 
     def _render_table(self) -> None:
         self._table.blockSignals(True)
