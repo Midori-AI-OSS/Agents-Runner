@@ -291,10 +291,12 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     prompts_data = payload.get("prompts", [])
     prompts: list[Prompt] = []
     if isinstance(prompts_data, list):
-        for p in prompts_data:
+        prompts_list: list[Any] = prompts_data
+        for p in prompts_list:
             if isinstance(p, dict):
-                prompt_path = str(p.get("prompt_path", "")).strip()
-                text = str(p.get("text", ""))
+                p_dict: dict[str, Any] = p
+                prompt_path = str(p_dict.get("prompt_path", "")).strip()
+                text = str(p_dict.get("text", ""))
 
                 # If we have a prompt_path, load from file (migration case)
                 if prompt_path:
@@ -325,22 +327,23 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     agent_selection = None
     agents: list[AgentInstance] = []
     if isinstance(agent_selection_data, dict):
-        selection_mode = str(agent_selection_data.get("selection_mode", "round-robin"))
-        pinned_agent_id = str(
-            agent_selection_data.get("pinned_agent_id", "") or ""
-        ).strip()
+        selection_dict: dict[str, Any] = agent_selection_data
+        selection_mode = str(selection_dict.get("selection_mode", "round-robin"))
+        pinned_agent_id = str(selection_dict.get("pinned_agent_id", "") or "").strip()
 
-        agents_payload = agent_selection_data.get("agents")
+        agents_payload = selection_dict.get("agents")
         seen_ids: set[str] = set()
 
         if isinstance(agents_payload, list):
-            for raw in agents_payload:
+            agents_list: list[Any] = agents_payload
+            for raw in agents_list:
                 if not isinstance(raw, dict):
                     continue
-                agent_cli = str(raw.get("agent_cli") or "").strip()
-                agent_id = str(raw.get("agent_id") or "").strip()
-                config_dir = str(raw.get("config_dir") or "").strip()
-                cli_flags = str(raw.get("cli_flags") or "").strip()
+                raw_dict: dict[str, Any] = raw
+                agent_cli = str(raw_dict.get("agent_cli") or "").strip()
+                agent_id = str(raw_dict.get("agent_id") or "").strip()
+                config_dir = str(raw_dict.get("config_dir") or "").strip()
+                cli_flags = str(raw_dict.get("cli_flags") or "").strip()
                 if not agent_cli:
                     continue
                 unique_id = _unique_agent_id(
