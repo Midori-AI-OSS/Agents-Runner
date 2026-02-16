@@ -21,7 +21,13 @@ _cache_build_lock = threading.Lock()
 
 @dataclass
 class CacheResolutionResult:
-    """Result of cache resolution containing runtime image and cache flags."""
+    """Result of cache resolution containing runtime image and cache flags.
+
+    Note:
+        desktop_preflight_cached indicates whether a desktop image layer was
+        reused/built. It must not be treated as "desktop services already
+        running" for the launched container.
+    """
 
     runtime_image: str
     system_preflight_cached: bool
