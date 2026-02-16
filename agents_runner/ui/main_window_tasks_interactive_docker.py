@@ -260,14 +260,16 @@ def launch_docker_terminal_task(
                 )
             )
 
-    # Prepare preflight scripts and get mounts
+    # Prepare preflight scripts and get mounts.
+    # Desktop caching only pre-installs desktop dependencies into an image layer;
+    # runtime desktop services still need to start for each container launch.
     preflight_clause, preflight_mounts, tmp_paths = _prepare_preflight_scripts(
         task_token=task_token,
         desktop_preflight_script=desktop_preflight_script,
         settings_preflight_script=settings_preflight_script,
         environment_preflight_script=environment_preflight_script,
         skip_system=system_preflight_cached,
-        skip_desktop=desktop_preflight_cached,
+        skip_desktop=False,
         skip_settings=settings_preflight_cached,
         skip_environment=environment_preflight_cached,
     )
