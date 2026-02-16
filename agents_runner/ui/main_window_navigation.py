@@ -121,7 +121,16 @@ class MainWindowNavigationMixin:
     def _show_tasks(self) -> None:
         if not self._try_autosave_before_navigation():
             return
+        was_visible = self._tasks_page.isVisible()
         self._tasks_page.show_new_task_tab(focus_prompt=True)
+        if not was_visible and hasattr(
+            self, "_refresh_active_environment_repo_branches"
+        ):
+            self._refresh_active_environment_repo_branches(
+                trigger_reason="tasks_entry",
+                show_loading_ui=True,
+                preserve_current_selection=True,
+            )
         self._transition_to_page(self._tasks_page)
 
     def _show_task_details(self) -> None:
