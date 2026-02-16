@@ -10,6 +10,7 @@ from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QSize
 from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer
 from PySide6.QtCore import QThread
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QComboBox
@@ -49,6 +50,9 @@ logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class NewTaskPage(QWidget):
+    _BASE_BRANCH_LOADING_SENTINEL = "__loading__"
+    _BASE_BRANCH_LOADING_DELAY_MS = 250
+
     requested_run = Signal(str, str, str, str)
     requested_launch = Signal(str, str, str, str, str, str, str)
     back_requested = Signal()
@@ -79,6 +83,28 @@ class NewTaskPage(QWidget):
         self._stt_worker: SttWorker | None = None
         self._current_interactive_slot: Callable[..., Any] | None = None
         self._base_branch_visibility_animation: QParallelAnimationGroup | None = None
+        self._base_branch_loading = False
+        self._base_branch_loading_requested = False
+        self._base_branch_loading_snapshot: list[tuple[str, str]] = []
+        self._base_branch_loading_selected = ""
+        self._base_branch_loading_animation: QPropertyAnimation | None = None
+        self._base_branch_loading_delay_timer = QTimer(self)
+        self._base_branch_loading_delay_timer.setSingleShot(True)
+        self._base_branch_loading_delay_timer.setInterval(
+            self._BASE_BRANCH_LOADING_DELAY_MS
+        )
+        self._base_branch_loading_delay_timer.timeout.connect(
+            self._activate_base_branch_loading_visual
+        )
+        self._pending_repo_branches_update: (
+            tuple[list[str], str | None, bool] | None
+        ) = None
+        self._pending_repo_branches_timer = QTimer(self)
+        self._pending_repo_branches_timer.setSingleShot(True)
+        self._pending_repo_branches_timer.setInterval(120)
+        self._pending_repo_branches_timer.timeout.connect(
+            self._apply_pending_repo_branches_update
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -854,6 +880,9 @@ class NewTaskPage(QWidget):
     def base_branch_controls_widget(self) -> QWidget:
         return self._base_branch_controls
 
+    def is_base_branch_controls_visible(self) -> bool:
+        return bool(self._base_branch_controls.isVisible())
+
     def _base_branch_opacity_effect(self) -> QGraphicsOpacityEffect:
         effect = self._base_branch_controls.graphicsEffect()
         if isinstance(effect, QGraphicsOpacityEffect):
@@ -955,27 +984,217 @@ class NewTaskPage(QWidget):
             return
         self._set_base_branch_visibility_immediate(visible=should_show)
 
-    def set_repo_branches(
-        self, branches: list[str], selected: str | None = None
+    def _base_branch_loading_effect(self) -> QGraphicsOpacityEffect:
+        effect = self._base_branch.graphicsEffect()
+        if isinstance(effect, QGraphicsOpacityEffect):
+            return effect
+        effect = QGraphicsOpacityEffect(self._base_branch)
+        effect.setOpacity(1.0)
+        self._base_branch.setGraphicsEffect(effect)
+        return effect
+
+    def _start_base_branch_loading_animation(self) -> None:
+        effect = self._base_branch_loading_effect()
+        if self._base_branch_loading_animation is None:
+            animation = QPropertyAnimation(effect, b"opacity", self)
+            animation.setDuration(880)
+            animation.setKeyValueAt(0.0, 1.0)
+            animation.setKeyValueAt(0.5, 0.78)
+            animation.setKeyValueAt(1.0, 1.0)
+            animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+            animation.setLoopCount(-1)
+            self._base_branch_loading_animation = animation
+        else:
+            self._base_branch_loading_animation.stop()
+        effect.setOpacity(1.0)
+        self._base_branch_loading_animation.start()
+
+    def _stop_base_branch_loading_animation(self) -> None:
+        if self._base_branch_loading_animation is not None:
+            self._base_branch_loading_animation.stop()
+        effect = self._base_branch.graphicsEffect()
+        if isinstance(effect, QGraphicsOpacityEffect):
+            effect.setOpacity(1.0)
+
+    def _capture_base_branch_items(self) -> list[tuple[str, str]]:
+        entries: list[tuple[str, str]] = []
+        for index in range(int(self._base_branch.count())):
+            text = str(self._base_branch.itemText(index) or "")
+            data = str(self._base_branch.itemData(index) or "")
+            entries.append((text, data))
+        return entries
+
+    def _restore_base_branch_loading_snapshot(self) -> None:
+        snapshot = list(self._base_branch_loading_snapshot)
+        selected = str(self._base_branch_loading_selected or "").strip()
+        self._base_branch.blockSignals(True)
+        try:
+            self._base_branch.clear()
+            if snapshot:
+                for text, data in snapshot:
+                    label = str(text or "").strip()
+                    value = str(data or "").strip()
+                    if not label and not value:
+                        label = "Auto"
+                    elif not label:
+                        label = value
+                    self._base_branch.addItem(label, value)
+            else:
+                self._base_branch.addItem("Auto", "")
+
+            idx = -1
+            if selected:
+                idx = self._base_branch.findData(selected)
+            if idx < 0:
+                idx = self._base_branch.findData("")
+            if idx < 0 and self._base_branch.count() > 0:
+                idx = 0
+            if idx >= 0:
+                self._base_branch.setCurrentIndex(idx)
+        finally:
+            self._base_branch.blockSignals(False)
+
+    def _selected_base_branch_for_preserve(self) -> str:
+        current = str(self._base_branch.currentData() or "").strip()
+        if current and current != self._BASE_BRANCH_LOADING_SENTINEL:
+            return current
+        loading_selected = str(self._base_branch_loading_selected or "").strip()
+        return loading_selected
+
+    def _activate_base_branch_loading_visual(self) -> None:
+        if not self._base_branch_loading_requested or self._base_branch_loading:
+            return
+        if self._base_branch.view().isVisible():
+            self._base_branch_loading_delay_timer.start()
+            return
+        self._pending_repo_branches_update = None
+        self._pending_repo_branches_timer.stop()
+        self._base_branch_loading = True
+        self._base_branch_loading_snapshot = self._capture_base_branch_items()
+        self._base_branch_loading_selected = self._selected_base_branch_for_preserve()
+        self._base_branch.blockSignals(True)
+        try:
+            self._base_branch.clear()
+            self._base_branch.addItem("Loading...", self._BASE_BRANCH_LOADING_SENTINEL)
+            self._base_branch.setCurrentIndex(0)
+        finally:
+            self._base_branch.blockSignals(False)
+        self._base_branch.setEnabled(False)
+        self._start_base_branch_loading_animation()
+
+    def set_repo_branches_loading(self, loading: bool) -> None:
+        should_load = bool(loading)
+        if should_load:
+            self._base_branch_loading_requested = True
+            if self._base_branch_loading:
+                return
+            self._base_branch_loading_delay_timer.start()
+            return
+
+        self._base_branch_loading_requested = False
+        self._base_branch_loading_delay_timer.stop()
+        if not self._base_branch_loading:
+            return
+
+        self._base_branch_loading = False
+        self._stop_base_branch_loading_animation()
+        self._base_branch.setEnabled(True)
+
+        is_loading_placeholder = (
+            self._base_branch.count() == 1
+            and str(self._base_branch.itemData(0) or "")
+            == self._BASE_BRANCH_LOADING_SENTINEL
+        )
+        if is_loading_placeholder:
+            self._restore_base_branch_loading_snapshot()
+
+        self._base_branch_loading_snapshot = []
+        self._base_branch_loading_selected = ""
+
+    def _apply_repo_branches_now(
+        self,
+        *,
+        branches: list[str],
+        selected: str | None,
+        preserve_current_selection: bool,
     ) -> None:
         wanted = str(selected or "").strip()
+        preserved = (
+            self._selected_base_branch_for_preserve()
+            if preserve_current_selection
+            else ""
+        )
+        self.set_repo_branches_loading(False)
+
         self._base_branch.blockSignals(True)
         try:
             self._base_branch.clear()
             self._base_branch.addItem("Auto", "")
+            seen: set[str] = set()
             for name in branches or []:
-                b = str(name or "").strip()
-                if not b:
+                branch = str(name or "").strip()
+                if not branch or branch in seen:
                     continue
-                self._base_branch.addItem(b, b)
-            if wanted:
-                idx = self._base_branch.findData(wanted)
-                if idx >= 0:
-                    self._base_branch.setCurrentIndex(idx)
-                    return
-            self._base_branch.setCurrentIndex(0)
+                seen.add(branch)
+                self._base_branch.addItem(branch, branch)
+
+            target = ""
+            if wanted and wanted in seen:
+                target = wanted
+            elif preserve_current_selection and preserved and preserved in seen:
+                target = preserved
+
+            idx = self._base_branch.findData(target)
+            if idx < 0:
+                idx = self._base_branch.findData("")
+            if idx < 0 and self._base_branch.count() > 0:
+                idx = 0
+            if idx >= 0:
+                self._base_branch.setCurrentIndex(idx)
         finally:
             self._base_branch.blockSignals(False)
+
+    def _apply_pending_repo_branches_update(self) -> None:
+        pending = self._pending_repo_branches_update
+        if pending is None:
+            return
+        if self._base_branch.view().isVisible():
+            self._pending_repo_branches_timer.start()
+            return
+
+        self._pending_repo_branches_update = None
+        branches, selected, preserve = pending
+        self._apply_repo_branches_now(
+            branches=list(branches),
+            selected=selected,
+            preserve_current_selection=bool(preserve),
+        )
+
+    def set_repo_branches(
+        self,
+        branches: list[str],
+        selected: str | None = None,
+        preserve_current_selection: bool = False,
+    ) -> None:
+        normalized = [str(name or "").strip() for name in branches or []]
+        normalized = [name for name in normalized if name]
+        if preserve_current_selection and self._base_branch.view().isVisible():
+            self.set_repo_branches_loading(False)
+            self._pending_repo_branches_update = (
+                list(normalized),
+                str(selected or "").strip() or None,
+                bool(preserve_current_selection),
+            )
+            self._pending_repo_branches_timer.start()
+            return
+
+        self._pending_repo_branches_update = None
+        self._pending_repo_branches_timer.stop()
+        self._apply_repo_branches_now(
+            branches=normalized,
+            selected=selected,
+            preserve_current_selection=preserve_current_selection,
+        )
 
     def set_interactive_defaults(self, terminal_id: str, command: str) -> None:
         if command:

@@ -90,9 +90,32 @@ class MainWindowEnvironmentMixin:
             "Set Workspace to a local folder or GitHub repo in Environments.",
         )
 
-    def _sync_new_task_repo_controls(self, env: Environment | None) -> None:
+    def _refresh_active_environment_repo_branches(
+        self,
+        *,
+        trigger_reason: str,
+        show_loading_ui: bool,
+        preserve_current_selection: bool,
+    ) -> None:
+        env = self._environments.get(self._active_environment_id())
+        self._sync_new_task_repo_controls(
+            env,
+            trigger_reason=trigger_reason,
+            show_loading_ui=show_loading_ui,
+            preserve_current_selection=preserve_current_selection,
+        )
+
+    def _sync_new_task_repo_controls(
+        self,
+        env: Environment | None,
+        *,
+        trigger_reason: str = "environment_apply",
+        show_loading_ui: bool = False,
+        preserve_current_selection: bool = False,
+    ) -> None:
         _workdir, ready, _ = self._new_task_workspace(env)
         if not ready:
+            self._new_task.set_repo_branches_loading(False)
             self._new_task.set_repo_controls_visible(False)
             self._new_task.set_repo_branches([])
             return
@@ -100,24 +123,61 @@ class MainWindowEnvironmentMixin:
         workspace_type = env.workspace_type or WORKSPACE_NONE if env else WORKSPACE_NONE
         has_repo = bool(workspace_type == WORKSPACE_CLONED)
         if workspace_type == WORKSPACE_NONE or not has_repo:
+            self._new_task.set_repo_branches_loading(False)
             self._new_task.set_repo_controls_visible(False)
             self._new_task.set_repo_branches([])
             return
 
         self._new_task.set_repo_controls_visible(True)
-        self._new_task.set_repo_branches([])
 
         if workspace_type == WORKSPACE_CLONED and env:
             target = str(env.workspace_target or "").strip()
             if not target:
+                self._new_task.set_repo_branches_loading(False)
+                self._new_task.set_repo_branches([])
                 return
+            env_id = str(env.env_id or "").strip()
+            fallback_branches = list(
+                getattr(self, "_repo_branches_cache", {}).get(env_id, [])
+            )
+            fallback_selected = ""
+            last_branch = str(getattr(env, "gh_last_base_branch", "") or "").strip()
+            if last_branch and last_branch in fallback_branches:
+                fallback_selected = last_branch
+
+            normalized_reason = str(trigger_reason or "").strip().lower()
+            if show_loading_ui:
+                if normalized_reason == "env_switch":
+                    if fallback_branches:
+                        self._new_task.set_repo_branches(
+                            fallback_branches,
+                            selected=fallback_selected or None,
+                            preserve_current_selection=False,
+                        )
+                    else:
+                        self._new_task.set_repo_branches([])
+                self._new_task.set_repo_branches_loading(True)
+            else:
+                self._new_task.set_repo_branches_loading(False)
+
             self._repo_branches_request_id += 1
             request_id = int(self._repo_branches_request_id)
+            self._repo_branches_request_meta[request_id] = {
+                "env_id": env_id,
+                "trigger_reason": str(trigger_reason or "").strip(),
+                "preserve_current_selection": bool(preserve_current_selection),
+                "fallback_branches": fallback_branches,
+                "fallback_selected": fallback_selected,
+            }
 
             def _worker() -> None:
-                branches = git_list_remote_heads(target)
+                result: object
                 try:
-                    self.repo_branches_ready.emit(request_id, branches)
+                    result = git_list_remote_heads(target)
+                except Exception:
+                    result = None
+                try:
+                    self.repo_branches_ready.emit(request_id, result)
                 except Exception:
                     pass
 
@@ -129,15 +189,49 @@ class MainWindowEnvironmentMixin:
         except Exception:
             return
         if request_id != int(getattr(self, "_repo_branches_request_id", 0)):
+            self._repo_branches_request_meta.pop(request_id, None)
             return
+        request_meta = self._repo_branches_request_meta.pop(request_id, {})
+
+        preserve_current_selection = bool(
+            request_meta.get("preserve_current_selection")
+        )
+        fallback_branch_values = request_meta.get("fallback_branches", [])
+        fallback_branches = [
+            str(branch or "").strip()
+            for branch in fallback_branch_values
+            if str(branch or "").strip()
+        ]
+        fallback_selected_raw = str(request_meta.get("fallback_selected") or "").strip()
+        fallback_selected = fallback_selected_raw if fallback_selected_raw else None
+
         env = self._environments.get(self._active_environment_id())
         workspace_type = env.workspace_type or WORKSPACE_NONE if env else WORKSPACE_NONE
         if workspace_type != WORKSPACE_CLONED:
+            self._new_task.set_repo_branches_loading(False)
             return
         if not isinstance(branches, list):
+            if fallback_branches:
+                self._new_task.set_repo_branches(
+                    fallback_branches,
+                    selected=fallback_selected,
+                    preserve_current_selection=preserve_current_selection,
+                )
+            else:
+                self._new_task.set_repo_branches_loading(False)
             return
         cleaned = [str(b or "").strip() for b in branches]
         cleaned = [b for b in cleaned if b]
+        if not cleaned:
+            if fallback_branches:
+                self._new_task.set_repo_branches(
+                    fallback_branches,
+                    selected=fallback_selected,
+                    preserve_current_selection=preserve_current_selection,
+                )
+            else:
+                self._new_task.set_repo_branches_loading(False)
+            return
         self._new_task.set_repo_controls_visible(True)
 
         # Restore last selected branch for cloned environments
@@ -147,7 +241,14 @@ class MainWindowEnvironmentMixin:
             if last_branch and last_branch in cleaned:
                 selected_branch = last_branch
 
-        self._new_task.set_repo_branches(cleaned, selected=selected_branch)
+        env_id = str(env.env_id or "").strip() if env else ""
+        if env_id:
+            self._repo_branches_cache[env_id] = list(cleaned)
+        self._new_task.set_repo_branches(
+            cleaned,
+            selected=selected_branch,
+            preserve_current_selection=preserve_current_selection,
+        )
 
     def _populate_environment_pickers(self) -> None:
         active_id = self._active_environment_id()
@@ -190,7 +291,13 @@ class MainWindowEnvironmentMixin:
         finally:
             self._syncing_environment = False
 
-    def _apply_active_environment_to_new_task(self) -> None:
+    def _apply_active_environment_to_new_task(
+        self,
+        *,
+        branch_refresh_reason: str = "environment_apply",
+        show_branch_loading: bool = False,
+        preserve_branch_selection: bool = False,
+    ) -> None:
         env = self._environments.get(self._active_environment_id())
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_cli, host_codex = self._effective_agent_and_config(env=env)
@@ -231,7 +338,12 @@ class MainWindowEnvironmentMixin:
         self._new_task.set_defaults(host_codex=host_codex)
         self._new_task.set_workspace_status(path=workdir, ready=ready, message=message)
         self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)
-        self._sync_new_task_repo_controls(env)
+        self._sync_new_task_repo_controls(
+            env,
+            trigger_reason=branch_refresh_reason,
+            show_loading_ui=show_branch_loading,
+            preserve_current_selection=preserve_branch_selection,
+        )
         self._new_task.set_interactive_defaults(
             terminal_id=str(self._settings_data.get("interactive_terminal_id") or ""),
             command=self._default_interactive_command(agent_cli),
@@ -244,7 +356,11 @@ class MainWindowEnvironmentMixin:
         env_id = str(env_id or "")
         if env_id and env_id in self._environments:
             self._settings_data["active_environment_id"] = env_id
-            self._apply_active_environment_to_new_task()
+            self._apply_active_environment_to_new_task(
+                branch_refresh_reason="env_switch",
+                show_branch_loading=True,
+                preserve_branch_selection=False,
+            )
             self._schedule_save()
 
     def _reload_environments(self, preferred_env_id: str = "") -> None:

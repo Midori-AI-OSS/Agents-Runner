@@ -140,6 +140,8 @@ class MainWindow(
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}
         self._repo_branches_request_id: int = 0
+        self._repo_branches_request_meta: dict[int, dict[str, object]] = {}
+        self._repo_branches_cache: dict[str, list[str]] = {}
         self._state_path = default_state_path()
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
