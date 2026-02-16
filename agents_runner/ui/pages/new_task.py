@@ -51,6 +51,7 @@ logger = MidoriAiLogger(channel=None, name=__name__)
 
 class NewTaskPage(QWidget):
     _BASE_BRANCH_LOADING_SENTINEL = "__loading__"
+    _BASE_BRANCH_LOADING_DELAY_MS = 250
 
     requested_run = Signal(str, str, str, str)
     requested_launch = Signal(str, str, str, str, str, str, str)
@@ -83,9 +84,18 @@ class NewTaskPage(QWidget):
         self._current_interactive_slot: Callable[..., Any] | None = None
         self._base_branch_visibility_animation: QParallelAnimationGroup | None = None
         self._base_branch_loading = False
+        self._base_branch_loading_requested = False
         self._base_branch_loading_snapshot: list[tuple[str, str]] = []
         self._base_branch_loading_selected = ""
         self._base_branch_loading_animation: QPropertyAnimation | None = None
+        self._base_branch_loading_delay_timer = QTimer(self)
+        self._base_branch_loading_delay_timer.setSingleShot(True)
+        self._base_branch_loading_delay_timer.setInterval(
+            self._BASE_BRANCH_LOADING_DELAY_MS
+        )
+        self._base_branch_loading_delay_timer.timeout.connect(
+            self._activate_base_branch_loading_visual
+        )
         self._pending_repo_branches_update: (
             tuple[list[str], str | None, bool] | None
         ) = None
@@ -989,7 +999,7 @@ class NewTaskPage(QWidget):
             animation = QPropertyAnimation(effect, b"opacity", self)
             animation.setDuration(880)
             animation.setKeyValueAt(0.0, 1.0)
-            animation.setKeyValueAt(0.5, 0.44)
+            animation.setKeyValueAt(0.5, 0.78)
             animation.setKeyValueAt(1.0, 1.0)
             animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
             animation.setLoopCount(-1)
@@ -1051,30 +1061,39 @@ class NewTaskPage(QWidget):
         loading_selected = str(self._base_branch_loading_selected or "").strip()
         return loading_selected
 
+    def _activate_base_branch_loading_visual(self) -> None:
+        if not self._base_branch_loading_requested or self._base_branch_loading:
+            return
+        if self._base_branch.view().isVisible():
+            self._base_branch_loading_delay_timer.start()
+            return
+        self._pending_repo_branches_update = None
+        self._pending_repo_branches_timer.stop()
+        self._base_branch_loading = True
+        self._base_branch_loading_snapshot = self._capture_base_branch_items()
+        self._base_branch_loading_selected = self._selected_base_branch_for_preserve()
+        self._base_branch.blockSignals(True)
+        try:
+            self._base_branch.clear()
+            self._base_branch.addItem("Loading...", self._BASE_BRANCH_LOADING_SENTINEL)
+            self._base_branch.setCurrentIndex(0)
+        finally:
+            self._base_branch.blockSignals(False)
+        self._base_branch.setEnabled(False)
+        self._start_base_branch_loading_animation()
+
     def set_repo_branches_loading(self, loading: bool) -> None:
         should_load = bool(loading)
-        if should_load == self._base_branch_loading:
+        if should_load:
+            self._base_branch_loading_requested = True
+            if self._base_branch_loading:
+                return
+            self._base_branch_loading_delay_timer.start()
             return
 
-        if should_load:
-            self._pending_repo_branches_update = None
-            self._pending_repo_branches_timer.stop()
-            self._base_branch_loading = True
-            self._base_branch_loading_snapshot = self._capture_base_branch_items()
-            self._base_branch_loading_selected = (
-                self._selected_base_branch_for_preserve()
-            )
-            self._base_branch.blockSignals(True)
-            try:
-                self._base_branch.clear()
-                self._base_branch.addItem(
-                    "Loading...", self._BASE_BRANCH_LOADING_SENTINEL
-                )
-                self._base_branch.setCurrentIndex(0)
-            finally:
-                self._base_branch.blockSignals(False)
-            self._base_branch.setEnabled(False)
-            self._start_base_branch_loading_animation()
+        self._base_branch_loading_requested = False
+        self._base_branch_loading_delay_timer.stop()
+        if not self._base_branch_loading:
             return
 
         self._base_branch_loading = False
@@ -1160,6 +1179,7 @@ class NewTaskPage(QWidget):
         normalized = [str(name or "").strip() for name in branches or []]
         normalized = [name for name in normalized if name]
         if preserve_current_selection and self._base_branch.view().isVisible():
+            self.set_repo_branches_loading(False)
             self._pending_repo_branches_update = (
                 list(normalized),
                 str(selected or "").strip() or None,
