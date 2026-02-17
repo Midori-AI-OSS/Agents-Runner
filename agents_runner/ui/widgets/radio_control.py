@@ -28,7 +28,7 @@ class RadioControlWidget(QWidget):
     COLLAPSED_WIDTH = 44
     EXPANDED_WIDTH = 230
     ANIMATION_MS = 170
-    COLLAPSE_DELAY_MS = 350
+    COLLAPSE_DELAY_MS = 3000
     ICON_COLOR_PLAYING = (16, 185, 129)
     ICON_COLOR_IDLE = (239, 68, 68)
     ICON_COLOR_RECONNECT_START = (250, 204, 21)
@@ -178,7 +178,7 @@ class RadioControlWidget(QWidget):
         elif self._connection_state == "reconnecting":
             tooltip = "Reconnecting Midori AI Radio."
         elif self._is_playing:
-            tooltip = "Stop Midori AI Radio."
+            tooltip = "Turn off Midori AI Radio."
         elif self._radio_enabled:
             tooltip = "Start Midori AI Radio."
         else:
@@ -250,6 +250,9 @@ class RadioControlWidget(QWidget):
 
     def _schedule_collapse(self) -> None:
         if self._drag_active:
+            return
+        if self._is_interaction_active():
+            self._collapse_timer.stop()
             return
         self._collapse_timer.start()
 

@@ -324,7 +324,7 @@ class SettingsFormMixin:
 
         self._radio_enabled = QCheckBox("Enable Midori AI Radio")
         self._radio_enabled.setToolTip(
-            "Allows starting radio playback from the navbar control."
+            "Controls whether the navbar radio system is enabled."
         )
         self._radio_autostart = QCheckBox("Auto-start radio on app launch")
         self._radio_autostart.setToolTip(

@@ -388,12 +388,27 @@ class MainWindow(
         if not self._radio_controller.qt_available:
             return
 
+        snapshot = self._radio_controller.state_snapshot()
+        connection_state = str(snapshot.get("connection_state") or "").strip().lower()
+        is_active = bool(snapshot.get("is_playing")) or bool(
+            snapshot.get("desired_playing")
+        )
+        if connection_state == "reconnecting":
+            is_active = True
+
+        if is_active:
+            self._settings_data["radio_enabled"] = False
+            self._radio_controller.set_enabled(False, start_when_enabled=False)
+            self._settings.set_settings(self._settings_data)
+            self._schedule_save()
+            return
+
         if not bool(self._settings_data.get("radio_enabled") or False):
             self._settings_data["radio_enabled"] = True
             self._radio_controller.set_enabled(True, start_when_enabled=False)
             self._settings.set_settings(self._settings_data)
 
-        self._radio_controller.toggle_playback()
+        self._radio_controller.start_playback()
         self._schedule_save()
 
     def _on_radio_control_volume_changed(self, value: int) -> None:
@@ -435,6 +450,10 @@ class MainWindow(
             self.setWindowTitle(APP_TITLE)
             return
 
+        if (not bool(state.get("enabled"))) and (not bool(state.get("is_playing"))):
+            self.setWindowTitle(self._active_environment_window_title())
+            return
+
         channel_label = str(state.get("channel_label") or "all").strip() or "all"
         current_track = self._normalize_radio_window_track_title(
             state.get("current_track")
@@ -452,6 +471,19 @@ class MainWindow(
             return
 
         self.setWindowTitle(f"{APP_TITLE} [{channel_label}]")
+
+    def _active_environment_window_title(self) -> str:
+        active_env_id = str(
+            self._settings_data.get("active_environment_id") or ""
+        ).strip()
+        if not active_env_id:
+            active_env_id = "default"
+        env = self._environments.get(active_env_id)
+        if env is not None:
+            env_name = str(getattr(env, "name", "") or "").strip()
+            if env_name:
+                return env_name
+        return active_env_id
 
     def _refresh_radio_channel_options(self, *, disable_on_failure: bool) -> None:
         selected_channel = RadioController.normalize_channel(
