@@ -11,6 +11,7 @@ from PySide6.QtCore import QVariantAnimation
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QGraphicsOpacityEffect
+from PySide6.QtWidgets import QBoxLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QSlider
 from PySide6.QtWidgets import QToolButton
@@ -62,6 +63,7 @@ class RadioControlWidget(QWidget):
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+        root.setDirection(QBoxLayout.Direction.RightToLeft)
 
         self._volume_section = QWidget(self)
         self._volume_section.setFixedHeight(self.PLAY_BUTTON_HEIGHT)
@@ -104,9 +106,8 @@ class RadioControlWidget(QWidget):
         self._play_button.clicked.connect(self.play_requested.emit)
         play_section_layout.addWidget(self._play_button, 0, Qt.AlignCenter)
 
-        root.addWidget(self._volume_section, 0, Qt.AlignLeft | Qt.AlignVCenter)
-        root.addStretch(1)
-        root.addWidget(self._play_section, 0, Qt.AlignRight | Qt.AlignVCenter)
+        root.addWidget(self._play_section, 0, Qt.AlignVCenter)
+        root.addWidget(self._volume_section, 0, Qt.AlignVCenter)
 
         self._slider_opacity_effect = QGraphicsOpacityEffect(self._slider_wrap)
         self._slider_wrap.setGraphicsEffect(self._slider_opacity_effect)
@@ -125,6 +126,9 @@ class RadioControlWidget(QWidget):
         self._volume_width_anim.setDuration(self.ANIMATION_MS)
         self._volume_width_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._volume_width_anim.valueChanged.connect(self._sync_volume_min_width)
+        self._volume_width_anim.finished.connect(
+            self._on_volume_width_animation_finished
+        )
 
         self._opacity_anim = QPropertyAnimation(
             self._slider_opacity_effect, b"opacity", self
@@ -312,9 +316,7 @@ class RadioControlWidget(QWidget):
         self._expanded = expanded
         self._volume_width_anim.stop()
         self._opacity_anim.stop()
-        target_root_width = self.EXPANDED_WIDTH if expanded else self.COLLAPSED_WIDTH
-        self.setMinimumWidth(target_root_width)
-        self.setMaximumWidth(target_root_width)
+        self._set_root_width(self.EXPANDED_WIDTH)
 
         current_volume_width = int(self._volume_section.maximumWidth())
         target_volume_width = (
@@ -336,3 +338,12 @@ class RadioControlWidget(QWidget):
         except Exception:
             return
         self._volume_section.setMinimumWidth(width)
+
+    def _on_volume_width_animation_finished(self) -> None:
+        if self._expanded:
+            return
+        self._set_root_width(self.COLLAPSED_WIDTH)
+
+    def _set_root_width(self, width: int) -> None:
+        self.setMinimumWidth(width)
+        self.setMaximumWidth(width)
