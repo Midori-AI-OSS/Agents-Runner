@@ -349,6 +349,15 @@ class MainWindowEnvironmentMixin:
             command=self._default_interactive_command(agent_cli),
         )
         self._populate_environment_pickers()
+        if hasattr(self, "_radio_controller") and hasattr(
+            self, "_update_window_title_from_radio_state"
+        ):
+            try:
+                self._update_window_title_from_radio_state(
+                    self._radio_controller.state_snapshot()
+                )
+            except Exception:
+                pass
 
     def _on_new_task_env_changed(self, env_id: str) -> None:
         if self._syncing_environment:

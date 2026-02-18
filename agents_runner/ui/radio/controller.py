@@ -102,6 +102,7 @@ class RadioController(QObject):
         self._watchdog_timer: QTimer | None = None
         self._channel_fade_out: QVariantAnimation | None = None
         self._channel_fade_in: QVariantAnimation | None = None
+        self._runtime_timers_active = False
 
         if not self._qt_available:
             self._status_text = (
@@ -158,9 +159,7 @@ class RadioController(QObject):
             self._emit_state()
             return
 
-        self._health_timer.start()
-        self._current_timer.start()
-        self._watchdog_timer.start()
+        self._set_runtime_timers_active(True)
         QTimer.singleShot(0, self._poll_health)
         QTimer.singleShot(0, self._poll_current)
         self._emit_state()
@@ -302,18 +301,14 @@ class RadioController(QObject):
 
     def shutdown(self) -> None:
         self.cancel_start_when_service_ready()
-        if self._health_timer is not None:
-            self._health_timer.stop()
-        if self._current_timer is not None:
-            self._current_timer.stop()
-        if self._watchdog_timer is not None:
-            self._watchdog_timer.stop()
+        self._set_runtime_timers_active(False)
         self._stop_channel_fades()
         self._cancel_reconnect(reset_attempts=True)
         try:
             self.stop_playback()
         except Exception:
             pass
+        self._clear_player_source()
 
     def set_enabled(self, enabled: bool, *, start_when_enabled: bool = False) -> None:
         enabled = bool(enabled)
@@ -325,9 +320,16 @@ class RadioController(QObject):
             self.cancel_start_when_service_ready()
             self._cancel_reconnect(reset_attempts=True)
             self.stop_playback()
+            self._clear_player_source()
+            if changed:
+                self._set_runtime_timers_active(False)
             self._status_text = "Radio disabled."
             self._emit_state()
             return
+
+        if changed or not self._runtime_timers_active:
+            self._set_runtime_timers_active(True)
+            self._poll_runtime_state_soon()
 
         if changed and start_when_enabled:
             self.start_playback()
@@ -442,6 +444,9 @@ class RadioController(QObject):
         if not self._qt_available:
             return
         self._start_when_service_ready = True
+        if not self._runtime_timers_active:
+            self._set_runtime_timers_active(True)
+            self._poll_runtime_state_soon()
         if self._service_available and self._enabled and not self._is_playing:
             self._start_when_service_ready = False
             self.start_playback()
@@ -451,7 +456,7 @@ class RadioController(QObject):
 
     def toggle_playback(self) -> None:
         if not self._enabled:
-            self._enabled = True
+            self.set_enabled(True, start_when_enabled=False)
         if self._desired_playing or self._is_playing:
             self.stop_playback()
             return
@@ -817,6 +822,9 @@ class RadioController(QObject):
             else:
                 self._status_text = "Radio service unavailable."
             self._log_error_throttled("service", reason)
+
+        if available and (not self._enabled) and self._runtime_timers_active:
+            self._set_runtime_timers_active(False)
 
         self._emit_state()
 
@@ -1291,3 +1299,38 @@ class RadioController(QObject):
             immediate=True,
         )
         self._emit_state()
+
+    def _set_runtime_timers_active(self, active: bool) -> None:
+        active = bool(active)
+        if active == self._runtime_timers_active:
+            return
+        self._runtime_timers_active = active
+        for timer in (
+            self._health_timer,
+            self._current_timer,
+            self._watchdog_timer,
+        ):
+            if timer is None:
+                continue
+            if active:
+                if not timer.isActive():
+                    timer.start()
+                continue
+            if timer.isActive():
+                timer.stop()
+
+    def _poll_runtime_state_soon(self) -> None:
+        if not self._qt_available:
+            return
+        if self._network is None:
+            return
+        QTimer.singleShot(0, self._poll_health)
+        QTimer.singleShot(0, self._poll_current)
+
+    def _clear_player_source(self) -> None:
+        if self._player is None:
+            return
+        try:
+            self._player.setSource(QUrl())
+        except Exception:
+            pass
