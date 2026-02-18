@@ -64,7 +64,6 @@ class RadioControlWidget(QWidget):
         self._play_button.setCheckable(True)
         self._play_button.setFixedSize(40, 40)
         self._play_button.clicked.connect(self.play_requested.emit)
-        root.addWidget(self._play_button)
 
         self._slider_wrap = QWidget(self)
         self._slider_wrap.setObjectName("RadioControlSliderWrap")
@@ -82,6 +81,7 @@ class RadioControlWidget(QWidget):
         self._volume_slider.sliderReleased.connect(self._on_slider_released)
         slider_layout.addWidget(self._volume_slider, 1)
         root.addWidget(self._slider_wrap, 1)
+        root.addWidget(self._play_button)
 
         self._slider_opacity_effect = QGraphicsOpacityEffect(self._slider_wrap)
         self._slider_wrap.setGraphicsEffect(self._slider_opacity_effect)
