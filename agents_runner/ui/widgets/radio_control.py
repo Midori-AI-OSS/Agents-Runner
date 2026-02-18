@@ -11,7 +11,6 @@ from PySide6.QtCore import QVariantAnimation
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QGraphicsOpacityEffect
-from PySide6.QtWidgets import QBoxLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QSlider
 from PySide6.QtWidgets import QToolButton
@@ -63,7 +62,6 @@ class RadioControlWidget(QWidget):
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
-        root.setDirection(QBoxLayout.Direction.RightToLeft)
 
         self._volume_section = QWidget(self)
         self._volume_section.setFixedHeight(self.PLAY_BUTTON_HEIGHT)
@@ -106,8 +104,9 @@ class RadioControlWidget(QWidget):
         self._play_button.clicked.connect(self.play_requested.emit)
         play_section_layout.addWidget(self._play_button, 0, Qt.AlignCenter)
 
-        root.addWidget(self._play_section, 0, Qt.AlignVCenter)
+        root.addStretch(1)
         root.addWidget(self._volume_section, 0, Qt.AlignVCenter)
+        root.addWidget(self._play_section, 0, Qt.AlignVCenter)
 
         self._slider_opacity_effect = QGraphicsOpacityEffect(self._slider_wrap)
         self._slider_wrap.setGraphicsEffect(self._slider_opacity_effect)
