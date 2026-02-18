@@ -82,6 +82,7 @@ class RadioControlWidget(QWidget):
         slider_layout.addWidget(self._volume_slider, 1)
         root.addWidget(self._slider_wrap, 1)
         root.addWidget(self._play_button)
+        root.setAlignment(self._play_button, Qt.AlignRight | Qt.AlignVCenter)
 
         self._slider_opacity_effect = QGraphicsOpacityEffect(self._slider_wrap)
         self._slider_wrap.setGraphicsEffect(self._slider_opacity_effect)
