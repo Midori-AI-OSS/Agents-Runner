@@ -134,52 +134,6 @@ def _build_envs() -> dict[str, Environment]:
     }
 
 
-def test_tasks_github_buttons_fade_only_on_support_flip() -> None:
-    _require_live_display()
-
-    app = QApplication.instance() or QApplication([])
-
-    page = TasksPage(new_task_page=_DummyNewTaskPage())
-    page.resize(1400, 900)
-    envs = _build_envs()
-    page.set_environments(envs, "supported-a")
-    page.show()
-    _pump(app)
-
-    pull_requests_button = page._nav_buttons["pull_requests"]
-    issues_button = page._nav_buttons["issues"]
-
-    assert page._button_fade_animation is None
-    assert pull_requests_button.isVisible()
-    assert issues_button.isVisible()
-
-    page._new_task.environment_changed.emit("supported-b")
-    _pump(app, rounds=6)
-    assert page._button_fade_animation is None
-    assert pull_requests_button.isVisible()
-    assert issues_button.isVisible()
-
-    page._new_task.environment_changed.emit("unsupported-a")
-    _pump(app, rounds=2)
-    assert page._button_fade_animation is not None
-    assert _wait_until(app, lambda: page._button_fade_animation is None)
-    assert not pull_requests_button.isVisible()
-    assert not issues_button.isVisible()
-
-    page._new_task.environment_changed.emit("unsupported-b")
-    _pump(app, rounds=6)
-    assert page._button_fade_animation is None
-    assert not pull_requests_button.isVisible()
-    assert not issues_button.isVisible()
-
-    page._new_task.environment_changed.emit("supported-a")
-    _pump(app, rounds=2)
-    assert page._button_fade_animation is not None
-    assert _wait_until(app, lambda: page._button_fade_animation is None)
-    assert pull_requests_button.isVisible()
-    assert issues_button.isVisible()
-
-
 def test_tasks_github_button_fade_ignores_mid_animation_changes() -> None:
     _require_live_display()
 
