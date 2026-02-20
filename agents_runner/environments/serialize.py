@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from typing import cast
 
 from .model import ENVIRONMENT_VERSION
 from .model import Environment
@@ -14,7 +15,10 @@ from .prompt_storage import delete_prompt_file
 
 
 def _normalize_usernames(raw: Any) -> list[str]:
-    rows: list[Any] = raw if isinstance(raw, list) else []
+    if not isinstance(raw, list):
+        return []
+
+    rows = cast(list[object], raw)
     cleaned: list[str] = []
     seen: set[str] = set()
     for row in rows:
@@ -72,7 +76,7 @@ def _validate_cross_agent_allowlist(
     if not isinstance(raw_allowlist, list):
         return []
 
-    raw_list: list[Any] = raw_allowlist
+    raw_list = cast(list[object], raw_allowlist)
     allowlist = [str(item).strip() for item in raw_list if str(item).strip()]
 
     # If no agents configured, return empty list
@@ -211,11 +215,17 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     )
 
     env_vars_raw = payload.get("env_vars", {})
-    env_vars: dict[str, Any] = env_vars_raw if isinstance(env_vars_raw, dict) else {}
+    env_vars: dict[str, object] = (
+        {str(k): v for k, v in cast(dict[object, object], env_vars_raw).items()}
+        if isinstance(env_vars_raw, dict)
+        else {}
+    )
 
     extra_mounts_raw = payload.get("extra_mounts", [])
-    extra_mounts: list[Any] = (
-        extra_mounts_raw if isinstance(extra_mounts_raw, list) else []
+    extra_mounts: list[object] = (
+        cast(list[object], extra_mounts_raw)
+        if isinstance(extra_mounts_raw, list)
+        else []
     )
     env_vars_advanced_mode = bool(payload.get("env_vars_advanced_mode", False))
     mounts_advanced_mode = bool(payload.get("mounts_advanced_mode", False))
@@ -227,7 +237,9 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     ) or bool(mounts_advanced_mode)
 
     ports_raw = payload.get("ports", [])
-    ports: list[Any] = ports_raw if isinstance(ports_raw, list) else []
+    ports: list[object] = (
+        cast(list[object], ports_raw) if isinstance(ports_raw, list) else []
+    )
     ports_unlocked = bool(payload.get("ports_unlocked", False))
     ports_advanced_acknowledged = bool(
         payload.get("ports_advanced_acknowledged", False)
@@ -292,43 +304,49 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     prompts_data = payload.get("prompts", [])
     prompts: list[PromptConfig] = []
     if isinstance(prompts_data, list):
-        prompts_list: list[Any] = prompts_data
+        prompts_list = cast(list[object], prompts_data)
         for p in prompts_list:
-            if isinstance(p, dict):
-                p_dict: dict[str, Any] = p
-                prompt_path = str(p_dict.get("prompt_path", "")).strip()
-                text = str(p_dict.get("text", ""))
+            if not isinstance(p, dict):
+                continue
+            p_dict: dict[str, object] = {
+                str(k): v for k, v in cast(dict[object, object], p).items()
+            }
+            prompt_path = str(p_dict.get("prompt_path", "")).strip()
+            text = str(p_dict.get("text", ""))
 
-                # If we have a prompt_path, load from file (migration case)
-                if prompt_path:
-                    try:
-                        text = load_prompt_from_file(prompt_path)
-                    except Exception:
-                        # If file doesn't exist, keep inline text as fallback
-                        pass
+            # If we have a prompt_path, load from file (migration case)
+            if prompt_path:
+                try:
+                    text = load_prompt_from_file(prompt_path)
+                except Exception:
+                    # If file doesn't exist, keep inline text as fallback
+                    pass
 
-                # Migration: If we have inline text but no path, save to file
-                if text and not prompt_path:
-                    try:
-                        prompt_path = save_prompt_to_file(text)
-                    except Exception:
-                        # If save fails, keep inline text
-                        pass
+            # Migration: If we have inline text but no path, save to file
+            if text and not prompt_path:
+                try:
+                    prompt_path = save_prompt_to_file(text)
+                except Exception:
+                    # If save fails, keep inline text
+                    pass
 
-                prompts.append(
-                    PromptConfig(
-                        enabled=bool(p_dict.get("enabled", False)),
-                        text=text,
-                        prompt_path=prompt_path,
-                    )
+            prompts.append(
+                PromptConfig(
+                    enabled=bool(p_dict.get("enabled", False)),
+                    text=text,
+                    prompt_path=prompt_path,
                 )
+            )
     prompts_unlocked = bool(payload.get("prompts_unlocked", False))
 
     agent_selection_data = payload.get("agent_selection")
     agent_selection = None
     agents: list[AgentInstance] = []
     if isinstance(agent_selection_data, dict):
-        selection_dict: dict[str, Any] = agent_selection_data
+        raw_selection_dict = cast(dict[object, object], agent_selection_data)
+        selection_dict: dict[str, object] = {
+            str(k): v for k, v in raw_selection_dict.items()
+        }
         selection_mode = str(selection_dict.get("selection_mode", "round-robin"))
         pinned_agent_id = str(selection_dict.get("pinned_agent_id", "") or "").strip()
 
@@ -336,11 +354,13 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         seen_ids: set[str] = set()
 
         if isinstance(agents_payload, list):
-            agents_list: list[Any] = agents_payload
+            agents_list = cast(list[object], agents_payload)
             for raw in agents_list:
                 if not isinstance(raw, dict):
                     continue
-                raw_dict: dict[str, Any] = raw
+                raw_dict: dict[str, object] = {
+                    str(k): v for k, v in cast(dict[object, object], raw).items()
+                }
                 agent_cli = str(raw_dict.get("agent_cli") or "").strip()
                 agent_id = str(raw_dict.get("agent_id") or "").strip()
                 config_dir = str(raw_dict.get("config_dir") or "").strip()
@@ -363,16 +383,16 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         if not agents:
             enabled_agents_raw = selection_dict.get("enabled_agents", [])
             if isinstance(enabled_agents_raw, list):
-                enabled_agents_list: list[Any] = enabled_agents_raw
+                enabled_agents_list = cast(list[object], enabled_agents_raw)
                 enabled_agents = [str(a) for a in enabled_agents_list if str(a).strip()]
             else:
                 enabled_agents: list[str] = []
 
             agent_config_dirs_raw = selection_dict.get("agent_config_dirs", {})
             if isinstance(agent_config_dirs_raw, dict):
-                agent_config_dirs_dict: dict[str, Any] = agent_config_dirs_raw
+                config_dirs_dict = cast(dict[object, object], agent_config_dirs_raw)
                 agent_config_dirs = {
-                    str(k): str(v) for k, v in agent_config_dirs_dict.items()
+                    str(k): str(v) for k, v in config_dirs_dict.items()
                 }
             else:
                 agent_config_dirs = {}
@@ -403,8 +423,8 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
         agent_fallbacks_raw = selection_dict.get("agent_fallbacks", {})
         if isinstance(agent_fallbacks_raw, dict):
-            agent_fallbacks_dict: dict[str, Any] = agent_fallbacks_raw
-            agent_fallbacks = {str(k): str(v) for k, v in agent_fallbacks_dict.items()}
+            fallbacks_dict = cast(dict[object, object], agent_fallbacks_raw)
+            agent_fallbacks = {str(k): str(v) for k, v in fallbacks_dict.items()}
         else:
             agent_fallbacks = {}
 
