@@ -469,6 +469,30 @@ def post_comment(
     raise GhManagementError(f"unsupported item type: {item_type}")
 
 
+def delete_issue_comment(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    comment_id: int,
+) -> None:
+    repo = _repo_full_name(repo_owner, repo_name)
+    comment_id_value = int(comment_id)
+    if comment_id_value <= 0:
+        raise GhManagementError("invalid comment id")
+
+    run_gh_gh(
+        [
+            "api",
+            "--method",
+            "DELETE",
+            f"repos/{repo}/issues/comments/{comment_id_value}",
+            "-H",
+            "Accept: application/vnd.github+json",
+        ],
+        timeout_s=30.0,
+    )
+
+
 def set_item_open_state(
     repo_owner: str,
     repo_name: str,

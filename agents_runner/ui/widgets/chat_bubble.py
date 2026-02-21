@@ -1,16 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import html
+import importlib
 
+from dataclasses import dataclass
+from typing import Any
+
+from PySide6.QtCore import QEvent
 from PySide6.QtCore import QPointF
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QEnterEvent
 from PySide6.QtGui import QPaintEvent
 from PySide6.QtGui import QPainter
 from PySide6.QtGui import QPainterPath
 from PySide6.QtGui import QPolygonF
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
+from PySide6.QtWidgets import QLayout
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -20,6 +27,84 @@ from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.utils import ChatBubbleTone
 from agents_runner.ui.utils import resolve_chat_bubble_tone
 from agents_runner.ui.utils import rgba
+
+
+def _load_markdown_module() -> Any | None:
+    try:
+        return importlib.import_module("markdown")
+    except Exception:
+        return None
+
+
+_MARKDOWN_MODULE: Any | None = _load_markdown_module()
+
+
+def _fallback_plain_html(source: str) -> str:
+    escaped = html.escape(str(source or ""))
+    escaped = escaped.replace("\r\n", "\n").replace("\r", "\n")
+    escaped = escaped.replace("\n", "<br/>")
+    return f"<p>{escaped}</p>"
+
+
+def _render_markdown_html(source: str) -> str:
+    module = _MARKDOWN_MODULE
+    if module is None:
+        return _fallback_plain_html(source)
+
+    try:
+        rendered = str(
+            module.markdown(
+                str(source or ""),
+                extensions=[
+                    "fenced_code",
+                    "tables",
+                    "sane_lists",
+                    "nl2br",
+                    "codehilite",
+                ],
+                extension_configs={
+                    "codehilite": {
+                        "guess_lang": False,
+                        "noclasses": True,
+                        "pygments_style": "monokai",
+                    }
+                },
+                output_format="html5",
+            )
+            or ""
+        ).strip()
+    except Exception:
+        return _fallback_plain_html(source)
+
+    if not rendered:
+        return "<p></p>"
+
+    styled = rendered.replace(
+        "<pre>",
+        (
+            "<pre style='margin: 8px 0; padding: 8px; border: 1px solid "
+            "rgba(141, 149, 164, 0.45); background-color: rgba(11, 13, 18, 0.85); "
+            "white-space: pre-wrap; word-wrap: break-word;'>"
+        ),
+    )
+    styled = styled.replace(
+        "<code>",
+        (
+            "<code style='font-family: JetBrains Mono, Fira Code, "
+            "DejaVu Sans Mono, monospace;'>"
+        ),
+    )
+    return styled
+
+
+def _clear_layout(layout: QLayout) -> None:
+    while layout.count() > 0:
+        item = layout.takeAt(0)
+        if item is None:
+            continue
+        widget = item.widget()
+        if widget is not None:
+            widget.setParent(None)
 
 
 @dataclass(frozen=True)
@@ -105,6 +190,7 @@ class ChatBubbleWidget(QWidget):
     reply_requested = Signal()
     open_requested = Signal()
     primary_requested = Signal()
+    delete_requested = Signal()
 
     _MAX_BUBBLE_WIDTH = 720
 
@@ -114,12 +200,18 @@ class ChatBubbleWidget(QWidget):
             role="other", env_stain="slate", username="unknown"
         )
         self._flipped = False
+        self._timestamp_text = ""
+        self._body_source = ""
         self._action_buttons: dict[str, QToolButton] = {}
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        root.setSpacing(8)
         self._root = root
+
+        self._hover_timestamp = QLabel("")
+        self._hover_timestamp.setVisible(False)
+        self._hover_timestamp.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self._surface = _BubbleSurface()
         self._surface.setMaximumWidth(self._MAX_BUBBLE_WIDTH)
@@ -130,68 +222,85 @@ class ChatBubbleWidget(QWidget):
         content.setSpacing(6)
         self._content_layout = content
 
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        header.setSpacing(8)
+        self._header_layout = QHBoxLayout()
+        self._header_layout.setContentsMargins(0, 0, 0, 0)
+        self._header_layout.setSpacing(8)
 
         self._author = QLabel("unknown")
-        self._author.setStyleSheet("font-size: 13px; font-weight: 700;")
         self._author.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
-        self._timestamp = QLabel("")
-        self._timestamp.setStyleSheet("font-size: 12px;")
-        self._timestamp.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._actions_host = QWidget()
+        self._actions_layout = QHBoxLayout(self._actions_host)
+        self._actions_layout.setContentsMargins(0, 0, 0, 0)
+        self._actions_layout.setSpacing(4)
 
-        header.addWidget(self._author, 0)
-        header.addStretch(1)
-        header.addWidget(self._timestamp, 0, Qt.AlignRight)
-        self._content_layout.addLayout(header)
+        self._content_layout.addLayout(self._header_layout)
 
         self._body = QLabel("")
         self._body.setWordWrap(True)
-        self._body.setTextFormat(Qt.PlainText)
-        self._body.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._body.setStyleSheet("font-size: 13px; font-weight: 500;")
+        self._body.setTextFormat(Qt.RichText)
+        self._body.setOpenExternalLinks(True)
+        self._body.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse
+        )
         self._content_layout.addWidget(self._body)
-
-        self._actions_row = QWidget()
-        self._actions_layout = QHBoxLayout(self._actions_row)
-        self._actions_layout.setContentsMargins(0, 2, 0, 0)
-        self._actions_layout.setSpacing(6)
-        self._actions_layout.addStretch(1)
-        self._content_layout.addWidget(self._actions_row)
 
         self._apply_alignment()
         self._apply_tone()
 
+    def _set_hover_timestamp_visible(self, visible: bool) -> None:
+        self._hover_timestamp.setVisible(bool(visible and self._timestamp_text.strip()))
+
     def _apply_alignment(self) -> None:
-        while self._root.count() > 0:
-            item = self._root.takeAt(0)
-            widget = item.widget()
-            if widget is not None and widget is not self._surface:
-                widget.setParent(None)
+        _clear_layout(self._root)
 
         if self._flipped:
+            self._root.addWidget(self._hover_timestamp, 0, Qt.AlignLeft | Qt.AlignTop)
             self._root.addStretch(1)
             self._root.addWidget(self._surface, 0)
             self._surface.set_tail_side("right")
-            self._actions_layout.setAlignment(Qt.AlignRight)
         else:
             self._root.addWidget(self._surface, 0)
             self._root.addStretch(1)
+            self._root.addWidget(self._hover_timestamp, 0, Qt.AlignRight | Qt.AlignTop)
             self._surface.set_tail_side("left")
-            self._actions_layout.setAlignment(Qt.AlignLeft)
+
+        _clear_layout(self._header_layout)
+        if self._flipped:
+            self._header_layout.addWidget(self._author, 0)
+            self._header_layout.addStretch(1)
+            self._header_layout.addWidget(self._actions_host, 0, Qt.AlignRight)
+        else:
+            self._header_layout.addWidget(self._actions_host, 0, Qt.AlignLeft)
+            self._header_layout.addWidget(self._author, 0)
+            self._header_layout.addStretch(1)
+
+    def _render_body(self) -> None:
+        rendered = _render_markdown_html(self._body_source)
+        self._body.setText(f"<div style='margin: 0; padding: 0;'>{rendered}</div>")
 
     def _apply_tone(self) -> None:
         self._surface.set_tone(self._tone)
         self._author.setStyleSheet(
             f"font-size: 13px; font-weight: 700; color: {rgba(self._tone.text_primary)};"
         )
-        self._timestamp.setStyleSheet(
+        self._hover_timestamp.setStyleSheet(
             f"font-size: 12px; color: {rgba(self._tone.text_secondary)};"
         )
         self._body.setStyleSheet(
-            f"font-size: 13px; font-weight: 500; color: {rgba(self._tone.text_primary)};"
+            "\n".join(
+                [
+                    "QLabel {",
+                    "  font-size: 13px;",
+                    "  font-weight: 500;",
+                    f"  color: {rgba(self._tone.text_primary)};",
+                    "}",
+                    "QLabel a {",
+                    f"  color: {rgba(self._tone.text_primary)};",
+                    "  text-decoration: underline;",
+                    "}",
+                ]
+            )
         )
         for button in self._action_buttons.values():
             button.setStyleSheet(
@@ -202,9 +311,7 @@ class ChatBubbleWidget(QWidget):
                         f"  background-color: {rgba(self._tone.action_fill)};",
                         f"  border: 1px solid {rgba(self._tone.action_border)};",
                         "  border-radius: 0px;",
-                        "  padding: 5px 8px;",
-                        "  font-size: 12px;",
-                        "  font-weight: 650;",
+                        "  padding: 4px;",
                         "}",
                         "QToolButton:hover {",
                         f"  background-color: {rgba(self._tone.action_hover_fill)};",
@@ -221,6 +328,8 @@ class ChatBubbleWidget(QWidget):
     def _clear_action_buttons(self) -> None:
         while self._actions_layout.count() > 0:
             item = self._actions_layout.takeAt(0)
+            if item is None:
+                continue
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
@@ -237,6 +346,8 @@ class ChatBubbleWidget(QWidget):
             self.open_requested.emit()
         elif action == "primary":
             self.primary_requested.emit()
+        elif action == "delete":
+            self.delete_requested.emit()
 
     def set_tone(self, tone: ChatBubbleTone) -> None:
         self._tone = tone
@@ -253,8 +364,12 @@ class ChatBubbleWidget(QWidget):
         role = str(data.role or "").strip().lower()
         self.set_flipped(role == "self")
         self._author.setText(str(data.author or "unknown"))
-        self._timestamp.setText(str(data.timestamp or ""))
-        self._body.setText(str(data.body or ""))
+        self._timestamp_text = str(data.timestamp or "")
+        self._hover_timestamp.setText(self._timestamp_text)
+        self._set_hover_timestamp_visible(False)
+
+        self._body_source = str(data.body or "")
+        self._render_body()
 
         self._clear_action_buttons()
         if data.actions:
@@ -263,19 +378,28 @@ class ChatBubbleWidget(QWidget):
                 if not action_id:
                     continue
                 button = QToolButton()
-                button.setText(str(action.label or action_id.title()))
+                button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+                button.setFixedSize(24, 24)
                 icon_name = str(action.icon_name or "").strip()
                 if icon_name:
                     button.setIcon(lucide_icon(icon_name))
                 tooltip = str(action.tooltip or "").strip()
-                if tooltip:
-                    button.setToolTip(tooltip)
-                button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+                if not tooltip:
+                    tooltip = str(action.label or action_id.title())
+                button.setToolTip(tooltip)
                 button.clicked.connect(
                     lambda _checked=False, aid=action_id: self._emit_action(aid)
                 )
                 self._actions_layout.addWidget(button, 0)
                 self._action_buttons[action_id] = button
-        self._actions_layout.addStretch(1)
-        self._actions_row.setVisible(bool(self._action_buttons))
+
+        self._actions_host.setVisible(bool(self._action_buttons))
         self._apply_tone()
+
+    def enterEvent(self, event: QEnterEvent) -> None:
+        super().enterEvent(event)
+        self._set_hover_timestamp_visible(True)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        super().leaveEvent(event)
+        self._set_hover_timestamp_visible(False)
