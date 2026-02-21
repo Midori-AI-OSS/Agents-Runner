@@ -2,16 +2,20 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from PySide6.QtCore import QEasingCurve
+from PySide6.QtCore import QParallelAnimationGroup
+from PySide6.QtCore import QPoint
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import Qt
-from PySide6.QtCore import QTimer
 from PySide6.QtCore import QUrl
 from PySide6.QtCore import Signal
+from PySide6.QtCore import QEvent
 from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QEnterEvent
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtGui import QResizeEvent
-from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QScrollArea
 from PySide6.QtWidgets import QSizePolicy
@@ -22,196 +26,191 @@ from PySide6.QtWidgets import QWidget
 from agents_runner.environments import Environment
 from agents_runner.environments import resolve_environment_github_repo
 from agents_runner.gh.work_items import GitHubWorkItem
-from agents_runner.gh.work_items import get_authenticated_github_login
 from agents_runner.prompts import load_prompt
 from agents_runner.ui.dialogs.github_workroom_dialog import GitHubWorkroomDialog
 from agents_runner.ui.lucide_icons import lucide_icon
-from agents_runner.ui.utils import resolve_chat_bubble_tone
 from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import BouncingLoadingBar
-from agents_runner.ui.widgets import ChatBubbleAction
-from agents_runner.ui.widgets import ChatBubbleData
-from agents_runner.ui.widgets import ChatBubbleWidget
 from midori_ai_logger import MidoriAiLogger
 
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class _GitHubWorkRow(QWidget):
+    _ACTION_PANEL_HIDDEN_OFFSET = 14
+    _ACTION_PANEL_WIDTH = 86
+
     clicked = Signal(object)
     primary_requested = Signal(object)
-    reply_requested = Signal(object)
     open_requested = Signal(object)
 
     def __init__(self, *, item_type: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._item: GitHubWorkItem | None = None
+        self._item = None
         self._item_type = str(item_type or "issue").strip().lower()
-        self._stain = "slate"
-        self._current_login = ""
-        self._row_animation: QPropertyAnimation | None = None
 
         self.setObjectName("TaskRow")
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setProperty("stain", "slate")
         self.setCursor(Qt.PointingHandCursor)
-        self.setMinimumHeight(108)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.setFixedHeight(56)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(0)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 8)
+        layout.setSpacing(10)
 
-        self._bubble = ChatBubbleWidget()
-        self._bubble.reply_requested.connect(
-            lambda: self.reply_requested.emit(self._item)
-        )
-        self._bubble.open_requested.connect(
-            lambda: self.open_requested.emit(self._item)
-        )
-        self._bubble.primary_requested.connect(
+        self._title = QLabel("—")
+        self._title.setStyleSheet("font-weight: 650; color: rgba(237, 239, 245, 235);")
+        self._title.setMinimumWidth(260)
+
+        self._meta = QLabel("—")
+        self._meta.setStyleSheet("color: rgba(237, 239, 245, 160);")
+
+        self._actions_host = QWidget(self)
+        self._actions_host.setFixedWidth(self._ACTION_PANEL_WIDTH)
+        self._actions_host.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self._actions_panel = QWidget(self._actions_host)
+        actions_layout = QHBoxLayout(self._actions_panel)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(8)
+
+        self._btn_primary = QToolButton()
+        self._btn_primary.setObjectName("RowTrash")
+        self._btn_primary.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_primary.clicked.connect(
             lambda: self.primary_requested.emit(self._item)
         )
-        layout.addWidget(self._bubble, 1)
 
-    def _normalize_user(self, username: str) -> str:
-        return str(username or "").strip().lower().lstrip("@")
+        self._btn_open = QToolButton()
+        self._btn_open.setObjectName("RowTrash")
+        self._btn_open.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_open.clicked.connect(lambda: self.open_requested.emit(self._item))
 
-    def _is_self_author(self, author: str) -> bool:
-        return bool(self._current_login) and self._normalize_user(author) == str(
-            self._current_login or ""
-        )
+        actions_layout.addWidget(self._btn_primary, 0, Qt.AlignRight)
+        actions_layout.addWidget(self._btn_open, 0, Qt.AlignRight)
 
-    def _format_time(self, value: str) -> str:
-        text = str(value or "").strip()
-        if not text:
-            return "—"
-        try:
-            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-            return parsed.strftime("%Y-%m-%d %H:%M")
-        except Exception:
-            return text
+        layout.addWidget(self._title, 6)
+        layout.addWidget(self._meta, 5)
+        layout.addWidget(self._actions_host, 0)
 
-    def _opacity_effect(self) -> QGraphicsOpacityEffect:
-        effect = self.graphicsEffect()
+        self._actions_animation: QParallelAnimationGroup | None = None
+        self._actions_visible = False
+        self._configure_actions()
+        self._set_actions_visible(False, animate=False)
+
+    def _configure_actions(self) -> None:
+        if self._item_type == "pr":
+            self._btn_primary.setIcon(lucide_icon("git-pull-request"))
+            self._btn_primary.setToolTip("Review PR")
+        else:
+            self._btn_primary.setIcon(lucide_icon("bug"))
+            self._btn_primary.setToolTip("Fix Issue")
+
+        self._btn_open.setIcon(lucide_icon("eye"))
+        self._btn_open.setToolTip("Open workroom")
+
+    def _actions_opacity_effect(self) -> QGraphicsOpacityEffect:
+        effect = self._actions_panel.graphicsEffect()
         if isinstance(effect, QGraphicsOpacityEffect):
             return effect
-        effect = QGraphicsOpacityEffect(self)
-        effect.setOpacity(1.0)
-        self.setGraphicsEffect(effect)
+        effect = QGraphicsOpacityEffect(self._actions_panel)
+        effect.setOpacity(1.0 if self._actions_visible else 0.0)
+        self._actions_panel.setGraphicsEffect(effect)
         return effect
 
-    def play_entrance(self, *, delay_ms: int = 0) -> None:
-        effect = self._opacity_effect()
-        effect.setOpacity(0.0)
-        if self._row_animation is not None:
-            self._row_animation.stop()
-            self._row_animation = None
+    def _layout_actions_panel(self) -> None:
+        panel_width = int(self._actions_host.width())
+        panel_height = int(self._actions_host.height())
+        self._actions_panel.resize(panel_width, panel_height)
+        x = 0 if self._actions_visible else self._ACTION_PANEL_HIDDEN_OFFSET
+        self._actions_panel.move(x, 0)
 
-        def _start() -> None:
-            anim = QPropertyAnimation(effect, b"opacity", self)
-            anim.setDuration(220)
-            anim.setStartValue(0.0)
-            anim.setEndValue(1.0)
-            anim.finished.connect(self._on_entrance_finished)
-            anim.start()
-            self._row_animation = anim
+    def _set_actions_visible(self, visible: bool, *, animate: bool = True) -> None:
+        target_visible = bool(visible)
+        self._actions_visible = target_visible
 
-        if delay_ms > 0:
-            QTimer.singleShot(delay_ms, _start)
-        else:
-            _start()
+        if self._actions_animation is not None:
+            self._actions_animation.stop()
+            self._actions_animation = None
 
-    def _on_entrance_finished(self) -> None:
-        self._row_animation = None
-        effect = self.graphicsEffect()
-        if isinstance(effect, QGraphicsOpacityEffect):
-            effect.setOpacity(1.0)
-            self.setGraphicsEffect(None)
+        effect = self._actions_opacity_effect()
+        target_x = 0 if target_visible else self._ACTION_PANEL_HIDDEN_OFFSET
+        target_opacity = 1.0 if target_visible else 0.0
+
+        self._actions_panel.setAttribute(
+            Qt.WA_TransparentForMouseEvents, not target_visible
+        )
+
+        if not animate:
+            current_y = int(self._actions_panel.pos().y())
+            self._actions_panel.move(target_x, current_y)
+            effect.setOpacity(target_opacity)
+            return
+
+        start_pos = QPoint(
+            int(self._actions_panel.pos().x()), int(self._actions_panel.pos().y())
+        )
+        end_pos = QPoint(target_x, int(self._actions_panel.pos().y()))
+        start_opacity = float(effect.opacity())
+
+        pos_anim = QPropertyAnimation(self._actions_panel, b"pos", self)
+        pos_anim.setDuration(180)
+        pos_anim.setStartValue(start_pos)
+        pos_anim.setEndValue(end_pos)
+        pos_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        opacity_anim = QPropertyAnimation(effect, b"opacity", self)
+        opacity_anim.setDuration(180)
+        opacity_anim.setStartValue(start_opacity)
+        opacity_anim.setEndValue(target_opacity)
+        opacity_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+        group = QParallelAnimationGroup(self)
+        group.addAnimation(pos_anim)
+        group.addAnimation(opacity_anim)
+
+        def _on_finished() -> None:
+            self._actions_animation = None
+            if not self._actions_visible:
+                self._actions_panel.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+
+        group.finished.connect(_on_finished)
+        group.start()
+        self._actions_animation = group
 
     def set_stain(self, stain: str) -> None:
         value = str(stain or "slate").strip().lower() or "slate"
-        self._stain = value
         if str(self.property("stain") or "") == value:
-            self._refresh_bubble()
             return
         self.setProperty("stain", value)
         self.style().unpolish(self)
         self.style().polish(self)
         self.update()
-        self._refresh_bubble()
 
-    def _refresh_bubble(self) -> None:
-        item = self._item
-        if item is None:
-            return
-        preview = str(item.body or "").strip().replace("\n", " ")
-        if not preview:
-            preview = "(no preview)"
-        if len(preview) > 200:
-            preview = f"{preview[:197].rstrip()}..."
-        role = "self" if self._is_self_author(item.author) else "other"
-        prefix = "PR" if item.item_type == "pr" else "Issue"
-        title = f"{prefix} #{item.number}: {item.title}"
-        timestamp = f"by {item.author or 'unknown'} · updated {self._format_time(item.updated_at)}"
-        if self._item_type == "pr":
-            primary_label = "Review"
-            primary_icon = "git-pull-request"
-        else:
-            primary_label = "Fix"
-            primary_icon = "bug"
-
-        self._bubble.set_tone(
-            resolve_chat_bubble_tone(
-                role=role,
-                env_stain=self._stain,
-                username=item.author or "unknown",
-            )
-        )
-        self._bubble.set_data(
-            ChatBubbleData(
-                author=title,
-                timestamp=timestamp,
-                body=preview,
-                role=role,
-                actions=(
-                    ChatBubbleAction(
-                        action_id="reply",
-                        label="Reply",
-                        icon_name="reply",
-                        tooltip="Open thread and focus composer",
-                    ),
-                    ChatBubbleAction(
-                        action_id="primary",
-                        label=primary_label,
-                        icon_name=primary_icon,
-                        tooltip="Generate task prompt",
-                    ),
-                    ChatBubbleAction(
-                        action_id="open",
-                        label="Open",
-                        icon_name="external-link",
-                        tooltip="Open full workroom",
-                    ),
-                ),
-            )
-        )
-
-    def set_item(
-        self,
-        item: GitHubWorkItem,
-        *,
-        current_login: str,
-    ) -> None:
+    def set_item(self, item: GitHubWorkItem, *, meta_text: str) -> None:
         self._item = item
-        self._current_login = str(current_login or "").strip().lower()
-        self._refresh_bubble()
+        prefix = "PR" if item.item_type == "pr" else "Issue"
+        self._title.setText(f"{prefix} #{item.number}: {item.title}")
+
+        self._meta.setText(meta_text)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        target = self.childAt(event.position().toPoint())
-        if event.button() == Qt.LeftButton and not isinstance(target, QToolButton):
+        if event.button() == Qt.LeftButton:
             self.clicked.emit(self._item)
         super().mousePressEvent(event)
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._layout_actions_panel()
+
+    def enterEvent(self, event: QEnterEvent) -> None:
+        self._set_actions_visible(True, animate=True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        self._set_actions_visible(False, animate=True)
+        super().leaveEvent(event)
 
 
 class _GitHubWorkSkeletonRow(QWidget):
@@ -220,13 +219,13 @@ class _GitHubWorkSkeletonRow(QWidget):
         self.setObjectName("TaskRow")
         self.setAttribute(Qt.WA_StyledBackground, True)
         self.setProperty("stain", "slate")
-        self.setFixedHeight(108)
+        self.setFixedHeight(56)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(0)
-        self._pulse = BouncingLoadingBar(width=240, height=76, chunk_fraction=0.40)
+        self._pulse = BouncingLoadingBar(width=240, height=40, chunk_fraction=0.40)
         self._pulse.set_mode("shimmer_sweep")
         self._pulse.start()
         layout.addWidget(self._pulse, 1)
@@ -272,16 +271,10 @@ class GitHubWorkListPage(QWidget):
         self._confirmation_mode = "always"
         self._active_stain = ""
         self._last_fetch_issue = ""
-        self._current_login = (
-            str(get_authenticated_github_login() or "").strip().lower()
-        )
 
         self._rows: dict[int, _GitHubWorkRow] = {}
         self._skeleton_rows: list[_GitHubWorkSkeletonRow] = []
         self._initial_load_seen_keys: set[str] = set()
-        self._render_items: list[GitHubWorkItem] = []
-        self._render_index = 0
-        self._render_batch_size = 12
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -306,7 +299,7 @@ class GitHubWorkListPage(QWidget):
         c1 = QLabel("Item")
         c1.setStyleSheet("color: rgba(237, 239, 245, 150); font-weight: 650;")
         c1.setMinimumWidth(260)
-        c3 = QLabel("Thread")
+        c3 = QLabel("Info")
         c3.setStyleSheet("color: rgba(237, 239, 245, 150); font-weight: 650;")
         self._column_labels = (c1, c3)
 
@@ -327,9 +320,6 @@ class GitHubWorkListPage(QWidget):
         self._list_layout.setSpacing(6)
         self._list_layout.addStretch(1)
         self._scroll.setWidget(self._list)
-        self._scroll.verticalScrollBar().valueChanged.connect(
-            self._on_scroll_value_changed
-        )
 
         card_layout.addWidget(columns)
         card_layout.addWidget(self._scroll, 1)
@@ -507,8 +497,6 @@ class GitHubWorkListPage(QWidget):
                 widget.deleteLater()
         self._rows.clear()
         self._skeleton_rows.clear()
-        self._render_items = []
-        self._render_index = 0
 
     def _render_loading_rows(self, *, stain: str) -> None:
         self._clear_rows()
@@ -520,50 +508,26 @@ class GitHubWorkListPage(QWidget):
 
     def _render_rows(self, items: list[GitHubWorkItem], *, stain: str) -> None:
         self._clear_rows()
-        self._render_items = list(items)
-        self._render_index = 0
-        self._append_next_batch(stain=stain)
 
-    def _append_next_batch(self, *, stain: str) -> None:
-        total = len(self._render_items)
-        if self._render_index >= total:
-            return
-
-        start = self._render_index
-        end = min(total, start + self._render_batch_size)
-        delay = 0
-        for item in self._render_items[start:end]:
+        for item in items:
             row = _GitHubWorkRow(item_type=self._item_type)
             row.set_stain(stain)
-            row.set_item(item, current_login=self._current_login)
+            row.set_item(
+                item,
+                meta_text=(
+                    f"by {item.author or 'unknown'}  |  updated {self._format_time(item.updated_at)}"
+                ),
+            )
             row.clicked.connect(self._open_item)
             row.open_requested.connect(self._open_item)
-            row.reply_requested.connect(self._reply_to_item)
             row.primary_requested.connect(self._request_prompt_from_item)
             self._list_layout.insertWidget(self._list_layout.count() - 1, row)
-            row.play_entrance(delay_ms=delay)
-            delay += 30
             self._rows[item.number] = row
-
-        self._render_index = end
-
-    def _on_scroll_value_changed(self, value: int) -> None:
-        _ = value
-        if not self._render_items or self._render_index >= len(self._render_items):
-            return
-        bar = self._scroll.verticalScrollBar()
-        if bar.value() + bar.pageStep() >= bar.maximum() - 48:
-            self._append_next_batch(stain=self._current_stain())
 
     def _open_item(self, item: object) -> None:
         if not isinstance(item, GitHubWorkItem):
             return
         self._open_item_dialog(item, focus_comment=False)
-
-    def _reply_to_item(self, item: object) -> None:
-        if not isinstance(item, GitHubWorkItem):
-            return
-        self._open_item_dialog(item, focus_comment=True)
 
     def _open_item_dialog(self, item: GitHubWorkItem, *, focus_comment: bool) -> None:
         if self._prefer_browser and item.url:
@@ -584,7 +548,7 @@ class GitHubWorkListPage(QWidget):
             item_url=item.url,
             confirmation_mode=self._confirmation_mode,
             environment_stain=self._current_stain(),
-            focus_comment=focus_comment,
+            focus_comment=bool(focus_comment),
             parent=self,
         )
         dialog.prompt_requested.connect(
