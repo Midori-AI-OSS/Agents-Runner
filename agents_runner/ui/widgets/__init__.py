@@ -3,6 +3,9 @@ from .animated_button import AnimatedPushButton, AnimatedToolButton
 from .animated_checkbox import AnimatedCheckBox
 from .arc_spinner import ArcSpinner
 from .artifact_highlighter import ArtifactSyntaxHighlighter, detect_language
+from .chat_bubble import ChatBubbleAction
+from .chat_bubble import ChatBubbleData
+from .chat_bubble import ChatBubbleWidget
 from .edge_fade_scroll_area import EdgeFadeScrollArea
 from .glass_card import GlassCard
 from .loading_bar import BouncingLoadingBar
@@ -22,6 +25,9 @@ __all__ = [
     "ArcSpinner",
     "ArtifactSyntaxHighlighter",
     "BouncingLoadingBar",
+    "ChatBubbleAction",
+    "ChatBubbleData",
+    "ChatBubbleWidget",
     "EdgeFadeScrollArea",
     "GlassCard",
     "LogHighlighter",

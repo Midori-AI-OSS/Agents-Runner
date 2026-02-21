@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+
+from dataclasses import dataclass
 from datetime import datetime
 
 from PySide6.QtGui import QColor
@@ -115,4 +118,173 @@ def apply_environment_combo_tint(combo: QComboBox, stain: str) -> None:
                 "}",
             ]
         )
+    )
+
+
+@dataclass(frozen=True)
+class ChatBubbleTone:
+    fill: QColor
+    border: QColor
+    text_primary: QColor
+    text_secondary: QColor
+    action_fill: QColor
+    action_border: QColor
+    action_hover_fill: QColor
+    action_hover_border: QColor
+
+
+def _hue_distance(a: int, b: int) -> int:
+    if a < 0 or b < 0:
+        return 180
+    distance = abs(int(a) - int(b)) % 360
+    return min(distance, 360 - distance)
+
+
+def _relative_luminance(color: QColor) -> float:
+    def _linear(channel: int) -> float:
+        value = float(max(0, min(255, int(channel)))) / 255.0
+        if value <= 0.03928:
+            return value / 12.92
+        return ((value + 0.055) / 1.055) ** 2.4
+
+    r = _linear(color.red())
+    g = _linear(color.green())
+    b = _linear(color.blue())
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast_ratio(a: QColor, b: QColor) -> float:
+    la = _relative_luminance(a)
+    lb = _relative_luminance(b)
+    lighter = max(la, lb)
+    darker = min(la, lb)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _normalize_username(username: str) -> str:
+    value = str(username or "").strip().lower().lstrip("@")
+    return value or "unknown"
+
+
+def _hash_hsl_color(seed: str) -> QColor:
+    digest = hashlib.sha256(seed.encode("utf-8")).digest()
+    raw_hue = int.from_bytes(digest[0:2], byteorder="big", signed=False) % 360
+    # Quantize hue in coarse buckets to reduce near-identical colors.
+    hue_step = 24
+    hue = int(round(raw_hue / hue_step) * hue_step) % 360
+    saturation = 160 + int(digest[2] % 72)  # 160-231
+    lightness = 96 + int(digest[3] % 56)  # 96-151
+    return QColor.fromHsl(hue, saturation, lightness, 255)
+
+
+def _candidate_far_from_environment(candidate: QColor, env: QColor) -> bool:
+    if _hue_distance(candidate.hslHue(), env.hslHue()) < 34:
+        return False
+    if abs(_relative_luminance(candidate) - _relative_luminance(env)) < 0.12:
+        return False
+    return True
+
+
+def _ensure_contrast(fill: QColor, text: QColor, *, min_ratio: float) -> QColor:
+    candidate = QColor(fill.red(), fill.green(), fill.blue(), fill.alpha())
+    for _ in range(10):
+        if _contrast_ratio(candidate, text) >= min_ratio:
+            return candidate
+        darkened = blend_rgb(candidate, QColor(0, 0, 0), 0.16)
+        candidate = QColor(
+            darkened.red(), darkened.green(), darkened.blue(), fill.alpha()
+        )
+    return candidate
+
+
+def username_bubble_color(
+    username: str,
+    *,
+    env_stain: str,
+    strict: bool = True,
+) -> QColor:
+    normalized = _normalize_username(username)
+    env = stain_color(env_stain)
+    max_attempts = 24
+    for attempt in range(1, max_attempts + 1):
+        # Salting with "a" is color-system-only and keeps output deterministic.
+        salted = f"{normalized}{'a' * attempt}"
+        candidate = _hash_hsl_color(salted)
+        if not strict or _candidate_far_from_environment(candidate, env):
+            return candidate
+
+    fallback = _hash_hsl_color(f"{normalized}{'a' * max_attempts}")
+    hue = fallback.hslHue()
+    if hue < 0:
+        hue = 210
+    rotated = QColor.fromHsl(
+        (hue + 120) % 360, fallback.hslSaturation(), fallback.lightness()
+    )
+    return rotated
+
+
+def resolve_chat_bubble_tone(
+    *,
+    role: str,
+    env_stain: str,
+    username: str,
+) -> ChatBubbleTone:
+    normalized_role = str(role or "").strip().lower()
+    base = (
+        stain_color(env_stain)
+        if normalized_role == "self"
+        else username_bubble_color(username, env_stain=env_stain, strict=True)
+    )
+    canvas = QColor(18, 20, 28)
+    text_primary = QColor(237, 239, 245, 235)
+    text_secondary = QColor(237, 239, 245, 170)
+
+    fill_base = blend_rgb(canvas, base, 0.40)
+    fill = QColor(fill_base.red(), fill_base.green(), fill_base.blue(), 222)
+    fill = _ensure_contrast(fill, text_primary, min_ratio=4.8)
+
+    border_base = blend_rgb(canvas, base, 0.66)
+    border = QColor(border_base.red(), border_base.green(), border_base.blue(), 220)
+
+    action_fill_base = blend_rgb(canvas, base, 0.52)
+    action_fill = QColor(
+        action_fill_base.red(),
+        action_fill_base.green(),
+        action_fill_base.blue(),
+        164,
+    )
+
+    action_border_base = blend_rgb(canvas, base, 0.76)
+    action_border = QColor(
+        action_border_base.red(),
+        action_border_base.green(),
+        action_border_base.blue(),
+        228,
+    )
+
+    action_hover_fill_base = blend_rgb(action_fill, QColor(255, 255, 255), 0.18)
+    action_hover_fill = QColor(
+        action_hover_fill_base.red(),
+        action_hover_fill_base.green(),
+        action_hover_fill_base.blue(),
+        188,
+    )
+
+    action_hover_border_base = blend_rgb(action_border, QColor(255, 255, 255), 0.22)
+    action_hover_border = QColor(
+        action_hover_border_base.red(),
+        action_hover_border_base.green(),
+        action_hover_border_base.blue(),
+        236,
+    )
+
+    return ChatBubbleTone(
+        fill=fill,
+        border=border,
+        text_primary=text_primary,
+        text_secondary=text_secondary,
+        action_fill=action_fill,
+        action_border=action_border,
+        action_hover_fill=action_hover_fill,
+        action_hover_border=action_hover_border,
     )

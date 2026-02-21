@@ -4,21 +4,22 @@ from collections.abc import Callable
 from datetime import datetime
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QTimer
 from PySide6.QtCore import QUrl
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QMessageBox
-from PySide6.QtWidgets import QPlainTextEdit
+from PySide6.QtWidgets import QScrollArea
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.gh.work_items import GitHubWorkroom
+from agents_runner.gh.work_items import get_authenticated_github_login
 from agents_runner.gh.work_items import get_issue_workroom
 from agents_runner.gh.work_items import get_pull_request_workroom
 from agents_runner.gh.work_items import post_comment
@@ -26,6 +27,10 @@ from agents_runner.gh.work_items import set_item_open_state
 from agents_runner.prompts import load_prompt
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 from agents_runner.ui.lucide_icons import lucide_icon
+from agents_runner.ui.utils import resolve_chat_bubble_tone
+from agents_runner.ui.widgets import ChatBubbleAction
+from agents_runner.ui.widgets import ChatBubbleData
+from agents_runner.ui.widgets import ChatBubbleWidget
 from agents_runner.ui.widgets import GlassCard
 
 
@@ -41,6 +46,8 @@ class GitHubWorkroomDialog(ThemedDialog):
         number: int,
         item_url: str = "",
         confirmation_mode: str,
+        environment_stain: str = "",
+        focus_comment: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -50,6 +57,11 @@ class GitHubWorkroomDialog(ThemedDialog):
         self._number = max(1, int(number))
         self._item_url = str(item_url or "").strip()
         self._confirmation_mode = str(confirmation_mode or "always").strip().lower()
+        self._environment_stain = str(environment_stain or "").strip().lower()
+        self._focus_comment_on_show = bool(focus_comment)
+        self._current_login = (
+            str(get_authenticated_github_login() or "").strip().lower()
+        )
         self._room: GitHubWorkroom | None = None
 
         self.setWindowTitle("GitHub Workroom")
@@ -105,12 +117,21 @@ class GitHubWorkroomDialog(ThemedDialog):
         timeline_title = QLabel("Timeline")
         timeline_title.setStyleSheet("font-size: 13px; font-weight: 700;")
 
-        self._timeline = QPlainTextEdit()
-        self._timeline.setReadOnly(True)
-        self._timeline.setObjectName("LogsView")
+        self._timeline_scroll = QScrollArea()
+        self._timeline_scroll.setWidgetResizable(True)
+        self._timeline_scroll.setFrameShape(QScrollArea.NoFrame)
+        self._timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._timeline_scroll.setObjectName("TaskScroll")
+
+        self._timeline_list = QWidget()
+        self._timeline_layout = QVBoxLayout(self._timeline_list)
+        self._timeline_layout.setContentsMargins(4, 4, 4, 4)
+        self._timeline_layout.setSpacing(8)
+        self._timeline_layout.addStretch(1)
+        self._timeline_scroll.setWidget(self._timeline_list)
 
         timeline_layout.addWidget(timeline_title)
-        timeline_layout.addWidget(self._timeline, 1)
+        timeline_layout.addWidget(self._timeline_scroll, 1)
         layout.addWidget(timeline_card, 1)
 
         composer = GlassCard()
@@ -148,6 +169,33 @@ class GitHubWorkroomDialog(ThemedDialog):
         self._sync_primary_button()
         self._sync_open_state_button("open")
         self.refresh()
+
+    def _normalize_user(self, username: str) -> str:
+        return str(username or "").strip().lower().lstrip("@")
+
+    def _is_self_author(self, username: str) -> bool:
+        if not self._current_login:
+            return False
+        return self._normalize_user(username) == self._current_login
+
+    def _clear_timeline(self) -> None:
+        while self._timeline_layout.count() > 1:
+            item = self._timeline_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _add_timeline_bubble(self, bubble: ChatBubbleWidget) -> None:
+        index = max(0, self._timeline_layout.count() - 1)
+        self._timeline_layout.insertWidget(index, bubble)
+
+    def _focus_comment_composer(self) -> None:
+        self._comment.setFocus(Qt.OtherFocusReason)
+        self._comment.setCursorPosition(len(str(self._comment.text() or "")))
+
+    def _scroll_timeline_to_bottom(self) -> None:
+        bar = self._timeline_scroll.verticalScrollBar()
+        bar.setValue(bar.maximum())
 
     def _sync_primary_button(self) -> None:
         if self._item_type == "pr":
@@ -197,17 +245,71 @@ class GitHubWorkroomDialog(ThemedDialog):
         )
         self._sync_open_state_button(room.state)
 
-        lines: list[str] = []
-        lines.append(f"{kind} #{room.number}")
-        lines.append(f"State: {room.state}")
-        lines.append(f"URL: {room.url}")
-        lines.append("")
-        lines.append("Description")
-        lines.append(room.body or "(empty)")
-        lines.append("")
-        lines.append("Comments")
+        self._clear_timeline()
+
+        issue_role = "self" if self._is_self_author(room.author) else "other"
+        issue_actions = (
+            ChatBubbleAction(
+                action_id="reply",
+                label="Reply",
+                icon_name="reply",
+                tooltip="Focus comment composer",
+            ),
+            ChatBubbleAction(
+                action_id="open",
+                label="Open",
+                icon_name="external-link",
+                tooltip="Open in browser",
+            ),
+            ChatBubbleAction(
+                action_id="primary",
+                label="Review PR" if room.item_type == "pr" else "Fix Issue",
+                icon_name="git-pull-request" if room.item_type == "pr" else "bug",
+                tooltip="Create task prompt",
+            ),
+        )
+        issue_body = room.body or "(empty description)"
+        issue_bubble = ChatBubbleWidget()
+        issue_bubble.set_tone(
+            resolve_chat_bubble_tone(
+                role=issue_role,
+                env_stain=self._environment_stain,
+                username=room.author or "unknown",
+            )
+        )
+        issue_bubble.set_data(
+            ChatBubbleData(
+                author=f"{kind} #{room.number} · {room.author or 'unknown'}",
+                timestamp=f"{self._format_time(room.created_at)} · {room.state}",
+                body=issue_body,
+                role=issue_role,
+                actions=issue_actions,
+            )
+        )
+        issue_bubble.reply_requested.connect(self._focus_comment_composer)
+        issue_bubble.open_requested.connect(self._open_in_browser)
+        issue_bubble.primary_requested.connect(self._on_primary)
+        self._add_timeline_bubble(issue_bubble)
+
         if not room.comments:
-            lines.append("(no comments)")
+            note = ChatBubbleWidget()
+            note.set_tone(
+                resolve_chat_bubble_tone(
+                    role="other",
+                    env_stain=self._environment_stain,
+                    username="system",
+                )
+            )
+            note.set_data(
+                ChatBubbleData(
+                    author="system",
+                    timestamp="",
+                    body="No comments yet.",
+                    role="other",
+                    actions=(),
+                )
+            )
+            self._add_timeline_bubble(note)
         else:
             for comment in room.comments:
                 reactions = comment.reactions
@@ -218,20 +320,54 @@ class GitHubWorkroomDialog(ThemedDialog):
                     reaction_bits.append(f"-1={reactions.thumbs_down}")
                 if reactions.eyes > 0:
                     reaction_bits.append(f"eyes={reactions.eyes}")
+                if reactions.rocket > 0:
+                    reaction_bits.append(f"rocket={reactions.rocket}")
+                if reactions.hooray > 0:
+                    reaction_bits.append(f"hooray={reactions.hooray}")
                 reaction_text = (
-                    f" | reactions: {', '.join(reaction_bits)}" if reaction_bits else ""
+                    f" · {', '.join(reaction_bits)}" if reaction_bits else ""
                 )
-                lines.append(
-                    f"- {comment.author or 'unknown'} @ {self._format_time(comment.created_at)}{reaction_text}"
-                )
-                lines.append(comment.body or "(empty)")
-                lines.append("")
+                role = "self" if self._is_self_author(comment.author) else "other"
 
-        self._timeline.setPlainText("\n".join(lines).rstrip())
-        cursor = self._timeline.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        self._timeline.setTextCursor(cursor)
+                bubble = ChatBubbleWidget()
+                bubble.set_tone(
+                    resolve_chat_bubble_tone(
+                        role=role,
+                        env_stain=self._environment_stain,
+                        username=comment.author or "unknown",
+                    )
+                )
+                bubble.set_data(
+                    ChatBubbleData(
+                        author=comment.author or "unknown",
+                        timestamp=f"{self._format_time(comment.created_at)}{reaction_text}",
+                        body=comment.body or "(empty)",
+                        role=role,
+                        actions=(
+                            ChatBubbleAction(
+                                action_id="reply",
+                                label="Reply",
+                                icon_name="reply",
+                                tooltip="Focus comment composer",
+                            ),
+                            ChatBubbleAction(
+                                action_id="open",
+                                label="Open",
+                                icon_name="external-link",
+                                tooltip="Open in browser",
+                            ),
+                        ),
+                    )
+                )
+                bubble.reply_requested.connect(self._focus_comment_composer)
+                bubble.open_requested.connect(self._open_in_browser)
+                self._add_timeline_bubble(bubble)
+
+        QTimer.singleShot(0, self._scroll_timeline_to_bottom)
         self._status.setText(f"Loaded {len(room.comments)} comment(s).")
+        if self._focus_comment_on_show:
+            QTimer.singleShot(0, self._focus_comment_composer)
+            self._focus_comment_on_show = False
 
     def _with_wait_cursor(self, fn: Callable[[], None]) -> None:
         QApplication.setOverrideCursor(Qt.WaitCursor)
