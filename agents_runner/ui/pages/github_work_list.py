@@ -198,7 +198,13 @@ class _GitHubWorkRow(QWidget):
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
             self.clicked.emit(self._item)
-        super().mousePressEvent(event)
+            event.accept()
+            return
+        try:
+            super().mousePressEvent(event)
+        except RuntimeError:
+            # Row teardown can race with queued click delivery.
+            event.accept()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)

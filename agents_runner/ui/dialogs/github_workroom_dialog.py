@@ -461,7 +461,7 @@ class GitHubWorkroomDialog(ThemedDialog):
             ChatBubbleAction(
                 action_id="reply",
                 label="Reply",
-                icon_name="reply",
+                icon_name="corner-up-right",
                 tooltip="Focus comment composer",
             ),
             ChatBubbleAction(
@@ -520,7 +520,7 @@ class GitHubWorkroomDialog(ThemedDialog):
                 ChatBubbleAction(
                     action_id="reply",
                     label="Reply",
-                    icon_name="reply",
+                    icon_name="corner-up-right",
                     tooltip="Focus comment composer",
                 ),
                 ChatBubbleAction(
