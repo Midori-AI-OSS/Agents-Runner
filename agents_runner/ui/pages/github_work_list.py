@@ -198,7 +198,13 @@ class _GitHubWorkRow(QWidget):
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.LeftButton:
             self.clicked.emit(self._item)
-        super().mousePressEvent(event)
+            event.accept()
+            return
+        try:
+            super().mousePressEvent(event)
+        except RuntimeError:
+            # Row teardown can race with queued click delivery.
+            event.accept()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
@@ -527,7 +533,9 @@ class GitHubWorkListPage(QWidget):
     def _open_item(self, item: object) -> None:
         if not isinstance(item, GitHubWorkItem):
             return
+        self._open_item_dialog(item, focus_comment=False)
 
+    def _open_item_dialog(self, item: GitHubWorkItem, *, focus_comment: bool) -> None:
         if self._prefer_browser and item.url:
             QDesktopServices.openUrl(QUrl(item.url))
             return
@@ -545,6 +553,8 @@ class GitHubWorkListPage(QWidget):
             number=item.number,
             item_url=item.url,
             confirmation_mode=self._confirmation_mode,
+            environment_stain=self._current_stain(),
+            focus_comment=bool(focus_comment),
             parent=self,
         )
         dialog.prompt_requested.connect(
