@@ -255,14 +255,12 @@ class NewTaskPage(QWidget):
         buttons.setSpacing(10)
         self._get_agent_help = StainedGlassButton("Get Agent Help")
         self._get_agent_help.set_glass_enabled(False)
-        self._get_agent_help.set_fill_enabled(False)
         self._get_agent_help.clicked.connect(self._on_get_agent_help)
         self._get_agent_help.setEnabled(False)
         buttons.addWidget(self._get_agent_help)
         buttons.addStretch(1)
         self._run_interactive = StainedGlassButton("Run Interactive")
         self._run_interactive.set_glass_enabled(False)
-        self._run_interactive.set_fill_enabled(False)
         self._run_interactive.clicked.connect(self._on_launch)
         self._current_interactive_slot = self._on_launch
 
@@ -277,7 +275,6 @@ class NewTaskPage(QWidget):
 
         self._run_agent = StainedGlassButton("Run Agent")
         self._run_agent.set_glass_enabled(False)
-        self._run_agent.set_fill_enabled(False)
         self._run_agent.clicked.connect(self._on_run)
         self._run_interactive.setEnabled(False)
         self._run_agent.setEnabled(False)

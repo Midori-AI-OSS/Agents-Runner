@@ -58,7 +58,6 @@ class StainedGlassButton(QPushButton):
         self.setAutoFillBackground(False)
         self._tint_color: QColor | None = None
         self._glass_enabled = True
-        self._fill_enabled = True
         self._pulse = 0.0
         self._menu: QMenu | None = None
         self._context_menu: QMenu | None = None
@@ -88,10 +87,6 @@ class StainedGlassButton(QPushButton):
             and self._pulse_anim.state() != QAbstractAnimation.State.Running
         ):
             self._pulse_anim.start()
-        self.update()
-
-    def set_fill_enabled(self, enabled: bool) -> None:
-        self._fill_enabled = bool(enabled)
         self.update()
 
     def set_tint_color(self, color: QColor | None) -> None:
@@ -208,8 +203,7 @@ class StainedGlassButton(QPushButton):
                     border = QColor(56, 189, 248, 105)
                 text_color = QColor(237, 239, 245, 240)
 
-            if self._fill_enabled:
-                painter.fillPath(path, bg)
+            painter.fillPath(path, bg)
             painter.setPen(border)
             painter.drawRect(rect)
             painter.setPen(text_color)
@@ -237,25 +231,22 @@ class StainedGlassButton(QPushButton):
         tinted = _scale_rgb(tinted, brightness)
 
         if self._glass_enabled:
-            if self._fill_enabled:
-                fill_alpha = 95 if self.isEnabled() else 45
-                if self.underMouse():
-                    fill_alpha = min(135, fill_alpha + 18)
-                if self.isDown():
-                    fill_alpha = max(55, fill_alpha - 16)
-                painter.fillPath(
-                    path,
-                    QColor(tinted.red(), tinted.green(), tinted.blue(), fill_alpha),
-                )
+            fill_alpha = 95 if self.isEnabled() else 45
+            if self.underMouse():
+                fill_alpha = min(135, fill_alpha + 18)
+            if self.isDown():
+                fill_alpha = max(55, fill_alpha - 16)
+            painter.fillPath(
+                path, QColor(tinted.red(), tinted.green(), tinted.blue(), fill_alpha)
+            )
 
-                grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
-                grad.setColorAt(0.0, QColor(255, 255, 255, 14 + int(10 * pulse)))
-                grad.setColorAt(
-                    0.55,
-                    QColor(env.red(), env.green(), env.blue(), 16 + int(10 * pulse)),
-                )
-                grad.setColorAt(1.0, QColor(0, 0, 0, 24))
-                painter.fillPath(path, QBrush(grad))
+            grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
+            grad.setColorAt(0.0, QColor(255, 255, 255, 14 + int(10 * pulse)))
+            grad.setColorAt(
+                0.55, QColor(env.red(), env.green(), env.blue(), 16 + int(10 * pulse))
+            )
+            grad.setColorAt(1.0, QColor(0, 0, 0, 24))
+            painter.fillPath(path, QBrush(grad))
 
             # Stained-glass shards (environment-colored) for texture.
             w = max(1, rect.width())
