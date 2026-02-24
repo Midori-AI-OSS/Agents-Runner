@@ -72,6 +72,7 @@ class MainWindowAutoReviewMixin:
             selected_env_id,
             resolved_base_branch,
             pr_context,
+            None,
         )
         if not task_id:
             return

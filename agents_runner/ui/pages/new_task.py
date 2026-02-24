@@ -12,6 +12,7 @@ from PySide6.QtCore import QSize
 from PySide6.QtCore import Signal
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import QThread
+from PySide6.QtGui import QColor
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QGridLayout
@@ -26,10 +27,13 @@ from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
+from agents_runner.agent_cli import available_agents
+from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
+from agents_runner.environments.model import AgentInstance
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
@@ -53,8 +57,8 @@ class NewTaskPage(QWidget):
     _BASE_BRANCH_LOADING_SENTINEL = "__loading__"
     _BASE_BRANCH_LOADING_DELAY_MS = 250
 
-    requested_run = Signal(str, str, str, str, object)
-    requested_launch = Signal(str, str, str, str, str, str, str)
+    requested_run = Signal(str, str, str, str, object, object)
+    requested_launch = Signal(str, str, str, str, str, str, object, str)
     back_requested = Signal()
     environment_changed = Signal(str)
 
@@ -68,6 +72,7 @@ class NewTaskPage(QWidget):
         ] = {}  # Track workspace types for environments
         self._env_template_injection: dict[str, bool] = {}
         self._env_desktop_enabled: dict[str, bool] = {}
+        self._env_agents: dict[str, list[AgentInstance]] = {}
         self._repo_controls_visible = False
         self._base_branch_host_active = False
         self._host_codex_dir = os.path.expanduser("~/.codex")
@@ -106,6 +111,8 @@ class NewTaskPage(QWidget):
             self._apply_pending_repo_branches_update
         )
         self._pending_pr_context: dict[str, object] | None = None
+        self._agent_override: dict[str, str] | None = None
+        self._base_agent_info: tuple[str, str] = ("", "")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -271,6 +278,10 @@ class NewTaskPage(QWidget):
         self._run_agent.clicked.connect(self._on_run)
         self._run_interactive.setEnabled(False)
         self._run_agent.setEnabled(False)
+        self._override_menu = QMenu(self)
+        self._override_menu.aboutToShow.connect(self._rebuild_override_menu)
+        self._run_interactive.set_context_menu(self._override_menu)
+        self._run_agent.set_context_menu(self._override_menu)
         buttons.addWidget(self._run_interactive)
         buttons.addWidget(self._run_agent)
 
@@ -405,8 +416,17 @@ class NewTaskPage(QWidget):
             return
 
         pr_context = self._pending_pr_context
-        self.requested_run.emit(prompt, host_codex, env_id, base_branch, pr_context)
+        agent_override = dict(self._agent_override) if self._agent_override else None
+        self.requested_run.emit(
+            prompt,
+            host_codex,
+            env_id,
+            base_branch,
+            pr_context,
+            agent_override,
+        )
         self._pending_pr_context = None
+        self._clear_agent_override()
 
     def _on_get_agent_help(self) -> None:
         if not self._workspace_ready:
@@ -465,6 +485,7 @@ class NewTaskPage(QWidget):
             env_id,
             terminal_id,
             base_branch,
+            None,
             helpme_script,
         )
 
@@ -522,6 +543,7 @@ class NewTaskPage(QWidget):
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
 
+        agent_override = dict(self._agent_override) if self._agent_override else None
         self.requested_launch.emit(
             prompt,
             command,
@@ -529,8 +551,10 @@ class NewTaskPage(QWidget):
             env_id,
             terminal_id,
             base_branch,
+            agent_override,
             extra_preflight_script,
         )
+        self._clear_agent_override()
 
     def _on_launch(self) -> None:
         self._emit_interactive_launch(extra_preflight_script="")
@@ -555,27 +579,46 @@ class NewTaskPage(QWidget):
             return
         self._emit_interactive_launch(extra_preflight_script=desktop_script)
 
+    @staticmethod
+    def _override_tint_color() -> QColor:
+        return QColor(248, 58, 58)
+
+    def _apply_run_button_tints(self, base_tint: QColor | None) -> None:
+        if self._agent_override:
+            override_tint = self._override_tint_color()
+            self._run_interactive.set_tint_color(override_tint)
+            self._run_agent.set_tint_color(override_tint)
+            return
+        self._run_interactive.set_tint_color(base_tint)
+        self._run_agent.set_tint_color(base_tint)
+
     def _apply_environment_tints(self) -> None:
         env_id = self._active_env_id
         stain = (self._env_stains.get(env_id) or "").strip().lower() if env_id else ""
+        base_tint: QColor | None = None
         if not stain:
             self._base_branch.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
             self._get_agent_help.set_tint_color(None)
-            self._run_interactive.set_tint_color(None)
-            self._run_agent.set_tint_color(None)
-            return
-
-        apply_environment_combo_tint(self._base_branch, stain)
-        tint = stain_color(stain)
-        self._tint_overlay.set_tint_color(tint)
-        self._get_agent_help.set_tint_color(tint)
-        self._run_interactive.set_tint_color(tint)
-        self._run_agent.set_tint_color(tint)
+        else:
+            apply_environment_combo_tint(self._base_branch, stain)
+            base_tint = stain_color(stain)
+            self._tint_overlay.set_tint_color(base_tint)
+            self._get_agent_help.set_tint_color(base_tint)
+        self._apply_run_button_tints(base_tint)
 
     def set_environment_stains(self, stains: dict[str, str]) -> None:
         self._env_stains = {str(k): str(v) for k, v in (stains or {}).items()}
         self._apply_environment_tints()
+
+    def set_environment_agents(
+        self, env_agents: dict[str, list[AgentInstance]]
+    ) -> None:
+        cleaned: dict[str, list[AgentInstance]] = {}
+        for env_id, agents in (env_agents or {}).items():
+            cleaned[str(env_id)] = list(agents or [])
+        self._env_agents = cleaned
+        self._clear_override_if_invalid()
 
     def set_environment_workspace_types(self, workspace_types: dict[str, str]) -> None:
         """Set the workspace types for environments.
@@ -671,6 +714,7 @@ class NewTaskPage(QWidget):
         self._sync_interactive_options()
         self._update_workspace_visibility()
         self._sync_template_prompt_indicator()
+        self._clear_override_if_invalid()
         if previous != self._active_env_id:
             self.environment_changed.emit(self._active_env_id)
 
@@ -1206,6 +1250,16 @@ class NewTaskPage(QWidget):
         self._refresh_terminal_selection(str(terminal_id or ""))
 
     @staticmethod
+    def _format_agent_menu_label(value: str) -> str:
+        display = str(get_agent_display_name(value) or "").strip()
+        if display:
+            return display
+        words = str(value or "").strip().replace("-", " ").replace("_", " ").split()
+        if not words:
+            return "Unknown"
+        return " ".join(word.capitalize() for word in words)
+
+    @staticmethod
     def _friendly_agent_label(label: str) -> str:
         raw = str(label or "").strip()
         if not raw:
@@ -1238,7 +1292,16 @@ class NewTaskPage(QWidget):
 
     def set_agent_info(self, agent: str, next_agent: str = "") -> None:
         """Update inline and tooltip labels using the selected and next agent."""
-        display_text = self._format_agent_info_text(agent, next_agent)
+        self._base_agent_info = (agent, next_agent)
+        self._refresh_agent_info_display()
+
+    def _refresh_agent_info_display(self) -> None:
+        if self._agent_override:
+            label = str(self._agent_override.get("label") or "").strip()
+            display_text = f"Override: {label}" if label else "Override"
+        else:
+            agent, next_agent = self._base_agent_info
+            display_text = self._format_agent_info_text(agent, next_agent)
 
         if display_text:
             self._agent_chain.setText(display_text)
@@ -1252,6 +1315,110 @@ class NewTaskPage(QWidget):
         self._agent_chain.setToolTip(display_text)
         self._run_interactive.setToolTip(display_text)
         self._run_agent.setToolTip(display_text)
+
+    @staticmethod
+    def _format_env_agent_entry_label(inst: AgentInstance) -> str:
+        agent_id = str(getattr(inst, "agent_id", "") or "").strip()
+        agent_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or ""))
+        if agent_id and agent_cli:
+            return f"{agent_id} ({agent_cli})"
+        if agent_id:
+            return agent_id
+        return agent_cli or "Unknown"
+
+    def _active_env_agent_entries(self) -> list[AgentInstance]:
+        return list(self._env_agents.get(self._active_env_id, []) or [])
+
+    def _build_env_override(
+        self, *, inst: AgentInstance, env_id: str
+    ) -> dict[str, str]:
+        agent_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or ""))
+        return {
+            "source": "env",
+            "env_id": str(env_id or ""),
+            "agent_cli": agent_cli,
+            "agent_id": str(getattr(inst, "agent_id", "") or "").strip(),
+            "config_dir": str(getattr(inst, "config_dir", "") or "").strip(),
+            "cli_flags": str(getattr(inst, "cli_flags", "") or "").strip(),
+            "label": self._format_env_agent_entry_label(inst),
+        }
+
+    def _build_global_override(self, agent_cli: str) -> dict[str, str]:
+        normalized = normalize_agent(str(agent_cli or ""))
+        return {
+            "source": "global",
+            "env_id": "",
+            "agent_cli": normalized,
+            "agent_id": "",
+            "config_dir": "",
+            "cli_flags": "",
+            "label": self._format_agent_menu_label(normalized),
+        }
+
+    def _rebuild_override_menu(self) -> None:
+        self._override_menu.clear()
+
+        entries = self._active_env_agent_entries()
+        if entries:
+            for inst in entries:
+                label = self._format_env_agent_entry_label(inst)
+                action = self._override_menu.addAction(label)
+                payload = self._build_env_override(
+                    inst=inst, env_id=self._active_env_id
+                )
+                action.triggered.connect(
+                    lambda _checked=False, override=payload: self._set_agent_override(
+                        override
+                    )
+                )
+        else:
+            agents = list(available_agents())
+            if not agents:
+                action = self._override_menu.addAction("No agents available")
+                action.setEnabled(False)
+            else:
+                for agent in agents:
+                    normalized = normalize_agent(str(agent or ""))
+                    label = self._format_agent_menu_label(normalized)
+                    action = self._override_menu.addAction(label)
+                    payload = self._build_global_override(normalized)
+                    action.triggered.connect(
+                        lambda _checked=False, override=payload: (
+                            self._set_agent_override(override)
+                        )
+                    )
+
+        self._override_menu.addSeparator()
+        clear_action = self._override_menu.addAction("Clear override")
+        clear_action.setEnabled(bool(self._agent_override))
+        clear_action.triggered.connect(self._clear_agent_override)
+
+    def _set_agent_override(self, override: dict[str, str] | None) -> None:
+        self._agent_override = dict(override) if override else None
+        self._refresh_agent_info_display()
+        self._apply_environment_tints()
+
+    def _clear_agent_override(self) -> None:
+        if not self._agent_override:
+            return
+        self._set_agent_override(None)
+
+    def _clear_override_if_invalid(self) -> None:
+        if not self._agent_override:
+            return
+        if str(self._agent_override.get("source") or "") != "env":
+            return
+        override_env = str(self._agent_override.get("env_id") or "")
+        override_id = str(self._agent_override.get("agent_id") or "")
+        if override_env and override_env != self._active_env_id:
+            self._set_agent_override(None)
+            return
+        if not override_id:
+            return
+        for inst in self._active_env_agent_entries():
+            if str(getattr(inst, "agent_id", "") or "").strip() == override_id:
+                return
+        self._set_agent_override(None)
 
     def reset_for_new_run(self) -> None:
         self._prompt.setPlainText("")

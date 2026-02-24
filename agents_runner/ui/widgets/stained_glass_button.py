@@ -13,6 +13,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QContextMenuEvent,
     QHideEvent,
     QLinearGradient,
     QMouseEvent,
@@ -59,6 +60,7 @@ class StainedGlassButton(QPushButton):
         self._glass_enabled = True
         self._pulse = 0.0
         self._menu: QMenu | None = None
+        self._context_menu: QMenu | None = None
         self._menu_width = 22
 
         anim = QPropertyAnimation(self, b"pulse", self)
@@ -98,6 +100,9 @@ class StainedGlassButton(QPushButton):
         self._menu = menu
         self.update()
 
+    def set_context_menu(self, menu: QMenu | None) -> None:
+        self._context_menu = menu
+
     def _menu_rect(self, rect: QRect) -> QRect:
         if self._menu is None:
             return QRect()
@@ -116,6 +121,12 @@ class StainedGlassButton(QPushButton):
             self._menu.exec(event.globalPosition().toPoint())
             return
         super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        if self._context_menu is not None:
+            self._context_menu.exec(event.globalPos())
+            return
+        super().contextMenuEvent(event)
 
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)

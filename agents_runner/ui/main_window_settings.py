@@ -536,6 +536,49 @@ class MainWindowSettingsMixin:
             settings=settings,
         )
 
+    def _coerce_agent_override(self, override: object) -> dict[str, str] | None:
+        if not isinstance(override, dict):
+            return None
+        agent_cli = normalize_agent(str(override.get("agent_cli") or ""))
+        if not agent_cli:
+            return None
+        return {
+            "source": str(override.get("source") or ""),
+            "env_id": str(override.get("env_id") or ""),
+            "agent_cli": agent_cli,
+            "agent_id": str(override.get("agent_id") or ""),
+            "config_dir": str(override.get("config_dir") or ""),
+            "cli_flags": str(override.get("cli_flags") or ""),
+        }
+
+    def _resolve_override_config_dir(
+        self,
+        *,
+        override: dict[str, str],
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+    ) -> str:
+        config_dir = str(override.get("config_dir") or "").strip()
+        if config_dir:
+            return os.path.expanduser(config_dir)
+
+        agent_cli = normalize_agent(str(override.get("agent_cli") or ""))
+        if not agent_cli:
+            return ""
+
+        source = str(override.get("source") or "")
+        if source == "env":
+            return self._resolve_config_dir_for_agent(
+                agent_cli=agent_cli,
+                env=None,
+                settings=settings or self._settings_data,
+            )
+        return self._resolve_config_dir_for_agent(
+            agent_cli=agent_cli,
+            env=env,
+            settings=settings or self._settings_data,
+        )
+
     def _ensure_agent_config_dir(self, agent_cli: str, host_config_dir: str) -> bool:
         agent_cli = normalize_agent(agent_cli)
         host_config_dir = os.path.expanduser(str(host_config_dir or "").strip())

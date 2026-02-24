@@ -105,6 +105,7 @@ class MainWindowTasksAgentMixin:
         env_id: str,
         base_branch: str,
         pr_context: dict[str, object] | None = None,
+        agent_override: dict[str, str] | None = None,
     ) -> str | None:
         if shutil.which("docker") is None:
             QMessageBox.critical(
@@ -123,8 +124,11 @@ class MainWindowTasksAgentMixin:
         self._settings_data["active_environment_id"] = env_id
         env = self._environments.get(env_id)
 
+        override = self._coerce_agent_override(agent_override)
+
         if (
-            env
+            not override
+            and env
             and env.agent_selection
             and str(getattr(env.agent_selection, "selection_mode", "") or "")
             .strip()
@@ -161,7 +165,19 @@ class MainWindowTasksAgentMixin:
 
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
-        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+        selected_cli_flags = ""
+        if override:
+            agent_cli = override.get("agent_cli", "")
+            auto_config_dir = self._resolve_override_config_dir(
+                override=override,
+                env=env,
+                settings=self._settings_data,
+            )
+            agent_instance_id = str(override.get("agent_id") or "").strip()
+            selected_cli_flags = str(override.get("cli_flags") or "").strip()
+        elif (
+            env and env.agent_selection and getattr(env.agent_selection, "agents", None)
+        ):
             agent_cli, auto_config_dir, agent_instance_id = (
                 self._select_agent_instance_for_env(
                     env=env,
@@ -183,8 +199,7 @@ class MainWindowTasksAgentMixin:
         )
 
         cooldown_mgr = CooldownManager(self._watch_states)
-        selected_cli_flags = ""
-        if env and env.agent_selection and agent_instance_id:
+        if not override and env and env.agent_selection and agent_instance_id:
             inst = next(
                 (
                     a
@@ -323,7 +338,26 @@ class MainWindowTasksAgentMixin:
         self._settings_data["host_workdir"] = effective_workdir
 
         resolved_agent_selection: AgentSelection | None = None
-        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+        if override:
+            override_id = agent_instance_id or agent_cli
+            override_cli = str(agent_cli or "").strip()
+            resolved_agent_selection = AgentSelection(
+                agents=[
+                    AgentInstance(
+                        agent_id=override_id,
+                        agent_cli=override_cli,
+                        config_dir=auto_config_dir,
+                        cli_flags=selected_cli_flags,
+                    )
+                ],
+                selection_mode="pinned",
+                agent_fallbacks={},
+                pinned_agent_id=override_id,
+            )
+            agent_instance_id = override_id
+        elif (
+            env and env.agent_selection and getattr(env.agent_selection, "agents", None)
+        ):
             selection_mode = str(
                 getattr(env.agent_selection, "selection_mode", "") or "round-robin"
             ).strip()
@@ -373,6 +407,8 @@ class MainWindowTasksAgentMixin:
             )
 
         host_codex = os.path.expanduser(str(host_codex or "").strip())
+        if override:
+            host_codex = auto_config_dir
         host_config_dir = auto_config_dir
         if agent_cli == "codex" and host_codex:
             host_config_dir = host_codex
@@ -468,9 +504,7 @@ class MainWindowTasksAgentMixin:
         if pr_context:
             pr_head_ref = str(pr_context.get("pr_head_ref") or "").strip()
             pr_base_ref = str(pr_context.get("pr_base_ref") or "").strip()
-            pr_head_repo_owner = str(
-                pr_context.get("pr_head_repo_owner") or ""
-            ).strip()
+            pr_head_repo_owner = str(pr_context.get("pr_head_repo_owner") or "").strip()
             pr_head_repo_name = str(pr_context.get("pr_head_repo_name") or "").strip()
             pr_is_cross_repo = bool(pr_context.get("pr_is_cross_repo") or False)
             pr_repo_owner = str(pr_context.get("repo_owner") or "").strip()
