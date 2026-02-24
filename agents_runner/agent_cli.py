@@ -190,3 +190,126 @@ def build_noninteractive_cmd(
         )
     )
     return list(plan.exec_spec.argv)
+
+
+_INTERACTIVE_PROMPT_SENTINEL = "__AGENTS_RUNNER_PROMPT__"
+
+
+def _strip_prompt_from_plan(
+    cmd_parts: list[str], prompt_delivery: object, prompt_token: str
+) -> list[str]:
+    parts = list(cmd_parts)
+    prompt_token = str(prompt_token or "")
+    if not prompt_token:
+        return parts
+    mode = str(getattr(prompt_delivery, "mode", "") or "").strip().lower()
+    flag = str(getattr(prompt_delivery, "flag", "") or "").strip()
+    if mode == "flag":
+        if flag:
+            for idx in range(len(parts) - 1):
+                if parts[idx] == flag and parts[idx + 1] == prompt_token:
+                    parts.pop(idx + 1)
+                    parts.pop(idx)
+                    break
+        if prompt_token in parts:
+            parts.remove(prompt_token)
+        return parts
+    if mode == "stdin":
+        if prompt_token in parts:
+            parts.remove(prompt_token)
+        return parts
+    for idx in range(len(parts) - 1, -1, -1):
+        if parts[idx] == prompt_token:
+            parts.pop(idx)
+            break
+    return parts
+
+
+def build_interactive_cmd(
+    *,
+    agent: str,
+    prompt: str,
+    host_workdir: str,
+    host_config_dir: str | None = None,
+    container_workdir: str = CONTAINER_WORKDIR,
+    agent_cli_args: list[str] | None = None,
+    command: str | None = None,
+    is_help_launch: bool = False,
+    help_repos_dir: str = "/home/midori-ai/.agent-help/repos",
+) -> list[str]:
+    agent_raw = str(agent or "").strip().lower()
+    agent = normalize_agent(agent_raw)
+    extra_args = list(agent_cli_args or [])
+    prompt = str(prompt or "")
+    command = str(command or "").strip()
+
+    # Support test/debug commands as pass-through (for testing only)
+    # Handle both relative (sh, bash) and absolute paths (/bin/sh, /bin/bash)
+    if agent_raw in (
+        "echo",
+        "sh",
+        "bash",
+        "true",
+        "false",
+        "/bin/sh",
+        "/bin/bash",
+        "/usr/bin/sh",
+        "/usr/bin/bash",
+    ):
+        args = [agent_raw, *extra_args]
+        has_c_flag = "-c" in extra_args
+        if prompt and agent_raw not in ("true", "false") and not has_c_flag:
+            args.append(prompt)
+        return args
+
+    if command and not command.startswith("-"):
+        cmd_parts = shlex.split(command)
+        if cmd_parts:
+            head = str(cmd_parts[0] or "").strip().lower()
+            known = set(available_agents())
+            if head not in known:
+                return cmd_parts
+            if normalize_agent(head) == agent:
+                from agents_runner.agent_systems import get_agent_system
+
+                return get_agent_system(agent).build_interactive_command_parts(
+                    cmd_parts=cmd_parts,
+                    agent_cli_args=extra_args,
+                    prompt=prompt,
+                    is_help_launch=is_help_launch,
+                    help_repos_dir=str(help_repos_dir or ""),
+                )
+
+    from agents_runner.agent_systems import get_agent_system
+    from agents_runner.agent_systems.models import (
+        AgentSystemContext,
+        AgentSystemRequest,
+    )
+
+    config_dir = str(host_config_dir or "").strip() or default_host_config_dir(agent)
+    system = get_agent_system(agent)
+    context = AgentSystemContext(
+        workspace_host=Path(os.path.expanduser(host_workdir or ".")),
+        workspace_container=Path(str(container_workdir)),
+        config_host=Path(os.path.expanduser(config_dir)),
+        config_container=system.container_config_dir(),
+        extra_cli_args=[],
+    )
+    plan = system.plan(
+        AgentSystemRequest(
+            system_name=agent,
+            interactive=True,
+            prompt=_INTERACTIVE_PROMPT_SENTINEL,
+            context=context,
+        )
+    )
+    cmd_parts = _strip_prompt_from_plan(
+        list(plan.exec_spec.argv), plan.prompt_delivery, _INTERACTIVE_PROMPT_SENTINEL
+    )
+    return system.build_interactive_command_parts(
+        cmd_parts=cmd_parts,
+        agent_cli_args=extra_args,
+        prompt=prompt,
+        is_help_launch=is_help_launch,
+        help_repos_dir=str(help_repos_dir or ""),
+    )

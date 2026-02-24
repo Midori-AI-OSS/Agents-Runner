@@ -50,6 +50,7 @@ class InteractivePrepWorker(QObject):
         workspace_type: str,
         gh_repo: str,
         host_workdir: str,
+        host_config_dir: str,
         desired_base: str,
         gh_use_host_cli: bool,
         gh_context_enabled: bool,
@@ -76,6 +77,7 @@ class InteractivePrepWorker(QObject):
         self._workspace_type = str(workspace_type or "").strip()
         self._gh_repo = str(gh_repo or "").strip()
         self._host_workdir = str(host_workdir or "").strip()
+        self._host_config_dir = str(host_config_dir or "").strip()
         self._desired_base = str(desired_base or "").strip()
         self._gh_use_host_cli = bool(gh_use_host_cli)
         self._gh_context_enabled = bool(gh_context_enabled)
@@ -448,6 +450,8 @@ class InteractivePrepWorker(QObject):
                 agent_cli=self._agent_cli,
                 agent_cli_args=self._agent_cli_args,
                 prompt=prompt_for_agent,
+                host_workdir=self._host_workdir,
+                host_config_dir=self._host_config_dir,
                 is_help_launch=self._is_help_launch,
             )
             cmd_elapsed_ms = (time.monotonic() - cmd_started_s) * 1000.0

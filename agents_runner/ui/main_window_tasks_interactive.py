@@ -329,6 +329,7 @@ class MainWindowTasksInteractiveMixin:
             workspace_type=workspace_type,
             gh_repo=gh_repo,
             host_workdir=host_workdir,
+            host_config_dir=host_codex,
             desired_base=desired_base,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=bool(env and env.gh_context_enabled),
