@@ -475,8 +475,6 @@ class MainWindowTasksAgentMixin:
             pr_is_cross_repo = bool(pr_context.get("pr_is_cross_repo") or False)
             pr_repo_owner = str(pr_context.get("repo_owner") or "").strip()
             pr_repo_name = str(pr_context.get("repo_name") or "").strip()
-        if pr_base_ref and not desired_base:
-            desired_base = pr_base_ref
         if pr_head_ref:
             same_repo = True
             if (
@@ -493,6 +491,10 @@ class MainWindowTasksAgentMixin:
                 pr_head_repo_owner and pr_head_repo_name and not same_repo
             ):
                 pr_head_ref = ""
+        if pr_head_ref:
+            desired_base = pr_head_ref
+        elif pr_base_ref and not desired_base:
+            desired_base = pr_base_ref
 
         # Save the selected branch for cloned environments
         if env and env.workspace_type == WORKSPACE_CLONED and desired_base:
