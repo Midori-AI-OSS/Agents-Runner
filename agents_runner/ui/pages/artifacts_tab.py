@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QEvent, Qt, QTimer
@@ -41,10 +42,50 @@ from agents_runner.ui.pages.artifacts_utils import (
     cleanup_temp_files,
 )
 from agents_runner.ui.widgets.glass_card import GlassCard
+from agents_runner.ui.widgets.breadcrumbs import BreadcrumbBar
 from agents_runner.ui.widgets.artifact_highlighter import ArtifactSyntaxHighlighter
 from midori_ai_logger import MidoriAiLogger
 
 logger = MidoriAiLogger(channel=None, name=__name__)
+
+
+@dataclass
+class FolderListItem:
+    name: str
+    path: str
+    item_count: int
+
+
+@dataclass
+class _FolderNode:
+    name: str
+    path: str
+    folders: dict[str, "_FolderNode"]
+    files: list[ArtifactMeta | StagingArtifactMeta]
+
+
+class ArtifactRowWidget(QWidget):
+    def __init__(
+        self,
+        name: str,
+        info_text: str,
+        *,
+        name_style: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(2)
+
+        name_label = QLabel(name)
+        name_label.setStyleSheet(name_style)
+
+        info_label = QLabel(info_text)
+        info_label.setStyleSheet("font-size: 11px; color: rgba(237, 239, 245, 140);")
+
+        layout.addWidget(name_label)
+        layout.addWidget(info_label)
 
 
 def _emit_watcher_lifecycle_debug(message: str) -> None:
@@ -78,6 +119,9 @@ class ArtifactsTab(QWidget):
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.timeout.connect(self._refresh_file_list)
         self._preview_loader: PreviewLoader | None = None
+        self._current_folder_path: str = ""
+        self._folder_root: _FolderNode | None = None
+        self._suppress_selection: bool = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -115,8 +159,13 @@ class ArtifactsTab(QWidget):
         self._artifact_list = QListWidget()
         self._artifact_list.setSpacing(4)
         self._artifact_list.currentRowChanged.connect(self._on_selection_changed)
+        self._artifact_list.itemClicked.connect(self._on_item_clicked)
 
         left_layout.addLayout(list_header)
+        self._breadcrumb = BreadcrumbBar()
+        self._breadcrumb.back_clicked.connect(self._on_breadcrumb_back)
+        self._breadcrumb.segment_clicked.connect(self._on_breadcrumb_segment_clicked)
+        left_layout.addWidget(self._breadcrumb)
         left_layout.addWidget(self._artifact_list, 1)
 
         right_panel = GlassCard()
@@ -243,9 +292,90 @@ class ArtifactsTab(QWidget):
                 self._preview_loader.update_thumbnail_scale()
         return super().eventFilter(watched, event)
 
+    def _artifact_relative_path(
+        self, artifact: ArtifactMeta | StagingArtifactMeta
+    ) -> str:
+        if isinstance(artifact, StagingArtifactMeta):
+            return artifact.filename
+        return artifact.original_filename
+
+    def _build_folder_tree(self) -> None:
+        root = _FolderNode(name="Artifacts", path="", folders={}, files=[])
+
+        for artifact in self._artifacts:
+            rel_path = self._artifact_relative_path(artifact).strip()
+            if not rel_path:
+                continue
+            parts = [part for part in rel_path.split("/") if part]
+            if not parts:
+                continue
+            node = root
+            for part in parts[:-1]:
+                child = node.folders.get(part)
+                if child is None:
+                    child_path = f"{node.path}/{part}" if node.path else part
+                    child = _FolderNode(
+                        name=part, path=child_path, folders={}, files=[]
+                    )
+                    node.folders[part] = child
+                node = child
+            node.files.append(artifact)
+
+        self._folder_root = root
+
+    def _get_folder_node(self, path: str) -> _FolderNode | None:
+        root = self._folder_root
+        if root is None:
+            return None
+        if not path:
+            return root
+
+        node = root
+        for part in path.split("/"):
+            next_node = node.folders.get(part)
+            if next_node is None:
+                return None
+            node = next_node
+        return node
+
+    def _ensure_current_folder(self) -> _FolderNode | None:
+        node = self._get_folder_node(self._current_folder_path)
+        if node is None:
+            self._current_folder_path = ""
+            node = self._get_folder_node(self._current_folder_path)
+        return node
+
+    def _update_breadcrumb(self) -> None:
+        parts = [p for p in self._current_folder_path.split("/") if p]
+        segments: list[tuple[str, str]] = [("Artifacts", "")]
+        path_accum = ""
+        for part in parts:
+            path_accum = f"{path_accum}/{part}" if path_accum else part
+            segments.append((part, path_accum))
+        self._breadcrumb.set_segments(segments)
+        self._breadcrumb.set_back_enabled(bool(parts))
+
+    def _on_breadcrumb_back(self) -> None:
+        if not self._current_folder_path:
+            return
+        parts = [p for p in self._current_folder_path.split("/") if p]
+        self._current_folder_path = "/".join(parts[:-1])
+        self._update_artifact_list()
+
+    def _on_breadcrumb_segment_clicked(self, path: str) -> None:
+        self._current_folder_path = path
+        self._update_artifact_list()
+
+    def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        data = item.data(Qt.UserRole)
+        if isinstance(data, FolderListItem):
+            self._current_folder_path = data.path
+            self._update_artifact_list()
+
     def set_task(self, task: Task) -> None:
         """Load artifacts for a task and determine mode based on status."""
         self._current_task = task
+        self._current_folder_path = ""
         cleanup_temp_files(self._temp_files)
         if self._preview_loader:
             self._preview_loader.cleanup_temp_files()
@@ -344,6 +474,7 @@ class ArtifactsTab(QWidget):
             self._artifacts = list_artifacts(self._current_task.task_id)
         else:
             self._artifacts = []
+        self._build_folder_tree()
         self._update_artifact_list()
 
     def _on_files_changed(self) -> None:
@@ -361,76 +492,160 @@ class ArtifactsTab(QWidget):
         else:
             self._artifacts = list_artifacts(self._current_task.task_id)
 
+        self._build_folder_tree()
         self._update_artifact_list()
 
     def _update_artifact_list(self) -> None:
         """Update UI list widget with current artifacts."""
+        self._suppress_selection = True
         self._artifact_list.clear()
-        self._artifact_count.setText(f"({len(self._artifacts)})")
+        folder = self._ensure_current_folder()
+        self._update_breadcrumb()
 
-        if not self._artifacts:
-            # Update empty state message based on mode
+        if folder is None:
+            self._artifact_count.setText("(0)")
+            self._empty_state.setText("No artifacts collected for this task")
+            self._empty_state.show()
+            self._preview_area.hide()
+            self._btn_open.setEnabled(False)
+            self._btn_edit.setEnabled(False)
+            self._btn_download.setEnabled(False)
+            self._suppress_selection = False
+            return
+
+        folders = sorted(folder.folders.values(), key=lambda entry: entry.name.lower())
+        files = sorted(
+            folder.files,
+            key=lambda artifact: Path(self._artifact_relative_path(artifact))
+            .name.lower(),
+        )
+
+        self._artifact_count.setText(f"({len(files)})")
+
+        if not folders and not files:
             if self._mode == "staging" and self._current_task:
                 staging_dir = get_staging_dir(self._current_task.task_id)
+                watch_target = (
+                    staging_dir / self._current_folder_path
+                    if self._current_folder_path
+                    else staging_dir
+                )
                 self._empty_state.setText(
-                    f"No artifacts yet\n\nWatching: {staging_dir}"
+                    f"No artifacts yet\n\nWatching: {watch_target}"
                 )
             else:
-                self._empty_state.setText("No artifacts collected for this task")
+                empty_text = (
+                    "No artifacts in this folder"
+                    if self._current_folder_path
+                    else "No artifacts collected for this task"
+                )
+                self._empty_state.setText(empty_text)
 
             self._empty_state.show()
             self._preview_area.hide()
             self._btn_open.setEnabled(False)
             self._btn_edit.setEnabled(False)
             self._btn_download.setEnabled(False)
+            self._suppress_selection = False
             return
 
         self._empty_state.hide()
 
-        for artifact in self._artifacts:
+        first_file_row: int | None = None
+
+        for folder_entry in folders:
             item = QListWidgetItem()
-            item.setData(Qt.UserRole, artifact)
+            item_data = FolderListItem(
+                name=folder_entry.name,
+                path=folder_entry.path,
+                item_count=len(folder_entry.folders) + len(folder_entry.files),
+            )
+            item.setData(Qt.UserRole, item_data)
 
-            widget = QWidget()
-            layout = QVBoxLayout(widget)
-            layout.setContentsMargins(8, 6, 8, 6)
-            layout.setSpacing(2)
-
-            if isinstance(artifact, StagingArtifactMeta):
-                # Staging artifact - green color
-                name = QLabel(artifact.filename)
-                name.setStyleSheet("font-weight: 600; color: rgba(100, 255, 100, 235);")
-
-                info_text = f"{format_size(artifact.size_bytes)} • {format_timestamp(artifact.modified_at.isoformat())}"
-            else:
-                # Encrypted artifact - normal color
-                name = QLabel(artifact.original_filename)
-                name.setStyleSheet("font-weight: 600; color: rgba(237, 239, 245, 235);")
-
-                info_text = f"{format_size(artifact.size_bytes)} • {format_timestamp(artifact.encrypted_at)}"
-
-            info = QLabel(info_text)
-            info.setStyleSheet("font-size: 11px; color: rgba(237, 239, 245, 140);")
-
-            layout.addWidget(name)
-            layout.addWidget(info)
+            info_text = (
+                f"{item_data.item_count} items"
+                if item_data.item_count != 1
+                else "1 item"
+            )
+            widget = ArtifactRowWidget(
+                folder_entry.name,
+                info_text,
+                name_style="font-weight: 600; color: rgba(237, 239, 245, 220);",
+            )
 
             item.setSizeHint(widget.sizeHint())
             self._artifact_list.addItem(item)
             self._artifact_list.setItemWidget(item, widget)
 
-        if self._artifacts:
-            self._artifact_list.setCurrentRow(0)
+        for artifact in files:
+            item = QListWidgetItem()
+            item.setData(Qt.UserRole, artifact)
+
+            display_name = Path(self._artifact_relative_path(artifact)).name
+            if isinstance(artifact, StagingArtifactMeta):
+                name_style = "font-weight: 600; color: rgba(100, 255, 100, 235);"
+                info_text = (
+                    f"{format_size(artifact.size_bytes)} • "
+                    f"{format_timestamp(artifact.modified_at.isoformat())}"
+                )
+            else:
+                name_style = "font-weight: 600; color: rgba(237, 239, 245, 235);"
+                info_text = (
+                    f"{format_size(artifact.size_bytes)} • "
+                    f"{format_timestamp(artifact.encrypted_at)}"
+                )
+
+            widget = ArtifactRowWidget(
+                display_name,
+                info_text,
+                name_style=name_style,
+            )
+
+            item.setSizeHint(widget.sizeHint())
+            self._artifact_list.addItem(item)
+            self._artifact_list.setItemWidget(item, widget)
+
+            if first_file_row is None:
+                first_file_row = self._artifact_list.row(item)
+
+        if first_file_row is not None:
+            self._artifact_list.setCurrentRow(first_file_row)
+        else:
+            self._artifact_list.clearSelection()
+            self._preview_area.hide()
+            self._btn_open.setEnabled(False)
+            self._btn_edit.setEnabled(False)
+            self._btn_download.setEnabled(False)
+
+        self._suppress_selection = False
 
     def _on_selection_changed(self, current_row: int) -> None:
-        if current_row < 0 or current_row >= len(self._artifacts):
+        if self._suppress_selection:
+            return
+
+        if current_row < 0:
+            self._preview_area.hide()
+            self._btn_open.setEnabled(False)
+            self._btn_edit.setEnabled(False)
+            self._btn_download.setEnabled(False)
+            return
+        item = self._artifact_list.item(current_row)
+        if item is None:
             self._preview_area.hide()
             self._btn_open.setEnabled(False)
             self._btn_edit.setEnabled(False)
             self._btn_download.setEnabled(False)
             return
 
-        artifact = self._artifacts[current_row]
+        item_data = item.data(Qt.UserRole)
+        if isinstance(item_data, FolderListItem) or item_data is None:
+            self._preview_area.hide()
+            self._btn_open.setEnabled(False)
+            self._btn_edit.setEnabled(False)
+            self._btn_download.setEnabled(False)
+            return
+
+        artifact = item_data
         self._preview_area.show()
         self._btn_open.setEnabled(True)
 
@@ -522,11 +737,13 @@ class ArtifactsTab(QWidget):
         )
 
     def _on_open_clicked(self) -> None:
-        current_row = self._artifact_list.currentRow()
-        if current_row < 0 or not self._current_task:
+        item = self._artifact_list.currentItem()
+        if item is None or not self._current_task:
             return
 
-        artifact = self._artifacts[current_row]
+        artifact = item.data(Qt.UserRole)
+        if not isinstance(artifact, (ArtifactMeta, StagingArtifactMeta)):
+            return
 
         if isinstance(artifact, StagingArtifactMeta):
             open_staging_artifact(artifact)
@@ -540,11 +757,13 @@ class ArtifactsTab(QWidget):
 
     def _on_edit_clicked(self) -> None:
         """Edit selected artifact in external editor."""
-        current_row = self._artifact_list.currentRow()
-        if current_row < 0 or not self._current_task:
+        item = self._artifact_list.currentItem()
+        if item is None or not self._current_task:
             return
 
-        artifact = self._artifacts[current_row]
+        artifact = item.data(Qt.UserRole)
+        if not isinstance(artifact, (ArtifactMeta, StagingArtifactMeta)):
+            return
 
         # Only allow editing for staging artifacts
         if not isinstance(artifact, StagingArtifactMeta):
@@ -561,11 +780,13 @@ class ArtifactsTab(QWidget):
         edit_staging_artifact(artifact)
 
     def _on_download_clicked(self) -> None:
-        current_row = self._artifact_list.currentRow()
-        if current_row < 0 or not self._current_task:
+        item = self._artifact_list.currentItem()
+        if item is None or not self._current_task:
             return
 
-        artifact = self._artifacts[current_row]
+        artifact = item.data(Qt.UserRole)
+        if not isinstance(artifact, ArtifactMeta):
+            return
         dest_path, _ = QFileDialog.getSaveFileName(
             self, "Save Artifact", artifact.original_filename, "All Files (*.*)"
         )
