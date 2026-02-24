@@ -303,6 +303,13 @@ class NewTaskPage(QWidget):
         super().resizeEvent(event)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
+        self._raise_override_buttons()
+
+    def _raise_override_buttons(self) -> None:
+        if not self._agent_override:
+            return
+        self._run_interactive.raise_()
+        self._run_agent.raise_()
 
     def _confirm_auto_base_branch(self, env_id: str, base_branch: str) -> bool:
         """Show confirmation dialog for auto base branch in cloned repo environments.
@@ -588,9 +595,11 @@ class NewTaskPage(QWidget):
             override_tint = self._override_tint_color()
             self._run_interactive.set_tint_color(override_tint)
             self._run_agent.set_tint_color(override_tint)
+            self._raise_override_buttons()
             return
         self._run_interactive.set_tint_color(base_tint)
         self._run_agent.set_tint_color(base_tint)
+        self._tint_overlay.raise_()
 
     def _apply_environment_tints(self) -> None:
         env_id = self._active_env_id
