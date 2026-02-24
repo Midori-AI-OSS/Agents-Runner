@@ -34,8 +34,12 @@ class BreadcrumbBar(QWidget):
         self._segments_layout.setSpacing(2)
 
         self._ellipsis = QLabel("...")
-        self._ellipsis.setStyleSheet("color: rgba(237, 239, 245, 160); font-size: 11px;")
-        self._ellipsis.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        self._ellipsis.setStyleSheet(
+            "color: rgba(237, 239, 245, 160); font-size: 11px;"
+        )
+        self._ellipsis.setSizePolicy(
+            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
+        )
         self._ellipsis.hide()
 
         self._segments_layout.addWidget(self._ellipsis)

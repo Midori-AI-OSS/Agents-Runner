@@ -371,14 +371,14 @@ class ArtifactsTab(QWidget):
 
             for artifact in sorted(
                 current.files,
-                key=lambda entry: Path(self._artifact_relative_path(entry)).name.lower(),
+                key=lambda entry: Path(
+                    self._artifact_relative_path(entry)
+                ).name.lower(),
             ):
                 file_count += 1
                 total_size += int(artifact.size_bytes)
                 modified = self._artifact_modified_at(artifact)
-                if modified and (
-                    latest_modified is None or modified > latest_modified
-                ):
+                if modified and (latest_modified is None or modified > latest_modified):
                     latest_modified = modified
                 if len(samples) < 5:
                     filename = Path(self._artifact_relative_path(artifact)).name
@@ -606,8 +606,9 @@ class ArtifactsTab(QWidget):
         folders = sorted(folder.folders.values(), key=lambda entry: entry.name.lower())
         files = sorted(
             folder.files,
-            key=lambda artifact: Path(self._artifact_relative_path(artifact))
-            .name.lower(),
+            key=lambda artifact: Path(
+                self._artifact_relative_path(artifact)
+            ).name.lower(),
         )
 
         self._artifact_count.setText(f"({len(files)})")
