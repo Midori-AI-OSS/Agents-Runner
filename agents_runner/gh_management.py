@@ -178,24 +178,18 @@ def prepare_github_repo_for_task(
             if pr_head:
                 repo_root = git_repo_root(dest_dir) or dest_dir
                 current_branch = git_current_branch(repo_root)
-                if current_branch and current_branch == pr_head:
-                    return {
-                        "repo_root": repo_root,
-                        "base_branch": pr_base or str(base_branch or ""),
-                        "branch": pr_head,
-                    }
                 if not git_is_clean(repo_root):
                     _log(
                         format_log(
                             "gh",
                             "branch",
                             "WARN",
-                            "repo has uncommitted changes; skipping PR branch checkout",
+                            "repo has uncommitted changes; skipping PR head base prep",
                         )
                     )
                     return {
                         "repo_root": repo_root,
-                        "base_branch": pr_base or str(base_branch or ""),
+                        "base_branch": pr_head or pr_base or str(base_branch or ""),
                         "branch": current_branch or "",
                     }
                 try:
@@ -215,52 +209,28 @@ def prepare_github_repo_for_task(
                         fetch_proc,
                         args=["git", "-C", repo_root, "fetch", "origin", pr_head],
                     )
-                    checkout_proc = run_gh(
-                        [
-                            "git",
-                            "-C",
-                            repo_root,
-                            "checkout",
-                            "-B",
-                            pr_head,
-                            f"origin/{pr_head}",
-                        ],
-                        timeout_s=30.0,
-                    )
-                    require_ok(
-                        checkout_proc,
-                        args=[
-                            "git",
-                            "-C",
-                            repo_root,
-                            "checkout",
-                            "-B",
-                            pr_head,
-                            f"origin/{pr_head}",
-                        ],
-                    )
                     _log(
                         format_log(
                             "gh",
                             "branch",
                             "INFO",
-                            f"checked out PR head branch {pr_head}",
+                            f"using PR head branch {pr_head} as base",
                         )
                     )
-                    return {
-                        "repo_root": repo_root,
-                        "base_branch": pr_base or str(base_branch or ""),
-                        "branch": pr_head,
-                    }
+                    base_branch = pr_head
                 except Exception as exc:
                     _log(
                         format_log(
                             "gh",
                             "branch",
                             "WARN",
-                            f"failed to checkout PR head branch {pr_head}: {exc}",
+                            (
+                                "failed to fetch PR head branch "
+                                f"{pr_head}; using fallback base: {exc}"
+                            ),
                         )
                     )
+                    pr_head = ""
 
             plan = plan_repo_task(
                 dest_dir,
