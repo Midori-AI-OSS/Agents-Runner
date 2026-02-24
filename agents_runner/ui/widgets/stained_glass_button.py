@@ -58,6 +58,7 @@ class StainedGlassButton(QPushButton):
         self.setAutoFillBackground(False)
         self._tint_color: QColor | None = None
         self._glass_enabled = True
+        self._texture_enabled = True
         self._pulse = 0.0
         self._menu: QMenu | None = None
         self._context_menu: QMenu | None = None
@@ -94,6 +95,10 @@ class StainedGlassButton(QPushButton):
             self._tint_color = None
         else:
             self._tint_color = QColor(color.red(), color.green(), color.blue(), 255)
+        self.update()
+
+    def set_texture_enabled(self, enabled: bool) -> None:
+        self._texture_enabled = bool(enabled)
         self.update()
 
     def set_menu(self, menu: QMenu | None) -> None:
@@ -248,44 +253,51 @@ class StainedGlassButton(QPushButton):
             grad.setColorAt(1.0, QColor(0, 0, 0, 24))
             painter.fillPath(path, QBrush(grad))
 
-            # Stained-glass shards (environment-colored) for texture.
-            w = max(1, rect.width())
-            h = max(1, rect.height())
-            x0 = rect.left()
-            y0 = rect.top()
+            if self._texture_enabled:
+                # Stained-glass shards (environment-colored) for texture.
+                w = max(1, rect.width())
+                h = max(1, rect.height())
+                x0 = rect.left()
+                y0 = rect.top()
 
-            shard_color = QColor(
-                env.red(), env.green(), env.blue(), 22 + int(12 * pulse)
-            )
-            shard_color_2 = QColor(
-                *blend_rgb(env, QColor(255, 255, 255), 0.25).getRgb()[:3],
-                16 + int(10 * pulse),
-            )
-            edge = QColor(255, 255, 255, 12 + int(6 * pulse))
+                shard_color = QColor(
+                    env.red(), env.green(), env.blue(), 22 + int(12 * pulse)
+                )
+                shard_color_2 = QColor(
+                    *blend_rgb(env, QColor(255, 255, 255), 0.25).getRgb()[:3],
+                    16 + int(10 * pulse),
+                )
+                edge = QColor(255, 255, 255, 12 + int(6 * pulse))
 
-            shards = [
-                (shard_color, [(0.00, 0.10), (0.30, 0.00), (0.55, 0.28), (0.18, 0.40)]),
-                (
-                    shard_color_2,
-                    [(0.56, 0.00), (1.00, 0.18), (0.88, 0.52), (0.56, 0.36)],
-                ),
-                (shard_color, [(0.05, 0.62), (0.28, 0.44), (0.56, 0.72), (0.22, 0.96)]),
-                (
-                    shard_color_2,
-                    [(0.62, 0.58), (0.92, 0.44), (1.00, 0.88), (0.76, 1.00)],
-                ),
-            ]
+                shards = [
+                    (
+                        shard_color,
+                        [(0.00, 0.10), (0.30, 0.00), (0.55, 0.28), (0.18, 0.40)],
+                    ),
+                    (
+                        shard_color_2,
+                        [(0.56, 0.00), (1.00, 0.18), (0.88, 0.52), (0.56, 0.36)],
+                    ),
+                    (
+                        shard_color,
+                        [(0.05, 0.62), (0.28, 0.44), (0.56, 0.72), (0.22, 0.96)],
+                    ),
+                    (
+                        shard_color_2,
+                        [(0.62, 0.58), (0.92, 0.44), (1.00, 0.88), (0.76, 1.00)],
+                    ),
+                ]
 
-            for color, points in shards:
-                shard_path = QPainterPath()
-                px, py = points[0]
-                shard_path.moveTo(int(x0 + px * w), int(y0 + py * h))
-                for sx, sy in points[1:]:
-                    shard_path.lineTo(int(x0 + sx * w), int(y0 + sy * h))
-                shard_path.closeSubpath()
-                painter.fillPath(shard_path, color)
-                painter.setPen(edge)
-                painter.drawPath(shard_path)
+                for color, points in shards:
+                    shard_path = QPainterPath()
+                    px, py = points[0]
+                    shard_path.moveTo(int(x0 + px * w), int(y0 + py * h))
+                    for sx, sy in points[1:]:
+                        shard_path.lineTo(int(x0 + sx * w), int(y0 + sy * h))
+                    shard_path.closeSubpath()
+                    painter.fillPath(shard_path, color)
+                    painter.setPen(edge)
+                    painter.drawPath(shard_path)
 
         # Frame/border.
         if not self.isEnabled():
