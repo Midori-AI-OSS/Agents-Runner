@@ -10,6 +10,7 @@ import json
 import logging
 import mimetypes
 import multiprocessing
+import os
 import queue
 import shutil
 import time
@@ -304,7 +305,7 @@ def collect_artifacts_from_container(
         return []
 
     try:
-        files = [f for f in artifacts_staging.iterdir() if f.is_file()]
+        files = _iter_staging_files(artifacts_staging)
 
         if not files:
             logger.debug(f"No artifacts found in staging: {artifacts_staging}")
@@ -315,18 +316,24 @@ def collect_artifacts_from_container(
         # Encrypt each file
         for file_path in files:
             try:
+                relative_path = file_path.relative_to(artifacts_staging).as_posix()
                 artifact_uuid = encrypt_artifact(
-                    task_dict, env_name, str(file_path), file_path.name
+                    task_dict, env_name, str(file_path), relative_path
                 )
                 if artifact_uuid:
                     artifact_uuids.append(artifact_uuid)
                     logger.info(
-                        f"Collected artifact: {file_path.name} -> {artifact_uuid}"
+                        f"Collected artifact: {relative_path} -> {artifact_uuid}"
                     )
                     # Remove from staging after successful encryption
-                    file_path.unlink()
+                    try:
+                        file_path.unlink()
+                    except Exception as unlink_error:
+                        logger.warning(
+                            f"Failed to remove staged artifact {relative_path}: {unlink_error}"
+                        )
             except Exception as e:
-                logger.error(f"Failed to collect artifact {file_path.name}: {e}")
+                logger.error(f"Failed to collect artifact {file_path}: {e}")
                 continue
 
     except Exception as e:
@@ -486,6 +493,51 @@ def get_staging_dir(task_id: str) -> Path:
     return artifacts_dir / "staging"
 
 
+def _iter_staging_files(staging_dir: Path) -> list[Path]:
+    files: list[Path] = []
+    if not staging_dir.exists():
+        return files
+
+    try:
+        root_resolved = staging_dir.resolve()
+    except Exception as e:
+        logger.error(f"Failed to resolve staging dir {staging_dir}: {e}")
+        return files
+
+    def _on_walk_error(exc: OSError) -> None:
+        logger.warning(f"Failed to walk staging dir {staging_dir}: {exc}")
+
+    for root, dirs, filenames in os.walk(
+        staging_dir, followlinks=False, onerror=_on_walk_error
+    ):
+        root_path = Path(root)
+        pruned_dirs: list[str] = []
+        for dirname in dirs:
+            dir_path = root_path / dirname
+            try:
+                if dir_path.is_symlink():
+                    continue
+            except Exception:
+                continue
+            pruned_dirs.append(dirname)
+        dirs[:] = pruned_dirs
+
+        for filename in filenames:
+            file_path = root_path / filename
+            try:
+                if file_path.is_symlink():
+                    continue
+                resolved = file_path.resolve(strict=True)
+            except Exception:
+                continue
+            if not resolved.is_relative_to(root_resolved):
+                logger.warning(f"Skipping staged file outside root: {file_path}")
+                continue
+            files.append(file_path)
+
+    return files
+
+
 def list_staging_artifacts(task_id: str) -> list[StagingArtifactMeta]:
     """
     List artifacts in staging directory (for running tasks).
@@ -504,17 +556,15 @@ def list_staging_artifacts(task_id: str) -> list[StagingArtifactMeta]:
     artifacts: list[StagingArtifactMeta] = []
 
     try:
-        for file_path in staging_dir.iterdir():
-            if not file_path.is_file():
-                continue
-
+        for file_path in _iter_staging_files(staging_dir):
             stat = file_path.stat()
-            mime_type, _ = mimetypes.guess_type(file_path.name)
+            relative_path = file_path.relative_to(staging_dir).as_posix()
+            mime_type, _ = mimetypes.guess_type(relative_path)
             if mime_type is None:
                 mime_type = "application/octet-stream"
 
             artifact = StagingArtifactMeta(
-                filename=file_path.name,
+                filename=relative_path,
                 path=file_path,
                 size_bytes=stat.st_size,
                 modified_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc),
@@ -543,20 +593,36 @@ def get_staging_artifact_path(task_id: str, filename: str) -> Path | None:
         Path to staging file, or None if not found
     """
     staging_dir = get_staging_dir(task_id)
+    if Path(filename).is_absolute():
+        logger.error(f"Absolute path rejected for staging artifact: {filename}")
+        return None
+
     file_path = staging_dir / filename
 
-    if file_path.exists() and file_path.is_file():
-        # Security: Verify file is within staging directory (prevent path traversal)
-        try:
-            if file_path.resolve().parent != staging_dir.resolve():
-                logger.error(f"Path traversal attempt: {filename}")
-                return None
-        except Exception as e:
-            logger.error(f"Failed to resolve path {filename}: {e}")
+    try:
+        if file_path.is_symlink():
+            logger.error(f"Symlink rejected for staging artifact: {filename}")
             return None
-        return file_path
+    except Exception as e:
+        logger.error(f"Failed to inspect path {filename}: {e}")
+        return None
 
-    return None
+    try:
+        resolved_root = staging_dir.resolve()
+        resolved_path = file_path.resolve(strict=True)
+    except Exception as e:
+        logger.error(f"Failed to resolve path {filename}: {e}")
+        return None
+
+    # Security: Verify file is within staging directory (prevent path traversal)
+    if not resolved_path.is_relative_to(resolved_root):
+        logger.error(f"Path traversal attempt: {filename}")
+        return None
+
+    if not resolved_path.is_file():
+        return None
+
+    return file_path
 
 
 @dataclass
@@ -592,7 +658,7 @@ def get_artifact_info(task_id: str) -> ArtifactInfo:
 
     if exists:
         try:
-            file_count = sum(1 for f in staging_dir.iterdir() if f.is_file())
+            file_count = len(_iter_staging_files(staging_dir))
         except Exception as e:
             logger.debug(f"Failed to count files in {staging_dir}: {e}")
             file_count = 0
