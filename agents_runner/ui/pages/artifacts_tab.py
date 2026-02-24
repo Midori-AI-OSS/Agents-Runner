@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QEvent, Qt, QTimer
@@ -160,6 +161,7 @@ class ArtifactsTab(QWidget):
         self._artifact_list.setSpacing(4)
         self._artifact_list.currentRowChanged.connect(self._on_selection_changed)
         self._artifact_list.itemClicked.connect(self._on_item_clicked)
+        self._artifact_list.itemDoubleClicked.connect(self._on_item_double_clicked)
 
         left_layout.addLayout(list_header)
         self._breadcrumb = BreadcrumbBar()
@@ -345,6 +347,89 @@ class ArtifactsTab(QWidget):
             node = self._get_folder_node(self._current_folder_path)
         return node
 
+    def _artifact_modified_at(
+        self, artifact: ArtifactMeta | StagingArtifactMeta
+    ) -> datetime | None:
+        if isinstance(artifact, StagingArtifactMeta):
+            return artifact.modified_at
+        try:
+            return datetime.fromisoformat(artifact.encrypted_at)
+        except Exception:
+            return None
+
+    def _summarize_folder(
+        self, node: _FolderNode
+    ) -> tuple[int, int, int, datetime | None, list[str]]:
+        folder_count = 0
+        file_count = 0
+        total_size = 0
+        latest_modified: datetime | None = None
+        samples: list[str] = []
+
+        def walk(current: _FolderNode, base: str) -> None:
+            nonlocal folder_count, file_count, total_size, latest_modified, samples
+
+            for artifact in sorted(
+                current.files,
+                key=lambda entry: Path(self._artifact_relative_path(entry)).name.lower(),
+            ):
+                file_count += 1
+                total_size += int(artifact.size_bytes)
+                modified = self._artifact_modified_at(artifact)
+                if modified and (
+                    latest_modified is None or modified > latest_modified
+                ):
+                    latest_modified = modified
+                if len(samples) < 5:
+                    filename = Path(self._artifact_relative_path(artifact)).name
+                    samples.append(f"{base}/{filename}" if base else filename)
+
+            for folder_name in sorted(current.folders.keys(), key=str.lower):
+                folder_count += 1
+                child = current.folders[folder_name]
+                child_base = f"{base}/{folder_name}" if base else folder_name
+                walk(child, child_base)
+
+        walk(node, "")
+        return folder_count, file_count, total_size, latest_modified, samples
+
+    def _show_folder_preview(self, folder_path: str) -> None:
+        node = self._get_folder_node(folder_path)
+        if node is None:
+            return
+
+        folder_count, file_count, total_size, latest_modified, samples = (
+            self._summarize_folder(node)
+        )
+        latest_text = (
+            format_timestamp(latest_modified.isoformat())
+            if latest_modified is not None
+            else "—"
+        )
+        sample_text = "\n".join(samples) if samples else "—"
+
+        header = node.name if folder_path else "Artifacts"
+        summary = (
+            f"{header}\n\n"
+            f"Files: {file_count}\n"
+            f"Folders: {folder_count}\n"
+            f"Total size: {format_size(total_size)}\n"
+            f"Last modified: {latest_text}\n\n"
+            f"Sample files:\n{sample_text}"
+        )
+
+        self._preview_area.show()
+        self._preview_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self._preview_label.setText(summary)
+        self._preview_label.show()
+        self._thumbnail.hide()
+        self._text_preview.hide()
+        if self._preview_loader:
+            self._preview_loader.thumbnail_original = None
+        self._btn_open.setEnabled(False)
+        self._btn_edit.setEnabled(False)
+        self._btn_download.setEnabled(False)
+
     def _update_breadcrumb(self) -> None:
         parts = [p for p in self._current_folder_path.split("/") if p]
         segments: list[tuple[str, str]] = [("Artifacts", "")]
@@ -367,6 +452,11 @@ class ArtifactsTab(QWidget):
         self._update_artifact_list()
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        data = item.data(Qt.UserRole)
+        if isinstance(data, FolderListItem):
+            self._show_folder_preview(data.path)
+
+    def _on_item_double_clicked(self, item: QListWidgetItem) -> None:
         data = item.data(Qt.UserRole)
         if isinstance(data, FolderListItem):
             self._current_folder_path = data.path
@@ -618,6 +708,9 @@ class ArtifactsTab(QWidget):
             self._btn_download.setEnabled(False)
 
         self._suppress_selection = False
+        current_row = self._artifact_list.currentRow()
+        if current_row >= 0:
+            self._on_selection_changed(current_row)
 
     def _on_selection_changed(self, current_row: int) -> None:
         if self._suppress_selection:
@@ -638,7 +731,10 @@ class ArtifactsTab(QWidget):
             return
 
         item_data = item.data(Qt.UserRole)
-        if isinstance(item_data, FolderListItem) or item_data is None:
+        if isinstance(item_data, FolderListItem):
+            self._show_folder_preview(item_data.path)
+            return
+        if item_data is None:
             self._preview_area.hide()
             self._btn_open.setEnabled(False)
             self._btn_edit.setEnabled(False)
@@ -653,6 +749,7 @@ class ArtifactsTab(QWidget):
         self._thumbnail.hide()
         self._text_preview.hide()
         self._preview_label.show()
+        self._preview_label.setAlignment(Qt.AlignCenter)
         if self._preview_loader:
             self._preview_loader.thumbnail_original = None
 
