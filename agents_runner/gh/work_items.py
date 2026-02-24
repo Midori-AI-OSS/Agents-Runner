@@ -54,6 +54,11 @@ class GitHubWorkItem:
     updated_at: str
     body: str = ""
     is_draft: bool = False
+    head_ref: str = ""
+    base_ref: str = ""
+    head_repo_owner: str = ""
+    head_repo_name: str = ""
+    is_cross_repo: bool = False
 
 
 @dataclass(frozen=True)
@@ -191,6 +196,43 @@ def _parse_work_item(item_type: str, raw: object) -> GitHubWorkItem | None:
     if raw_author is not None:
         author = _safe_text(raw_author.get("login"))
 
+    head_ref = ""
+    base_ref = ""
+    head_repo_owner = ""
+    head_repo_name = ""
+    is_cross_repo = False
+    if item_type == "pr":
+        head_ref = _safe_text(raw_dict.get("headRefName"))
+        base_ref = _safe_text(raw_dict.get("baseRefName"))
+        is_cross_repo = bool(raw_dict.get("isCrossRepository") or False)
+
+        head_repo_owner_data = raw_dict.get("headRepositoryOwner")
+        if isinstance(head_repo_owner_data, str):
+            head_repo_owner = _safe_text(head_repo_owner_data)
+        else:
+            owner_dict = _as_object_dict(head_repo_owner_data)
+            if owner_dict is not None:
+                head_repo_owner = _safe_text(owner_dict.get("login"))
+
+        head_repo_data = raw_dict.get("headRepository")
+        if isinstance(head_repo_data, str):
+            head_repo_text = _safe_text(head_repo_data)
+            if "/" in head_repo_text:
+                owner_part, name_part = head_repo_text.split("/", 1)
+                if not head_repo_owner:
+                    head_repo_owner = _safe_text(owner_part)
+                head_repo_name = _safe_text(name_part)
+            else:
+                head_repo_name = head_repo_text
+        else:
+            repo_dict = _as_object_dict(head_repo_data)
+            if repo_dict is not None:
+                head_repo_name = _safe_text(repo_dict.get("name"))
+                if not head_repo_owner:
+                    repo_owner = _as_object_dict(repo_dict.get("owner"))
+                    if repo_owner is not None:
+                        head_repo_owner = _safe_text(repo_owner.get("login"))
+
     return GitHubWorkItem(
         item_type=item_type,
         number=number,
@@ -202,6 +244,11 @@ def _parse_work_item(item_type: str, raw: object) -> GitHubWorkItem | None:
         created_at=_safe_text(raw_dict.get("createdAt")),
         updated_at=_safe_text(raw_dict.get("updatedAt")),
         is_draft=bool(raw_dict.get("isDraft") or False),
+        head_ref=head_ref,
+        base_ref=base_ref,
+        head_repo_owner=head_repo_owner,
+        head_repo_name=head_repo_name,
+        is_cross_repo=is_cross_repo,
     )
 
 
@@ -231,7 +278,10 @@ def list_open_pull_requests(
             "--limit",
             str(max(1, int(limit))),
             "--json",
-            "number,title,body,state,url,author,createdAt,updatedAt,isDraft",
+            (
+                "number,title,body,state,url,author,createdAt,updatedAt,isDraft,"
+                "headRefName,baseRefName,isCrossRepository,headRepository,headRepositoryOwner"
+            ),
         ],
         timeout_s=45.0,
     )

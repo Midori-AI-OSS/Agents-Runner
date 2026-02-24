@@ -22,6 +22,8 @@ from agents_runner.gh.task_plan import (
     plan_repo_task,
     prepare_branch_for_task,
 )
+from agents_runner.gh.process import require_ok
+from agents_runner.gh.process import run_gh
 from agents_runner.log_format import format_log
 
 __all__ = [
@@ -69,6 +71,8 @@ def prepare_github_repo_for_task(
     *,
     task_id: str,
     base_branch: str | None = None,
+    pr_head_ref: str | None = None,
+    pr_base_ref: str | None = None,
     prefer_gh: bool = True,
     recreate_if_needed: bool = True,
     on_log: Callable[[str], None] | None = None,
@@ -168,6 +172,95 @@ def prepare_github_repo_for_task(
                     )
                 )
                 return result
+
+            pr_head = str(pr_head_ref or "").strip()
+            pr_base = str(pr_base_ref or "").strip()
+            if pr_head:
+                repo_root = git_repo_root(dest_dir) or dest_dir
+                current_branch = git_current_branch(repo_root)
+                if current_branch and current_branch == pr_head:
+                    return {
+                        "repo_root": repo_root,
+                        "base_branch": pr_base or str(base_branch or ""),
+                        "branch": pr_head,
+                    }
+                if not git_is_clean(repo_root):
+                    _log(
+                        format_log(
+                            "gh",
+                            "branch",
+                            "WARN",
+                            "repo has uncommitted changes; skipping PR branch checkout",
+                        )
+                    )
+                    return {
+                        "repo_root": repo_root,
+                        "base_branch": pr_base or str(base_branch or ""),
+                        "branch": current_branch or "",
+                    }
+                try:
+                    _log(
+                        format_log(
+                            "gh",
+                            "branch",
+                            "INFO",
+                            f"fetching PR head branch {pr_head}",
+                        )
+                    )
+                    fetch_proc = run_gh(
+                        ["git", "-C", repo_root, "fetch", "origin", pr_head],
+                        timeout_s=30.0,
+                    )
+                    require_ok(
+                        fetch_proc,
+                        args=["git", "-C", repo_root, "fetch", "origin", pr_head],
+                    )
+                    checkout_proc = run_gh(
+                        [
+                            "git",
+                            "-C",
+                            repo_root,
+                            "checkout",
+                            "-B",
+                            pr_head,
+                            f"origin/{pr_head}",
+                        ],
+                        timeout_s=30.0,
+                    )
+                    require_ok(
+                        checkout_proc,
+                        args=[
+                            "git",
+                            "-C",
+                            repo_root,
+                            "checkout",
+                            "-B",
+                            pr_head,
+                            f"origin/{pr_head}",
+                        ],
+                    )
+                    _log(
+                        format_log(
+                            "gh",
+                            "branch",
+                            "INFO",
+                            f"checked out PR head branch {pr_head}",
+                        )
+                    )
+                    return {
+                        "repo_root": repo_root,
+                        "base_branch": pr_base or str(base_branch or ""),
+                        "branch": pr_head,
+                    }
+                except Exception as exc:
+                    _log(
+                        format_log(
+                            "gh",
+                            "branch",
+                            "WARN",
+                            f"failed to checkout PR head branch {pr_head}: {exc}",
+                        )
+                    )
 
             plan = plan_repo_task(
                 dest_dir,

@@ -258,7 +258,7 @@ class _GitHubWorkSkeletonRow(QWidget):
 
 class GitHubWorkListPage(QWidget):
     environment_changed = Signal(str)
-    prompt_append_requested = Signal(str, str)
+    prompt_append_requested = Signal(str, str, object)
 
     def __init__(
         self,
@@ -561,7 +561,7 @@ class GitHubWorkListPage(QWidget):
         )
         dialog.prompt_requested.connect(
             lambda prompt: self.prompt_append_requested.emit(
-                self._active_env_id, prompt
+                self._active_env_id, prompt, None
             )
         )
         dialog.exec()
@@ -575,6 +575,17 @@ class GitHubWorkListPage(QWidget):
         )
         repo_owner = str(getattr(repo_context, "repo_owner", "") or "")
         repo_name = str(getattr(repo_context, "repo_name", "") or "")
+        pr_context: dict[str, object] | None = None
+        if item.item_type == "pr":
+            pr_context = {
+                "repo_owner": repo_owner,
+                "repo_name": repo_name,
+                "pr_head_ref": str(getattr(item, "head_ref", "") or ""),
+                "pr_base_ref": str(getattr(item, "base_ref", "") or ""),
+                "pr_head_repo_owner": str(getattr(item, "head_repo_owner", "") or ""),
+                "pr_head_repo_name": str(getattr(item, "head_repo_name", "") or ""),
+                "pr_is_cross_repo": bool(getattr(item, "is_cross_repo", False)),
+            }
 
         prompt = self._build_task_prompt(
             item_type=item.item_type,
@@ -589,7 +600,7 @@ class GitHubWorkListPage(QWidget):
         if not prompt:
             return
 
-        self.prompt_append_requested.emit(self._active_env_id, prompt)
+        self.prompt_append_requested.emit(self._active_env_id, prompt, pr_context)
 
     def _build_task_prompt(
         self,

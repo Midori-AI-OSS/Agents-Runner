@@ -493,6 +493,11 @@ class GitHubWorkCoordinator(QObject):
             mention_url = str(review.get("mention_url") or "")
             mention_author = str(review.get("mention_author") or "")
             mention_created_at = str(review.get("mention_created_at") or "")
+            pr_head_ref = str(review.get("pr_head_ref") or "")
+            pr_base_ref = str(review.get("pr_base_ref") or "")
+            pr_head_repo_owner = str(review.get("pr_head_repo_owner") or "")
+            pr_head_repo_name = str(review.get("pr_head_repo_name") or "")
+            pr_is_cross_repo = bool(review.get("pr_is_cross_repo") or False)
 
             prompt = self._build_task_prompt(
                 item_type=item_type,
@@ -518,6 +523,11 @@ class GitHubWorkCoordinator(QObject):
                 "mention_author": mention_author,
                 "mention_created_at": mention_created_at,
                 "mention_key": mention_key,
+                "pr_head_ref": pr_head_ref,
+                "pr_base_ref": pr_base_ref,
+                "pr_head_repo_owner": pr_head_repo_owner,
+                "pr_head_repo_name": pr_head_repo_name,
+                "pr_is_cross_repo": pr_is_cross_repo,
             }
             self.auto_review_requested.emit(env_id, payload)
 
@@ -546,6 +556,11 @@ class GitHubWorkCoordinator(QObject):
 
         results: list[dict[str, object]] = []
         for item in items:
+            pr_head_ref = str(getattr(item, "head_ref", "") or "")
+            pr_base_ref = str(getattr(item, "base_ref", "") or "")
+            pr_head_repo_owner = str(getattr(item, "head_repo_owner", "") or "")
+            pr_head_repo_name = str(getattr(item, "head_repo_name", "") or "")
+            pr_is_cross_repo = bool(getattr(item, "is_cross_repo", False))
             item_key = self._mention_item_key(
                 repo_owner=repo_owner,
                 repo_name=repo_name,
@@ -759,6 +774,11 @@ class GitHubWorkCoordinator(QObject):
                         "number": item.number,
                         "url": item.url,
                         "title": item.title,
+                        "pr_head_ref": pr_head_ref,
+                        "pr_base_ref": pr_base_ref,
+                        "pr_head_repo_owner": pr_head_repo_owner,
+                        "pr_head_repo_name": pr_head_repo_name,
+                        "pr_is_cross_repo": pr_is_cross_repo,
                         "mention_key": mention_key,
                         "trigger_source": source,
                         "mention_text": candidate.get("mention_text", ""),
