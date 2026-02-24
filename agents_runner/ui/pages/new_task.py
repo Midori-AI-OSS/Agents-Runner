@@ -592,11 +592,15 @@ class NewTaskPage(QWidget):
 
     def _apply_run_button_tints(self, base_tint: QColor | None) -> None:
         if self._agent_override:
+            self._run_interactive.set_glass_enabled(True)
+            self._run_agent.set_glass_enabled(True)
             override_tint = self._override_tint_color()
             self._run_interactive.set_tint_color(override_tint)
             self._run_agent.set_tint_color(override_tint)
             self._raise_override_buttons()
             return
+        self._run_interactive.set_glass_enabled(False)
+        self._run_agent.set_glass_enabled(False)
         self._run_interactive.set_tint_color(base_tint)
         self._run_agent.set_tint_color(base_tint)
         self._tint_overlay.raise_()
