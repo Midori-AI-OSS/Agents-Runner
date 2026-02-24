@@ -34,10 +34,7 @@ def build_default_request_line(
             "Review GitHub pull request "
             f"#{int(number)} for repository {repo_owner}/{repo_name}."
         )
-    return (
-        "Fix GitHub issue "
-        f"#{int(number)} for repository {repo_owner}/{repo_name}."
-    )
+    return f"Fix GitHub issue #{int(number)} for repository {repo_owner}/{repo_name}."
 
 
 def build_primary_request(*, mention_text: str, fallback: str) -> str:

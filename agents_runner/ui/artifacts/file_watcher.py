@@ -228,7 +228,9 @@ class ArtifactFileWatcher(QObject):
             removed_dirs = watched_dirs - current_dirs
             if removed_dirs:
                 watcher.removePaths(list(removed_dirs))
-                logger.debug(f"Removed {len(removed_dirs)} deleted directories from watcher")
+                logger.debug(
+                    f"Removed {len(removed_dirs)} deleted directories from watcher"
+                )
 
         except Exception as e:
             logger.error(f"Failed to refresh watched directories: {e}")

@@ -57,6 +57,7 @@ class MainWindowTasksInteractiveMixin:
         env_id: str,
         terminal_id: str,
         base_branch: str,
+        agent_override: dict[str, str] | None,
         extra_preflight_script: str,
     ) -> None:
         if shutil.which("docker") is None:
@@ -133,8 +134,11 @@ class MainWindowTasksInteractiveMixin:
             # Update in-memory copy to persist across tab changes and reloads
             self._environments[env.env_id] = env
 
+        override = self._coerce_agent_override(agent_override)
+
         if (
-            env
+            not override
+            and env
             and env.agent_selection
             and str(getattr(env.agent_selection, "selection_mode", "") or "")
             .strip()
@@ -171,7 +175,20 @@ class MainWindowTasksInteractiveMixin:
 
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
-        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+        selected_cli_flags = ""
+        if override:
+            agent_cli = override.get("agent_cli", "")
+            auto_config_dir = self._resolve_override_config_dir(
+                override=override,
+                env=env,
+                settings=self._settings_data,
+            )
+            agent_instance_id = str(override.get("agent_id") or "").strip()
+            selected_cli_flags = str(override.get("cli_flags") or "").strip()
+            host_codex = auto_config_dir
+        elif (
+            env and env.agent_selection and getattr(env.agent_selection, "agents", None)
+        ):
             agent_cli, auto_config_dir, agent_instance_id = (
                 self._select_agent_instance_for_env(
                     env=env,
@@ -187,6 +204,8 @@ class MainWindowTasksInteractiveMixin:
             host_codex = auto_config_dir
         if not self._ensure_agent_config_dir(agent_cli, host_codex):
             return
+        if override and not agent_instance_id:
+            agent_instance_id = str(agent_cli or "").strip()
 
         agent_cli_args: list[str] = []
         if env and env.agent_cli_args.strip():
@@ -195,6 +214,13 @@ class MainWindowTasksInteractiveMixin:
             except ValueError as exc:
                 QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
                 return
+        if override and selected_cli_flags:
+            try:
+                override_args = shlex.split(selected_cli_flags)
+            except ValueError as exc:
+                QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
+                return
+            agent_cli_args = override_args + agent_cli_args
 
         # Build command with agent-specific handling
         raw_command = str(command or "").strip()

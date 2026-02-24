@@ -335,6 +335,11 @@ class MainWindowEnvironmentMixin:
             except Exception:
                 pass
 
+        env_agents = {
+            env_id: list(getattr(env_data.agent_selection, "agents", []) or [])
+            for env_id, env_data in self._environments.items()
+        }
+        self._new_task.set_environment_agents(env_agents)
         self._new_task.set_defaults(host_codex=host_codex)
         self._new_task.set_workspace_status(path=workdir, ready=ready, message=message)
         self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)
