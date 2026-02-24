@@ -1336,11 +1336,15 @@ class NewTaskPage(QWidget):
     def _format_env_agent_entry_label(inst: AgentInstance) -> str:
         agent_id = str(getattr(inst, "agent_id", "") or "").strip()
         agent_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or ""))
-        if agent_id and agent_cli:
-            return f"{agent_id} ({agent_cli})"
+        display_name = str(get_agent_display_name(agent_cli) or "").strip()
+        agent_id_label = ""
         if agent_id:
-            return agent_id
-        return agent_cli or "Unknown"
+            agent_id_label = f"{agent_id[:1].upper()}{agent_id[1:]}"
+        if agent_id_label and display_name:
+            return f"{agent_id_label} ({display_name})"
+        if agent_id_label:
+            return agent_id_label
+        return display_name or "Unknown"
 
     def _active_env_agent_entries(self) -> list[AgentInstance]:
         return list(self._env_agents.get(self._active_env_id, []) or [])
