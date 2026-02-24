@@ -104,6 +104,7 @@ class MainWindowTasksAgentMixin:
         host_codex: str,
         env_id: str,
         base_branch: str,
+        pr_context: dict[str, object] | None = None,
     ) -> str | None:
         if shutil.which("docker") is None:
             QMessageBox.critical(
@@ -457,6 +458,41 @@ class MainWindowTasksAgentMixin:
         task.gh_use_host_cli = use_host_gh
 
         desired_base = str(base_branch or "").strip()
+        pr_head_ref = ""
+        pr_base_ref = ""
+        pr_head_repo_owner = ""
+        pr_head_repo_name = ""
+        pr_is_cross_repo = False
+        pr_repo_owner = ""
+        pr_repo_name = ""
+        if pr_context:
+            pr_head_ref = str(pr_context.get("pr_head_ref") or "").strip()
+            pr_base_ref = str(pr_context.get("pr_base_ref") or "").strip()
+            pr_head_repo_owner = str(
+                pr_context.get("pr_head_repo_owner") or ""
+            ).strip()
+            pr_head_repo_name = str(pr_context.get("pr_head_repo_name") or "").strip()
+            pr_is_cross_repo = bool(pr_context.get("pr_is_cross_repo") or False)
+            pr_repo_owner = str(pr_context.get("repo_owner") or "").strip()
+            pr_repo_name = str(pr_context.get("repo_name") or "").strip()
+        if pr_base_ref and not desired_base:
+            desired_base = pr_base_ref
+        if pr_head_ref:
+            same_repo = True
+            if (
+                pr_head_repo_owner
+                and pr_head_repo_name
+                and pr_repo_owner
+                and pr_repo_name
+            ):
+                same_repo = (
+                    pr_head_repo_owner.lower() == pr_repo_owner.lower()
+                    and pr_head_repo_name.lower() == pr_repo_name.lower()
+                )
+            if pr_is_cross_repo or (
+                pr_head_repo_owner and pr_head_repo_name and not same_repo
+            ):
+                pr_head_ref = ""
 
         # Save the selected branch for cloned environments
         if env and env.workspace_type == WORKSPACE_CLONED and desired_base:
@@ -657,14 +693,18 @@ class MainWindowTasksAgentMixin:
                         task_branch = "(already created by runner)"
                         head_commit = "(set after clone)"
 
+                    context_prompt = github_context_prompt_instructions(
+                        repo_url=repo_url,
+                        repo_owner=repo_owner,
+                        repo_name=repo_name,
+                        base_branch=base_branch,
+                        task_branch=task_branch,
+                        head_commit=head_commit,
+                    )
+                    pr_prompt = pr_metadata_prompt_instructions(pr_container_path)
                     runner_prompt = insert_prompt_sections_before_user_prompt(
                         runner_prompt,
-                        [
-                            (
-                                f"{github_context_prompt_instructions(repo_url=repo_url, repo_owner=repo_owner, repo_name=repo_name, base_branch=base_branch, task_branch=task_branch, head_commit=head_commit)}"
-                                f"{pr_metadata_prompt_instructions(pr_container_path)}"
-                            )
-                        ],
+                        [f"{context_prompt}{pr_prompt}"],
                     )
                     # Clarify two-phase process for cloned repo environments
                     if workspace_type == WORKSPACE_CLONED:
@@ -728,6 +768,8 @@ class MainWindowTasksAgentMixin:
             gh_prefer_gh_cli=use_host_gh,
             gh_recreate_if_needed=True,
             gh_base_branch=desired_base or None,
+            gh_pr_head_ref=pr_head_ref or None,
+            gh_pr_base_ref=pr_base_ref or None,
             gh_context_file_path=gh_context_file,
         )
         task._runner_config = config

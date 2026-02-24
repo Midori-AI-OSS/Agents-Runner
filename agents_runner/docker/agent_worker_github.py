@@ -38,6 +38,8 @@ class GitHubOperations:
                 config.host_workdir,
                 task_id=config.task_id,
                 base_branch=config.gh_base_branch or None,
+                pr_head_ref=config.gh_pr_head_ref or None,
+                pr_base_ref=config.gh_pr_base_ref or None,
                 prefer_gh=config.gh_prefer_gh_cli,
                 recreate_if_needed=config.gh_recreate_if_needed,
                 on_log=on_log,

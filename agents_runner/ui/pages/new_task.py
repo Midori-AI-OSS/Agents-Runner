@@ -53,7 +53,7 @@ class NewTaskPage(QWidget):
     _BASE_BRANCH_LOADING_SENTINEL = "__loading__"
     _BASE_BRANCH_LOADING_DELAY_MS = 250
 
-    requested_run = Signal(str, str, str, str)
+    requested_run = Signal(str, str, str, str, object)
     requested_launch = Signal(str, str, str, str, str, str, str)
     back_requested = Signal()
     environment_changed = Signal(str)
@@ -105,6 +105,7 @@ class NewTaskPage(QWidget):
         self._pending_repo_branches_timer.timeout.connect(
             self._apply_pending_repo_branches_update
         )
+        self._pending_pr_context: dict[str, object] | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -204,7 +205,8 @@ class NewTaskPage(QWidget):
 
         self._command = QLineEdit("--sandbox danger-full-access")
         self._command.setPlaceholderText(
-            "Args for the Agent CLI (e.g. --sandbox danger-full-access or --add-dir …), or a full container command (e.g. bash)"
+            "Args for the Agent CLI (e.g. --sandbox danger-full-access or --add-dir "
+            "…), or a full container command (e.g. bash)"
         )
         # Hidden from UI but functionality preserved
         self._command.setVisible(False)
@@ -402,7 +404,9 @@ class NewTaskPage(QWidget):
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
 
-        self.requested_run.emit(prompt, host_codex, env_id, base_branch)
+        pr_context = self._pending_pr_context
+        self.requested_run.emit(prompt, host_codex, env_id, base_branch, pr_context)
+        self._pending_pr_context = None
 
     def _on_get_agent_help(self) -> None:
         if not self._workspace_ready:
@@ -1252,6 +1256,7 @@ class NewTaskPage(QWidget):
     def reset_for_new_run(self) -> None:
         self._prompt.setPlainText("")
         self._prompt.setFocus(Qt.OtherFocusReason)
+        self._pending_pr_context = None
 
     def append_prompt_text(self, text: str) -> None:
         addition = str(text or "").strip()
@@ -1268,6 +1273,9 @@ class NewTaskPage(QWidget):
         cursor.movePosition(QTextCursor.End)
         self._prompt.setTextCursor(cursor)
         self._prompt.setFocus(Qt.OtherFocusReason)
+
+    def set_pending_pr_context(self, context: dict[str, object] | None) -> None:
+        self._pending_pr_context = context if isinstance(context, dict) else None
 
     def focus_prompt(self) -> None:
         self._prompt.setFocus(Qt.OtherFocusReason)

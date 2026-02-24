@@ -122,6 +122,8 @@ class DockerPreflightWorker:
                         self._config.host_workdir,
                         task_id=self._config.task_id,
                         base_branch=self._config.gh_base_branch or None,
+                        pr_head_ref=self._config.gh_pr_head_ref or None,
+                        pr_base_ref=self._config.gh_pr_base_ref or None,
                         prefer_gh=self._config.gh_prefer_gh_cli,
                         recreate_if_needed=self._config.gh_recreate_if_needed,
                         on_log=self._on_log,

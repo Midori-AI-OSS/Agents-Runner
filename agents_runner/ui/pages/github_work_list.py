@@ -27,6 +27,8 @@ from agents_runner.environments import Environment
 from agents_runner.environments import resolve_environment_github_repo
 from agents_runner.gh.work_items import GitHubWorkItem
 from agents_runner.prompts import load_prompt
+from agents_runner.prompts.github_prompting import build_default_request_line
+from agents_runner.prompts.github_prompting import build_primary_request
 from agents_runner.ui.dialogs.github_workroom_dialog import GitHubWorkroomDialog
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.utils import stain_color
@@ -256,7 +258,7 @@ class _GitHubWorkSkeletonRow(QWidget):
 
 class GitHubWorkListPage(QWidget):
     environment_changed = Signal(str)
-    prompt_append_requested = Signal(str, str)
+    prompt_append_requested = Signal(str, str, object)
 
     def __init__(
         self,
@@ -559,7 +561,7 @@ class GitHubWorkListPage(QWidget):
         )
         dialog.prompt_requested.connect(
             lambda prompt: self.prompt_append_requested.emit(
-                self._active_env_id, prompt
+                self._active_env_id, prompt, None
             )
         )
         dialog.exec()
@@ -573,6 +575,17 @@ class GitHubWorkListPage(QWidget):
         )
         repo_owner = str(getattr(repo_context, "repo_owner", "") or "")
         repo_name = str(getattr(repo_context, "repo_name", "") or "")
+        pr_context: dict[str, object] | None = None
+        if item.item_type == "pr":
+            pr_context = {
+                "repo_owner": repo_owner,
+                "repo_name": repo_name,
+                "pr_head_ref": str(getattr(item, "head_ref", "") or ""),
+                "pr_base_ref": str(getattr(item, "base_ref", "") or ""),
+                "pr_head_repo_owner": str(getattr(item, "head_repo_owner", "") or ""),
+                "pr_head_repo_name": str(getattr(item, "head_repo_name", "") or ""),
+                "pr_is_cross_repo": bool(getattr(item, "is_cross_repo", False)),
+            }
 
         prompt = self._build_task_prompt(
             item_type=item.item_type,
@@ -581,14 +594,13 @@ class GitHubWorkListPage(QWidget):
             number=item.number,
             url=item.url,
             title=item.title,
-            trigger_source="manual",
-            mention_comment_id=0,
+            mention_text="",
         )
 
         if not prompt:
             return
 
-        self.prompt_append_requested.emit(self._active_env_id, prompt)
+        self.prompt_append_requested.emit(self._active_env_id, prompt, pr_context)
 
     def _build_task_prompt(
         self,
@@ -599,18 +611,19 @@ class GitHubWorkListPage(QWidget):
         number: int,
         url: str,
         title: str,
-        trigger_source: str,
-        mention_comment_id: int,
+        mention_text: str,
     ) -> str:
         normalized_item_type = str(item_type or "").strip().lower()
-        try:
-            parsed_mention_comment_id = int(mention_comment_id)
-        except Exception:
-            parsed_mention_comment_id = 0
-        mention_id = (
-            str(parsed_mention_comment_id) if parsed_mention_comment_id > 0 else ""
+        default_request = build_default_request_line(
+            item_type=normalized_item_type,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            number=number,
         )
-        source = str(trigger_source or "").strip().lower() or "manual"
+        primary_request = build_primary_request(
+            mention_text=mention_text,
+            fallback=default_request,
+        )
 
         if normalized_item_type == "pr":
             return load_prompt(
@@ -620,8 +633,7 @@ class GitHubWorkListPage(QWidget):
                 PR_NUMBER=number,
                 PR_URL=url,
                 PR_TITLE=title,
-                MENTION_COMMENT_ID=mention_id,
-                TRIGGER_SOURCE=source,
+                PRIMARY_REQUEST=primary_request,
             ).strip()
 
         return load_prompt(
@@ -631,8 +643,7 @@ class GitHubWorkListPage(QWidget):
             ISSUE_NUMBER=number,
             ISSUE_URL=url,
             ISSUE_TITLE=title,
-            MENTION_COMMENT_ID=mention_id,
-            TRIGGER_SOURCE=source,
+            PRIMARY_REQUEST=primary_request,
         ).strip()
 
     def _sync_refresh_visibility(self) -> None:

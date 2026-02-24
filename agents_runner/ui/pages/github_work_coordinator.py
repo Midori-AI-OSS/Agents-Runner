@@ -20,10 +20,16 @@ from agents_runner.gh.work_items import GitHubComment
 from agents_runner.gh.work_items import GitHubWorkItem
 from agents_runner.gh.work_items import add_issue_comment_reaction
 from agents_runner.gh.work_items import add_issue_reaction
+from agents_runner.gh.work_items import add_pull_request_review_comment_reaction
 from agents_runner.gh.work_items import list_issue_comments
 from agents_runner.gh.work_items import list_open_issues
 from agents_runner.gh.work_items import list_open_pull_requests
+from agents_runner.gh.work_items import list_pull_request_review_comments
+from agents_runner.gh.work_items import list_pull_request_reviews
 from agents_runner.prompts import load_prompt
+from agents_runner.prompts.github_prompting import build_default_request_line
+from agents_runner.prompts.github_prompting import build_primary_request
+from agents_runner.prompts.github_prompting import has_agentsnova_mention
 from agents_runner.ui.pages.github_trust import effective_trusted_users
 from midori_ai_logger import MidoriAiLogger
 
@@ -59,8 +65,7 @@ class GitHubWorkCoordinator(QObject):
         self._cache: dict[tuple[str, str], GitHubWorkCacheEntry] = {}
         self._inflight_keys: set[tuple[str, str]] = set()
 
-        self._auto_review_seen_comment_ids: set[int] = set()
-        self._auto_review_seen_item_mentions: set[str] = set()
+        self._auto_review_seen_mentions: set[str] = set()
         self._auto_review_emit_keys: set[str] = set()
 
         self._state_lock = threading.Lock()
@@ -457,10 +462,9 @@ class GitHubWorkCoordinator(QObject):
                 continue
 
             trigger_source = str(review.get("trigger_source") or "").strip().lower()
-            try:
-                mention_comment_id = int(review.get("mention_comment_id") or 0)
-            except Exception:
-                mention_comment_id = 0
+            mention_key = str(review.get("mention_key") or "").strip()
+            if not mention_key:
+                continue
 
             item_key = str(review.get("item_key") or "").strip()
             if not item_key:
@@ -473,26 +477,27 @@ class GitHubWorkCoordinator(QObject):
 
             emit_key = (
                 f"{repo_owner.strip().lower()}/{repo_name.strip().lower()}:"
-                f"{item_type}:{number}:{trigger_source}:{max(0, mention_comment_id)}"
+                f"{item_type}:{number}:{trigger_source}:{mention_key}"
             )
 
             with self._state_lock:
-                if mention_comment_id > 0 and (
-                    mention_comment_id in self._auto_review_seen_comment_ids
-                ):
-                    continue
-                if trigger_source == "body_mention" and (
-                    item_key in self._auto_review_seen_item_mentions
-                ):
+                if mention_key in self._auto_review_seen_mentions:
                     continue
                 if emit_key in self._auto_review_emit_keys:
                     continue
 
-                if mention_comment_id > 0:
-                    self._auto_review_seen_comment_ids.add(mention_comment_id)
-                if trigger_source == "body_mention":
-                    self._auto_review_seen_item_mentions.add(item_key)
+                self._auto_review_seen_mentions.add(mention_key)
                 self._auto_review_emit_keys.add(emit_key)
+
+            mention_text = str(review.get("mention_text") or "")
+            mention_url = str(review.get("mention_url") or "")
+            mention_author = str(review.get("mention_author") or "")
+            mention_created_at = str(review.get("mention_created_at") or "")
+            pr_head_ref = str(review.get("pr_head_ref") or "")
+            pr_base_ref = str(review.get("pr_base_ref") or "")
+            pr_head_repo_owner = str(review.get("pr_head_repo_owner") or "")
+            pr_head_repo_name = str(review.get("pr_head_repo_name") or "")
+            pr_is_cross_repo = bool(review.get("pr_is_cross_repo") or False)
 
             prompt = self._build_task_prompt(
                 item_type=item_type,
@@ -501,8 +506,7 @@ class GitHubWorkCoordinator(QObject):
                 number=number,
                 url=str(review.get("url") or "").strip(),
                 title=str(review.get("title") or "").strip(),
-                trigger_source=trigger_source,
-                mention_comment_id=mention_comment_id,
+                mention_text=mention_text,
             )
             if not prompt:
                 continue
@@ -513,7 +517,17 @@ class GitHubWorkCoordinator(QObject):
                 "item_type": item_type,
                 "number": number,
                 "trigger_source": trigger_source,
-                "mention_comment_id": mention_comment_id,
+                "mention_source": trigger_source,
+                "mention_text": mention_text,
+                "mention_url": mention_url,
+                "mention_author": mention_author,
+                "mention_created_at": mention_created_at,
+                "mention_key": mention_key,
+                "pr_head_ref": pr_head_ref,
+                "pr_base_ref": pr_base_ref,
+                "pr_head_repo_owner": pr_head_repo_owner,
+                "pr_head_repo_name": pr_head_repo_name,
+                "pr_is_cross_repo": pr_is_cross_repo,
             }
             self.auto_review_requested.emit(env_id, payload)
 
@@ -538,18 +552,21 @@ class GitHubWorkCoordinator(QObject):
         )
 
         with self._state_lock:
-            queued_snapshot = set(self._auto_review_seen_comment_ids)
-            queued_item_snapshot = set(self._auto_review_seen_item_mentions)
+            queued_snapshot = set(self._auto_review_seen_mentions)
 
         results: list[dict[str, object]] = []
         for item in items:
+            pr_head_ref = str(getattr(item, "head_ref", "") or "")
+            pr_base_ref = str(getattr(item, "base_ref", "") or "")
+            pr_head_repo_owner = str(getattr(item, "head_repo_owner", "") or "")
+            pr_head_repo_name = str(getattr(item, "head_repo_name", "") or "")
+            pr_is_cross_repo = bool(getattr(item, "is_cross_repo", False))
             item_key = self._mention_item_key(
                 repo_owner=repo_owner,
                 repo_name=repo_name,
                 item_type=item.item_type,
                 number=item.number,
             )
-            queued_for_item = False
             comments = list_issue_comments(
                 repo_owner,
                 repo_name,
@@ -560,41 +577,196 @@ class GitHubWorkCoordinator(QObject):
                 marker_created_at_s,
                 marker_comment_id,
             ) = self._latest_marker_checkpoint(comments)
-            ordered_comments = sorted(
-                comments,
-                key=lambda comment: (
-                    self._parse_iso_timestamp_s(comment.created_at) or 0.0,
-                    max(0, int(getattr(comment, "comment_id", 0) or 0)),
+            candidates: list[dict[str, object]] = []
+
+            def _add_comment_candidate(
+                comment: GitHubComment,
+                *,
+                source: str,
+                allow_id_compare: bool,
+            ) -> None:
+                if not self._is_trusted_comment_author(comment, trusted_users):
+                    return
+                if not has_agentsnova_mention(comment.body):
+                    return
+                mention_created_at = str(comment.created_at or "")
+                mention_created_at_s = self._parse_iso_timestamp_s(mention_created_at)
+                mention_comment_id = comment.comment_id if allow_id_compare else 0
+                if not self._is_mention_newer_than_marker(
+                    mention_created_at_s=mention_created_at_s,
+                    mention_comment_id=mention_comment_id,
+                    marker_created_at_s=marker_created_at_s,
+                    marker_comment_id=marker_comment_id,
+                ):
+                    return
+                mention_key = f"{source}:{comment.comment_id}"
+                candidates.append(
+                    {
+                        "source": source,
+                        "mention_key": mention_key,
+                        "mention_text": str(comment.body or ""),
+                        "mention_author": str(comment.author or ""),
+                        "mention_created_at": mention_created_at,
+                        "mention_url": str(comment.url or ""),
+                        "created_at_s": mention_created_at_s or 0.0,
+                        "sort_id": comment.comment_id,
+                        "comment": comment,
+                    }
+                )
+
+            for comment in comments:
+                _add_comment_candidate(
+                    comment,
+                    source="issue_comment",
+                    allow_id_compare=True,
+                )
+
+            if item.item_type == "pr":
+                review_comments = list_pull_request_review_comments(
+                    repo_owner,
+                    repo_name,
+                    pull_number=item.number,
+                    limit=100,
+                )
+                for comment in review_comments:
+                    _add_comment_candidate(
+                        comment,
+                        source="review_comment",
+                        allow_id_compare=False,
+                    )
+
+                review_bodies = list_pull_request_reviews(
+                    repo_owner,
+                    repo_name,
+                    pull_number=item.number,
+                    limit=100,
+                )
+                for review in review_bodies:
+                    author = str(review.author or "").strip().lower()
+                    if not author or author not in trusted_users:
+                        continue
+                    if not has_agentsnova_mention(review.body):
+                        continue
+                    mention_created_at = str(review.submitted_at or "")
+                    mention_created_at_s = self._parse_iso_timestamp_s(
+                        mention_created_at
+                    )
+                    if not self._is_mention_newer_than_marker(
+                        mention_created_at_s=mention_created_at_s,
+                        mention_comment_id=0,
+                        marker_created_at_s=marker_created_at_s,
+                        marker_comment_id=marker_comment_id,
+                    ):
+                        continue
+                    mention_key = f"review_body:{review.review_id}"
+                    candidates.append(
+                        {
+                            "source": "review_body",
+                            "mention_key": mention_key,
+                            "mention_text": str(review.body or ""),
+                            "mention_author": str(review.author or ""),
+                            "mention_created_at": mention_created_at,
+                            "mention_url": str(review.url or ""),
+                            "created_at_s": mention_created_at_s or 0.0,
+                            "sort_id": review.review_id,
+                        }
+                    )
+
+            body_text = str(getattr(item, "body", "") or "")
+            title_text = str(getattr(item, "title", "") or "")
+            body_has_mention = has_agentsnova_mention(body_text)
+            title_has_mention = has_agentsnova_mention(title_text)
+            if body_has_mention or title_has_mention:
+                if self._is_trusted_item_author(item=item, trusted_users=trusted_users):
+                    mention_text = body_text if body_has_mention else title_text
+                    updated_at = str(getattr(item, "updated_at", "") or "")
+                    created_at = str(getattr(item, "created_at", "") or "")
+                    mention_created_at = updated_at or created_at
+                    mention_created_at_s = self._parse_iso_timestamp_s(
+                        mention_created_at
+                    )
+                    if self._is_mention_newer_than_marker(
+                        mention_created_at_s=mention_created_at_s,
+                        mention_comment_id=0,
+                        marker_created_at_s=marker_created_at_s,
+                        marker_comment_id=marker_comment_id,
+                    ):
+                        source = "pr_body" if item.item_type == "pr" else "issue_body"
+                        mention_key = f"{source}:{item_key}"
+                        mention_author = str(getattr(item, "author", "") or "")
+                        candidates.append(
+                            {
+                                "source": source,
+                                "mention_key": mention_key,
+                                "mention_text": str(mention_text or ""),
+                                "mention_author": mention_author,
+                                "mention_created_at": mention_created_at,
+                                "mention_url": str(item.url or ""),
+                                "created_at_s": mention_created_at_s or 0.0,
+                                "sort_id": item.number,
+                            }
+                        )
+
+            if not candidates:
+                continue
+
+            ordered_candidates = sorted(
+                candidates,
+                key=lambda candidate: (
+                    float(candidate.get("created_at_s", 0.0) or 0.0),
+                    int(candidate.get("sort_id", 0) or 0),
                 ),
                 reverse=True,
             )
 
-            for comment in ordered_comments:
-                if not self._is_trusted_comment_author(comment, trusted_users):
+            for candidate in ordered_candidates:
+                mention_key = str(candidate.get("mention_key") or "").strip()
+                if not mention_key:
                     continue
-                body = str(comment.body or "").lower()
-                if "@agentsnova" not in body:
+                if mention_key in queued_snapshot:
                     continue
-                mention_created_at_s = self._parse_iso_timestamp_s(comment.created_at)
-                if not self._is_mention_newer_than_marker(
-                    mention_created_at_s=mention_created_at_s,
-                    mention_comment_id=comment.comment_id,
-                    marker_created_at_s=marker_created_at_s,
-                    marker_comment_id=marker_comment_id,
-                ):
-                    continue
-                if comment.comment_id in queued_snapshot:
-                    continue
-                if auto_reactions_enabled and self._can_apply_reaction(comment=comment):
-                    try:
-                        add_issue_comment_reaction(
-                            repo_owner,
-                            repo_name,
-                            comment_id=comment.comment_id,
-                            reaction="eyes",
-                        )
-                    except Exception:
-                        pass
+
+                source = str(candidate.get("source") or "").strip().lower()
+                comment = candidate.get("comment")
+                if auto_reactions_enabled:
+                    if (
+                        source == "issue_comment"
+                        and isinstance(comment, GitHubComment)
+                        and self._can_apply_reaction(comment=comment)
+                    ):
+                        try:
+                            add_issue_comment_reaction(
+                                repo_owner,
+                                repo_name,
+                                comment_id=comment.comment_id,
+                                reaction="eyes",
+                            )
+                        except Exception:
+                            pass
+                    if (
+                        source == "review_comment"
+                        and isinstance(comment, GitHubComment)
+                        and self._can_apply_reaction(comment=comment)
+                    ):
+                        try:
+                            add_pull_request_review_comment_reaction(
+                                repo_owner,
+                                repo_name,
+                                comment_id=comment.comment_id,
+                                reaction="eyes",
+                            )
+                        except Exception:
+                            pass
+                    if source in {"pr_body", "issue_body"}:
+                        try:
+                            add_issue_reaction(
+                                repo_owner,
+                                repo_name,
+                                issue_number=item.number,
+                                reaction="eyes",
+                            )
+                        except Exception:
+                            pass
 
                 results.append(
                     {
@@ -602,52 +774,24 @@ class GitHubWorkCoordinator(QObject):
                         "number": item.number,
                         "url": item.url,
                         "title": item.title,
-                        "mention_comment_id": comment.comment_id,
-                        "trigger_source": "comment_mention",
+                        "pr_head_ref": pr_head_ref,
+                        "pr_base_ref": pr_base_ref,
+                        "pr_head_repo_owner": pr_head_repo_owner,
+                        "pr_head_repo_name": pr_head_repo_name,
+                        "pr_is_cross_repo": pr_is_cross_repo,
+                        "mention_key": mention_key,
+                        "trigger_source": source,
+                        "mention_text": candidate.get("mention_text", ""),
+                        "mention_author": candidate.get("mention_author", ""),
+                        "mention_created_at": candidate.get("mention_created_at", ""),
+                        "mention_url": candidate.get("mention_url", ""),
                         "item_key": item_key,
                     }
                 )
-                queued_for_item = True
+                queued_snapshot.add(mention_key)
                 if len(results) >= 3:
                     return results
                 break
-
-            if queued_for_item:
-                continue
-
-            if item_key in queued_item_snapshot:
-                continue
-
-            if not self._item_has_agentsnova_mention(item):
-                continue
-            if not self._is_trusted_item_author(item=item, trusted_users=trusted_users):
-                continue
-            if marker_created_at_s is not None or marker_comment_id > 0:
-                continue
-            if auto_reactions_enabled:
-                try:
-                    add_issue_reaction(
-                        repo_owner,
-                        repo_name,
-                        issue_number=item.number,
-                        reaction="eyes",
-                    )
-                except Exception:
-                    pass
-            results.append(
-                {
-                    "item_type": item.item_type,
-                    "number": item.number,
-                    "url": item.url,
-                    "title": item.title,
-                    "mention_comment_id": 0,
-                    "trigger_source": "body_mention",
-                    "item_key": item_key,
-                }
-            )
-            queued_item_snapshot.add(item_key)
-            if len(results) >= 3:
-                return results
 
         return results
 
@@ -760,12 +904,6 @@ class GitHubWorkCoordinator(QObject):
         return comment.reactions.eyes <= 0
 
     @staticmethod
-    def _item_has_agentsnova_mention(item: GitHubWorkItem) -> bool:
-        body = str(getattr(item, "body", "") or "").strip().lower()
-        title = str(getattr(item, "title", "") or "").strip().lower()
-        return "@agentsnova" in body or "@agentsnova" in title
-
-    @staticmethod
     def _normalize_item_type(value: object) -> str:
         normalized = str(value or "").strip().lower()
         return "pr" if normalized == "pr" else "issue"
@@ -801,18 +939,19 @@ class GitHubWorkCoordinator(QObject):
         number: int,
         url: str,
         title: str,
-        trigger_source: str,
-        mention_comment_id: int,
+        mention_text: str,
     ) -> str:
         normalized_item_type = str(item_type or "").strip().lower()
-        try:
-            parsed_mention_comment_id = int(mention_comment_id)
-        except Exception:
-            parsed_mention_comment_id = 0
-        mention_id = (
-            str(parsed_mention_comment_id) if parsed_mention_comment_id > 0 else ""
+        default_request = build_default_request_line(
+            item_type=normalized_item_type,
+            repo_owner=repo_owner,
+            repo_name=repo_name,
+            number=number,
         )
-        source = str(trigger_source or "").strip().lower() or "manual"
+        primary_request = build_primary_request(
+            mention_text=mention_text,
+            fallback=default_request,
+        )
 
         if normalized_item_type == "pr":
             return load_prompt(
@@ -822,8 +961,7 @@ class GitHubWorkCoordinator(QObject):
                 PR_NUMBER=number,
                 PR_URL=url,
                 PR_TITLE=title,
-                MENTION_COMMENT_ID=mention_id,
-                TRIGGER_SOURCE=source,
+                PRIMARY_REQUEST=primary_request,
             ).strip()
 
         return load_prompt(
@@ -833,8 +971,7 @@ class GitHubWorkCoordinator(QObject):
             ISSUE_NUMBER=number,
             ISSUE_URL=url,
             ISSUE_TITLE=title,
-            MENTION_COMMENT_ID=mention_id,
-            TRIGGER_SOURCE=source,
+            PRIMARY_REQUEST=primary_request,
         ).strip()
 
     def _eligible_poll_environment_ids(self) -> list[str]:

@@ -594,11 +594,15 @@ class TasksPage(QWidget):
         if focus_prompt:
             self._new_task.focus_prompt()
 
-    def _append_prompt_to_new_task(self, env_id: str, prompt: str) -> None:
+    def _append_prompt_to_new_task(
+        self, env_id: str, prompt: str, pr_context: object
+    ) -> None:
         target_env_id = str(env_id or "").strip()
         if target_env_id:
             self._new_task.set_environment_id(target_env_id)
 
+        context = pr_context if isinstance(pr_context, dict) else None
+        self._new_task.set_pending_pr_context(context)
         self._new_task.append_prompt_text(prompt)
         self.show_new_task_tab(focus_prompt=True)
 

@@ -24,18 +24,60 @@ class MainWindowAutoReviewMixin:
         if not selected_env_id:
             return
 
-        resolved_base_branch = self._resolve_auto_review_base_branch(
-            env_id=selected_env_id
+        item_type = str(payload_dict.get("item_type") or "").strip().lower()
+        is_pr = item_type == "pr"
+        repo_owner = str(payload_dict.get("repo_owner") or "").strip()
+        repo_name = str(payload_dict.get("repo_name") or "").strip()
+        pr_head_ref = str(payload_dict.get("pr_head_ref") or "").strip()
+        pr_base_ref = str(payload_dict.get("pr_base_ref") or "").strip()
+        pr_head_repo_owner = str(payload_dict.get("pr_head_repo_owner") or "").strip()
+        pr_head_repo_name = str(payload_dict.get("pr_head_repo_name") or "").strip()
+        pr_is_cross_repo = bool(payload_dict.get("pr_is_cross_repo") or False)
+
+        same_repo = True
+        if pr_head_repo_owner and pr_head_repo_name:
+            same_repo = (
+                pr_head_repo_owner.strip().lower() == repo_owner.strip().lower()
+                and pr_head_repo_name.strip().lower() == repo_name.strip().lower()
+            )
+        is_cross_repo = pr_is_cross_repo or (
+            pr_head_repo_owner and pr_head_repo_name and not same_repo
         )
-        if resolved_base_branch is None:
-            return
+
+        resolved_base_branch = ""
+        if is_pr and pr_base_ref:
+            resolved_base_branch = pr_base_ref
+        else:
+            resolved_base_branch = self._resolve_auto_review_base_branch(
+                env_id=selected_env_id
+            )
+            if resolved_base_branch is None:
+                return
 
         host_codex = str(self._settings_data.get("host_codex_dir") or "").strip()
+        pr_context: dict[str, object] | None = None
+        if is_pr:
+            pr_context = {
+                "repo_owner": repo_owner,
+                "repo_name": repo_name,
+                "pr_head_ref": pr_head_ref,
+                "pr_base_ref": pr_base_ref,
+                "pr_head_repo_owner": pr_head_repo_owner,
+                "pr_head_repo_name": pr_head_repo_name,
+                "pr_is_cross_repo": is_cross_repo,
+            }
         task_id = self._start_task_from_ui(
-            prompt, host_codex, selected_env_id, resolved_base_branch
+            prompt,
+            host_codex,
+            selected_env_id,
+            resolved_base_branch,
+            pr_context,
         )
         if not task_id:
             return
+
+        if is_pr and is_cross_repo:
+            self._post_fork_notice_comment(payload=payload_dict)
 
         if not bool(
             self._settings_data.get("agentsnova_auto_marker_comments_enabled", True)
@@ -43,6 +85,49 @@ class MainWindowAutoReviewMixin:
             return
 
         self._post_auto_review_marker_comment(payload=payload_dict, task_id=task_id)
+
+    def _post_fork_notice_comment(self, *, payload: dict[str, object]) -> None:
+        repo_owner = str(payload.get("repo_owner") or "").strip()
+        repo_name = str(payload.get("repo_name") or "").strip()
+        try:
+            number = int(payload.get("number") or 0)
+        except Exception:
+            number = 0
+        pr_head_ref = str(payload.get("pr_head_ref") or "").strip()
+        pr_head_repo_owner = str(payload.get("pr_head_repo_owner") or "").strip()
+        pr_head_repo_name = str(payload.get("pr_head_repo_name") or "").strip()
+        if not repo_owner or not repo_name or number <= 0:
+            return
+
+        if not hasattr(self, "_fork_notice_seen"):
+            self._fork_notice_seen = set()
+        notice_key = (
+            f"{repo_owner.lower()}/{repo_name.lower()}#{number}:"
+            f"{pr_head_repo_owner.lower()}/{pr_head_repo_name.lower()}:{pr_head_ref}"
+        )
+        if notice_key in self._fork_notice_seen:
+            return
+        self._fork_notice_seen.add(notice_key)
+
+        body = (
+            "Fork PR detected. Agents Runner cannot auto-checkout fork branches; "
+            "continuing on the base branch."
+        )
+        try:
+            post_comment(
+                repo_owner,
+                repo_name,
+                item_type="pr",
+                number=number,
+                body=body,
+            )
+        except Exception as exc:
+            logger.warning(
+                (
+                    "[github-auto-review] failed to post fork notice comment for "
+                    f"{repo_owner}/{repo_name} PR #{number}: {exc}"
+                )
+            )
 
     def _post_auto_review_marker_comment(
         self, *, payload: dict[str, object], task_id: str

@@ -28,6 +28,8 @@ from agents_runner.gh.work_items import get_pull_request_workroom
 from agents_runner.gh.work_items import post_comment
 from agents_runner.gh.work_items import set_item_open_state
 from agents_runner.prompts import load_prompt
+from agents_runner.prompts.github_prompting import build_default_request_line
+from agents_runner.prompts.github_prompting import build_primary_request
 from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
 from agents_runner.stt.mic_recorder import MicRecorderError
 from agents_runner.stt.mic_recorder import MicRecording
@@ -631,6 +633,17 @@ class GitHubWorkroomDialog(ThemedDialog):
         if room is None:
             return ""
 
+        default_request = build_default_request_line(
+            item_type=room.item_type,
+            repo_owner=room.repo_owner,
+            repo_name=room.repo_name,
+            number=room.number,
+        )
+        primary_request = build_primary_request(
+            mention_text="",
+            fallback=default_request,
+        )
+
         if room.item_type == "pr":
             return load_prompt(
                 "pr_review_template",
@@ -639,8 +652,7 @@ class GitHubWorkroomDialog(ThemedDialog):
                 PR_NUMBER=room.number,
                 PR_URL=room.url,
                 PR_TITLE=room.title,
-                MENTION_COMMENT_ID="",
-                TRIGGER_SOURCE="manual",
+                PRIMARY_REQUEST=primary_request,
             )
 
         return load_prompt(
@@ -650,8 +662,7 @@ class GitHubWorkroomDialog(ThemedDialog):
             ISSUE_NUMBER=room.number,
             ISSUE_URL=room.url,
             ISSUE_TITLE=room.title,
-            MENTION_COMMENT_ID="",
-            TRIGGER_SOURCE="manual",
+            PRIMARY_REQUEST=primary_request,
         )
 
     def _on_primary(self) -> None:
