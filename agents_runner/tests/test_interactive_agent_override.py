@@ -130,7 +130,9 @@ class _DummyMainWindow(MainWindowSettingsMixin, MainWindowTasksInteractiveMixin)
         return
 
 
-def test_interactive_task_uses_copilot_override(monkeypatch, tmp_path) -> None:
+def test_interactive_task_uses_codex_default_and_copilot_override(
+    monkeypatch, tmp_path
+) -> None:
     workdir = tmp_path / "workspace"
     workdir.mkdir(parents=True, exist_ok=True)
 
@@ -144,6 +146,9 @@ def test_interactive_task_uses_copilot_override(monkeypatch, tmp_path) -> None:
     env.midoriai_template_likelihood = 1.0
 
     window = _DummyMainWindow(env, tmp_path, workdir)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    window._settings_data["host_codex_dir"] = "~/.codex-default"
+    window._settings_data["host_copilot_dir"] = "~/.copilot-override"
 
     terminal_option = TerminalOption(
         terminal_id="test-terminal",
@@ -168,6 +173,27 @@ def test_interactive_task_uses_copilot_override(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(interactive_module, "QThread", _FakeThread)
     monkeypatch.setattr(interactive_module, "is_gh_available", lambda: False)
 
+    window._start_interactive_task_from_ui(
+        prompt="default",
+        command="echo default",
+        host_codex="",
+        env_id=env.env_id,
+        terminal_id="test-terminal",
+        base_branch="",
+        agent_override=None,
+        extra_preflight_script="",
+    )
+
+    assert len(window._tasks) == 1
+    default_task_id = window._dashboard.last_task_id
+    assert default_task_id is not None
+    default_task = window._tasks[default_task_id]
+    assert default_task.agent_cli == "codex"
+    assert default_task.host_config_dir == str(tmp_path / ".codex-default")
+    assert Path(default_task.host_config_dir).is_absolute()
+    assert default_task.agent_instance_id == ""
+    assert default_task.agent_cli_args == "--env-flag"
+
     override = {
         "agent_cli": "copilot",
         "agent_id": "copilot-1",
@@ -177,7 +203,7 @@ def test_interactive_task_uses_copilot_override(monkeypatch, tmp_path) -> None:
     window._start_interactive_task_from_ui(
         prompt="hello",
         command="echo hello",
-        host_codex=str(tmp_path / "codex"),
+        host_codex=str(tmp_path / "codex-explicit"),
         env_id=env.env_id,
         terminal_id="test-terminal",
         base_branch="",
@@ -185,9 +211,14 @@ def test_interactive_task_uses_copilot_override(monkeypatch, tmp_path) -> None:
         extra_preflight_script="",
     )
 
-    assert len(window._tasks) == 1
-    task = next(iter(window._tasks.values()))
-    assert task.agent_cli == "copilot"
-    assert task.agent_instance_id == "copilot-1"
-    assert task.host_config_dir == str(tmp_path / "copilot")
-    assert task.agent_cli_args == "--override-flag --env-flag"
+    assert len(window._tasks) == 2
+    override_task_id = window._dashboard.last_task_id
+    assert override_task_id is not None
+    assert override_task_id != default_task_id
+    override_task = window._tasks[override_task_id]
+    assert override_task.agent_cli == "copilot"
+    assert override_task.agent_instance_id == "copilot-1"
+    assert override_task.host_config_dir == str(tmp_path / ".copilot-override")
+    assert Path(override_task.host_config_dir).is_absolute()
+    assert override_task.host_config_dir != default_task.host_config_dir
+    assert override_task.agent_cli_args == "--override-flag"

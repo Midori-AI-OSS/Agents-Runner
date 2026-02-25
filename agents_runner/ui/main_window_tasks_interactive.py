@@ -208,19 +208,18 @@ class MainWindowTasksInteractiveMixin:
             agent_instance_id = str(agent_cli or "").strip()
 
         agent_cli_args: list[str] = []
-        if env and env.agent_cli_args.strip():
+        if override and selected_cli_flags:
+            try:
+                agent_cli_args = shlex.split(selected_cli_flags)
+            except ValueError as exc:
+                QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
+                return
+        elif env and env.agent_cli_args.strip():
             try:
                 agent_cli_args = shlex.split(env.agent_cli_args)
             except ValueError as exc:
                 QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
                 return
-        if override and selected_cli_flags:
-            try:
-                override_args = shlex.split(selected_cli_flags)
-            except ValueError as exc:
-                QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
-                return
-            agent_cli_args = override_args + agent_cli_args
 
         # Build command with agent-specific handling
         raw_command = str(command or "").strip()
