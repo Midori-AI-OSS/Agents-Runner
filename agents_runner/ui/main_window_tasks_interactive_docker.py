@@ -57,6 +57,30 @@ def _publishes_container_port(spec: str, port: int) -> bool:
     return False
 
 
+def _redact_env_assignment(value: str) -> str:
+    base = str(value or "")
+    if "=" not in base:
+        return base
+    key, _ = base.split("=", 1)
+    if not key:
+        return "***"
+    return f"{key}=***"
+
+
+def _redact_env_args_for_log(env_args: list[str]) -> list[str]:
+    redacted: list[str] = []
+    expect_value = False
+    for arg in env_args:
+        if expect_value:
+            redacted.append(_redact_env_assignment(arg))
+            expect_value = False
+            continue
+        redacted.append(arg)
+        if arg == "-e":
+            expect_value = True
+    return redacted
+
+
 def launch_docker_terminal_task(
     main_window: object,
     task: Task,
@@ -377,6 +401,11 @@ def launch_docker_terminal_task(
             f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
         )
 
+        main_window._on_task_log(
+            task_id,
+            format_log("agent", "cmd", "INFO", target_cmd),
+        )
+
         # Build Docker command
         docker_cmd = _build_docker_command(
             container_name=container_name,
@@ -391,6 +420,25 @@ def launch_docker_terminal_task(
             docker_env_passthrough=[],
             image=runtime_image,
             container_script=container_script,
+        )
+
+        docker_cmd_for_log = _build_docker_command(
+            container_name=container_name,
+            host_codex=host_codex,
+            host_workdir=host_workdir,
+            container_agent_dir=container_agent_dir,
+            container_workdir=container_workdir,
+            extra_mount_args=extra_mount_args,
+            preflight_mounts=preflight_mounts,
+            env_args=_redact_env_args_for_log(env_args),
+            port_args=port_args,
+            docker_env_passthrough=[],
+            image=runtime_image,
+            container_script=container_script,
+        )
+        main_window._on_task_log(
+            task_id,
+            format_log("docker", "cmd", "INFO", docker_cmd_for_log),
         )
 
         # Prepare finish file for exit code tracking
@@ -449,15 +497,6 @@ def launch_docker_terminal_task(
         main_window._settings_data["interactive_terminal_id"] = str(
             getattr(terminal_opt, "terminal_id", "")
         )
-        interactive_key = main_window._interactive_command_key(agent_cli)
-        if not main_window._is_agent_help_interactive_launch(
-            prompt=prompt, command=command
-        ):
-            main_window._settings_data[interactive_key] = (
-                main_window._sanitize_interactive_command_value(
-                    interactive_key, command
-                )
-            )
         main_window._apply_active_environment_to_new_task()
         main_window._schedule_save()
 
