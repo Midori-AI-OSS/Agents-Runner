@@ -149,8 +149,6 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
     monkeypatch.setenv("HOME", str(tmp_path))
     window._settings_data["host_codex_dir"] = "~/.codex-default"
     window._settings_data["host_copilot_dir"] = "~/.copilot-override"
-    window._settings_data["interactive_command"] = "--sandbox danger-full-access"
-    window._settings_data["interactive_command_copilot"] = "--add-dir /override"
 
     terminal_option = TerminalOption(
         terminal_id="test-terminal",
@@ -196,7 +194,8 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
     assert default_task.agent_instance_id == ""
     assert default_task.agent_cli_args == "--env-flag"
     assert (
-        window._interactive_prep_context[default_task_id]["command"] == "echo default"
+        window._interactive_prep_context[default_task_id]["command"]
+        == "--sandbox danger-full-access"
     )
 
     override = {
@@ -229,5 +228,5 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
     assert override_task.agent_cli_args == "--override-flag"
     assert (
         window._interactive_prep_context[override_task_id]["command"]
-        == "--add-dir /override"
+        == "--add-dir /home/midori-ai/workspace"
     )

@@ -497,15 +497,6 @@ def launch_docker_terminal_task(
         main_window._settings_data["interactive_terminal_id"] = str(
             getattr(terminal_opt, "terminal_id", "")
         )
-        interactive_key = main_window._interactive_command_key(agent_cli)
-        if not main_window._is_agent_help_interactive_launch(
-            prompt=prompt, command=command
-        ):
-            main_window._settings_data[interactive_key] = (
-                main_window._sanitize_interactive_command_value(
-                    interactive_key, command
-                )
-            )
         main_window._apply_active_environment_to_new_task()
         main_window._schedule_save()
 
