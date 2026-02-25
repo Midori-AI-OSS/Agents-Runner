@@ -222,9 +222,21 @@ class MainWindowTasksInteractiveMixin:
                 return
 
         # Build command with agent-specific handling
-        raw_command = str(command or "").strip()
-        if not raw_command:
-            raw_command = self._default_interactive_command(agent_cli)
+        raw_command = ""
+        if override:
+            override_key = self._interactive_command_key(agent_cli)
+            override_command = str(self._settings_data.get(override_key) or "").strip()
+            if not override_command:
+                override_command = self._default_interactive_command(agent_cli)
+            raw_command = self._sanitize_interactive_command_value(
+                override_key, override_command
+            )
+            if not raw_command:
+                raw_command = self._default_interactive_command(agent_cli)
+        else:
+            raw_command = str(command or "").strip()
+            if not raw_command:
+                raw_command = self._default_interactive_command(agent_cli)
         command = raw_command
         extra_preflight_script = str(extra_preflight_script or "")
         is_help_launch = self._is_agent_help_interactive_launch(

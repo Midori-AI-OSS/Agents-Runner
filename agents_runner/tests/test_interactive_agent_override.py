@@ -149,6 +149,8 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
     monkeypatch.setenv("HOME", str(tmp_path))
     window._settings_data["host_codex_dir"] = "~/.codex-default"
     window._settings_data["host_copilot_dir"] = "~/.copilot-override"
+    window._settings_data["interactive_command"] = "--sandbox danger-full-access"
+    window._settings_data["interactive_command_copilot"] = "--add-dir /override"
 
     terminal_option = TerminalOption(
         terminal_id="test-terminal",
@@ -193,6 +195,9 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
     assert Path(default_task.host_config_dir).is_absolute()
     assert default_task.agent_instance_id == ""
     assert default_task.agent_cli_args == "--env-flag"
+    assert (
+        window._interactive_prep_context[default_task_id]["command"] == "echo default"
+    )
 
     override = {
         "agent_cli": "copilot",
@@ -202,7 +207,7 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
 
     window._start_interactive_task_from_ui(
         prompt="hello",
-        command="echo hello",
+        command="--sandbox danger-full-access",
         host_codex=str(tmp_path / "codex-explicit"),
         env_id=env.env_id,
         terminal_id="test-terminal",
@@ -222,3 +227,7 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
     assert Path(override_task.host_config_dir).is_absolute()
     assert override_task.host_config_dir != default_task.host_config_dir
     assert override_task.agent_cli_args == "--override-flag"
+    assert (
+        window._interactive_prep_context[override_task_id]["command"]
+        == "--add-dir /override"
+    )
