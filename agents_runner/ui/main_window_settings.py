@@ -567,6 +567,7 @@ class MainWindowSettingsMixin:
     def _coerce_ide_override(self, override: object) -> dict[str, str] | None:
         if not isinstance(override, dict):
             return None
+        source = str(override.get("source") or "").strip()
         ide_system_raw = str(override.get("ide_system") or "").strip()
         display_target_raw = str(override.get("display_target") or "").strip()
         ide_system = normalize_ide_system_name(ide_system_raw) if ide_system_raw else ""
@@ -575,10 +576,12 @@ class MainWindowSettingsMixin:
             if display_target_raw
             else ""
         )
+        if source == "runtime":
+            display_target = ""
         if not ide_system and not display_target:
             return None
         return {
-            "source": str(override.get("source") or ""),
+            "source": source,
             "env_id": str(override.get("env_id") or ""),
             "ide_system": ide_system,
             "display_target": display_target,

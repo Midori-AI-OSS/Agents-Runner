@@ -610,13 +610,8 @@ class NewTaskPage(QWidget):
 
         if self._ide_override:
             override_ide = str(self._ide_override.get("ide_system") or "").strip()
-            override_display = str(
-                self._ide_override.get("display_target") or ""
-            ).strip()
             if override_ide:
                 ide_system = normalize_ide_system_name(override_ide)
-            if override_display:
-                display_target = normalize_ide_display_target(override_display)
 
         return ide_system, display_target
 
@@ -648,12 +643,11 @@ class NewTaskPage(QWidget):
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
 
-        ide_system, display_target = self._effective_ide_selection()
+        ide_system, _display_target = self._effective_ide_selection()
         ide_override_payload: dict[str, str] = {
             "source": "runtime",
             "env_id": env_id,
             "ide_system": ide_system,
-            "display_target": display_target,
         }
         self.requested_launch_ide.emit(
             "",
@@ -1618,74 +1612,20 @@ class NewTaskPage(QWidget):
             action.setEnabled(False)
             return
 
-        effective_ide, effective_display = self._effective_ide_selection()
-        override_ide = (
-            str(self._ide_override.get("ide_system") or "").strip()
-            if self._ide_override
-            else ""
-        )
-        override_display = (
-            str(self._ide_override.get("display_target") or "").strip()
-            if self._ide_override
-            else ""
-        )
-
         ide_names = list(available_ide_system_names())
         for ide_name in ide_names:
             normalized = normalize_ide_system_name(ide_name)
             label = self._format_ide_menu_label(normalized)
             action = self._ide_override_menu.addAction(label)
-            action.setCheckable(True)
-            current_ide = override_ide or effective_ide
-            action.setChecked(normalized == normalize_ide_system_name(current_ide))
             action.triggered.connect(
                 lambda _checked=False, ide=normalized: self._set_ide_override(
                     {
                         "source": "runtime",
                         "env_id": self._active_env_id,
                         "ide_system": ide,
-                        "display_target": override_display,
                     }
                 )
             )
-
-        self._ide_override_menu.addSeparator()
-
-        host_action = self._ide_override_menu.addAction("Display: Host desktop")
-        host_action.setCheckable(True)
-        host_action.setChecked(
-            normalize_ide_display_target(override_display or effective_display)
-            == IDE_DISPLAY_HOST_DESKTOP
-        )
-        host_action.triggered.connect(
-            lambda _checked=False: self._set_ide_override(
-                {
-                    "source": "runtime",
-                    "env_id": self._active_env_id,
-                    "ide_system": override_ide,
-                    "display_target": IDE_DISPLAY_HOST_DESKTOP,
-                }
-            )
-        )
-
-        container_action = self._ide_override_menu.addAction(
-            "Display: In-container desktop"
-        )
-        container_action.setCheckable(True)
-        container_action.setChecked(
-            normalize_ide_display_target(override_display or effective_display)
-            == IDE_DISPLAY_CONTAINER_DESKTOP
-        )
-        container_action.triggered.connect(
-            lambda _checked=False: self._set_ide_override(
-                {
-                    "source": "runtime",
-                    "env_id": self._active_env_id,
-                    "ide_system": override_ide,
-                    "display_target": IDE_DISPLAY_CONTAINER_DESKTOP,
-                }
-            )
-        )
 
         self._ide_override_menu.addSeparator()
         clear_action = self._ide_override_menu.addAction("Clear override")
@@ -1697,23 +1637,16 @@ class NewTaskPage(QWidget):
             self._ide_override = None
         else:
             ide_system_raw = str(override.get("ide_system") or "").strip()
-            display_target_raw = str(override.get("display_target") or "").strip()
             ide_system = (
                 normalize_ide_system_name(ide_system_raw) if ide_system_raw else ""
             )
-            display_target = (
-                normalize_ide_display_target(display_target_raw)
-                if display_target_raw
-                else ""
-            )
-            if not ide_system and not display_target:
+            if not ide_system:
                 self._ide_override = None
             else:
                 self._ide_override = {
                     "source": str(override.get("source") or ""),
                     "env_id": str(override.get("env_id") or ""),
                     "ide_system": ide_system,
-                    "display_target": display_target,
                 }
         self._refresh_ide_button_tooltip()
         self._apply_environment_tints()
