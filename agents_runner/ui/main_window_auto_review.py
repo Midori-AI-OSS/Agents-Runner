@@ -123,11 +123,12 @@ class MainWindowAutoReviewMixin:
                 body=body,
             )
         except Exception as exc:
-            logger.warning(
+            logger.rprint(
                 (
                     "[github-auto-review] failed to post fork notice comment for "
                     f"{repo_owner}/{repo_name} PR #{number}: {exc}"
-                )
+                ),
+                mode="warn",
             )
 
     def _post_auto_review_marker_comment(
@@ -163,12 +164,13 @@ class MainWindowAutoReviewMixin:
                 body=marker_body,
             )
         except Exception as exc:
-            logger.warning(
+            logger.rprint(
                 (
                     "[github-auto-review] failed to post marker comment for "
                     f"{repo_owner}/{repo_name} {item_type} #{number} "
                     f"(task={task_id}): {exc}"
-                )
+                ),
+                mode="warn",
             )
 
     def _resolve_auto_review_base_branch(self, *, env_id: str) -> str | None:
@@ -186,11 +188,12 @@ class MainWindowAutoReviewMixin:
 
         branches = git_list_remote_heads(repo_target)
         if not branches:
-            logger.warning(
+            logger.rprint(
                 (
                     "[github-auto-review] skipped: failed to refresh remote branches "
                     f"for environment '{env_id}' ({repo_target})."
-                )
+                ),
+                mode="warn",
             )
             return None
 
@@ -209,11 +212,12 @@ class MainWindowAutoReviewMixin:
                 parent=self,
             )
             if dialog.exec() != QDialog.DialogCode.Accepted:
-                logger.info(
+                logger.rprint(
                     (
                         "[github-auto-review] skipped: branch selector cancelled for "
                         f"environment '{env_id}'."
-                    )
+                    ),
+                    mode="info",
                 )
                 return None
 

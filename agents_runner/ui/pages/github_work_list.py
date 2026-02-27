@@ -715,5 +715,4 @@ class GitHubWorkListPage(QWidget):
         if not text or text == self._last_fetch_issue:
             return
         self._last_fetch_issue = text
-        _ = mode
-        logger.debug(text)
+        logger.rprint(text, mode=mode)
