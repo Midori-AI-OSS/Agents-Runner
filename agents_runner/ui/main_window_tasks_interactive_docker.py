@@ -29,6 +29,8 @@ from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
 from agents_runner.docker.phase_image_builder import ensure_phase_image
 from agents_runner.environments import Environment
 from agents_runner.github_token import resolve_github_token
+from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
+from agents_runner.ide_systems import normalize_ide_display_target
 from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.core.shell_templates import git_identity_clause
@@ -102,7 +104,9 @@ def launch_docker_terminal_task(
     container_workdir: str,
     settings_preflight_script: str | None,
     environment_preflight_script: str | None,
+    ide_preflight_script: str | None,
     extra_preflight_script: str,
+    ide_display_target: str,
     stain: str | None,
     spinner: str | None,
     desired_base: str = "",
@@ -144,7 +148,9 @@ def launch_docker_terminal_task(
         container_workdir: Container workspace directory path
         settings_preflight_script: Global preflight script
         environment_preflight_script: Environment-specific preflight script
+        ide_preflight_script: Optional IDE install preflight script
         extra_preflight_script: Additional preflight script (help mode, etc.)
+        ide_display_target: IDE display target (host_desktop/container_desktop)
         stain: Task color stain
         spinner: Task spinner color
         desired_base: Desired base branch for git
@@ -167,6 +173,8 @@ def launch_docker_terminal_task(
         or "noVNC" in desktop_preflight_script
         or "[desktop]" in desktop_preflight_script
     )
+    ide_display_mode = normalize_ide_display_target(ide_display_target)
+    use_host_display = ide_display_mode == IDE_DISPLAY_HOST_DESKTOP
 
     preflights_host_dir = PREFLIGHTS_DIR.resolve()
     system_preflight_path = preflights_host_dir / "pixelarch_yay.sh"
@@ -289,6 +297,7 @@ def launch_docker_terminal_task(
     # runtime desktop services still need to start for each container launch.
     preflight_clause, preflight_mounts, tmp_paths = _prepare_preflight_scripts(
         task_token=task_token,
+        ide_preflight_script=str(ide_preflight_script or ""),
         desktop_preflight_script=desktop_preflight_script,
         settings_preflight_script=settings_preflight_script,
         environment_preflight_script=environment_preflight_script,
@@ -384,6 +393,49 @@ def launch_docker_terminal_task(
             if not m:
                 continue
             all_mounts.append(m)
+
+        if use_host_display:
+            host_display = str(os.environ.get("DISPLAY") or "").strip()
+            if host_display:
+                env_args.extend(
+                    [
+                        "-e",
+                        f"DISPLAY={host_display}",
+                        "-e",
+                        "QT_X11_NO_MITSHM=1",
+                    ]
+                )
+            else:
+                main_window._on_task_log(
+                    task_id,
+                    format_log(
+                        "desktop",
+                        "host",
+                        "WARN",
+                        "host desktop mode selected but DISPLAY is not set",
+                    ),
+                )
+
+            x11_socket_dir = "/tmp/.X11-unix"
+            if os.path.isdir(x11_socket_dir):
+                all_mounts.append(f"{x11_socket_dir}:{x11_socket_dir}:rw")
+            else:
+                main_window._on_task_log(
+                    task_id,
+                    format_log(
+                        "desktop",
+                        "host",
+                        "WARN",
+                        f"host desktop mode could not find {x11_socket_dir}",
+                    ),
+                )
+
+            xauthority = str(os.environ.get("XAUTHORITY") or "").strip()
+            if xauthority:
+                xauthority = os.path.expanduser(xauthority)
+                if os.path.isfile(xauthority):
+                    all_mounts.append(f"{xauthority}:{xauthority}:ro")
+                    env_args.extend(["-e", f"XAUTHORITY={xauthority}"])
 
         deduplicated_mounts = deduplicate_mounts(all_mounts)
         extra_mount_args: list[str] = []
@@ -532,6 +584,7 @@ def launch_docker_terminal_task(
 
 def _prepare_preflight_scripts(
     task_token: str,
+    ide_preflight_script: str,
     desktop_preflight_script: str,
     settings_preflight_script: str | None,
     environment_preflight_script: str | None,
@@ -545,6 +598,7 @@ def _prepare_preflight_scripts(
 
     Args:
         task_token: Unique task token for temp file naming
+        ide_preflight_script: IDE install phase script content
         desktop_preflight_script: Desktop phase script content
         settings_preflight_script: Global preflight script
         environment_preflight_script: Environment-specific preflight script
@@ -564,11 +618,13 @@ def _prepare_preflight_scripts(
     preflight_mounts: list[str] = []
     tmp_paths: dict[str, str] = {
         "system": "",
+        "ide": "",
         "desktop": "",
         "settings": "",
         "environment": "",
     }
 
+    ide_container_path = f"/tmp/agents-runner-preflight-ide-{task_token}.sh"
     desktop_container_path = f"/tmp/agents-runner-preflight-desktop-{task_token}.sh"
     settings_container_path = f"/tmp/agents-runner-preflight-settings-{task_token}.sh"
     environment_container_path = (
@@ -675,6 +731,14 @@ def _prepare_preflight_scripts(
                 f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: done')}; "
             )
 
+        _append_optional_phase(
+            label="ide",
+            script=ide_preflight_script,
+            container_path=ide_container_path,
+            tmp_key="ide",
+            skip=False,
+            env_var="PREFLIGHT_IDE",
+        )
         _append_optional_phase(
             label="desktop",
             script=desktop_preflight_script,
@@ -796,6 +860,7 @@ def _build_host_shell_script(
     host_script_parts = [
         f"CONTAINER_NAME={shlex.quote(container_name)}",
         f"TMP_SYSTEM={shlex.quote(tmp_paths.get('system', ''))}",
+        f"TMP_IDE={shlex.quote(tmp_paths.get('ide', ''))}",
         f"TMP_DESKTOP={shlex.quote(tmp_paths.get('desktop', ''))}",
         f"TMP_SETTINGS={shlex.quote(tmp_paths.get('settings', ''))}",
         f"TMP_ENV={shlex.quote(tmp_paths.get('environment', ''))}",
@@ -803,6 +868,7 @@ def _build_host_shell_script(
         'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
         'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
         + 'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
+        + 'if [ -n "$TMP_IDE" ]; then rm -f -- "$TMP_IDE" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_DESKTOP" ]; then rm -f -- "$TMP_DESKTOP" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; '

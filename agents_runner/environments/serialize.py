@@ -3,6 +3,9 @@ from __future__ import annotations
 from typing import Any
 from typing import cast
 
+from agents_runner.ide_systems import normalize_ide_display_target
+from agents_runner.ide_systems import normalize_ide_system_name
+
 from .model import ENVIRONMENT_VERSION
 from .model import Environment
 from .model import normalize_workspace_type
@@ -205,6 +208,20 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     preflight_enabled = bool(payload.get("preflight_enabled", False))
     preflight_script = str(payload.get("preflight_script") or "")
     headless_desktop_enabled = bool(payload.get("headless_desktop_enabled", False))
+    ide_system_override_raw = str(payload.get("ide_system_override") or "").strip()
+    ide_display_target_override_raw = str(
+        payload.get("ide_display_target_override") or ""
+    ).strip()
+    ide_system_override = (
+        normalize_ide_system_name(ide_system_override_raw)
+        if ide_system_override_raw
+        else ""
+    )
+    ide_display_target_override = (
+        normalize_ide_display_target(ide_display_target_override_raw)
+        if ide_display_target_override_raw
+        else ""
+    )
     cache_desktop_build = bool(payload.get("cache_desktop_build", False))
     container_caching_enabled = bool(payload.get("container_caching_enabled", False))
     cache_system_preflight_enabled = bool(
@@ -469,6 +486,8 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         agent_cli_args=agent_cli_args,
         max_agents_running=max_agents_running,
         headless_desktop_enabled=headless_desktop_enabled,
+        ide_system_override=ide_system_override,
+        ide_display_target_override=ide_display_target_override,
         cache_desktop_build=cache_desktop_build,
         container_caching_enabled=container_caching_enabled,
         cache_system_preflight_enabled=cache_system_preflight_enabled,
@@ -563,6 +582,20 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "max_agents_running": int(env.max_agents_running),
         "headless_desktop_enabled": bool(
             getattr(env, "headless_desktop_enabled", False)
+        ),
+        "ide_system_override": (
+            normalize_ide_system_name(
+                str(getattr(env, "ide_system_override", "") or "")
+            )
+            if str(getattr(env, "ide_system_override", "") or "").strip()
+            else ""
+        ),
+        "ide_display_target_override": (
+            normalize_ide_display_target(
+                str(getattr(env, "ide_display_target_override", "") or "")
+            )
+            if str(getattr(env, "ide_display_target_override", "") or "").strip()
+            else ""
         ),
         "cache_desktop_build": bool(getattr(env, "cache_desktop_build", False)),
         "container_caching_enabled": bool(

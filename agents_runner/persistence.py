@@ -340,6 +340,9 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "agent_cli": getattr(task, "agent_cli", ""),
         "agent_instance_id": getattr(task, "agent_instance_id", ""),
         "agent_cli_args": getattr(task, "agent_cli_args", ""),
+        "launch_mode": getattr(task, "launch_mode", "agent"),
+        "ide_system": getattr(task, "ide_system", ""),
+        "ide_display_target": getattr(task, "ide_display_target", ""),
         "headless_desktop_enabled": bool(
             getattr(task, "headless_desktop_enabled", False)
         ),
@@ -406,6 +409,9 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         agent_cli=str(data.get("agent_cli") or ""),
         agent_instance_id=str(data.get("agent_instance_id") or ""),
         agent_cli_args=str(data.get("agent_cli_args") or ""),
+        launch_mode=str(data.get("launch_mode") or "agent"),
+        ide_system=str(data.get("ide_system") or ""),
+        ide_display_target=str(data.get("ide_display_target") or ""),
         headless_desktop_enabled=bool(data.get("headless_desktop_enabled") or False),
         novnc_url=str(data.get("novnc_url") or ""),
         vnc_password="",

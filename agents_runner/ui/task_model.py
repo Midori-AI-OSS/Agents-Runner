@@ -38,6 +38,9 @@ class Task:
     agent_cli: str = ""
     agent_instance_id: str = ""
     agent_cli_args: str = ""
+    launch_mode: str = "agent"
+    ide_system: str = ""
+    ide_display_target: str = ""
     headless_desktop_enabled: bool = False
     novnc_url: str = ""
     vnc_password: str = ""
