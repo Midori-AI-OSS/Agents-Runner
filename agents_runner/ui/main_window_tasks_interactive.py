@@ -693,7 +693,7 @@ class MainWindowTasksInteractiveMixin:
                 from agents_runner.artifacts import encrypt_artifact
 
                 task_dict = {"id": task_id, "task_id": task_id}
-                env_name = getattr(self, "_current_env_name", "unknown")
+                env_name = str(getattr(self, "_current_env_name", "") or "")
 
                 artifact_uuid = encrypt_artifact(
                     task_dict=task_dict,

@@ -7,6 +7,7 @@ in the staging directory during task runtime.
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
 from pathlib import Path
@@ -24,6 +25,7 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
+_TRANSIENT_STAGING_ERRNOS = {errno.ENOENT, errno.ENOTDIR}
 
 
 class ArtifactFileWatcher(QObject):
@@ -243,6 +245,13 @@ class ArtifactFileWatcher(QObject):
         directories: set[str] = {str(self._staging_dir)}
 
         def _on_walk_error(exc: OSError) -> None:
+            if int(getattr(exc, "errno", -1)) in _TRANSIENT_STAGING_ERRNOS:
+                logger.debug(
+                    "Staging walk race while scanning %s: %s",
+                    self._staging_dir,
+                    exc,
+                )
+                return
             logger.warning(f"Failed to walk staging dir {self._staging_dir}: {exc}")
 
         for root, dirnames, _ in os.walk(

@@ -13,7 +13,9 @@ import multiprocessing
 import os
 import queue
 import shutil
+import threading
 import time
+import errno
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +26,10 @@ from uuid import uuid4
 from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)
+_ARTIFACT_KEY_VERSION = "task-id-env-v1"
+_TRANSIENT_STAGING_ERRNOS = {errno.ENOENT, errno.ENOTDIR}
+_ARTIFACT_MIGRATION_LOCKS: dict[str, threading.Lock] = {}
+_ARTIFACT_MIGRATION_LOCKS_GUARD = threading.Lock()
 
 
 @dataclass
@@ -82,6 +88,91 @@ def _get_artifacts_dir(task_id: str) -> Path:
     return artifacts_dir
 
 
+def _is_transient_staging_error(exc: OSError) -> bool:
+    return int(getattr(exc, "errno", -1)) in _TRANSIENT_STAGING_ERRNOS
+
+
+def _canonical_env_name(env_name: object) -> str:
+    raw = "" if env_name is None else str(env_name)
+    marker = raw.strip().lower()
+    if marker in {"default", "unknown"}:
+        return ""
+    return raw
+
+
+def _build_env_name_candidates(
+    *, requested_env: object, metadata_env: object | None = None
+) -> list[str]:
+    candidates = [
+        "" if requested_env is None else str(requested_env),
+        _canonical_env_name(requested_env),
+        "" if metadata_env is None else str(metadata_env),
+        _canonical_env_name(metadata_env),
+        "",
+        "default",
+        "unknown",
+    ]
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for value in candidates:
+        if value in seen:
+            continue
+        seen.add(value)
+        ordered.append(value)
+    return ordered
+
+
+def _artifact_migration_lock(task_id: str, artifact_uuid: str) -> threading.Lock:
+    key = f"{task_id}:{artifact_uuid}"
+    with _ARTIFACT_MIGRATION_LOCKS_GUARD:
+        lock = _ARTIFACT_MIGRATION_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _ARTIFACT_MIGRATION_LOCKS[key] = lock
+    return lock
+
+
+def _read_artifact_metadata(meta_path: Path) -> dict[str, Any]:
+    if not meta_path.exists():
+        return {}
+    try:
+        data = json.loads(meta_path.read_text())
+    except Exception as exc:
+        logger.debug(f"Failed to parse metadata {meta_path}: {exc}")
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return cast(dict[str, Any], data)
+
+
+def _write_bytes_atomic(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp-{uuid4().hex}")
+    try:
+        tmp_path.write_bytes(payload)
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp-{uuid4().hex}")
+    try:
+        tmp_path.write_text(json.dumps(payload, indent=2))
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
+
 def encrypt_artifact(
     task_dict: dict[str, Any],
     env_name: str,
@@ -110,8 +201,10 @@ def encrypt_artifact(
         # Read source file
         source_data = source_path.read_bytes()
 
+        env_name_used = "" if env_name is None else str(env_name)
+
         # Generate encryption key
-        key = get_artifact_key(task_dict, env_name)
+        key = get_artifact_key(task_dict, env_name_used)
         fernet = Fernet(key)
 
         # Encrypt data
@@ -142,10 +235,12 @@ def encrypt_artifact(
             "mime_type": mime_type,
             "encrypted_at": datetime.now(timezone.utc).isoformat(),
             "size_bytes": len(source_data),
+            "key_version": _ARTIFACT_KEY_VERSION,
+            "env_name_used": env_name_used,
         }
 
         meta_path = artifacts_dir / f"{artifact_uuid}.meta"
-        meta_path.write_text(json.dumps(metadata, indent=2))
+        _write_json_atomic(meta_path, metadata)
 
         logger.info(f"Encrypted artifact {artifact_uuid}: {original_filename}")
         return artifact_uuid
@@ -188,24 +283,65 @@ def decrypt_artifact(
             logger.error(f"Encrypted artifact not found: {artifact_uuid}")
             return False
 
-        # Read encrypted data
-        encrypted_data = enc_path.read_bytes()
+        meta_path = artifacts_dir / f"{artifact_uuid}.meta"
+        migration_lock = _artifact_migration_lock(str(task_id), str(artifact_uuid))
 
-        # Generate encryption key
-        key = get_artifact_key(task_dict, env_name)
-        fernet = Fernet(key)
+        with migration_lock:
+            # Read encrypted data
+            encrypted_data = enc_path.read_bytes()
+            metadata = _read_artifact_metadata(meta_path)
 
-        # Decrypt data
-        try:
-            decrypted_data = fernet.decrypt(encrypted_data)
-        except InvalidToken:
-            logger.error(f"Failed to decrypt artifact {artifact_uuid}: invalid key")
-            return False
+            requested_env_raw = "" if env_name is None else str(env_name)
+            canonical_env = _canonical_env_name(requested_env_raw)
+            metadata_env = metadata.get("env_name_used")
+            candidates = _build_env_name_candidates(
+                requested_env=requested_env_raw,
+                metadata_env=metadata_env,
+            )
+
+            decrypted_data: bytes | None = None
+            successful_env = ""
+            for candidate in candidates:
+                key = get_artifact_key(task_dict, candidate)
+                fernet = Fernet(key)
+                try:
+                    decrypted_data = fernet.decrypt(encrypted_data)
+                except InvalidToken:
+                    continue
+                successful_env = candidate
+                break
+
+            if decrypted_data is None:
+                logger.debug(f"Failed to decrypt artifact {artifact_uuid}: invalid key")
+                return False
+
+            # Migrate to canonical key when fallback was required.
+            if successful_env != canonical_env:
+                try:
+                    canonical_key = get_artifact_key(task_dict, canonical_env)
+                    canonical_fernet = Fernet(canonical_key)
+                    canonical_encrypted = canonical_fernet.encrypt(decrypted_data)
+                    _write_bytes_atomic(enc_path, canonical_encrypted)
+
+                    updated_meta = dict(metadata)
+                    if updated_meta:
+                        updated_meta["key_version"] = _ARTIFACT_KEY_VERSION
+                        updated_meta["env_name_used"] = canonical_env
+                        updated_meta["migrated_at"] = datetime.now(
+                            timezone.utc
+                        ).isoformat()
+                        _write_json_atomic(meta_path, updated_meta)
+                except Exception as exc:
+                    logger.debug(
+                        f"Artifact migration skipped for {artifact_uuid}: {exc}"
+                    )
 
         # Ensure destination directory exists
         dest_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write decrypted file
+        if decrypted_data is None:
+            return False
         dest_path.write_bytes(decrypted_data)
 
         logger.info(f"Decrypted artifact {artifact_uuid} to {dest_path}")
@@ -505,6 +641,9 @@ def _iter_staging_files(staging_dir: Path) -> list[Path]:
         return files
 
     def _on_walk_error(exc: OSError) -> None:
+        if _is_transient_staging_error(exc):
+            logger.debug(f"Staging walk race while scanning {staging_dir}: {exc}")
+            return
         logger.warning(f"Failed to walk staging dir {staging_dir}: {exc}")
 
     for root, dirs, filenames in os.walk(
@@ -557,7 +696,13 @@ def list_staging_artifacts(task_id: str) -> list[StagingArtifactMeta]:
 
     try:
         for file_path in _iter_staging_files(staging_dir):
-            stat = file_path.stat()
+            try:
+                stat = file_path.stat()
+            except OSError as exc:
+                if _is_transient_staging_error(exc):
+                    continue
+                logger.warning(f"Failed to stat staging artifact {file_path}: {exc}")
+                continue
             relative_path = file_path.relative_to(staging_dir).as_posix()
             mime_type, _ = mimetypes.guess_type(relative_path)
             if mime_type is None:

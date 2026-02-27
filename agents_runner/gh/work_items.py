@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import random
+import time
 
 from dataclasses import dataclass
 from typing import Any
@@ -10,6 +12,37 @@ from .errors import GhManagementError
 from .process import run_gh
 
 AUTO_REVIEW_MARKER_TOKEN = "<!-- midori-ai-agents-runner-auto-review-marker -->"
+_READ_RETRY_MAX_ATTEMPTS = 4
+_READ_RETRY_BASE_DELAY_S = 1.0
+_READ_RETRY_JITTER_RATIO = 0.25
+
+_NON_RETRYABLE_GH_ERROR_MARKERS = (
+    "authentication",
+    "unauthorized",
+    "forbidden",
+    "bad credentials",
+    "not found",
+    "validation failed",
+    "resource not accessible",
+    "graphql: could not resolve",
+    "graphql: not found",
+    "insufficient scopes",
+    "requires authentication",
+)
+
+_TRANSIENT_GH_ERROR_MARKERS = (
+    "timed out",
+    "i/o timeout",
+    "dial tcp",
+    "temporary failure",
+    "network is unreachable",
+    "connection reset",
+    "connection refused",
+    "connection aborted",
+    "no such host",
+    "tls handshake timeout",
+    "context deadline exceeded",
+)
 
 
 @dataclass(frozen=True)
@@ -132,6 +165,43 @@ def run_gh_gh(args: list[str], *, timeout_s: float = 45.0) -> None:
     extra = stderr or stdout
     if extra:
         raise GhManagementError(f"gh command failed: {' '.join(args)}\n{extra}")
+    raise GhManagementError(f"gh command failed: {' '.join(args)}")
+
+
+def _is_retryable_read_error(exc: Exception) -> bool:
+    if isinstance(exc, (TimeoutError, OSError)):
+        return True
+    if not isinstance(exc, GhManagementError):
+        return False
+    text = str(exc or "").strip().lower()
+    if not text:
+        return False
+    if any(marker in text for marker in _NON_RETRYABLE_GH_ERROR_MARKERS):
+        return False
+    return any(marker in text for marker in _TRANSIENT_GH_ERROR_MARKERS)
+
+
+def run_gh_gh_json_read(
+    args: list[str], *, timeout_s: float = 45.0, retry_on_transient: bool = True
+) -> object:
+    max_attempts = _READ_RETRY_MAX_ATTEMPTS if retry_on_transient else 1
+    last_exc: Exception | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return run_gh_gh_json(args, timeout_s=timeout_s)
+        except Exception as exc:
+            if not retry_on_transient or not _is_retryable_read_error(exc):
+                raise
+            last_exc = exc
+            if attempt >= max_attempts:
+                raise
+            base_delay = _READ_RETRY_BASE_DELAY_S * (2 ** (attempt - 1))
+            jitter = random.uniform(0.0, base_delay * _READ_RETRY_JITTER_RATIO)
+            time.sleep(base_delay + jitter)
+
+    if last_exc is not None:
+        raise last_exc
     raise GhManagementError(f"gh command failed: {' '.join(args)}")
 
 
@@ -267,7 +337,7 @@ def list_open_pull_requests(
     limit: int = 30,
 ) -> list[GitHubWorkItem]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = run_gh_gh_json(
+    data = run_gh_gh_json_read(
         [
             "pr",
             "list",
@@ -284,6 +354,7 @@ def list_open_pull_requests(
             ),
         ],
         timeout_s=45.0,
+        retry_on_transient=True,
     )
 
     rows = _as_object_list(data) or []
@@ -303,7 +374,7 @@ def list_open_issues(
     limit: int = 30,
 ) -> list[GitHubWorkItem]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = run_gh_gh_json(
+    data = run_gh_gh_json_read(
         [
             "issue",
             "list",
@@ -317,6 +388,7 @@ def list_open_issues(
             "number,title,body,state,url,author,createdAt,updatedAt",
         ],
         timeout_s=45.0,
+        retry_on_transient=True,
     )
 
     rows = _as_object_list(data) or []
@@ -335,9 +407,10 @@ def list_issue_comments(
     *,
     issue_number: int,
     limit: int = 100,
+    retry_on_transient: bool = True,
 ) -> list[GitHubComment]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = run_gh_gh_json(
+    data = run_gh_gh_json_read(
         [
             "api",
             f"repos/{repo}/issues/{int(issue_number)}/comments?per_page={max(1, int(limit))}",
@@ -345,6 +418,7 @@ def list_issue_comments(
             "Accept: application/vnd.github+json",
         ],
         timeout_s=45.0,
+        retry_on_transient=retry_on_transient,
     )
 
     rows = _as_object_list(data) or []
@@ -383,9 +457,10 @@ def list_pull_request_review_comments(
     *,
     pull_number: int,
     limit: int = 100,
+    retry_on_transient: bool = True,
 ) -> list[GitHubComment]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = run_gh_gh_json(
+    data = run_gh_gh_json_read(
         [
             "api",
             (
@@ -396,6 +471,7 @@ def list_pull_request_review_comments(
             "Accept: application/vnd.github+json",
         ],
         timeout_s=45.0,
+        retry_on_transient=retry_on_transient,
     )
 
     rows = _as_object_list(data) or []
@@ -434,9 +510,10 @@ def list_pull_request_reviews(
     *,
     pull_number: int,
     limit: int = 100,
+    retry_on_transient: bool = True,
 ) -> list[GitHubReview]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = run_gh_gh_json(
+    data = run_gh_gh_json_read(
         [
             "api",
             (
@@ -447,6 +524,7 @@ def list_pull_request_reviews(
             "Accept: application/vnd.github+json",
         ],
         timeout_s=45.0,
+        retry_on_transient=retry_on_transient,
     )
 
     rows = _as_object_list(data) or []
@@ -511,6 +589,7 @@ def get_pull_request_workroom(
         repo_name,
         issue_number=int(number),
         limit=100,
+        retry_on_transient=False,
     )
 
     return GitHubWorkroom(
@@ -563,6 +642,7 @@ def get_issue_workroom(
         repo_name,
         issue_number=int(number),
         limit=100,
+        retry_on_transient=False,
     )
 
     return GitHubWorkroom(

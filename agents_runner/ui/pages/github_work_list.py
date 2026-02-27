@@ -447,17 +447,6 @@ class GitHubWorkListPage(QWidget):
                 )
             return
 
-        if entry.repo_context is None:
-            self._clear_rows()
-            self._log_fetch_issue_once(
-                (
-                    f"[github-{self._item_type}] GitHub is unavailable for "
-                    f"environment '{self._active_env_id}'."
-                ),
-                mode="warn",
-            )
-            return
-
         env = self._environments.get(self._active_env_id)
         stain = (
             self._active_stain
@@ -465,6 +454,20 @@ class GitHubWorkListPage(QWidget):
         )
         if not stain:
             stain = "slate"
+
+        if entry.repo_context is None:
+            if entry.items:
+                self._render_rows(list(entry.items), stain=stain)
+            else:
+                self._clear_rows()
+                self._log_fetch_issue_once(
+                    (
+                        f"[github-{self._item_type}] GitHub is unavailable for "
+                        f"environment '{self._active_env_id}'."
+                    ),
+                    mode="warn",
+                )
+            return
 
         if entry.error and not entry.items:
             self._clear_rows()
@@ -712,4 +715,5 @@ class GitHubWorkListPage(QWidget):
         if not text or text == self._last_fetch_issue:
             return
         self._last_fetch_issue = text
-        logger.rprint(text, mode=mode)
+        _ = mode
+        logger.debug(text)

@@ -296,12 +296,15 @@ class GitHubWorkCoordinator(QObject):
             env = self._environments.get(env_id)
             repo_context = resolve_environment_github_repo(env)
             if repo_context is None:
+                key = self._cache_key(item_type=item_type, env_id=env_id)
+                if self._should_preserve_stale_cache_on_missing_repo(key=key, env=env):
+                    error = "transient repo detection unavailable"
                 self._fetch_completed.emit(
                     item_type,
                     env_id,
                     items,
                     None,
-                    "",
+                    error,
                     auto_reviews,
                 )
                 return
@@ -438,6 +441,20 @@ class GitHubWorkCoordinator(QObject):
             repo_context=parsed_context,
             reviews=parsed_reviews,
         )
+
+    def _should_preserve_stale_cache_on_missing_repo(
+        self, *, key: tuple[str, str], env: Environment | None
+    ) -> bool:
+        if env is None:
+            return False
+        workspace_type = str(getattr(env, "workspace_type", "") or "").strip().lower()
+        if workspace_type != "mounted":
+            return False
+        with self._state_lock:
+            previous = self._cache.get(key)
+        if previous is None:
+            return False
+        return bool(previous.items) or previous.repo_context is not None
 
     def _emit_auto_reviews(
         self,

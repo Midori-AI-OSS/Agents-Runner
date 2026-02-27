@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
+from agents_runner.gh.errors import GhManagementError
 from agents_runner.gh.git_ops import (
     git_current_branch,
     git_head_commit,
@@ -22,6 +23,15 @@ from agents_runner.gh.git_ops import (
 from agents_runner.log_format import format_log
 
 logger = logging.getLogger(__name__)
+_GIT_DETECT_TIMEOUT_S = 16.0
+_GIT_DETECT_BRANCH_TIMEOUT_S = 12.0
+
+
+def _is_timeout_error(exc: Exception) -> bool:
+    if not isinstance(exc, GhManagementError):
+        return False
+    text = str(exc or "").strip().lower()
+    return "timed out" in text
 
 
 @dataclass
@@ -66,7 +76,7 @@ def get_git_info(path: str) -> Optional[GitInfo]:
     """
     try:
         # Step 1: Check if git repo
-        if not is_git_repo(path):
+        if not is_git_repo(path, timeout_s=_GIT_DETECT_TIMEOUT_S):
             logger.debug(
                 format_log(
                     "gh", "detect", "DEBUG", f"path is not a git repository: {path}"
@@ -75,7 +85,7 @@ def get_git_info(path: str) -> Optional[GitInfo]:
             return None
 
         # Step 2: Get repo root
-        repo_root = git_repo_root(path)
+        repo_root = git_repo_root(path, timeout_s=_GIT_DETECT_TIMEOUT_S)
         if not repo_root:
             logger.warning(
                 format_log(
@@ -85,7 +95,7 @@ def get_git_info(path: str) -> Optional[GitInfo]:
             return None
 
         # Step 3: Get current branch
-        branch = git_current_branch(repo_root)
+        branch = git_current_branch(repo_root, timeout_s=_GIT_DETECT_BRANCH_TIMEOUT_S)
         if not branch:
             # Detached HEAD state or error
             logger.warning(
@@ -99,7 +109,7 @@ def get_git_info(path: str) -> Optional[GitInfo]:
             branch = "HEAD"
 
         # Step 4: Get HEAD commit SHA
-        commit_sha = git_head_commit(repo_root)
+        commit_sha = git_head_commit(repo_root, timeout_s=_GIT_DETECT_TIMEOUT_S)
         if not commit_sha:
             logger.warning(
                 format_log(
@@ -112,7 +122,11 @@ def get_git_info(path: str) -> Optional[GitInfo]:
             return None
 
         # Step 5: Get remote URL (try origin first)
-        repo_url = git_remote_url(repo_root, remote="origin")
+        repo_url = git_remote_url(
+            repo_root,
+            remote="origin",
+            timeout_s=_GIT_DETECT_TIMEOUT_S,
+        )
         if not repo_url:
             logger.warning(
                 format_log(
@@ -146,6 +160,26 @@ def get_git_info(path: str) -> Optional[GitInfo]:
             commit_sha=commit_sha,
         )
 
+    except GhManagementError as exc:
+        if _is_timeout_error(exc):
+            logger.debug(
+                format_log(
+                    "gh",
+                    "detect",
+                    "DEBUG",
+                    f"git detection timed out for path '{path}'",
+                )
+            )
+            return None
+        logger.warning(
+            format_log(
+                "gh",
+                "detect",
+                "WARN",
+                f"git detection failed for path '{path}': {exc}",
+            )
+        )
+        return None
     except Exception as exc:
         # Catch-all to ensure we never raise
         logger.error(
