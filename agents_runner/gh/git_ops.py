@@ -3,31 +3,34 @@ import os
 from .process import expand_dir, run_gh
 
 
-def is_git_repo(path: str) -> bool:
+def is_git_repo(path: str, *, timeout_s: float = 8.0) -> bool:
     path = expand_dir(path)
     if not os.path.isdir(path):
         return False
     proc = run_gh(
-        ["git", "-C", path, "rev-parse", "--is-inside-work-tree"], timeout_s=8.0
+        ["git", "-C", path, "rev-parse", "--is-inside-work-tree"], timeout_s=timeout_s
     )
     return proc.returncode == 0 and (proc.stdout or "").strip().lower() == "true"
 
 
-def git_repo_root(path: str) -> str | None:
+def git_repo_root(path: str, *, timeout_s: float = 8.0) -> str | None:
     path = expand_dir(path)
     if not os.path.isdir(path):
         return None
-    proc = run_gh(["git", "-C", path, "rev-parse", "--show-toplevel"], timeout_s=8.0)
+    proc = run_gh(
+        ["git", "-C", path, "rev-parse", "--show-toplevel"], timeout_s=timeout_s
+    )
     if proc.returncode != 0:
         return None
     root = (proc.stdout or "").strip()
     return root if root else None
 
 
-def git_current_branch(repo_root: str) -> str | None:
+def git_current_branch(repo_root: str, *, timeout_s: float = 8.0) -> str | None:
     repo_root = expand_dir(repo_root)
     proc = run_gh(
-        ["git", "-C", repo_root, "rev-parse", "--abbrev-ref", "HEAD"], timeout_s=8.0
+        ["git", "-C", repo_root, "rev-parse", "--abbrev-ref", "HEAD"],
+        timeout_s=timeout_s,
     )
     if proc.returncode != 0:
         return None
@@ -123,28 +126,32 @@ def git_list_remote_heads(repo: str) -> list[str]:
     return sorted(branches, key=str.casefold)
 
 
-def git_head_commit(repo_root: str) -> str | None:
+def git_head_commit(repo_root: str, *, timeout_s: float = 8.0) -> str | None:
     """Get HEAD commit SHA.
 
     Returns full 40-character SHA if successful, None on error.
     Timeout: 8 seconds.
     """
     repo_root = expand_dir(repo_root)
-    proc = run_gh(["git", "-C", repo_root, "rev-parse", "HEAD"], timeout_s=8.0)
+    proc = run_gh(["git", "-C", repo_root, "rev-parse", "HEAD"], timeout_s=timeout_s)
     if proc.returncode != 0:
         return None
     sha = (proc.stdout or "").strip()
     return sha if sha else None
 
 
-def git_remote_url(repo_root: str, remote: str = "origin") -> str | None:
+def git_remote_url(
+    repo_root: str, remote: str = "origin", *, timeout_s: float = 8.0
+) -> str | None:
     """Get remote URL for a given remote name.
 
     Returns URL string if remote exists, None otherwise.
     Timeout: 8 seconds.
     """
     repo_root = expand_dir(repo_root)
-    proc = run_gh(["git", "-C", repo_root, "remote", "get-url", remote], timeout_s=8.0)
+    proc = run_gh(
+        ["git", "-C", repo_root, "remote", "get-url", remote], timeout_s=timeout_s
+    )
     if proc.returncode != 0:
         return None
     url = (proc.stdout or "").strip()
