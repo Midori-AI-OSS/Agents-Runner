@@ -277,7 +277,7 @@ class ContainerExecutor:
         awk_program_quoted = shlex.quote(awk_program)
         return (
             "ide_collect_matching_pids() { "
-            f"ps -eo pid=,stat=,comm=,args= --no-headers 2>/dev/null | awk {awk_program_quoted}; "
+            f"ps -eo pid=,stat=,comm=,args= 2>/dev/null | awk {awk_program_quoted}; "
             "}; "
         )
 
@@ -292,14 +292,16 @@ class ContainerExecutor:
 
         wait_collector_clause = self._build_wait_collector_clause(wait_pattern)
         if not wait_collector_clause:
+            wait_pattern_quoted = shlex.quote(wait_pattern)
             return (
-                f"{agent_cmd}; "
-                "IDE_LAUNCH_STATUS=$?; "
-                'if [ "${IDE_LAUNCH_STATUS}" -ne 0 ]; then exit "${IDE_LAUNCH_STATUS}"; fi; '
-                "sleep 15; "
-                "exit 0"
+                f"IDE_WAIT_PATTERN={wait_pattern_quoted}; "
+                f"{shell_log_statement('ide', 'wait', 'ERROR', 'wait matcher is invalid; cannot build pid collector')}; "
+                'echo "ide wait matcher invalid: ${IDE_WAIT_PATTERN}" >&2; '
+                "exit 64"
             )
 
+        attach_timeout_s = 6
+        wait_pattern_quoted = shlex.quote(wait_pattern)
         return (
             f"{wait_collector_clause}"
             'ide_pid_in_list() { printf "%s\\n" "$2" | grep -Fx -- "$1" >/dev/null 2>&1; }; '
@@ -321,15 +323,46 @@ class ContainerExecutor:
             'if ! ide_pid_in_list "${IDE_PID}" "${IDE_BASELINE}"; then printf "%s\\n" "${IDE_PID}"; fi; '
             "done || true; "
             "}; "
+            'ide_count_pids() { printf "%s\\n" "$1" | awk \'NF {count++} END {print count+0}\'; }; '
+            'ide_merge_pid_lists() { printf "%s\\n" "$1" "$2" | awk \'NF && !seen[$0]++\'; }; '
+            f"IDE_WAIT_PATTERN={wait_pattern_quoted}; "
             'IDE_BASELINE_PIDS="$(ide_collect_matching_pids)"; '
+            'IDE_BASELINE_COUNT="$(ide_count_pids "${IDE_BASELINE_PIDS}")"; '
+            f"{shell_log_statement('ide', 'wait', 'INFO', 'desktop ready; starting ide run stage')}; "
+            'echo "[ide/wait][INFO] wait pattern: ${IDE_WAIT_PATTERN}"; '
+            'echo "[ide/wait][INFO] baseline pid count: ${IDE_BASELINE_COUNT}"; '
+            "set +e; "
             f"{agent_cmd}; "
             "IDE_LAUNCH_STATUS=$?; "
+            "set -e; "
             'if [ "${IDE_LAUNCH_STATUS}" -ne 0 ]; then exit "${IDE_LAUNCH_STATUS}"; fi; '
-            'IDE_TRACKED_PIDS="$(ide_collect_new_pids "${IDE_BASELINE_PIDS}")"; '
-            'if [ -n "${IDE_TRACKED_PIDS}" ]; then '
-            'while ide_any_tracked_active "${IDE_TRACKED_PIDS}"; do sleep 0.5; done; '
+            f"IDE_ATTACH_DEADLINE=$((SECONDS+{attach_timeout_s})); "
+            'IDE_TRACKED_PIDS=""; '
+            'while [ "${SECONDS}" -lt "${IDE_ATTACH_DEADLINE}" ]; do '
+            'IDE_NEW_PIDS="$(ide_collect_new_pids "${IDE_BASELINE_PIDS}")"; '
+            'IDE_TRACKED_PIDS="$(ide_merge_pid_lists "${IDE_TRACKED_PIDS}" "${IDE_NEW_PIDS}")"; '
+            'if [ -n "${IDE_TRACKED_PIDS}" ] && ide_any_tracked_active "${IDE_TRACKED_PIDS}"; then break; fi; '
+            "sleep 0.25; "
+            "done; "
+            'if [ -z "${IDE_TRACKED_PIDS}" ] || ! ide_any_tracked_active "${IDE_TRACKED_PIDS}"; then '
+            'IDE_MATCHING_SNAPSHOT="$(ide_collect_matching_pids)"; '
+            'IDE_MATCHING_COUNT="$(ide_count_pids "${IDE_MATCHING_SNAPSHOT}")"; '
+            f"{shell_log_statement('ide', 'wait', 'ERROR', 'failed to attach to ide process within attach window')}; "
+            f'echo "[ide/wait][ERROR] attach timeout seconds: {attach_timeout_s}"; '
+            'echo "[ide/wait][ERROR] matching pid count at timeout: ${IDE_MATCHING_COUNT}"; '
+            'echo "ide wait attach failed: pattern=${IDE_WAIT_PATTERN} matching_count=${IDE_MATCHING_COUNT}" >&2; '
+            "exit 65; "
             "fi; "
-            "sleep 15; "
+            'IDE_TRACKED_COUNT="$(ide_count_pids "${IDE_TRACKED_PIDS}")"; '
+            'echo "[ide/wait][INFO] attached tracked pid count: ${IDE_TRACKED_COUNT}"; '
+            "while true; do "
+            'IDE_NEW_PIDS="$(ide_collect_new_pids "${IDE_BASELINE_PIDS}")"; '
+            'IDE_TRACKED_PIDS="$(ide_merge_pid_lists "${IDE_TRACKED_PIDS}" "${IDE_NEW_PIDS}")"; '
+            'if ! ide_any_tracked_active "${IDE_TRACKED_PIDS}"; then break; fi; '
+            "sleep 0.5; "
+            "done; "
+            f"{shell_log_statement('ide', 'wait', 'INFO', 'tracked ide processes exited')}; "
+            "sleep 1; "
             "exit 0"
         )
 
@@ -350,13 +383,28 @@ class ContainerExecutor:
             preflight_mounts.extend(mounts)
 
         # IDE preflight
-        if self._runtime_env.ide_preflight_tmp_path is not None:
+        if (
+            self._runtime_env.ide_preflight_tmp_path is not None
+            and not self._runtime_env.ide_preflight_cached
+        ):
             clause, mounts = self._build_ide_preflight(
                 self._runtime_env.ide_preflight_tmp_path,
                 self._runtime_env.ide_container_path,
             )
             preflight_clause += clause
             preflight_mounts.extend(mounts)
+        elif (
+            self._runtime_env.ide_preflight_tmp_path is not None
+            and self._runtime_env.ide_preflight_cached
+        ):
+            self._on_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "INFO",
+                    "ide setup cached; skipping runtime ide preflight",
+                )
+            )
 
         # Desktop preflight
         if self._runtime_env.desktop_enabled:

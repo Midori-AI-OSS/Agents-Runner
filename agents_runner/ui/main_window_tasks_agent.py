@@ -268,6 +268,9 @@ class MainWindowTasksAgentMixin:
             if env
             else False
         )
+        cache_ide_preflight_enabled = (
+            bool(getattr(env, "cache_ide_preflight_enabled", False)) if env else False
+        )
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
 
         use_host_gh = bool(getattr(env, "gh_use_host_cli", True)) if env else True
@@ -331,6 +334,7 @@ class MainWindowTasksAgentMixin:
             container_caching_enabled=container_caching_enabled,
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+            cache_ide_preflight_enabled=cache_ide_preflight_enabled,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,
@@ -732,6 +736,9 @@ class MainWindowTasksAgentMixin:
             if env
             else False
         )
+        cache_ide_preflight_enabled = (
+            bool(getattr(env, "cache_ide_preflight_enabled", False)) if env else False
+        )
         # Only enable cache if desktop is enabled
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
 
@@ -1063,6 +1070,7 @@ class MainWindowTasksAgentMixin:
             container_caching_enabled=container_caching_enabled,
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+            cache_ide_preflight_enabled=cache_ide_preflight_enabled,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,

@@ -1,14 +1,14 @@
 """Real-Docker matrix smoke tests for agent and IDE plugin systems.
 
-Phase 1 scope:
+Implemented scope:
 - Runtime plugin discovery for agents and IDEs
 - Per-agent grouped smoke (agent + interactive)
 - Per-IDE smoke with real package preflight install + executable verification
+- IDE lifecycle wait-tracking assertions for delayed attach and missing tracked PID
 - Case manifest artifact output for downstream review tooling
 
 Deferred work (tracked in manifest `deferred_issues`):
-- IDE lifecycle wait-tracking correctness assertions (Phase 2)
-- IDE matcher hardening (Phase 2)
+- Agent grouped smoke permission/profile mismatch for copilot/gemini (follow-up)
 - Branch-protection required-check policy wiring outside repo config (Phase 3)
 """
 
@@ -84,14 +84,9 @@ _CASE_REPORTS: list[CaseSummary] = []
 _image_ready = False
 _DEFERRED_ISSUES: Final[list[dict[str, str]]] = [
     {
-        "id": "phase2-ide-lifecycle-wait-tracking",
-        "title": "IDE lifecycle attach/wait tracking can report success on missing tracked PID",
-        "scope": "Phase 2",
-    },
-    {
-        "id": "phase2-ide-matcher-hardening",
-        "title": "IDE wait-process matcher precision/portability hardening (especially Cursor)",
-        "scope": "Phase 2",
+        "id": "followup-agent-smoke-copilot-gemini-config-perms",
+        "title": "Agent grouped smoke can fail for copilot/gemini with container config mount permission mismatch",
+        "scope": "Follow-up",
     },
     {
         "id": "phase3-required-check-policy",
@@ -427,7 +422,9 @@ def test_ide_plugin_smoke(ide_name: str) -> None:
         failure_detail = str(exc)
         raise
     finally:
-        notes.append("phase2 will add lifecycle wait-tracking assertions")
+        notes.append(
+            "phase2 lifecycle assertions are covered by dedicated ide lifecycle cases"
+        )
         if failure_detail:
             notes.append(f"failure_detail={failure_detail}")
         _record_case(
@@ -435,6 +432,117 @@ def test_ide_plugin_smoke(ide_name: str) -> None:
                 "case_id": case_id,
                 "category": "ide",
                 "plugin": ide_name,
+                "status": status,
+                "duration_s": round(time.monotonic() - started_s, 3),
+                "started_at": started_at,
+                "modes": mode_summaries,
+                "notes": notes,
+            }
+        )
+
+
+def test_ide_lifecycle_wait_tracking_delayed_attach() -> None:
+    case_id = "ide-lifecycle-delayed-attach"
+    started_at = datetime.now(timezone.utc).isoformat()
+    started_s = time.monotonic()
+    mode_summaries: list[ModeSummary] = []
+    notes = [
+        "phase2 lifecycle case: command detaches first, matching pid appears during attach window"
+    ]
+    status = "passed"
+    failure_detail = ""
+
+    try:
+        delayed_spawn_cmd = [
+            "/bin/bash",
+            "-lc",
+            "set -euo pipefail; "
+            "(sleep 1; exec -a agents-runner-phase2-marker sleep 2) & "
+            "exit 0",
+        ]
+        result = _run_worker_case(
+            case_token="ide-lifecycle-delayed-attach",
+            launch_mode="ide",
+            agent_cli="codex",
+            custom_command_argv=delayed_spawn_cmd,
+            custom_verify_executable="/bin/bash",
+            custom_wait_process_pattern="comm=sleep;argv_contains=agents-runner-phase2-marker",
+            ide_system="code",
+            ide_preflight_script=None,
+            timeout_s=120.0,
+        )
+        mode_summaries.append(_mode_summary("ide_lifecycle_delayed_attach", result))
+        assert int(result["exit_code"]) == 0, (
+            "delayed attach lifecycle case failed: "
+            f"exit={result['exit_code']} error={result['error']}"
+        )
+        logs_joined = "\n".join(str(line) for line in result["logs"])
+        assert "starting ide run stage" in logs_joined
+        assert "attached tracked pid count:" in logs_joined
+    except Exception as exc:
+        status = "failed"
+        failure_detail = str(exc)
+        raise
+    finally:
+        if failure_detail:
+            notes.append(f"failure_detail={failure_detail}")
+        _record_case(
+            {
+                "case_id": case_id,
+                "category": "ide_lifecycle",
+                "plugin": "generic",
+                "status": status,
+                "duration_s": round(time.monotonic() - started_s, 3),
+                "started_at": started_at,
+                "modes": mode_summaries,
+                "notes": notes,
+            }
+        )
+
+
+def test_ide_lifecycle_wait_tracking_missing_pid_fails() -> None:
+    case_id = "ide-lifecycle-missing-pid-fails"
+    started_at = datetime.now(timezone.utc).isoformat()
+    started_s = time.monotonic()
+    mode_summaries: list[ModeSummary] = []
+    notes = [
+        "phase2 lifecycle case: launch succeeds but no matching pid is tracked -> must fail"
+    ]
+    status = "passed"
+    failure_detail = ""
+
+    try:
+        result = _run_worker_case(
+            case_token="ide-lifecycle-missing-pid-fails",
+            launch_mode="ide",
+            agent_cli="codex",
+            custom_command_argv=["/bin/bash", "-lc", "set -euo pipefail; true"],
+            custom_verify_executable="/bin/bash",
+            custom_wait_process_pattern="comm=definitely-not-a-real-process",
+            ide_system="code",
+            ide_preflight_script=None,
+            timeout_s=120.0,
+        )
+        mode_summaries.append(_mode_summary("ide_lifecycle_missing_pid", result))
+        assert int(result["exit_code"]) == 65, (
+            "missing-pid lifecycle case should fail with attach-timeout exit code: "
+            f"exit={result['exit_code']} error={result['error']}"
+        )
+        logs_joined = "\n".join(str(line) for line in result["logs"])
+        assert "failed to attach to ide process within attach window" in logs_joined
+        assert "attach timeout seconds: 6" in logs_joined
+    except Exception as exc:
+        status = "failed"
+        failure_detail = str(exc)
+        raise
+    finally:
+        if failure_detail:
+            notes.append(f"failure_detail={failure_detail}")
+        _record_case(
+            {
+                "case_id": case_id,
+                "category": "ide_lifecycle",
+                "plugin": "generic",
                 "status": status,
                 "duration_s": round(time.monotonic() - started_s, 3),
                 "started_at": started_at,

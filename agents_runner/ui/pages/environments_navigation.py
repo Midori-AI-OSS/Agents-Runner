@@ -40,6 +40,7 @@ class EnvironmentsNavigationMixin:
             self._preflight_enabled,
             self._cache_system_preflight_enabled,
             self._cache_settings_preflight_enabled,
+            self._cache_ide_preflight_enabled,
         ):
             checkbox.toggled.connect(self._queue_debounced_autosave)
         self._agentsnova_trusted_users_env.usernames_changed.connect(

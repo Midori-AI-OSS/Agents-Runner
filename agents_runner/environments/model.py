@@ -87,6 +87,7 @@ class Environment:
     container_caching_enabled: bool = False
     cache_system_preflight_enabled: bool = False
     cache_settings_preflight_enabled: bool = False
+    cache_ide_preflight_enabled: bool = False
     preflight_enabled: bool = False
     preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
