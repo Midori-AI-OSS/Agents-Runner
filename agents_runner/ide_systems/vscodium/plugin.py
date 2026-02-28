@@ -8,5 +8,5 @@ PLUGIN = IdeSystemSpec(
     package_name="vscodium-bin",
     executable="codium",
     launch_args=("--no-sandbox",),
-    wait_process_pattern="codium",
+    wait_process_pattern="comm=codium",
 )

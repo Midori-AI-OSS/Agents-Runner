@@ -8,5 +8,5 @@ PLUGIN = IdeSystemSpec(
     package_name="cursor-bin",
     executable="cursor",
     launch_args=("--no-sandbox",),
-    wait_process_pattern="cursor",
+    wait_process_pattern="comm=electron;argv_contains=/usr/share/cursor/resources/app",
 )

@@ -8,5 +8,5 @@ PLUGIN = IdeSystemSpec(
     package_name="code",
     executable="code",
     launch_args=("--no-sandbox",),
-    wait_process_pattern="code",
+    wait_process_pattern="comm=code|code-oss",
 )
