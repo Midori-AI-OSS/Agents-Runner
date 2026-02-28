@@ -32,6 +32,7 @@ from typing import Any, Callable
 from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
 from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.github_token import resolve_github_token
+from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
 from agents_runner.log_format import format_log, wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
 
@@ -125,6 +126,8 @@ class ContainerExecutor:
             # Build agent command
             agent_args = self._build_agent_command()
             agent_cmd = " ".join(shlex.quote(part) for part in agent_args)
+            verify_clause = self._build_verify_clause(agent_args)
+            command_clause = self._build_main_command_clause(agent_cmd)
 
             # Setup desktop state tracking
             desktop_state: dict[str, Any] = {}
@@ -151,7 +154,8 @@ class ContainerExecutor:
                 preflight_mounts=preflight_mounts,
                 env_args=env_args,
                 preflight_clause=preflight_clause,
-                agent_cmd=agent_cmd,
+                verify_clause=verify_clause,
+                command_clause=command_clause,
             )
 
             # Start container
@@ -183,6 +187,8 @@ class ContainerExecutor:
 
     def _build_agent_command(self) -> list[str]:
         """Build the agent CLI command."""
+        if self._runtime_env.custom_command_argv:
+            return [str(part) for part in self._runtime_env.custom_command_argv]
         return build_noninteractive_cmd(
             agent=self._runtime_env.agent_cli,
             prompt=self._runtime_env.prompt_for_agent,
@@ -190,6 +196,67 @@ class ContainerExecutor:
             host_config_dir=self._config.host_config_dir,
             container_workdir=self._config.container_workdir,
             agent_cli_args=list(self._config.agent_cli_args or []),
+        )
+
+    def _build_verify_clause(self, command_argv: list[str]) -> str:
+        """Build executable verification clause."""
+        if self._runtime_env.custom_command_argv:
+            verify_target = str(
+                self._runtime_env.custom_verify_executable or ""
+            ).strip() or (str(command_argv[0]).strip() if command_argv else "")
+            if verify_target:
+                verify_target_quoted = shlex.quote(verify_target)
+                return (
+                    f"command -v {verify_target_quoted} >/dev/null 2>&1 || "
+                    "{ "
+                    f'echo "{verify_target} not found in PATH=$PATH"; '
+                    "exit 127; "
+                    "}; "
+                )
+            return ""
+        return verify_cli_clause(self._runtime_env.agent_cli)
+
+    def _build_main_command_clause(self, agent_cmd: str) -> str:
+        """Build the command execution clause."""
+        if not self._runtime_env.custom_command_argv:
+            return f"exec {agent_cmd}"
+
+        wait_pattern = str(self._runtime_env.custom_wait_process_pattern or "").strip()
+        if not wait_pattern:
+            return f"exec {agent_cmd}"
+
+        wait_pattern_quoted = shlex.quote(wait_pattern)
+        return (
+            'IDE_LAUNCH_START="${SECONDS:-0}"; '
+            f"{agent_cmd}; "
+            "IDE_LAUNCH_STATUS=$?; "
+            'IDE_LAUNCH_END="${SECONDS:-0}"; '
+            'if [ "${IDE_LAUNCH_STATUS}" -ne 0 ]; then exit "${IDE_LAUNCH_STATUS}"; fi; '
+            "IDE_LAUNCH_RUNTIME=$((IDE_LAUNCH_END-IDE_LAUNCH_START)); "
+            'if [ "${IDE_LAUNCH_RUNTIME}" -gt 1 ]; then exit 0; fi; '
+            f"IDE_WAIT_PATTERN={wait_pattern_quoted}; "
+            'IDE_WAIT_SELF="$$"; '
+            'IDE_WAIT_PARENT="${PPID:-0}"; '
+            "ide_wait_has_match() { "
+            'for IDE_WAIT_PID in $(pgrep -f -- "${IDE_WAIT_PATTERN}" 2>/dev/null || true); do '
+            'if [ "${IDE_WAIT_PID}" != "${IDE_WAIT_SELF}" ] && [ "${IDE_WAIT_PID}" != "${IDE_WAIT_PARENT}" ]; then '
+            "return 0; "
+            "fi; "
+            "done; "
+            "return 1; "
+            "}; "
+            "IDE_WAIT_FOUND=0; "
+            "IDE_WAIT_DEADLINE=$((SECONDS+15)); "
+            'while [ "${SECONDS}" -lt "${IDE_WAIT_DEADLINE}" ]; do '
+            "if ide_wait_has_match; then IDE_WAIT_FOUND=1; break; fi; "
+            "sleep 0.25; "
+            "done; "
+            'if [ "${IDE_WAIT_FOUND}" -ne 1 ]; then '
+            f"{shell_log_statement('agent', 'cmd', 'ERROR', 'command detached before process tracking started')}; "
+            "exit 125; "
+            "fi; "
+            "while ide_wait_has_match; do sleep 0.5; done; "
+            "exit 0"
         )
 
     def _build_preflight_clause(
@@ -205,6 +272,15 @@ class ContainerExecutor:
             and not self._runtime_env.system_preflight_cached
         ):
             clause, mounts = self._build_system_preflight()
+            preflight_clause += clause
+            preflight_mounts.extend(mounts)
+
+        # IDE preflight
+        if self._runtime_env.ide_preflight_tmp_path is not None:
+            clause, mounts = self._build_ide_preflight(
+                self._runtime_env.ide_preflight_tmp_path,
+                self._runtime_env.ide_container_path,
+            )
             preflight_clause += clause
             preflight_mounts.extend(mounts)
 
@@ -392,6 +468,26 @@ class ContainerExecutor:
             ["-v", f"{tmp_path}:{container_path}:ro"],
         )
 
+    def _build_ide_preflight(
+        self, tmp_path: str, container_path: str
+    ) -> tuple[str, list[str]]:
+        """Build IDE preflight clause and mounts."""
+        self._on_log(
+            format_log(
+                "host",
+                "none",
+                "INFO",
+                f"ide preflight enabled; mounting -> {container_path} (ro)",
+            )
+        )
+        return (
+            f"PREFLIGHT_IDE={shlex.quote(container_path)}; "
+            f"{shell_log_statement('env', 'setup', 'INFO', 'ide: running')}; "
+            '/bin/bash "${PREFLIGHT_IDE}"; '
+            f"{shell_log_statement('env', 'setup', 'INFO', 'ide: done')}; ",
+            ["-v", f"{tmp_path}:{container_path}:ro"],
+        )
+
     def _build_env_args(self) -> tuple[list[str], dict[str, str] | None]:
         """Build environment variable arguments. Returns (env_args, docker_env)."""
         env_args: list[str] = []
@@ -434,6 +530,27 @@ class ContainerExecutor:
                     f"DISPLAY={self._runtime_env.desktop_display}",
                 ]
             )
+        elif self._runtime_env.ide_display_target == IDE_DISPLAY_HOST_DESKTOP:
+            host_display = str(os.environ.get("DISPLAY") or "").strip()
+            if host_display:
+                env_args.extend(
+                    ["-e", f"DISPLAY={host_display}", "-e", "QT_X11_NO_MITSHM=1"]
+                )
+            else:
+                self._on_log(
+                    format_log(
+                        "desktop",
+                        "host",
+                        "WARN",
+                        "host desktop mode selected but DISPLAY is not set",
+                    )
+                )
+
+            xauthority = str(os.environ.get("XAUTHORITY") or "").strip()
+            if xauthority:
+                xauthority = os.path.expanduser(xauthority)
+                if os.path.isfile(xauthority):
+                    env_args.extend(["-e", f"XAUTHORITY={xauthority}"])
 
         return env_args, docker_env
 
@@ -505,6 +622,26 @@ class ContainerExecutor:
             if m:
                 all_mounts.append(m)
 
+        if self._runtime_env.ide_display_target == IDE_DISPLAY_HOST_DESKTOP:
+            x11_socket_dir = "/tmp/.X11-unix"
+            if os.path.isdir(x11_socket_dir):
+                all_mounts.append(f"{x11_socket_dir}:{x11_socket_dir}:rw")
+            else:
+                self._on_log(
+                    format_log(
+                        "desktop",
+                        "host",
+                        "WARN",
+                        f"host desktop mode could not find {x11_socket_dir}",
+                    )
+                )
+
+            xauthority = str(os.environ.get("XAUTHORITY") or "").strip()
+            if xauthority:
+                xauthority = os.path.expanduser(xauthority)
+                if os.path.isfile(xauthority):
+                    all_mounts.append(f"{xauthority}:{xauthority}:ro")
+
         # Deduplicate by container path, preserving order
         deduplicated = deduplicate_mounts(all_mounts)
 
@@ -523,7 +660,8 @@ class ContainerExecutor:
         preflight_mounts: list[str],
         env_args: list[str],
         preflight_clause: str,
-        agent_cmd: str,
+        verify_clause: str,
+        command_clause: str,
     ) -> list[str]:
         """Build complete Docker run command arguments."""
         return [
@@ -545,8 +683,8 @@ class ContainerExecutor:
             "set -euo pipefail; "
             f"{git_identity_clause()}"
             f"{preflight_clause}"
-            f"{verify_cli_clause(self._runtime_env.agent_cli)}"
-            f"exec {agent_cmd}",
+            f"{verify_clause}"
+            f"{command_clause}",
         ]
 
     def _setup_desktop_port_mapping(
