@@ -8,8 +8,7 @@ PLUGIN = IdeSystemSpec(
     display_name="Code OSS",
     package_name="code",
     executable="code",
-    launch_args=("--no-sandbox",),
-    wait_process_pattern="comm=code|code-oss",
+    launch_args=("--no-sandbox", "--wait"),
     auto_mount_specs=(
         IdeAutoMountSpec(
             host_path="~/.config/Code - OSS",

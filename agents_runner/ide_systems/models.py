@@ -36,7 +36,6 @@ class IdeSystemSpec:
     package_name: str
     executable: str
     launch_args: tuple[str, ...] = ()
-    wait_process_pattern: str = ""
     auto_mount_specs: tuple[IdeAutoMountSpec, ...] = ()
     auto_mount_host_keyring: bool = False
     auto_mount_session_dbus: bool = False
@@ -60,7 +59,6 @@ class IdeSystemPlugin(Protocol):
     name: str
     display_name: str
     package_name: str
-    wait_process_pattern: str
     auto_mount_specs: tuple[IdeAutoMountSpec, ...]
     auto_mount_host_keyring: bool
     auto_mount_session_dbus: bool

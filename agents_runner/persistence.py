@@ -565,9 +565,6 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             custom_verify_executable=str(
                 payload.get("custom_verify_executable") or ""
             ).strip(),
-            custom_wait_process_pattern=str(
-                payload.get("custom_wait_process_pattern") or ""
-            ).strip(),
             gh_repo=(
                 str(payload.get("gh_repo") or "").strip()
                 if str(payload.get("gh_repo") or "").strip()

@@ -231,9 +231,6 @@ class MainWindowTasksAgentMixin:
         )
         launch_command = " ".join(shlex.quote(part) for part in launch_argv)
         verify_executable = str(getattr(ide_plugin, "executable", "") or "").strip()
-        wait_process_pattern = str(
-            getattr(ide_plugin, "wait_process_pattern", "") or verify_executable
-        ).strip()
         ide_preflight_script = self._build_ide_install_preflight_script(
             package_name=str(getattr(ide_plugin, "package_name", "") or ide_system)
         )
@@ -349,7 +346,6 @@ class MainWindowTasksAgentMixin:
             ide_auto_mounts_enabled=ide_auto_mounts_enabled,
             custom_command_argv=launch_argv,
             custom_verify_executable=verify_executable,
-            custom_wait_process_pattern=wait_process_pattern,
         )
         task._runner_config = config
         task._runner_prompt = launch_command

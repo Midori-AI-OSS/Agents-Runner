@@ -42,7 +42,6 @@ class DockerRunnerConfig:
     ide_auto_mounts_enabled: bool = False
     custom_command_argv: list[str] = field(default_factory=list)
     custom_verify_executable: str = ""
-    custom_wait_process_pattern: str = ""
     # GitHub repo preparation
     gh_repo: str | None = None
     gh_prefer_gh_cli: bool = True

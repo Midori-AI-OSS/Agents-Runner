@@ -79,7 +79,6 @@ class RuntimeEnvironment:
     ide_display_target: str
     custom_command_argv: list[str]
     custom_verify_executable: str
-    custom_wait_process_pattern: str
 
 
 class WorkerSetup:
@@ -166,9 +165,6 @@ class WorkerSetup:
                 str(part) for part in self._config.custom_command_argv
             ],
             custom_verify_executable=str(self._config.custom_verify_executable or ""),
-            custom_wait_process_pattern=str(
-                self._config.custom_wait_process_pattern or ""
-            ),
         )
 
     @dataclass(frozen=True)

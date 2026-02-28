@@ -4,11 +4,13 @@ Implemented scope:
 - Runtime plugin discovery for agents and IDEs
 - Per-agent grouped smoke (agent + interactive)
 - Per-IDE smoke with real package preflight install + executable verification
-- IDE lifecycle wait-tracking assertions for delayed attach and missing tracked PID
+- IDE launch contract assertions for `--wait` execution mode
 - Case manifest artifact output for downstream review tooling
 
 Deferred work (tracked in manifest `deferred_issues`):
 - Agent grouped smoke permission/profile mismatch for copilot/gemini (follow-up)
+- IDE lifecycle stress/instrumentation cases beyond `--wait` launch contract (Phase 2)
+- IDE setup preflight ordering vs environment preflight dependencies (Phase 2)
 - Branch-protection required-check policy wiring outside repo config (Phase 3)
 """
 
@@ -87,6 +89,16 @@ _DEFERRED_ISSUES: Final[list[dict[str, str]]] = [
         "id": "followup-agent-smoke-copilot-gemini-config-perms",
         "title": "Agent grouped smoke can fail for copilot/gemini with container config mount permission mismatch",
         "scope": "Follow-up",
+    },
+    {
+        "id": "phase2-ide-lifecycle-stress",
+        "title": "Broader IDE lifecycle stress/instrumentation cases are deferred behind `--wait` launch contract",
+        "scope": "Phase 2",
+    },
+    {
+        "id": "phase2-ide-preflight-ordering",
+        "title": "Evaluate whether IDE setup preflight must run after environment preflight for dependency-sensitive environments",
+        "scope": "Phase 2",
     },
     {
         "id": "phase3-required-check-policy",
@@ -190,7 +202,6 @@ def _run_worker_case(
     agent_cli: str,
     custom_command_argv: list[str],
     custom_verify_executable: str = "",
-    custom_wait_process_pattern: str = "",
     ide_system: str = "",
     ide_preflight_script: str | None = None,
     timeout_s: float = 900.0,
@@ -225,7 +236,6 @@ def _run_worker_case(
             auto_remove=True,
             custom_command_argv=list(custom_command_argv),
             custom_verify_executable=str(custom_verify_executable or ""),
-            custom_wait_process_pattern=str(custom_wait_process_pattern or ""),
             ide_preflight_script=ide_preflight_script,
             container_name=container_name,
         )
@@ -407,7 +417,6 @@ def test_ide_plugin_smoke(ide_name: str) -> None:
             agent_cli="codex",
             custom_command_argv=verification_cmd,
             custom_verify_executable="/bin/bash",
-            custom_wait_process_pattern="",
             ide_system=ide_name,
             ide_preflight_script=None,
             timeout_s=1200.0,
@@ -422,9 +431,7 @@ def test_ide_plugin_smoke(ide_name: str) -> None:
         failure_detail = str(exc)
         raise
     finally:
-        notes.append(
-            "phase2 lifecycle assertions are covered by dedicated ide lifecycle cases"
-        )
+        notes.append("phase2 lifecycle stress coverage is tracked as deferred issue")
         if failure_detail:
             notes.append(f"failure_detail={failure_detail}")
         _record_case(
@@ -441,44 +448,45 @@ def test_ide_plugin_smoke(ide_name: str) -> None:
         )
 
 
-def test_ide_lifecycle_wait_tracking_delayed_attach() -> None:
-    case_id = "ide-lifecycle-delayed-attach"
+@pytest.mark.parametrize(
+    "ide_name", IDE_CASES, ids=lambda name: f"ide-launch-contract-{name}"
+)
+def test_ide_plugin_launch_args_include_wait(ide_name: str) -> None:
+    plugin = get_ide_system(ide_name)
+    launch_args = tuple(str(part) for part in getattr(plugin, "launch_args", ()))
+    assert "--wait" in launch_args, (
+        f"{ide_name} launch args must include --wait "
+        "to keep IDE lifecycle bound to the runner process"
+    )
+
+
+def test_ide_mode_custom_command_nonzero_exit_is_reported() -> None:
+    case_id = "ide-custom-command-nonzero-exit"
     started_at = datetime.now(timezone.utc).isoformat()
     started_s = time.monotonic()
     mode_summaries: list[ModeSummary] = []
-    notes = [
-        "phase2 lifecycle case: command detaches first, matching pid appears during attach window"
-    ]
+    notes = ["phase1 guard: IDE mode should propagate custom command exit status"]
     status = "passed"
     failure_detail = ""
 
     try:
-        delayed_spawn_cmd = [
-            "/bin/bash",
-            "-lc",
-            "set -euo pipefail; "
-            "(sleep 1; exec -a agents-runner-phase2-marker sleep 2) & "
-            "exit 0",
-        ]
         result = _run_worker_case(
-            case_token="ide-lifecycle-delayed-attach",
+            case_token="ide-custom-command-nonzero-exit",
             launch_mode="ide",
             agent_cli="codex",
-            custom_command_argv=delayed_spawn_cmd,
+            custom_command_argv=["/bin/bash", "-lc", "set -euo pipefail; exit 23"],
             custom_verify_executable="/bin/bash",
-            custom_wait_process_pattern="comm=sleep;argv_contains=agents-runner-phase2-marker",
             ide_system="code",
             ide_preflight_script=None,
             timeout_s=120.0,
         )
-        mode_summaries.append(_mode_summary("ide_lifecycle_delayed_attach", result))
-        assert int(result["exit_code"]) == 0, (
-            "delayed attach lifecycle case failed: "
+        mode_summaries.append(_mode_summary("ide_custom_command_nonzero_exit", result))
+        assert int(result["exit_code"]) == 23, (
+            "custom command nonzero exit code should be preserved in IDE mode: "
             f"exit={result['exit_code']} error={result['error']}"
         )
         logs_joined = "\n".join(str(line) for line in result["logs"])
-        assert "starting ide run stage" in logs_joined
-        assert "attached tracked pid count:" in logs_joined
+        assert "[ide/wait]" not in logs_joined
     except Exception as exc:
         status = "failed"
         failure_detail = str(exc)
@@ -489,59 +497,7 @@ def test_ide_lifecycle_wait_tracking_delayed_attach() -> None:
         _record_case(
             {
                 "case_id": case_id,
-                "category": "ide_lifecycle",
-                "plugin": "generic",
-                "status": status,
-                "duration_s": round(time.monotonic() - started_s, 3),
-                "started_at": started_at,
-                "modes": mode_summaries,
-                "notes": notes,
-            }
-        )
-
-
-def test_ide_lifecycle_wait_tracking_missing_pid_fails() -> None:
-    case_id = "ide-lifecycle-missing-pid-fails"
-    started_at = datetime.now(timezone.utc).isoformat()
-    started_s = time.monotonic()
-    mode_summaries: list[ModeSummary] = []
-    notes = [
-        "phase2 lifecycle case: launch succeeds but no matching pid is tracked -> must fail"
-    ]
-    status = "passed"
-    failure_detail = ""
-
-    try:
-        result = _run_worker_case(
-            case_token="ide-lifecycle-missing-pid-fails",
-            launch_mode="ide",
-            agent_cli="codex",
-            custom_command_argv=["/bin/bash", "-lc", "set -euo pipefail; true"],
-            custom_verify_executable="/bin/bash",
-            custom_wait_process_pattern="comm=definitely-not-a-real-process",
-            ide_system="code",
-            ide_preflight_script=None,
-            timeout_s=120.0,
-        )
-        mode_summaries.append(_mode_summary("ide_lifecycle_missing_pid", result))
-        assert int(result["exit_code"]) == 65, (
-            "missing-pid lifecycle case should fail with attach-timeout exit code: "
-            f"exit={result['exit_code']} error={result['error']}"
-        )
-        logs_joined = "\n".join(str(line) for line in result["logs"])
-        assert "failed to attach to ide process within attach window" in logs_joined
-        assert "attach timeout seconds: 6" in logs_joined
-    except Exception as exc:
-        status = "failed"
-        failure_detail = str(exc)
-        raise
-    finally:
-        if failure_detail:
-            notes.append(f"failure_detail={failure_detail}")
-        _record_case(
-            {
-                "case_id": case_id,
-                "category": "ide_lifecycle",
+                "category": "ide",
                 "plugin": "generic",
                 "status": status,
                 "duration_s": round(time.monotonic() - started_s, 3),

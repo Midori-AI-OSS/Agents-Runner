@@ -8,8 +8,7 @@ PLUGIN = IdeSystemSpec(
     display_name="Cursor",
     package_name="cursor-bin",
     executable="cursor",
-    launch_args=("--no-sandbox",),
-    wait_process_pattern="comm=electron;argv_contains=/usr/share/cursor/resources/app",
+    launch_args=("--no-sandbox", "--wait"),
     auto_mount_specs=(
         IdeAutoMountSpec(
             host_path="~/.config/Cursor",
