@@ -27,6 +27,9 @@ from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
 from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
+from agents_runner.ide_systems import IDE_AUTO_MOUNTS_DISABLED
+from agents_runner.ide_systems import IDE_AUTO_MOUNTS_ENABLED
+from agents_runner.ide_systems import IDE_AUTO_MOUNTS_INHERIT
 from agents_runner.ide_systems import available_ide_system_names
 from agents_runner.ide_systems import get_ide_system
 from agents_runner.ui.constants import (
@@ -165,6 +168,17 @@ class EnvironmentsFormMixin:
         )
         self._ide_display_target_override.setToolTip(
             "Override Run IDE display target for this environment."
+        )
+        self._ide_auto_mounts_override = QComboBox()
+        self._ide_auto_mounts_override.addItem(
+            "Inherit setting default", IDE_AUTO_MOUNTS_INHERIT
+        )
+        self._ide_auto_mounts_override.addItem("Force enabled", IDE_AUTO_MOUNTS_ENABLED)
+        self._ide_auto_mounts_override.addItem(
+            "Force disabled", IDE_AUTO_MOUNTS_DISABLED
+        )
+        self._ide_auto_mounts_override.setToolTip(
+            "Override whether Run IDE auto-mounts host IDE config/auth paths."
         )
 
         self._cache_desktop_build = QCheckBox("Cache desktop build")
@@ -353,7 +367,9 @@ class EnvironmentsFormMixin:
             grid.addWidget(self._ide_system_override, 5, 1, 1, 2)
             grid.addWidget(QLabel("IDE display"), 6, 0)
             grid.addWidget(self._ide_display_target_override, 6, 1, 1, 2)
-            cross_agents_row_index = 7
+            grid.addWidget(QLabel("IDE config/auth mounts"), 7, 0)
+            grid.addWidget(self._ide_auto_mounts_override, 7, 1, 1, 2)
+            cross_agents_row_index = 8
         else:
             cross_agents_row_index = 5
         grid.addWidget(QLabel("Cross agents"), cross_agents_row_index, 0)

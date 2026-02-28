@@ -158,6 +158,10 @@ class MainWindowTasksAgentMixin:
             override=ide_config_override,
             settings=self._settings_data,
         )
+        ide_auto_mounts_enabled = self._effective_ide_auto_mounts_enabled(
+            env=env,
+            settings=self._settings_data,
+        )
         if (
             ide_display_target == IDE_DISPLAY_HOST_DESKTOP
             and not sys.platform.startswith("linux")
@@ -338,6 +342,7 @@ class MainWindowTasksAgentMixin:
             launch_mode="ide",
             ide_system=ide_system,
             ide_display_target=ide_display_target,
+            ide_auto_mounts_enabled=ide_auto_mounts_enabled,
             custom_command_argv=launch_argv,
             custom_verify_executable=verify_executable,
             custom_wait_process_pattern=wait_process_pattern,

@@ -24,6 +24,7 @@ class EnvironmentsNavigationMixin:
             self._workspace_type_combo,
             self._ide_system_override,
             self._ide_display_target_override,
+            self._ide_auto_mounts_override,
             self._agentsnova_trusted_mode,
         ):
             combo.currentIndexChanged.connect(self._queue_debounced_autosave)

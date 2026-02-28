@@ -555,6 +555,9 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             launch_mode=str(payload.get("launch_mode") or "agent"),
             ide_system=str(payload.get("ide_system") or ""),
             ide_display_target=str(payload.get("ide_display_target") or ""),
+            ide_auto_mounts_enabled=bool(
+                payload.get("ide_auto_mounts_enabled") or False
+            ),
             custom_command_argv=custom_command_argv,
             custom_verify_executable=str(
                 payload.get("custom_verify_executable") or ""

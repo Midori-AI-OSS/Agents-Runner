@@ -186,6 +186,7 @@ class MainWindowPersistenceMixin:
                 str(self._settings_data.get("ide_display_target") or "")
             ),
         )
+        self._settings_data.setdefault("ide_auto_mounts_enabled", False)
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("auto_navigate_on_run_agent_start", False)
         self._settings_data.setdefault("auto_navigate_on_run_interactive_start", False)

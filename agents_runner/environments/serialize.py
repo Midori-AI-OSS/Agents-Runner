@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 from typing import cast
 
+from agents_runner.ide_systems import normalize_ide_auto_mounts_override
 from agents_runner.ide_systems import normalize_ide_display_target
 from agents_runner.ide_systems import normalize_ide_system_name
 
@@ -221,6 +222,18 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         normalize_ide_display_target(ide_display_target_override_raw)
         if ide_display_target_override_raw
         else ""
+    )
+    ide_auto_mounts_override_raw = payload.get("ide_auto_mounts_override")
+    if ide_auto_mounts_override_raw is None and (
+        "ide_auto_mounts_enabled_override" in payload
+    ):
+        ide_auto_mounts_override_raw = (
+            "enabled"
+            if bool(payload.get("ide_auto_mounts_enabled_override"))
+            else "disabled"
+        )
+    ide_auto_mounts_override = normalize_ide_auto_mounts_override(
+        str(ide_auto_mounts_override_raw or "inherit")
     )
     cache_desktop_build = bool(payload.get("cache_desktop_build", False))
     container_caching_enabled = bool(payload.get("container_caching_enabled", False))
@@ -488,6 +501,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         headless_desktop_enabled=headless_desktop_enabled,
         ide_system_override=ide_system_override,
         ide_display_target_override=ide_display_target_override,
+        ide_auto_mounts_override=ide_auto_mounts_override,
         cache_desktop_build=cache_desktop_build,
         container_caching_enabled=container_caching_enabled,
         cache_system_preflight_enabled=cache_system_preflight_enabled,
@@ -596,6 +610,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
             )
             if str(getattr(env, "ide_display_target_override", "") or "").strip()
             else ""
+        ),
+        "ide_auto_mounts_override": normalize_ide_auto_mounts_override(
+            str(getattr(env, "ide_auto_mounts_override", "inherit") or "inherit")
         ),
         "cache_desktop_build": bool(getattr(env, "cache_desktop_build", False)),
         "container_caching_enabled": bool(

@@ -13,6 +13,7 @@ from agents_runner.environments import delete_environment
 from agents_runner.environments import load_environments
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
+from agents_runner.ide_systems import normalize_ide_auto_mounts_override
 from agents_runner.ide_systems import normalize_ide_display_target
 from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
@@ -173,6 +174,9 @@ class EnvironmentsPageActionsMixin:
             if ide_display_target_raw
             else ""
         )
+        ide_auto_mounts_override = normalize_ide_auto_mounts_override(
+            str(self._ide_auto_mounts_override.currentData() or "inherit")
+        )
         agentsnova_trusted_users_env = (
             self._agentsnova_trusted_users_env.get_usernames()
         )
@@ -237,6 +241,7 @@ class EnvironmentsPageActionsMixin:
                 ),
                 ide_system_override=ide_system_override,
                 ide_display_target_override=ide_display_target_override,
+                ide_auto_mounts_override=ide_auto_mounts_override,
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
@@ -279,6 +284,7 @@ class EnvironmentsPageActionsMixin:
                 ),
                 ide_system_override=ide_system_override,
                 ide_display_target_override=ide_display_target_override,
+                ide_auto_mounts_override=ide_auto_mounts_override,
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
@@ -375,6 +381,9 @@ class EnvironmentsPageActionsMixin:
             if ide_display_target_raw
             else ""
         )
+        ide_auto_mounts_override = normalize_ide_auto_mounts_override(
+            str(self._ide_auto_mounts_override.currentData() or "inherit")
+        )
         agentsnova_trusted_users_env = (
             self._agentsnova_trusted_users_env.get_usernames()
         )
@@ -435,6 +444,7 @@ class EnvironmentsPageActionsMixin:
                 ),
                 ide_system_override=ide_system_override,
                 ide_display_target_override=ide_display_target_override,
+                ide_auto_mounts_override=ide_auto_mounts_override,
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
@@ -475,6 +485,7 @@ class EnvironmentsPageActionsMixin:
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
             ide_system_override=ide_system_override,
             ide_display_target_override=ide_display_target_override,
+            ide_auto_mounts_override=ide_auto_mounts_override,
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
             cache_system_preflight_enabled=cache_system_preflight_enabled,

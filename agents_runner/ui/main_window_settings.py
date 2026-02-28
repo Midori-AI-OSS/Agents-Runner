@@ -12,7 +12,10 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import available_agents
+from agents_runner.ide_systems import IDE_AUTO_MOUNTS_DISABLED
+from agents_runner.ide_systems import IDE_AUTO_MOUNTS_ENABLED
 from agents_runner.ide_systems import get_default_ide_system_name
+from agents_runner.ide_systems import normalize_ide_auto_mounts_override
 from agents_runner.ide_systems import normalize_ide_display_target
 from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.radio import RadioController
@@ -92,6 +95,9 @@ class MainWindowSettingsMixin:
                 or merged.get("ide_display_target")
                 or ""
             )
+        )
+        merged["ide_auto_mounts_enabled"] = bool(
+            merged.get("ide_auto_mounts_enabled", False)
         )
         merged["interactive_command"] = str(
             merged.get("interactive_command") or "--sandbox danger-full-access"
@@ -630,6 +636,27 @@ class MainWindowSettingsMixin:
                 display_target = normalize_ide_display_target(override_display)
 
         return ide_system, display_target
+
+    def _effective_ide_auto_mounts_enabled(
+        self,
+        *,
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+    ) -> bool:
+        settings_data = settings or self._settings_data
+        enabled = bool(settings_data.get("ide_auto_mounts_enabled", False))
+
+        if env is None:
+            return enabled
+
+        override = normalize_ide_auto_mounts_override(
+            str(getattr(env, "ide_auto_mounts_override", "inherit") or "inherit")
+        )
+        if override == IDE_AUTO_MOUNTS_ENABLED:
+            return True
+        if override == IDE_AUTO_MOUNTS_DISABLED:
+            return False
+        return enabled
 
     def _resolve_override_config_dir(
         self,

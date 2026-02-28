@@ -82,6 +82,7 @@ class Environment:
     headless_desktop_enabled: bool = False
     ide_system_override: str = ""
     ide_display_target_override: str = ""
+    ide_auto_mounts_override: str = "inherit"
     cache_desktop_build: bool = False
     container_caching_enabled: bool = False
     cache_system_preflight_enabled: bool = False

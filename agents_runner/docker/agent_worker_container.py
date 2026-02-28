@@ -33,6 +33,7 @@ from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
 from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.github_token import resolve_github_token
 from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
+from agents_runner.ide_systems import get_ide_system
 from agents_runner.log_format import format_log, wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
 
@@ -110,6 +111,8 @@ class ContainerExecutor:
         self._on_log = on_log
         self._stop = stop_event
         self._container_id: str | None = None
+        self._ide_auto_mounts_cache: list[str] | None = None
+        self._ide_auto_env_cache: dict[str, str] | None = None
 
     @property
     def container_id(self) -> str | None:
@@ -571,6 +574,17 @@ class ContainerExecutor:
                 env_args.extend(["-e", f"{k}={value}"])
         env_args.extend(["-e", "MIDORI_AI_AGENTS_RUNNER_INTERACTIVE=false"])
 
+        configured_env_keys = {
+            str(key).strip()
+            for key in (self._config.env_vars or {}).keys()
+            if str(key).strip()
+        }
+        _auto_mounts, auto_env_vars = self._resolve_ide_auto_mount_data()
+        for key, value in sorted(auto_env_vars.items()):
+            if key in configured_env_keys:
+                continue
+            env_args.extend(["-e", f"{key}={value}"])
+
         # Forward GitHub tokens if needed
         needs_token = (
             _is_gh_context_enabled(self._config.environment_id)
@@ -693,6 +707,9 @@ class ContainerExecutor:
             if m:
                 all_mounts.append(m)
 
+        auto_mounts, _auto_env_vars = self._resolve_ide_auto_mount_data()
+        all_mounts.extend(auto_mounts)
+
         if self._runtime_env.ide_display_target == IDE_DISPLAY_HOST_DESKTOP:
             x11_socket_dir = "/tmp/.X11-unix"
             if os.path.isdir(x11_socket_dir):
@@ -722,6 +739,118 @@ class ContainerExecutor:
             extra_mount_args.extend(["-v", mount])
 
         return extra_mount_args
+
+    @staticmethod
+    def _normalize_mount_mode(mode: str) -> str:
+        normalized = str(mode or "").strip().lower()
+        if normalized == "ro":
+            return "ro"
+        return "rw"
+
+    @staticmethod
+    def _expand_host_path(path: str) -> str:
+        return os.path.abspath(os.path.expanduser(os.path.expandvars(str(path or ""))))
+
+    def _is_ide_auto_mounts_enabled(self) -> bool:
+        return str(
+            self._runtime_env.launch_mode or ""
+        ).strip().lower() == "ide" and bool(self._config.ide_auto_mounts_enabled)
+
+    def _resolve_ide_auto_mount_data(self) -> tuple[list[str], dict[str, str]]:
+        if (
+            self._ide_auto_mounts_cache is not None
+            and self._ide_auto_env_cache is not None
+        ):
+            return list(self._ide_auto_mounts_cache), dict(self._ide_auto_env_cache)
+
+        resolved_mounts: list[str] = []
+        resolved_env: dict[str, str] = {}
+        self._ide_auto_mounts_cache = []
+        self._ide_auto_env_cache = {}
+
+        if not self._is_ide_auto_mounts_enabled():
+            return resolved_mounts, resolved_env
+
+        ide_name = str(self._config.ide_system or "").strip()
+        if not ide_name:
+            self._on_log(
+                format_log(
+                    "ide",
+                    "mounts",
+                    "WARN",
+                    "auto-mounts enabled but ide_system is empty; skipping",
+                )
+            )
+            return resolved_mounts, resolved_env
+
+        try:
+            plugin = get_ide_system(ide_name)
+        except Exception as exc:
+            self._on_log(
+                format_log(
+                    "ide",
+                    "mounts",
+                    "WARN",
+                    f"auto-mounts skipped for unknown IDE system '{ide_name}': {exc}",
+                )
+            )
+            return resolved_mounts, resolved_env
+
+        mount_specs = tuple(getattr(plugin, "auto_mount_specs", ()) or ())
+        for spec in mount_specs:
+            host_path = self._expand_host_path(
+                str(getattr(spec, "host_path", "") or "")
+            )
+            container_path = str(getattr(spec, "container_path", "") or "").strip()
+            mode = self._normalize_mount_mode(str(getattr(spec, "mode", "rw") or "rw"))
+            if not host_path or not container_path:
+                continue
+            if os.path.exists(host_path):
+                resolved_mounts.append(f"{host_path}:{container_path}:{mode}")
+                continue
+            self._on_log(
+                format_log(
+                    "ide",
+                    "mounts",
+                    "WARN",
+                    f"auto-mount skipped (missing host path): {host_path}",
+                )
+            )
+
+        if bool(getattr(plugin, "auto_mount_host_keyring", False)):
+            host_keyrings = self._expand_host_path("~/.local/share/keyrings")
+            container_keyrings = "/home/midori-ai/.local/share/keyrings"
+            if os.path.exists(host_keyrings):
+                resolved_mounts.append(f"{host_keyrings}:{container_keyrings}:rw")
+            else:
+                self._on_log(
+                    format_log(
+                        "ide",
+                        "mounts",
+                        "WARN",
+                        f"auto-mount skipped (missing host path): {host_keyrings}",
+                    )
+                )
+
+        if bool(getattr(plugin, "auto_mount_session_dbus", False)):
+            uid = str(os.getuid())
+            dbus_bus_path = f"/run/user/{uid}/bus"
+            if os.path.exists(dbus_bus_path):
+                resolved_mounts.append(f"{dbus_bus_path}:{dbus_bus_path}:rw")
+                resolved_env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={dbus_bus_path}"
+            else:
+                self._on_log(
+                    format_log(
+                        "ide",
+                        "mounts",
+                        "WARN",
+                        f"auto-mount skipped (missing host path): {dbus_bus_path}",
+                    )
+                )
+
+        self._ide_auto_mounts_cache = list(resolved_mounts)
+        self._ide_auto_env_cache = dict(resolved_env)
+        return resolved_mounts, resolved_env
 
     def _build_docker_run_args(
         self,

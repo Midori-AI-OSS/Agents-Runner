@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from agents_runner.ide_systems.models import IdeAutoMountSpec
 from agents_runner.ide_systems.models import IdeSystemSpec
 
 PLUGIN = IdeSystemSpec(
@@ -9,4 +10,18 @@ PLUGIN = IdeSystemSpec(
     executable="code",
     launch_args=("--no-sandbox",),
     wait_process_pattern="comm=code|code-oss",
+    auto_mount_specs=(
+        IdeAutoMountSpec(
+            host_path="~/.config/Code - OSS",
+            container_path="/home/midori-ai/.config/Code - OSS",
+            mode="rw",
+        ),
+        IdeAutoMountSpec(
+            host_path="~/.vscode-oss",
+            container_path="/home/midori-ai/.vscode-oss",
+            mode="rw",
+        ),
+    ),
+    auto_mount_host_keyring=True,
+    auto_mount_session_dbus=True,
 )

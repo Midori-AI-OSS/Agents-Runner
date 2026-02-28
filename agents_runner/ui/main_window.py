@@ -100,6 +100,7 @@ class MainWindow(
             "interactive_terminal_id": "",
             "ide_system_default": get_default_ide_system_name(),
             "ide_display_target_default": IDE_DISPLAY_CONTAINER_DESKTOP,
+            "ide_auto_mounts_enabled": False,
             "interactive_command": "--sandbox danger-full-access",
             "interactive_command_claude": "--add-dir /home/midori-ai/workspace",
             "interactive_command_copilot": "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace",

@@ -256,6 +256,13 @@ class SettingsFormMixin:
         self._mount_host_cache.setToolTip(
             "Mounts ~/.cache to speed up package manager installs across environments."
         )
+        self._ide_auto_mounts_enabled = QCheckBox(
+            "Auto-mount IDE config/auth paths for Run IDE"
+        )
+        self._ide_auto_mounts_enabled.setToolTip(
+            "When enabled, Run IDE can auto-mount host IDE config/auth paths "
+            "(plus keyring + DBus when available)."
+        )
 
         self._github_workroom_prefer_browser = QCheckBox(
             "Prefer browser for GitHub workroom"
@@ -532,6 +539,7 @@ class SettingsFormMixin:
             ide_grid.addWidget(QLabel("IDE display target"), 1, 0)
             ide_grid.addWidget(self._ide_display_target_default, 1, 1)
             runtime_body.addLayout(ide_grid)
+            runtime_body.addWidget(self._ide_auto_mounts_enabled)
         runtime_body.addWidget(self._headless_desktop_enabled)
         runtime_body.addWidget(self._auto_navigate_on_run_agent_start)
         runtime_body.addWidget(self._auto_navigate_on_run_interactive_start)
@@ -1008,6 +1016,9 @@ class SettingsFormMixin:
             self._mount_host_cache.setChecked(
                 bool(settings.get("mount_host_cache", False))
             )
+            self._ide_auto_mounts_enabled.setChecked(
+                bool(settings.get("ide_auto_mounts_enabled", False))
+            )
 
             theme_value = normalize_ui_theme_name(
                 settings.get("ui_theme"), allow_auto=True
@@ -1132,6 +1143,7 @@ class SettingsFormMixin:
             "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
             "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),
             "mount_host_cache": bool(self._mount_host_cache.isChecked()),
+            "ide_auto_mounts_enabled": bool(self._ide_auto_mounts_enabled.isChecked()),
             "radio_enabled": bool(self._radio_enabled.isChecked()),
             "radio_autostart": bool(self._radio_autostart.isChecked()),
             "radio_channel": RadioController.normalize_channel(
