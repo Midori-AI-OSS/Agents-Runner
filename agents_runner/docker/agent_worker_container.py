@@ -229,12 +229,41 @@ class ContainerExecutor:
             return f"exec {agent_cmd}"
 
         ide_log_path = "/tmp/agents-artifacts/ide-cli.log"
+        signature_pattern = (
+            "MIT-SHM|X_ShmAttach|X Window System error|"
+            "X Error of failed request[^\\n]*BadAccess|"
+            "BadAccess[^\\n]*MIT-SHM"
+        )
+        safe_agent_cmd = f"{agent_cmd} --disable-gpu --disable-dev-shm-usage"
         return (
             "mkdir -p /tmp/agents-artifacts; "
+            f"IDE_LOG={shlex.quote(ide_log_path)}; "
+            "SAFE_INITIAL=0; "
+            'if [ "${AGENTS_RUNNER_IDE_SAFE_MODE:-0}" = "1" ]; then SAFE_INITIAL=1; fi; '
+            'if [ "$SAFE_INITIAL" = "1" ]; then '
+            f"{shell_log_statement('ide', 'retry', 'INFO', 'safe-mode-initial')}; "
             "set +e; "
-            f"{agent_cmd} 2>&1 | tee {shlex.quote(ide_log_path)}; "
+            f'QT_X11_NO_MITSHM=1 {safe_agent_cmd} 2>&1 | tee "$IDE_LOG"; '
             "IDE_EXIT=${PIPESTATUS[0]}; "
             "set -e; "
+            "else "
+            f"{shell_log_statement('ide', 'retry', 'INFO', 'attempt=1 mode=normal')}; "
+            "set +e; "
+            f'{agent_cmd} 2>&1 | tee "$IDE_LOG"; '
+            "IDE_EXIT=${PIPESTATUS[0]}; "
+            "set -e; "
+            "fi; "
+            "SIGNATURE_MATCH=0; "
+            f'if grep -Eiq {shlex.quote(signature_pattern)} "$IDE_LOG"; then SIGNATURE_MATCH=1; fi; '
+            'if [ "$SAFE_INITIAL" = "0" ] && [ "$SIGNATURE_MATCH" = "1" ]; then '
+            f"{shell_log_statement('ide', 'retry', 'WARN', 'safe-retry-triggered')}; "
+            "set +e; "
+            f'AGENTS_RUNNER_IDE_SAFE_RETRY=1 QT_X11_NO_MITSHM=1 {safe_agent_cmd} 2>&1 | tee -a "$IDE_LOG"; '
+            "IDE_EXIT=${PIPESTATUS[0]}; "
+            "set -e; "
+            'elif [ "$SAFE_INITIAL" = "1" ] && [ "$SIGNATURE_MATCH" = "1" ]; then '
+            f"{shell_log_statement('ide', 'retry', 'INFO', 'safe-retry-skipped-already-safe')}; "
+            "fi; "
             "exit ${IDE_EXIT}"
         )
 
@@ -538,9 +567,7 @@ class ContainerExecutor:
         elif self._runtime_env.ide_display_target == IDE_DISPLAY_HOST_DESKTOP:
             host_display = str(os.environ.get("DISPLAY") or "").strip()
             if host_display:
-                env_args.extend(
-                    ["-e", f"DISPLAY={host_display}", "-e", "QT_X11_NO_MITSHM=1"]
-                )
+                env_args.extend(["-e", f"DISPLAY={host_display}"])
             else:
                 self._on_log(
                     format_log(

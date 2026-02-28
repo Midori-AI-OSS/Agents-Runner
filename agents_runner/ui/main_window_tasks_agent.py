@@ -229,6 +229,17 @@ class MainWindowTasksAgentMixin:
         launch_argv = ide_plugin.build_launch_argv(
             workspace_dir="/home/midori-ai/workspace"
         )
+        remembered_safe_mode = False
+        if env is not None:
+            raw_safe_mode_map = getattr(env, "ide_safe_mode_by_system", {})
+            if isinstance(raw_safe_mode_map, dict):
+                remembered_safe_mode = bool(raw_safe_mode_map.get(ide_system, False))
+
+        if remembered_safe_mode:
+            for safe_arg in ("--disable-gpu", "--disable-dev-shm-usage"):
+                if safe_arg not in launch_argv:
+                    launch_argv.append(safe_arg)
+
         if "--verbose" not in launch_argv:
             launch_argv.append("--verbose")
 
@@ -286,6 +297,9 @@ class MainWindowTasksAgentMixin:
         use_host_gh = bool(use_host_gh and is_gh_available())
 
         env_vars_for_task = dict(env.env_vars) if env else {}
+        env_vars_for_task.pop("AGENTS_RUNNER_IDE_SAFE_MODE", None)
+        if remembered_safe_mode:
+            env_vars_for_task["AGENTS_RUNNER_IDE_SAFE_MODE"] = "1"
         extra_mounts_for_task = list(env.extra_mounts) if env else []
         ports_for_task = list(getattr(env, "ports", []) or []) if env else []
 
@@ -325,6 +339,16 @@ class MainWindowTasksAgentMixin:
         spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
+        if remembered_safe_mode:
+            self._on_task_log(
+                task_id,
+                format_log(
+                    "ide",
+                    "retry",
+                    "INFO",
+                    f"safe-mode-initial for ide={ide_system}",
+                ),
+            )
 
         config = DockerRunnerConfig(
             task_id=task_id,

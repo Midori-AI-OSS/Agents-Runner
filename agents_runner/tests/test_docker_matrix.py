@@ -205,6 +205,7 @@ def _run_worker_case(
     ide_system: str = "",
     ide_preflight_script: str | None = None,
     timeout_s: float = 900.0,
+    env_vars: dict[str, str] | None = None,
 ) -> WorkerResult:
     _ensure_test_image()
 
@@ -237,6 +238,7 @@ def _run_worker_case(
             custom_command_argv=list(custom_command_argv),
             custom_verify_executable=str(custom_verify_executable or ""),
             ide_preflight_script=ide_preflight_script,
+            env_vars=dict(env_vars or {}),
             container_name=container_name,
         )
 
@@ -506,3 +508,80 @@ def test_ide_mode_custom_command_nonzero_exit_is_reported() -> None:
                 "notes": notes,
             }
         )
+
+
+def test_ide_mode_signature_retry_once_succeeds() -> None:
+    script = (
+        'if [ "${AGENTS_RUNNER_IDE_SAFE_RETRY:-0}" = "1" ]; then '
+        "echo retry-safe; "
+        "exit 0; "
+        "fi; "
+        'echo "X Error of failed request: BadAccess (attempt to access private resource denied)"; '
+        'echo "request_code 130 (MIT-SHM)"; '
+        "exit 9"
+    )
+    result = _run_worker_case(
+        case_token="ide-signature-retry-once-succeeds",
+        launch_mode="ide",
+        agent_cli="codex",
+        custom_command_argv=["/bin/bash", "-lc", script],
+        custom_verify_executable="/bin/bash",
+        ide_system="code",
+        ide_preflight_script=None,
+        timeout_s=120.0,
+    )
+    assert int(result["exit_code"]) == 0, (
+        "signature-triggered safe retry should return the retry exit code: "
+        f"exit={result['exit_code']} error={result['error']}"
+    )
+    logs_joined = "\n".join(str(line) for line in result["logs"])
+    assert "safe-retry-triggered" in logs_joined
+
+
+def test_ide_mode_non_signature_nonzero_does_not_retry() -> None:
+    result = _run_worker_case(
+        case_token="ide-non-signature-no-retry",
+        launch_mode="ide",
+        agent_cli="codex",
+        custom_command_argv=["/bin/bash", "-lc", "echo plain-failure; exit 23"],
+        custom_verify_executable="/bin/bash",
+        ide_system="code",
+        ide_preflight_script=None,
+        timeout_s=120.0,
+    )
+    assert int(result["exit_code"]) == 23, (
+        "non-signature nonzero exit should not retry: "
+        f"exit={result['exit_code']} error={result['error']}"
+    )
+    logs_joined = "\n".join(str(line) for line in result["logs"])
+    assert "safe-retry-triggered" not in logs_joined
+
+
+def test_ide_mode_initial_safe_mode_does_not_retry() -> None:
+    script = (
+        'if [ "${AGENTS_RUNNER_IDE_SAFE_RETRY:-0}" = "1" ]; then '
+        "echo unexpected-retry; "
+        "exit 0; "
+        "fi; "
+        'echo "X Error of failed request: BadAccess"; '
+        'echo "MIT-SHM"; '
+        "exit 17"
+    )
+    result = _run_worker_case(
+        case_token="ide-initial-safe-no-retry",
+        launch_mode="ide",
+        agent_cli="codex",
+        custom_command_argv=["/bin/bash", "-lc", script],
+        custom_verify_executable="/bin/bash",
+        ide_system="code",
+        ide_preflight_script=None,
+        timeout_s=120.0,
+        env_vars={"AGENTS_RUNNER_IDE_SAFE_MODE": "1"},
+    )
+    assert int(result["exit_code"]) == 17, (
+        "remembered safe-mode launch should not perform a second retry attempt: "
+        f"exit={result['exit_code']} error={result['error']}"
+    )
+    logs_joined = "\n".join(str(line) for line in result["logs"])
+    assert "safe-mode-initial" in logs_joined
+    assert "safe-retry-triggered" not in logs_joined
