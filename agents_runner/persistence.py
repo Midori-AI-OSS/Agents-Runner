@@ -340,6 +340,9 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "agent_cli": getattr(task, "agent_cli", ""),
         "agent_instance_id": getattr(task, "agent_instance_id", ""),
         "agent_cli_args": getattr(task, "agent_cli_args", ""),
+        "launch_mode": getattr(task, "launch_mode", "agent"),
+        "ide_system": getattr(task, "ide_system", ""),
+        "ide_display_target": getattr(task, "ide_display_target", ""),
         "headless_desktop_enabled": bool(
             getattr(task, "headless_desktop_enabled", False)
         ),
@@ -406,6 +409,9 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         agent_cli=str(data.get("agent_cli") or ""),
         agent_instance_id=str(data.get("agent_instance_id") or ""),
         agent_cli_args=str(data.get("agent_cli_args") or ""),
+        launch_mode=str(data.get("launch_mode") or "agent"),
+        ide_system=str(data.get("ide_system") or ""),
+        ide_display_target=str(data.get("ide_display_target") or ""),
         headless_desktop_enabled=bool(data.get("headless_desktop_enabled") or False),
         novnc_url=str(data.get("novnc_url") or ""),
         vnc_password="",
@@ -465,6 +471,13 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
         if isinstance(raw_args, list):
             agent_cli_args = [str(item) for item in raw_args if str(item).strip()]
 
+        custom_command_argv: list[str] = []
+        raw_custom_command = payload.get("custom_command_argv")
+        if isinstance(raw_custom_command, list):
+            custom_command_argv = [
+                str(item) for item in raw_custom_command if str(item).strip()
+            ]
+
         artifact_collection_timeout_s = 30.0
         raw_timeout = payload.get("artifact_collection_timeout_s")
         if raw_timeout is not None:
@@ -507,6 +520,8 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
                 payload.get("environment_preflight_script") or ""
             ).strip()
             or None,
+            ide_preflight_script=str(payload.get("ide_preflight_script") or "").strip()
+            or None,
             headless_desktop_enabled=bool(
                 payload.get("headless_desktop_enabled") or False
             ),
@@ -528,11 +543,69 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
                 payload.get("container_environment_preflight_path")
                 or "/tmp/agents-runner-preflight-environment-{task_id}.sh"
             ),
+            container_ide_preflight_path=str(
+                payload.get("container_ide_preflight_path")
+                or "/tmp/agents-runner-preflight-ide-{task_id}.sh"
+            ),
             env_vars=env_vars,
             extra_mounts=extra_mounts,
             ports=ports,
             agent_cli_args=agent_cli_args,
+            environment_id=str(payload.get("environment_id") or ""),
+            launch_mode=str(payload.get("launch_mode") or "agent"),
+            ide_system=str(payload.get("ide_system") or ""),
+            ide_display_target=str(payload.get("ide_display_target") or ""),
+            ide_auto_mounts_enabled=bool(
+                payload.get("ide_auto_mounts_enabled") or False
+            ),
+            custom_command_argv=custom_command_argv,
+            custom_verify_executable=str(
+                payload.get("custom_verify_executable") or ""
+            ).strip(),
+            custom_wait_process_pattern=str(
+                payload.get("custom_wait_process_pattern") or ""
+            ).strip(),
+            gh_repo=(
+                str(payload.get("gh_repo") or "").strip()
+                if str(payload.get("gh_repo") or "").strip()
+                else None
+            ),
+            gh_prefer_gh_cli=bool(
+                payload.get("gh_prefer_gh_cli")
+                if "gh_prefer_gh_cli" in payload
+                else True
+            ),
+            gh_recreate_if_needed=bool(
+                payload.get("gh_recreate_if_needed")
+                if "gh_recreate_if_needed" in payload
+                else True
+            ),
+            gh_base_branch=(
+                str(payload.get("gh_base_branch") or "").strip()
+                if str(payload.get("gh_base_branch") or "").strip()
+                else None
+            ),
+            gh_pr_head_ref=(
+                str(payload.get("gh_pr_head_ref") or "").strip()
+                if str(payload.get("gh_pr_head_ref") or "").strip()
+                else None
+            ),
+            gh_pr_base_ref=(
+                str(payload.get("gh_pr_base_ref") or "").strip()
+                if str(payload.get("gh_pr_base_ref") or "").strip()
+                else None
+            ),
+            gh_context_file_path=(
+                str(payload.get("gh_context_file_path") or "").strip()
+                if str(payload.get("gh_context_file_path") or "").strip()
+                else None
+            ),
             artifact_collection_timeout_s=artifact_collection_timeout_s,
+            container_name=(
+                str(payload.get("container_name") or "").strip()
+                if str(payload.get("container_name") or "").strip()
+                else None
+            ),
         )
     except Exception:
         return None

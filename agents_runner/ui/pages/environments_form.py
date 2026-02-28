@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
@@ -24,6 +25,13 @@ from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
+from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
+from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
+from agents_runner.ide_systems import IDE_AUTO_MOUNTS_DISABLED
+from agents_runner.ide_systems import IDE_AUTO_MOUNTS_ENABLED
+from agents_runner.ide_systems import IDE_AUTO_MOUNTS_INHERIT
+from agents_runner.ide_systems import available_ide_system_names
+from agents_runner.ide_systems import get_ide_system
 from agents_runner.ui.constants import (
     BUTTON_ROW_SPACING,
     GRID_HORIZONTAL_SPACING,
@@ -136,6 +144,41 @@ class EnvironmentsFormMixin:
         )
         self._headless_desktop_enabled.stateChanged.connect(
             self._on_headless_desktop_toggled
+        )
+        self._ide_controls_supported = sys.platform != "darwin"
+        self._ide_system_override = QComboBox()
+        self._ide_system_override.addItem("Inherit setting default", "")
+        for ide_name in available_ide_system_names():
+            label = str(ide_name or "").strip()
+            try:
+                plugin = get_ide_system(ide_name)
+                display_name = str(getattr(plugin, "display_name", "") or "").strip()
+                if display_name:
+                    label = display_name
+            except Exception:
+                pass
+            self._ide_system_override.addItem(label, ide_name)
+        self._ide_display_target_override = QComboBox()
+        self._ide_display_target_override.addItem("Inherit setting default", "")
+        self._ide_display_target_override.addItem(
+            "In-container desktop (noVNC)", IDE_DISPLAY_CONTAINER_DESKTOP
+        )
+        self._ide_display_target_override.addItem(
+            "Host desktop (Linux X11)", IDE_DISPLAY_HOST_DESKTOP
+        )
+        self._ide_display_target_override.setToolTip(
+            "Override Run IDE display target for this environment."
+        )
+        self._ide_auto_mounts_override = QComboBox()
+        self._ide_auto_mounts_override.addItem(
+            "Inherit setting default", IDE_AUTO_MOUNTS_INHERIT
+        )
+        self._ide_auto_mounts_override.addItem("Force enabled", IDE_AUTO_MOUNTS_ENABLED)
+        self._ide_auto_mounts_override.addItem(
+            "Force disabled", IDE_AUTO_MOUNTS_DISABLED
+        )
+        self._ide_auto_mounts_override.setToolTip(
+            "Override whether Run IDE auto-mounts host IDE config/auth paths."
         )
 
         self._cache_desktop_build = QCheckBox("Cache desktop build")
@@ -319,8 +362,18 @@ class EnvironmentsFormMixin:
         self._headless_desktop_row = headless_desktop_row
         grid.addWidget(self._headless_desktop_label, 4, 0)
         grid.addWidget(self._headless_desktop_row, 4, 1, 1, 2)
-        grid.addWidget(QLabel("Cross agents"), 5, 0)
-        grid.addWidget(cross_agents_row, 5, 1, 1, 2)
+        if self._ide_controls_supported:
+            grid.addWidget(QLabel("IDE override"), 5, 0)
+            grid.addWidget(self._ide_system_override, 5, 1, 1, 2)
+            grid.addWidget(QLabel("IDE display"), 6, 0)
+            grid.addWidget(self._ide_display_target_override, 6, 1, 1, 2)
+            grid.addWidget(QLabel("IDE config/auth mounts"), 7, 0)
+            grid.addWidget(self._ide_auto_mounts_override, 7, 1, 1, 2)
+            cross_agents_row_index = 8
+        else:
+            cross_agents_row_index = 5
+        grid.addWidget(QLabel("Cross agents"), cross_agents_row_index, 0)
+        grid.addWidget(cross_agents_row, cross_agents_row_index, 1, 1, 2)
 
         general_body.addLayout(grid)
         general_body.addStretch(1)

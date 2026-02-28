@@ -15,6 +15,7 @@ class DockerRunnerConfig:
     pull_before_run: bool = True
     settings_preflight_script: str | None = None
     environment_preflight_script: str | None = None
+    ide_preflight_script: str | None = None
     headless_desktop_enabled: bool = False
     desktop_cache_enabled: bool = False
     container_caching_enabled: bool = False
@@ -29,10 +30,18 @@ class DockerRunnerConfig:
     container_environment_preflight_path: str = (
         "/tmp/agents-runner-preflight-environment-{task_id}.sh"
     )
+    container_ide_preflight_path: str = "/tmp/agents-runner-preflight-ide-{task_id}.sh"
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
     ports: list[str] = field(default_factory=list)
     agent_cli_args: list[str] = field(default_factory=list)
+    launch_mode: str = "agent"
+    ide_system: str = ""
+    ide_display_target: str = ""
+    ide_auto_mounts_enabled: bool = False
+    custom_command_argv: list[str] = field(default_factory=list)
+    custom_verify_executable: str = ""
+    custom_wait_process_pattern: str = ""
     # GitHub repo preparation
     gh_repo: str | None = None
     gh_prefer_gh_cli: bool = True

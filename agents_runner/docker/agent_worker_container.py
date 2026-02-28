@@ -32,6 +32,8 @@ from typing import Any, Callable
 from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
 from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.github_token import resolve_github_token
+from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
+from agents_runner.ide_systems import get_ide_system
 from agents_runner.log_format import format_log, wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
 
@@ -109,6 +111,8 @@ class ContainerExecutor:
         self._on_log = on_log
         self._stop = stop_event
         self._container_id: str | None = None
+        self._ide_auto_mounts_cache: list[str] | None = None
+        self._ide_auto_env_cache: dict[str, str] | None = None
 
     @property
     def container_id(self) -> str | None:
@@ -125,6 +129,8 @@ class ContainerExecutor:
             # Build agent command
             agent_args = self._build_agent_command()
             agent_cmd = " ".join(shlex.quote(part) for part in agent_args)
+            verify_clause = self._build_verify_clause(agent_args)
+            command_clause = self._build_main_command_clause(agent_cmd)
 
             # Setup desktop state tracking
             desktop_state: dict[str, Any] = {}
@@ -151,7 +157,8 @@ class ContainerExecutor:
                 preflight_mounts=preflight_mounts,
                 env_args=env_args,
                 preflight_clause=preflight_clause,
-                agent_cmd=agent_cmd,
+                verify_clause=verify_clause,
+                command_clause=command_clause,
             )
 
             # Start container
@@ -183,6 +190,8 @@ class ContainerExecutor:
 
     def _build_agent_command(self) -> list[str]:
         """Build the agent CLI command."""
+        if self._runtime_env.custom_command_argv:
+            return [str(part) for part in self._runtime_env.custom_command_argv]
         return build_noninteractive_cmd(
             agent=self._runtime_env.agent_cli,
             prompt=self._runtime_env.prompt_for_agent,
@@ -190,6 +199,138 @@ class ContainerExecutor:
             host_config_dir=self._config.host_config_dir,
             container_workdir=self._config.container_workdir,
             agent_cli_args=list(self._config.agent_cli_args or []),
+        )
+
+    def _build_verify_clause(self, command_argv: list[str]) -> str:
+        """Build executable verification clause."""
+        if self._runtime_env.custom_command_argv:
+            verify_target = str(
+                self._runtime_env.custom_verify_executable or ""
+            ).strip() or (str(command_argv[0]).strip() if command_argv else "")
+            if verify_target:
+                verify_target_quoted = shlex.quote(verify_target)
+                return (
+                    f"command -v {verify_target_quoted} >/dev/null 2>&1 || "
+                    "{ "
+                    f'echo "{verify_target} not found in PATH=$PATH"; '
+                    "exit 127; "
+                    "}; "
+                )
+            return ""
+        return verify_cli_clause(self._runtime_env.agent_cli)
+
+    @staticmethod
+    def _parse_wait_process_matcher(wait_pattern: str) -> tuple[tuple[str, ...], str]:
+        """Parse wait matcher in `comm=...;argv_contains=...` form."""
+        raw = str(wait_pattern or "").strip()
+        if not raw:
+            return (), ""
+
+        # Backward compatible: plain `code` means exact process name match.
+        if "=" not in raw:
+            return (raw,), ""
+
+        comms: list[str] = []
+        argv_contains = ""
+        for part in raw.split(";"):
+            token = str(part or "").strip()
+            if not token or "=" not in token:
+                continue
+            key, value = token.split("=", 1)
+            k = str(key or "").strip().lower()
+            v = str(value or "").strip()
+            if not v:
+                continue
+            if k in {"comm", "process", "name"}:
+                for comm in v.split("|"):
+                    normalized = str(comm or "").strip()
+                    if normalized and normalized not in comms:
+                        comms.append(normalized)
+            elif k in {"argv_contains", "args_contains", "arg_contains"}:
+                if not argv_contains:
+                    argv_contains = v
+
+        return tuple(comms), argv_contains
+
+    @staticmethod
+    def _awk_quote(value: str) -> str:
+        escaped = str(value or "").replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+
+    def _build_wait_collector_clause(self, wait_pattern: str) -> str:
+        comms, argv_contains = self._parse_wait_process_matcher(wait_pattern)
+        if not comms:
+            return ""
+
+        comm_checks = " || ".join(f"comm == {self._awk_quote(comm)}" for comm in comms)
+        argv_check = "1"
+        if argv_contains:
+            argv_check = f"index(args, {self._awk_quote(argv_contains)}) > 0"
+
+        awk_program = (
+            "{ pid=$1; state=$2; comm=$3; args=$0; "
+            "if (state ~ /^Z/) next; "
+            'sub(/^[[:space:]]*[0-9]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+/, "", args); '
+            f"if (({comm_checks}) && ({argv_check})) print pid; "
+            "}"
+        )
+        awk_program_quoted = shlex.quote(awk_program)
+        return (
+            "ide_collect_matching_pids() { "
+            f"ps -eo pid=,stat=,comm=,args= --no-headers 2>/dev/null | awk {awk_program_quoted}; "
+            "}; "
+        )
+
+    def _build_main_command_clause(self, agent_cmd: str) -> str:
+        """Build the command execution clause."""
+        if not self._runtime_env.custom_command_argv:
+            return f"exec {agent_cmd}"
+
+        wait_pattern = str(self._runtime_env.custom_wait_process_pattern or "").strip()
+        if not wait_pattern:
+            return f"exec {agent_cmd}"
+
+        wait_collector_clause = self._build_wait_collector_clause(wait_pattern)
+        if not wait_collector_clause:
+            return (
+                f"{agent_cmd}; "
+                "IDE_LAUNCH_STATUS=$?; "
+                'if [ "${IDE_LAUNCH_STATUS}" -ne 0 ]; then exit "${IDE_LAUNCH_STATUS}"; fi; '
+                "sleep 15; "
+                "exit 0"
+            )
+
+        return (
+            f"{wait_collector_clause}"
+            'ide_pid_in_list() { printf "%s\\n" "$2" | grep -Fx -- "$1" >/dev/null 2>&1; }; '
+            'ide_pid_active() { IDE_PID="$1"; '
+            'IDE_STAT="$(ps -o stat= -p "${IDE_PID}" 2>/dev/null | awk \'NR==1 {print $1}\' || true)"; '
+            'if [ -n "${IDE_STAT}" ] && [ "${IDE_STAT#Z}" = "${IDE_STAT}" ]; then return 0; fi; '
+            "return 1; "
+            "}; "
+            'ide_any_tracked_active() { IDE_TRACKED="$1"; '
+            "while IFS= read -r IDE_PID; do "
+            '[ -z "${IDE_PID}" ] && continue; '
+            'if ide_pid_active "${IDE_PID}"; then return 0; fi; '
+            'done <<< "${IDE_TRACKED}"; '
+            "return 1; "
+            "}; "
+            'ide_collect_new_pids() { IDE_BASELINE="$1"; '
+            "ide_collect_matching_pids | while IFS= read -r IDE_PID; do "
+            '[ -z "${IDE_PID}" ] && continue; '
+            'if ! ide_pid_in_list "${IDE_PID}" "${IDE_BASELINE}"; then printf "%s\\n" "${IDE_PID}"; fi; '
+            "done || true; "
+            "}; "
+            'IDE_BASELINE_PIDS="$(ide_collect_matching_pids)"; '
+            f"{agent_cmd}; "
+            "IDE_LAUNCH_STATUS=$?; "
+            'if [ "${IDE_LAUNCH_STATUS}" -ne 0 ]; then exit "${IDE_LAUNCH_STATUS}"; fi; '
+            'IDE_TRACKED_PIDS="$(ide_collect_new_pids "${IDE_BASELINE_PIDS}")"; '
+            'if [ -n "${IDE_TRACKED_PIDS}" ]; then '
+            'while ide_any_tracked_active "${IDE_TRACKED_PIDS}"; do sleep 0.5; done; '
+            "fi; "
+            "sleep 15; "
+            "exit 0"
         )
 
     def _build_preflight_clause(
@@ -205,6 +346,15 @@ class ContainerExecutor:
             and not self._runtime_env.system_preflight_cached
         ):
             clause, mounts = self._build_system_preflight()
+            preflight_clause += clause
+            preflight_mounts.extend(mounts)
+
+        # IDE preflight
+        if self._runtime_env.ide_preflight_tmp_path is not None:
+            clause, mounts = self._build_ide_preflight(
+                self._runtime_env.ide_preflight_tmp_path,
+                self._runtime_env.ide_container_path,
+            )
             preflight_clause += clause
             preflight_mounts.extend(mounts)
 
@@ -392,6 +542,26 @@ class ContainerExecutor:
             ["-v", f"{tmp_path}:{container_path}:ro"],
         )
 
+    def _build_ide_preflight(
+        self, tmp_path: str, container_path: str
+    ) -> tuple[str, list[str]]:
+        """Build IDE preflight clause and mounts."""
+        self._on_log(
+            format_log(
+                "host",
+                "none",
+                "INFO",
+                f"ide preflight enabled; mounting -> {container_path} (ro)",
+            )
+        )
+        return (
+            f"PREFLIGHT_IDE={shlex.quote(container_path)}; "
+            f"{shell_log_statement('env', 'setup', 'INFO', 'ide: running')}; "
+            '/bin/bash "${PREFLIGHT_IDE}"; '
+            f"{shell_log_statement('env', 'setup', 'INFO', 'ide: done')}; ",
+            ["-v", f"{tmp_path}:{container_path}:ro"],
+        )
+
     def _build_env_args(self) -> tuple[list[str], dict[str, str] | None]:
         """Build environment variable arguments. Returns (env_args, docker_env)."""
         env_args: list[str] = []
@@ -403,6 +573,17 @@ class ContainerExecutor:
             if k:
                 env_args.extend(["-e", f"{k}={value}"])
         env_args.extend(["-e", "MIDORI_AI_AGENTS_RUNNER_INTERACTIVE=false"])
+
+        configured_env_keys = {
+            str(key).strip()
+            for key in (self._config.env_vars or {}).keys()
+            if str(key).strip()
+        }
+        _auto_mounts, auto_env_vars = self._resolve_ide_auto_mount_data()
+        for key, value in sorted(auto_env_vars.items()):
+            if key in configured_env_keys:
+                continue
+            env_args.extend(["-e", f"{key}={value}"])
 
         # Forward GitHub tokens if needed
         needs_token = (
@@ -434,6 +615,27 @@ class ContainerExecutor:
                     f"DISPLAY={self._runtime_env.desktop_display}",
                 ]
             )
+        elif self._runtime_env.ide_display_target == IDE_DISPLAY_HOST_DESKTOP:
+            host_display = str(os.environ.get("DISPLAY") or "").strip()
+            if host_display:
+                env_args.extend(
+                    ["-e", f"DISPLAY={host_display}", "-e", "QT_X11_NO_MITSHM=1"]
+                )
+            else:
+                self._on_log(
+                    format_log(
+                        "desktop",
+                        "host",
+                        "WARN",
+                        "host desktop mode selected but DISPLAY is not set",
+                    )
+                )
+
+            xauthority = str(os.environ.get("XAUTHORITY") or "").strip()
+            if xauthority:
+                xauthority = os.path.expanduser(xauthority)
+                if os.path.isfile(xauthority):
+                    env_args.extend(["-e", f"XAUTHORITY={xauthority}"])
 
         return env_args, docker_env
 
@@ -505,6 +707,29 @@ class ContainerExecutor:
             if m:
                 all_mounts.append(m)
 
+        auto_mounts, _auto_env_vars = self._resolve_ide_auto_mount_data()
+        all_mounts.extend(auto_mounts)
+
+        if self._runtime_env.ide_display_target == IDE_DISPLAY_HOST_DESKTOP:
+            x11_socket_dir = "/tmp/.X11-unix"
+            if os.path.isdir(x11_socket_dir):
+                all_mounts.append(f"{x11_socket_dir}:{x11_socket_dir}:rw")
+            else:
+                self._on_log(
+                    format_log(
+                        "desktop",
+                        "host",
+                        "WARN",
+                        f"host desktop mode could not find {x11_socket_dir}",
+                    )
+                )
+
+            xauthority = str(os.environ.get("XAUTHORITY") or "").strip()
+            if xauthority:
+                xauthority = os.path.expanduser(xauthority)
+                if os.path.isfile(xauthority):
+                    all_mounts.append(f"{xauthority}:{xauthority}:ro")
+
         # Deduplicate by container path, preserving order
         deduplicated = deduplicate_mounts(all_mounts)
 
@@ -515,6 +740,118 @@ class ContainerExecutor:
 
         return extra_mount_args
 
+    @staticmethod
+    def _normalize_mount_mode(mode: str) -> str:
+        normalized = str(mode or "").strip().lower()
+        if normalized == "ro":
+            return "ro"
+        return "rw"
+
+    @staticmethod
+    def _expand_host_path(path: str) -> str:
+        return os.path.abspath(os.path.expanduser(os.path.expandvars(str(path or ""))))
+
+    def _is_ide_auto_mounts_enabled(self) -> bool:
+        return str(
+            self._runtime_env.launch_mode or ""
+        ).strip().lower() == "ide" and bool(self._config.ide_auto_mounts_enabled)
+
+    def _resolve_ide_auto_mount_data(self) -> tuple[list[str], dict[str, str]]:
+        if (
+            self._ide_auto_mounts_cache is not None
+            and self._ide_auto_env_cache is not None
+        ):
+            return list(self._ide_auto_mounts_cache), dict(self._ide_auto_env_cache)
+
+        resolved_mounts: list[str] = []
+        resolved_env: dict[str, str] = {}
+        self._ide_auto_mounts_cache = []
+        self._ide_auto_env_cache = {}
+
+        if not self._is_ide_auto_mounts_enabled():
+            return resolved_mounts, resolved_env
+
+        ide_name = str(self._config.ide_system or "").strip()
+        if not ide_name:
+            self._on_log(
+                format_log(
+                    "ide",
+                    "mounts",
+                    "WARN",
+                    "auto-mounts enabled but ide_system is empty; skipping",
+                )
+            )
+            return resolved_mounts, resolved_env
+
+        try:
+            plugin = get_ide_system(ide_name)
+        except Exception as exc:
+            self._on_log(
+                format_log(
+                    "ide",
+                    "mounts",
+                    "WARN",
+                    f"auto-mounts skipped for unknown IDE system '{ide_name}': {exc}",
+                )
+            )
+            return resolved_mounts, resolved_env
+
+        mount_specs = tuple(getattr(plugin, "auto_mount_specs", ()) or ())
+        for spec in mount_specs:
+            host_path = self._expand_host_path(
+                str(getattr(spec, "host_path", "") or "")
+            )
+            container_path = str(getattr(spec, "container_path", "") or "").strip()
+            mode = self._normalize_mount_mode(str(getattr(spec, "mode", "rw") or "rw"))
+            if not host_path or not container_path:
+                continue
+            if os.path.exists(host_path):
+                resolved_mounts.append(f"{host_path}:{container_path}:{mode}")
+                continue
+            self._on_log(
+                format_log(
+                    "ide",
+                    "mounts",
+                    "WARN",
+                    f"auto-mount skipped (missing host path): {host_path}",
+                )
+            )
+
+        if bool(getattr(plugin, "auto_mount_host_keyring", False)):
+            host_keyrings = self._expand_host_path("~/.local/share/keyrings")
+            container_keyrings = "/home/midori-ai/.local/share/keyrings"
+            if os.path.exists(host_keyrings):
+                resolved_mounts.append(f"{host_keyrings}:{container_keyrings}:rw")
+            else:
+                self._on_log(
+                    format_log(
+                        "ide",
+                        "mounts",
+                        "WARN",
+                        f"auto-mount skipped (missing host path): {host_keyrings}",
+                    )
+                )
+
+        if bool(getattr(plugin, "auto_mount_session_dbus", False)):
+            uid = str(os.getuid())
+            dbus_bus_path = f"/run/user/{uid}/bus"
+            if os.path.exists(dbus_bus_path):
+                resolved_mounts.append(f"{dbus_bus_path}:{dbus_bus_path}:rw")
+                resolved_env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={dbus_bus_path}"
+            else:
+                self._on_log(
+                    format_log(
+                        "ide",
+                        "mounts",
+                        "WARN",
+                        f"auto-mount skipped (missing host path): {dbus_bus_path}",
+                    )
+                )
+
+        self._ide_auto_mounts_cache = list(resolved_mounts)
+        self._ide_auto_env_cache = dict(resolved_env)
+        return resolved_mounts, resolved_env
+
     def _build_docker_run_args(
         self,
         platform_args: list[str],
@@ -523,7 +860,8 @@ class ContainerExecutor:
         preflight_mounts: list[str],
         env_args: list[str],
         preflight_clause: str,
-        agent_cmd: str,
+        verify_clause: str,
+        command_clause: str,
     ) -> list[str]:
         """Build complete Docker run command arguments."""
         return [
@@ -545,8 +883,8 @@ class ContainerExecutor:
             "set -euo pipefail; "
             f"{git_identity_clause()}"
             f"{preflight_clause}"
-            f"{verify_cli_clause(self._runtime_env.agent_cli)}"
-            f"exec {agent_cmd}",
+            f"{verify_clause}"
+            f"{command_clause}",
         ]
 
     def _setup_desktop_port_mapping(

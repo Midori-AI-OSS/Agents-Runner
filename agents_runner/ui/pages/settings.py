@@ -143,6 +143,8 @@ class SettingsPage(QWidget, SettingsFormMixin):
             self._use,
             self._shell,
             self._interactive_terminal,
+            self._ide_system_default,
+            self._ide_display_target_default,
             self._ui_theme,
             self._radio_channel,
             self._radio_quality,

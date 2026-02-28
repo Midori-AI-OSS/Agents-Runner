@@ -4,6 +4,7 @@ import logging
 import os
 import shlex
 import shutil
+import sys
 import time
 
 from uuid import uuid4
@@ -19,6 +20,9 @@ from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh_management import is_gh_available
+from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
+from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
+from agents_runner.ide_systems import get_ide_system
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.log_format import format_log
 from agents_runner.pr_metadata import ensure_github_context_file
@@ -97,6 +101,269 @@ class MainWindowTasksAgentMixin:
             stain = env.color if env else None
             self._dashboard.upsert_past_task(task, stain=stain)
         self._schedule_save()
+
+    @staticmethod
+    def _build_ide_install_preflight_script(*, package_name: str) -> str:
+        package = "".join(
+            ch
+            for ch in str(package_name or "").strip()
+            if ch.isalnum() or ch in {"-", "_", "."}
+        )
+        if not package:
+            return ""
+        return (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            f"yay -Syu --noconfirm --needed {package} && yay -Yccc --noconfirm\n"
+        )
+
+    def _start_ide_task_from_ui(
+        self,
+        prompt: str,
+        host_codex: str,
+        env_id: str,
+        terminal_id: str,
+        base_branch: str,
+        ide_override: dict[str, str] | None,
+    ) -> str | None:
+        del prompt
+        del terminal_id
+        if sys.platform == "darwin":
+            QMessageBox.warning(
+                self,
+                "Run IDE unavailable",
+                "Run IDE is not supported on macOS.",
+            )
+            return None
+        if shutil.which("docker") is None:
+            QMessageBox.critical(
+                self, "Docker not found", "Could not find `docker` in PATH."
+            )
+            return None
+
+        task_id = uuid4().hex[:10]
+        env_id = str(env_id or "").strip() or self._active_environment_id()
+        if env_id not in self._environments:
+            QMessageBox.warning(
+                self, "Unknown environment", "Pick an environment first."
+            )
+            return None
+
+        self._settings_data["active_environment_id"] = env_id
+        env = self._environments.get(env_id)
+
+        ide_config_override = self._coerce_ide_override(ide_override)
+        ide_system, ide_display_target = self._effective_ide_launch_config(
+            env=env,
+            override=ide_config_override,
+            settings=self._settings_data,
+        )
+        ide_auto_mounts_enabled = self._effective_ide_auto_mounts_enabled(
+            env=env,
+            settings=self._settings_data,
+        )
+        if (
+            ide_display_target == IDE_DISPLAY_HOST_DESKTOP
+            and not sys.platform.startswith("linux")
+        ):
+            QMessageBox.warning(
+                self,
+                "Host desktop unsupported",
+                "Run IDE host desktop mode is only supported on Linux.",
+            )
+            return None
+        try:
+            ide_plugin = get_ide_system(ide_system)
+        except Exception as exc:
+            QMessageBox.warning(self, "IDE unavailable", str(exc))
+            return None
+
+        workspace_type = env.workspace_type if env else "none"
+        effective_workdir, ready, message = self._new_task_workspace(
+            env, task_id=task_id
+        )
+        if not ready:
+            QMessageBox.warning(self, "Workspace not configured", message)
+            return None
+        if workspace_type == WORKSPACE_CLONED:
+            try:
+                os.makedirs(effective_workdir, exist_ok=True)
+            except Exception as exc:
+                logger.error(
+                    format_log(
+                        "host",
+                        "workspace",
+                        "ERROR",
+                        f"Failed to create directory {effective_workdir}: {exc}",
+                    )
+                )
+                QMessageBox.warning(
+                    self,
+                    "Directory Creation Failed",
+                    f"Could not create workspace directory: {exc}",
+                )
+                return None
+        elif not os.path.isdir(effective_workdir):
+            QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
+            return None
+
+        self._settings_data["host_workdir"] = effective_workdir
+
+        desired_base = str(base_branch or "").strip()
+        if env and env.workspace_type == WORKSPACE_CLONED and desired_base:
+            env.gh_last_base_branch = desired_base
+            save_environment(env)
+            self._environments[env.env_id] = env
+
+        host_config_dir = os.path.expanduser(str(host_codex or "").strip())
+        if not host_config_dir:
+            host_config_dir = self._effective_host_config_dir(
+                agent_cli="codex",
+                env=env,
+                settings=self._settings_data,
+            )
+        if not self._ensure_agent_config_dir("codex", host_config_dir):
+            return None
+        self._settings_data[self._host_config_dir_key("codex")] = host_config_dir
+
+        launch_argv = ide_plugin.build_launch_argv(
+            workspace_dir="/home/midori-ai/workspace"
+        )
+        launch_command = " ".join(shlex.quote(part) for part in launch_argv)
+        verify_executable = str(getattr(ide_plugin, "executable", "") or "").strip()
+        wait_process_pattern = str(
+            getattr(ide_plugin, "wait_process_pattern", "") or verify_executable
+        ).strip()
+        ide_preflight_script = self._build_ide_install_preflight_script(
+            package_name=str(getattr(ide_plugin, "package_name", "") or ide_system)
+        )
+
+        settings_preflight_script: str | None = None
+        if (
+            self._settings_data.get("preflight_enabled")
+            and str(self._settings_data.get("preflight_script") or "").strip()
+        ):
+            settings_preflight_script = str(
+                self._settings_data.get("preflight_script") or ""
+            )
+
+        environment_preflight_script: str | None = None
+        if env and env.preflight_enabled and (env.preflight_script or "").strip():
+            environment_preflight_script = env.preflight_script
+
+        headless_desktop_enabled = ide_display_target == IDE_DISPLAY_CONTAINER_DESKTOP
+        desktop_cache_enabled = (
+            bool(getattr(env, "cache_desktop_build", False)) if env else False
+        )
+        container_caching_enabled = (
+            bool(getattr(env, "container_caching_enabled", False)) if env else False
+        )
+        cache_system_preflight_enabled = (
+            bool(getattr(env, "cache_system_preflight_enabled", False))
+            if env
+            else False
+        )
+        cache_settings_preflight_enabled = (
+            bool(getattr(env, "cache_settings_preflight_enabled", False))
+            if env
+            else False
+        )
+        desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
+
+        use_host_gh = bool(getattr(env, "gh_use_host_cli", True)) if env else True
+        use_host_gh = bool(use_host_gh and is_gh_available())
+
+        env_vars_for_task = dict(env.env_vars) if env else {}
+        extra_mounts_for_task = list(env.extra_mounts) if env else []
+        ports_for_task = list(getattr(env, "ports", []) or []) if env else []
+
+        if self._settings_data.get("mount_host_cache", False):
+            host_cache = os.path.expanduser("~/.cache")
+            container_cache = "/home/midori-ai/.cache"
+            extra_mounts_for_task.append(f"{host_cache}:{container_cache}:rw")
+
+        gh_repo: str | None = None
+        if workspace_type == WORKSPACE_CLONED and env:
+            gh_repo = str(env.workspace_target or "").strip() or None
+
+        task_prompt = (
+            str(getattr(ide_plugin, "display_name", "") or "").strip() or ide_system
+        )
+        task_prompt = sanitize_prompt(f"Run IDE: {task_prompt}")
+
+        task = Task(
+            task_id=task_id,
+            prompt=task_prompt,
+            image=PIXELARCH_EMERALD_IMAGE,
+            host_workdir=effective_workdir,
+            host_config_dir=host_config_dir,
+            environment_id=env_id,
+            created_at_s=time.time(),
+            status="queued",
+            gh_use_host_cli=use_host_gh,
+            workspace_type=workspace_type,
+            agent_cli="codex",
+            launch_mode="ide",
+            ide_system=ide_system,
+            ide_display_target=ide_display_target,
+            headless_desktop_enabled=headless_desktop_enabled,
+        )
+        self._tasks[task_id] = task
+        stain = env.color if env else None
+        spinner = stain_color(env.color) if env else None
+        self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+        self._schedule_save()
+
+        config = DockerRunnerConfig(
+            task_id=task_id,
+            image=PIXELARCH_EMERALD_IMAGE,
+            host_config_dir=host_config_dir,
+            host_workdir=effective_workdir,
+            agent_cli="codex",
+            environment_id=env_id,
+            auto_remove=True,
+            pull_before_run=True,
+            settings_preflight_script=settings_preflight_script,
+            environment_preflight_script=environment_preflight_script,
+            ide_preflight_script=ide_preflight_script,
+            headless_desktop_enabled=headless_desktop_enabled,
+            desktop_cache_enabled=desktop_cache_enabled,
+            container_caching_enabled=container_caching_enabled,
+            cache_system_preflight_enabled=cache_system_preflight_enabled,
+            cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+            env_vars=env_vars_for_task,
+            extra_mounts=extra_mounts_for_task,
+            ports=ports_for_task,
+            agent_cli_args=[],
+            gh_repo=gh_repo,
+            gh_prefer_gh_cli=use_host_gh,
+            gh_recreate_if_needed=True,
+            gh_base_branch=desired_base or None,
+            launch_mode="ide",
+            ide_system=ide_system,
+            ide_display_target=ide_display_target,
+            ide_auto_mounts_enabled=ide_auto_mounts_enabled,
+            custom_command_argv=launch_argv,
+            custom_verify_executable=verify_executable,
+            custom_wait_process_pattern=wait_process_pattern,
+        )
+        task._runner_config = config
+        task._runner_prompt = launch_command
+        task._agent_selection = None
+
+        if self._can_start_new_agent_for_env(env_id):
+            self._actually_start_task(task)
+        else:
+            self._on_task_log(
+                task_id,
+                format_log("queue", "slot", "INFO", "Waiting for available slot..."),
+            )
+            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+            self._schedule_save()
+
+        self._maybe_auto_navigate_on_task_start(interactive=False)
+        self._new_task.reset_for_new_run()
+        return task_id
 
     def _start_task_from_ui(
         self,
@@ -877,6 +1144,8 @@ class MainWindowTasksAgentMixin:
             config=config,
             prompt=prompt,
             agent_selection=agent_selection,
+            use_supervisor=str(getattr(task, "launch_mode", "") or "").strip().lower()
+            != "ide",
             watch_states=self._watch_states,
         )
         thread = QThread(self)

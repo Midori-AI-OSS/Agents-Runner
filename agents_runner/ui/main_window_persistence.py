@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 
 from agents_runner.agent_cli import normalize_agent
+from agents_runner.ide_systems import get_default_ide_system_name
+from agents_runner.ide_systems import normalize_ide_display_target
+from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_active_task_payloads
@@ -174,6 +177,16 @@ class MainWindowPersistenceMixin:
             "interactive_command_gemini",
             "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace",
         )
+        self._settings_data.setdefault(
+            "ide_system_default", get_default_ide_system_name()
+        )
+        self._settings_data.setdefault(
+            "ide_display_target_default",
+            normalize_ide_display_target(
+                str(self._settings_data.get("ide_display_target") or "")
+            ),
+        )
+        self._settings_data.setdefault("ide_auto_mounts_enabled", False)
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("auto_navigate_on_run_agent_start", False)
         self._settings_data.setdefault("auto_navigate_on_run_interactive_start", False)
@@ -226,6 +239,21 @@ class MainWindowPersistenceMixin:
             self._settings_data[key] = self._sanitize_interactive_command_value(
                 key, raw
             )
+        self._settings_data["ide_system_default"] = normalize_ide_system_name(
+            str(
+                self._settings_data.get("ide_system_default")
+                or get_default_ide_system_name()
+            )
+        )
+        self._settings_data["ide_display_target_default"] = (
+            normalize_ide_display_target(
+                str(
+                    self._settings_data.get("ide_display_target_default")
+                    or self._settings_data.get("ide_display_target")
+                    or ""
+                )
+            )
+        )
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
 

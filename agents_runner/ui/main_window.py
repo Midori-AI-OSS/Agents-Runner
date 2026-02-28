@@ -17,6 +17,8 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import Environment
+from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
+from agents_runner.ide_systems import get_default_ide_system_name
 from agents_runner.persistence import default_state_path
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import APP_TITLE
@@ -96,6 +98,9 @@ class MainWindow(
             "host_gemini_dir": os.path.expanduser("~/.gemini"),
             "active_environment_id": "default",
             "interactive_terminal_id": "",
+            "ide_system_default": get_default_ide_system_name(),
+            "ide_display_target_default": IDE_DISPLAY_CONTAINER_DESKTOP,
+            "ide_auto_mounts_enabled": False,
             "interactive_command": "--sandbox danger-full-access",
             "interactive_command_claude": "--add-dir /home/midori-ai/workspace",
             "interactive_command_copilot": "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace",
@@ -249,6 +254,7 @@ class MainWindow(
         self._new_task = NewTaskPage()
         self._new_task.requested_run.connect(self._start_task_from_ui)
         self._new_task.requested_launch.connect(self._start_interactive_task_from_ui)
+        self._new_task.requested_launch_ide.connect(self._start_ide_task_from_ui)
         self._new_task.environment_changed.connect(self._on_new_task_env_changed)
         self._new_task.back_requested.connect(self._show_dashboard)
         self._tasks_page = TasksPage(new_task_page=self._new_task)

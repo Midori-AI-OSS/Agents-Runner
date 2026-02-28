@@ -57,8 +57,10 @@ class RuntimeEnvironment:
     artifacts_staging_dir: Path
     settings_container_path: str
     environment_container_path: str
+    ide_container_path: str
     settings_preflight_tmp_path: str | None
     environment_preflight_tmp_path: str | None
+    ide_preflight_tmp_path: str | None
     preflights_host_dir: str
     system_preflight_enabled: bool
     system_preflight_cached: bool
@@ -72,6 +74,11 @@ class RuntimeEnvironment:
     container_caching_enabled: bool
     agent_cli: str
     prompt_for_agent: str
+    launch_mode: str
+    ide_display_target: str
+    custom_command_argv: list[str]
+    custom_verify_executable: str
+    custom_wait_process_pattern: str
 
 
 class WorkerSetup:
@@ -134,8 +141,10 @@ class WorkerSetup:
             artifacts_staging_dir=artifacts_staging_dir,
             settings_container_path=preflight_config.settings_container_path,
             environment_container_path=preflight_config.environment_container_path,
+            ide_container_path=preflight_config.ide_container_path,
             settings_preflight_tmp_path=preflight_config.settings_preflight_tmp_path,
             environment_preflight_tmp_path=preflight_config.environment_preflight_tmp_path,
+            ide_preflight_tmp_path=preflight_config.ide_preflight_tmp_path,
             preflights_host_dir=str(caching_config.preflights_host_dir),
             system_preflight_enabled=caching_config.system_preflight_enabled,
             system_preflight_cached=caching_config.system_preflight_cached,
@@ -149,6 +158,15 @@ class WorkerSetup:
             container_caching_enabled=caching_config.container_caching_enabled,
             agent_cli=platform_config.agent_cli,
             prompt_for_agent=final_prompt,
+            launch_mode=str(self._config.launch_mode or "agent"),
+            ide_display_target=str(self._config.ide_display_target or ""),
+            custom_command_argv=[
+                str(part) for part in self._config.custom_command_argv
+            ],
+            custom_verify_executable=str(self._config.custom_verify_executable or ""),
+            custom_wait_process_pattern=str(
+                self._config.custom_wait_process_pattern or ""
+            ),
         )
 
     @dataclass(frozen=True)
@@ -311,8 +329,10 @@ class WorkerSetup:
     class _PreflightConfig:
         settings_container_path: str
         environment_container_path: str
+        ide_container_path: str
         settings_preflight_tmp_path: str | None
         environment_preflight_tmp_path: str | None
+        ide_preflight_tmp_path: str | None
 
     def _prepare_preflight_scripts(
         self, preflight_tmp_paths: list[str]
@@ -321,6 +341,7 @@ class WorkerSetup:
         task_token = self._config.task_id or "task"
         settings_preflight_tmp_path = None
         environment_preflight_tmp_path = None
+        ide_preflight_tmp_path = None
 
         if (self._config.settings_preflight_script or "").strip():
             settings_preflight_tmp_path = write_preflight_script(
@@ -336,6 +357,13 @@ class WorkerSetup:
                 self._config.task_id,
                 preflight_tmp_paths,
             )
+        if (self._config.ide_preflight_script or "").strip():
+            ide_preflight_tmp_path = write_preflight_script(
+                str(self._config.ide_preflight_script),
+                "ide",
+                self._config.task_id,
+                preflight_tmp_paths,
+            )
 
         return self._PreflightConfig(
             settings_container_path=self._config.container_settings_preflight_path.replace(
@@ -344,8 +372,12 @@ class WorkerSetup:
             environment_container_path=self._config.container_environment_preflight_path.replace(
                 "{task_id}", task_token
             ),
+            ide_container_path=self._config.container_ide_preflight_path.replace(
+                "{task_id}", task_token
+            ),
             settings_preflight_tmp_path=settings_preflight_tmp_path,
             environment_preflight_tmp_path=environment_preflight_tmp_path,
+            ide_preflight_tmp_path=ide_preflight_tmp_path,
         )
 
     def pull_image_if_needed(

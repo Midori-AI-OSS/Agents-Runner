@@ -12,6 +12,12 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import available_agents
+from agents_runner.ide_systems import IDE_AUTO_MOUNTS_DISABLED
+from agents_runner.ide_systems import IDE_AUTO_MOUNTS_ENABLED
+from agents_runner.ide_systems import get_default_ide_system_name
+from agents_runner.ide_systems import normalize_ide_auto_mounts_override
+from agents_runner.ide_systems import normalize_ide_display_target
+from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import looks_like_agent_help_command
 from agents_runner.environments import Environment
@@ -80,6 +86,19 @@ class MainWindowSettingsMixin:
         merged["interactive_terminal_id"] = str(
             merged.get("interactive_terminal_id") or ""
         ).strip()
+        merged["ide_system_default"] = normalize_ide_system_name(
+            str(merged.get("ide_system_default") or get_default_ide_system_name())
+        )
+        merged["ide_display_target_default"] = normalize_ide_display_target(
+            str(
+                merged.get("ide_display_target_default")
+                or merged.get("ide_display_target")
+                or ""
+            )
+        )
+        merged["ide_auto_mounts_enabled"] = bool(
+            merged.get("ide_auto_mounts_enabled", False)
+        )
         merged["interactive_command"] = str(
             merged.get("interactive_command") or "--sandbox danger-full-access"
         )
@@ -550,6 +569,94 @@ class MainWindowSettingsMixin:
             "config_dir": str(override.get("config_dir") or ""),
             "cli_flags": str(override.get("cli_flags") or ""),
         }
+
+    def _coerce_ide_override(self, override: object) -> dict[str, str] | None:
+        if not isinstance(override, dict):
+            return None
+        source = str(override.get("source") or "").strip()
+        ide_system_raw = str(override.get("ide_system") or "").strip()
+        display_target_raw = str(override.get("display_target") or "").strip()
+        ide_system = normalize_ide_system_name(ide_system_raw) if ide_system_raw else ""
+        display_target = (
+            normalize_ide_display_target(display_target_raw)
+            if display_target_raw
+            else ""
+        )
+        if source == "runtime":
+            display_target = ""
+        if not ide_system and not display_target:
+            return None
+        return {
+            "source": source,
+            "env_id": str(override.get("env_id") or ""),
+            "ide_system": ide_system,
+            "display_target": display_target,
+        }
+
+    def _effective_ide_launch_config(
+        self,
+        *,
+        env: Environment | None,
+        override: dict[str, str] | None = None,
+        settings: dict[str, object] | None = None,
+    ) -> tuple[str, str]:
+        settings_data = settings or self._settings_data
+        ide_system = normalize_ide_system_name(
+            str(
+                settings_data.get("ide_system_default") or get_default_ide_system_name()
+            )
+        )
+        display_target = normalize_ide_display_target(
+            str(
+                settings_data.get("ide_display_target_default")
+                or settings_data.get("ide_display_target")
+                or ""
+            )
+        )
+
+        if env is not None:
+            env_ide_system_raw = str(
+                getattr(env, "ide_system_override", "") or ""
+            ).strip()
+            env_display_raw = str(
+                getattr(env, "ide_display_target_override", "") or ""
+            ).strip()
+            if env_ide_system_raw:
+                ide_system = normalize_ide_system_name(env_ide_system_raw)
+            if env_display_raw:
+                display_target = normalize_ide_display_target(env_display_raw)
+
+        coerced_override = self._coerce_ide_override(override)
+        if coerced_override:
+            override_ide = str(coerced_override.get("ide_system") or "").strip()
+            override_display = str(coerced_override.get("display_target") or "").strip()
+            if override_ide:
+                ide_system = normalize_ide_system_name(override_ide)
+            if override_display:
+                display_target = normalize_ide_display_target(override_display)
+
+        return ide_system, display_target
+
+    def _effective_ide_auto_mounts_enabled(
+        self,
+        *,
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+    ) -> bool:
+        settings_data = settings or self._settings_data
+        enabled = bool(settings_data.get("ide_auto_mounts_enabled", False))
+
+        if env is None:
+            return enabled
+
+        override = normalize_ide_auto_mounts_override(
+            str(getattr(env, "ide_auto_mounts_override", "inherit") or "inherit")
+        )
+        if override == IDE_AUTO_MOUNTS_ENABLED:
+            return True
+        if override == IDE_AUTO_MOUNTS_DISABLED:
+            return False
+        return enabled
 
     def _resolve_override_config_dir(
         self,

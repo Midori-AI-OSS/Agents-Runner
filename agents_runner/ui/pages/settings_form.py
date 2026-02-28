@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -27,6 +28,13 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_agent_system
 from agents_runner.agent_systems import get_default_agent_system_name
+from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
+from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
+from agents_runner.ide_systems import available_ide_system_names
+from agents_runner.ide_systems import get_default_ide_system_name
+from agents_runner.ide_systems import get_ide_system
+from agents_runner.ide_systems import normalize_ide_display_target
+from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.environments import load_environments
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.pages.github_trust import (
@@ -137,6 +145,19 @@ class SettingsFormMixin:
             "Default terminal used by Run Interactive and Get Agent Help."
         )
         self._refresh_terminal_options(selected_terminal_id="")
+        self._ide_controls_supported = sys.platform != "darwin"
+        self._ide_system_default = QComboBox()
+        self._populate_ide_combo(self._ide_system_default)
+        self._ide_display_target_default = QComboBox()
+        self._ide_display_target_default.addItem(
+            "In-container desktop (noVNC)", IDE_DISPLAY_CONTAINER_DESKTOP
+        )
+        self._ide_display_target_default.addItem(
+            "Host desktop (Linux X11)", IDE_DISPLAY_HOST_DESKTOP
+        )
+        self._ide_display_target_default.setToolTip(
+            "Run IDE display target. Host desktop mode requires Linux with X11 access."
+        )
 
         self._refresh_interactive_terminal = QToolButton()
         self._refresh_interactive_terminal.setText("Refresh")
@@ -234,6 +255,13 @@ class SettingsFormMixin:
         self._mount_host_cache = QCheckBox("Mount host cache into containers")
         self._mount_host_cache.setToolTip(
             "Mounts ~/.cache to speed up package manager installs across environments."
+        )
+        self._ide_auto_mounts_enabled = QCheckBox(
+            "Auto-mount IDE config/auth paths for Run IDE"
+        )
+        self._ide_auto_mounts_enabled.setToolTip(
+            "When enabled, Run IDE can auto-mount host IDE config/auth paths "
+            "(plus keyring + DBus when available)."
         )
 
         self._github_workroom_prefer_browser = QCheckBox(
@@ -501,6 +529,17 @@ class SettingsFormMixin:
         self._register_page("github_trusted_users", github_trusted_page)
 
         runtime_page, runtime_body = self._create_page(specs_by_key["runtime_behavior"])
+        if self._ide_controls_supported:
+            ide_grid = QGridLayout()
+            ide_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+            ide_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
+            ide_grid.setColumnStretch(1, 1)
+            ide_grid.addWidget(QLabel("Default IDE"), 0, 0)
+            ide_grid.addWidget(self._ide_system_default, 0, 1)
+            ide_grid.addWidget(QLabel("IDE display target"), 1, 0)
+            ide_grid.addWidget(self._ide_display_target_default, 1, 1)
+            runtime_body.addLayout(ide_grid)
+            runtime_body.addWidget(self._ide_auto_mounts_enabled)
         runtime_body.addWidget(self._headless_desktop_enabled)
         runtime_body.addWidget(self._auto_navigate_on_run_agent_start)
         runtime_body.addWidget(self._auto_navigate_on_run_interactive_start)
@@ -649,6 +688,32 @@ class SettingsFormMixin:
 
         preferred = normalize_agent(selected or str(self._use.itemData(0) or ""))
         self._set_combo_value(self._use, preferred, fallback=preferred)
+
+    def _populate_ide_combo(self, combo: QComboBox) -> None:
+        selected = str(combo.currentData() or "") if combo.count() > 0 else ""
+        with QSignalBlocker(combo):
+            combo.clear()
+            for ide_name in available_ide_system_names():
+                label = self._format_key_label(ide_name)
+                try:
+                    plugin = get_ide_system(ide_name)
+                    display_name = str(
+                        getattr(plugin, "display_name", "") or ""
+                    ).strip()
+                    if display_name:
+                        label = display_name
+                except Exception:
+                    pass
+                combo.addItem(label, ide_name)
+
+            if combo.count() == 0:
+                default_name = get_default_ide_system_name()
+                combo.addItem(self._format_key_label(default_name), default_name)
+
+        preferred = normalize_ide_system_name(
+            selected or str(combo.itemData(0) or get_default_ide_system_name())
+        )
+        self._set_combo_value(combo, preferred, fallback=preferred)
 
     def _refresh_theme_options(self, selected: str | None) -> None:
         normalized_selected = normalize_ui_theme_name(selected, allow_auto=True)
@@ -834,6 +899,27 @@ class SettingsFormMixin:
                     settings.get("interactive_terminal_id") or ""
                 ).strip()
             )
+            self._populate_ide_combo(self._ide_system_default)
+            ide_system_default = normalize_ide_system_name(
+                str(settings.get("ide_system_default") or get_default_ide_system_name())
+            )
+            self._set_combo_value(
+                self._ide_system_default,
+                ide_system_default,
+                fallback=get_default_ide_system_name(),
+            )
+            ide_display_target = normalize_ide_display_target(
+                str(
+                    settings.get("ide_display_target_default")
+                    or settings.get("ide_display_target")
+                    or ""
+                )
+            )
+            self._set_combo_value(
+                self._ide_display_target_default,
+                ide_display_target,
+                fallback=IDE_DISPLAY_CONTAINER_DESKTOP,
+            )
 
             self._host_codex_dir.setText(
                 os.path.expanduser(
@@ -930,6 +1016,9 @@ class SettingsFormMixin:
             self._mount_host_cache.setChecked(
                 bool(settings.get("mount_host_cache", False))
             )
+            self._ide_auto_mounts_enabled.setChecked(
+                bool(settings.get("ide_auto_mounts_enabled", False))
+            )
 
             theme_value = normalize_ui_theme_name(
                 settings.get("ui_theme"), allow_auto=True
@@ -989,6 +1078,18 @@ class SettingsFormMixin:
             "interactive_terminal_id": str(
                 self._interactive_terminal.currentData() or ""
             ),
+            "ide_system_default": normalize_ide_system_name(
+                str(
+                    self._ide_system_default.currentData()
+                    or get_default_ide_system_name()
+                )
+            ),
+            "ide_display_target_default": normalize_ide_display_target(
+                str(
+                    self._ide_display_target_default.currentData()
+                    or IDE_DISPLAY_CONTAINER_DESKTOP
+                )
+            ),
             "ui_theme": normalize_ui_theme_name(
                 str(self._ui_theme.currentData() or "auto"), allow_auto=True
             ),
@@ -1042,6 +1143,7 @@ class SettingsFormMixin:
             "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
             "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),
             "mount_host_cache": bool(self._mount_host_cache.isChecked()),
+            "ide_auto_mounts_enabled": bool(self._ide_auto_mounts_enabled.isChecked()),
             "radio_enabled": bool(self._radio_enabled.isChecked()),
             "radio_autostart": bool(self._radio_autostart.isChecked()),
             "radio_channel": RadioController.normalize_channel(

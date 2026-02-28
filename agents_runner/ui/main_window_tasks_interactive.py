@@ -10,10 +10,12 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import sys
 import threading
 import time
 from datetime import datetime
 from datetime import timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -26,6 +28,9 @@ from agents_runner.agent_cli import container_config_dir
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
+from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
+from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
+from agents_runner.ide_systems import get_ide_system
 from agents_runner.log_format import format_log
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts.sections import compose_prompt_sections
@@ -49,6 +54,35 @@ logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class MainWindowTasksInteractiveMixin:
+    def _start_ide_task_from_ui(
+        self,
+        prompt: str,
+        host_codex: str,
+        env_id: str,
+        terminal_id: str,
+        base_branch: str,
+        ide_override: dict[str, str] | None,
+    ) -> None:
+        if sys.platform == "darwin":
+            QMessageBox.warning(
+                self,
+                "Run IDE unavailable",
+                "Run IDE is not supported on macOS.",
+            )
+            return
+        self._start_interactive_task_from_ui(
+            prompt=str(prompt or ""),
+            command="",
+            host_codex=host_codex,
+            env_id=env_id,
+            terminal_id=terminal_id,
+            base_branch=base_branch,
+            agent_override=None,
+            extra_preflight_script="",
+            launch_mode="ide",
+            ide_override=ide_override,
+        )
+
     def _start_interactive_task_from_ui(
         self,
         prompt: str,
@@ -59,6 +93,9 @@ class MainWindowTasksInteractiveMixin:
         base_branch: str,
         agent_override: dict[str, str] | None,
         extra_preflight_script: str,
+        *,
+        launch_mode: str = "agent",
+        ide_override: dict[str, str] | None = None,
     ) -> None:
         if shutil.which("docker") is None:
             QMessageBox.critical(
@@ -134,119 +171,14 @@ class MainWindowTasksInteractiveMixin:
             # Update in-memory copy to persist across tab changes and reloads
             self._environments[env.env_id] = env
 
-        override = self._coerce_agent_override(agent_override)
+        launch_mode_normalized = str(launch_mode or "agent").strip().lower()
+        run_ide = launch_mode_normalized == "ide"
+        ide_system = ""
+        ide_display_target = ""
+        ide_preflight_script: str | None = None
 
-        if (
-            not override
-            and env
-            and env.agent_selection
-            and str(getattr(env.agent_selection, "selection_mode", "") or "")
-            .strip()
-            .lower()
-            == "pinned"
-        ):
-            pinned_id = str(
-                getattr(env.agent_selection, "pinned_agent_id", "") or ""
-            ).strip()
-            pinned_lower = pinned_id.lower()
-            pinned_inst = next(
-                (
-                    inst
-                    for inst in list(getattr(env.agent_selection, "agents", []) or [])
-                    if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
-                ),
-                None,
-            ) or next(
-                (
-                    inst
-                    for inst in list(getattr(env.agent_selection, "agents", []) or [])
-                    if str(getattr(inst, "agent_id", "") or "").strip().lower()
-                    == pinned_lower
-                ),
-                None,
-            )
-            if pinned_inst is None:
-                QMessageBox.warning(
-                    self,
-                    "Pinned agent missing",
-                    "This environment is set to Pinned mode, but the pinned agent ID is missing or invalid.",
-                )
-                return
-
-        # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
-        selected_cli_flags = ""
-        if override:
-            agent_cli = override.get("agent_cli", "")
-            auto_config_dir = self._resolve_override_config_dir(
-                override=override,
-                env=env,
-                settings=self._settings_data,
-            )
-            agent_instance_id = str(override.get("agent_id") or "").strip()
-            selected_cli_flags = str(override.get("cli_flags") or "").strip()
-            host_codex = auto_config_dir
-        elif (
-            env and env.agent_selection and getattr(env.agent_selection, "agents", None)
-        ):
-            agent_cli, auto_config_dir, agent_instance_id = (
-                self._select_agent_instance_for_env(
-                    env=env,
-                    settings=self._settings_data,
-                    advance_round_robin=True,
-                )
-            )
-        else:
-            agent_cli, auto_config_dir = self._effective_agent_and_config(
-                env=env, advance_round_robin=True
-            )
-        if not host_codex:
-            host_codex = auto_config_dir
-        if not self._ensure_agent_config_dir(agent_cli, host_codex):
-            return
-        if override and not agent_instance_id:
-            agent_instance_id = str(agent_cli or "").strip()
-
         agent_cli_args: list[str] = []
-        if override and selected_cli_flags:
-            try:
-                agent_cli_args = shlex.split(selected_cli_flags)
-            except ValueError as exc:
-                QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
-                return
-        elif env and env.agent_cli_args.strip():
-            try:
-                agent_cli_args = shlex.split(env.agent_cli_args)
-            except ValueError as exc:
-                QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
-                return
-
-        # Build command with agent-specific handling
-        command = self._default_interactive_command(agent_cli)
-        extra_preflight_script = str(extra_preflight_script or "")
-        is_help_launch = self._is_agent_help_interactive_launch(
-            prompt=prompt, command=command
-        )
-        if extra_preflight_script.strip() and "clone_repo" in extra_preflight_script:
-            is_help_launch = True
-        if is_help_launch:
-            prompt = "\n".join(
-                [
-                    f"You are running: `{agent_cli}` right now",
-                    "",
-                    str(prompt or "").strip(),
-                ]
-            ).strip()
-
-        apply_full_prompting = bool(has_typed_prompt and not is_help_launch)
-        prompt_for_agent = str(prompt or "")
-        if apply_full_prompting:
-            prompt_for_agent = self._build_interactive_base_prompt(
-                prompt=prompt_for_agent,
-                workspace_type=workspace_type,
-                env=env,
-                task_id=task_id,
-            )
         gh_use_host_cli = bool(getattr(env, "gh_use_host_cli", True)) if env else True
         gh_use_host_cli = bool(gh_use_host_cli and is_gh_available())
         gh_repo = (
@@ -254,6 +186,186 @@ class MainWindowTasksInteractiveMixin:
             if workspace_type == WORKSPACE_CLONED and env
             else ""
         )
+
+        if run_ide:
+            ide_config_override = self._coerce_ide_override(ide_override)
+            ide_system, ide_display_target = self._effective_ide_launch_config(
+                env=env,
+                override=ide_config_override,
+                settings=self._settings_data,
+            )
+            if (
+                ide_display_target == IDE_DISPLAY_HOST_DESKTOP
+                and not sys.platform.startswith("linux")
+            ):
+                QMessageBox.warning(
+                    self,
+                    "Host desktop unsupported",
+                    "Run IDE host desktop mode is only supported on Linux.",
+                )
+                return
+
+            ide_plugin = get_ide_system(ide_system)
+            command = ide_plugin.build_launch_command(
+                workspace_dir="/home/midori-ai/workspace"
+            )
+            ide_preflight_script = self._build_ide_install_preflight_script(
+                package_name=str(getattr(ide_plugin, "package_name", "") or ide_system)
+            )
+
+            extra_preflight_script = ""
+            if ide_display_target == IDE_DISPLAY_CONTAINER_DESKTOP:
+                desktop_path = (
+                    Path(__file__).resolve().parent.parent
+                    / "preflights"
+                    / "headless_desktop_novnc.sh"
+                )
+                try:
+                    extra_preflight_script = desktop_path.read_text(encoding="utf-8")
+                except Exception:
+                    extra_preflight_script = ""
+                if not extra_preflight_script.strip():
+                    QMessageBox.warning(
+                        self,
+                        "Missing preflight",
+                        f"Could not load {desktop_path}",
+                    )
+                    return
+
+            agent_cli = "codex"
+            auto_config_dir = self._effective_host_config_dir(
+                agent_cli=agent_cli,
+                env=env,
+                settings=self._settings_data,
+            )
+            if not host_codex:
+                host_codex = auto_config_dir
+            if not self._ensure_agent_config_dir(agent_cli, host_codex):
+                return
+
+            is_help_launch = False
+            apply_full_prompting = False
+            prompt_for_agent = ""
+            prompt = ""
+        else:
+            override = self._coerce_agent_override(agent_override)
+
+            if (
+                not override
+                and env
+                and env.agent_selection
+                and str(getattr(env.agent_selection, "selection_mode", "") or "")
+                .strip()
+                .lower()
+                == "pinned"
+            ):
+                pinned_id = str(
+                    getattr(env.agent_selection, "pinned_agent_id", "") or ""
+                ).strip()
+                pinned_lower = pinned_id.lower()
+                pinned_inst = next(
+                    (
+                        inst
+                        for inst in list(
+                            getattr(env.agent_selection, "agents", []) or []
+                        )
+                        if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
+                    ),
+                    None,
+                ) or next(
+                    (
+                        inst
+                        for inst in list(
+                            getattr(env.agent_selection, "agents", []) or []
+                        )
+                        if str(getattr(inst, "agent_id", "") or "").strip().lower()
+                        == pinned_lower
+                    ),
+                    None,
+                )
+                if pinned_inst is None:
+                    QMessageBox.warning(
+                        self,
+                        "Pinned agent missing",
+                        "This environment is set to Pinned mode, but the pinned agent ID is missing or invalid.",
+                    )
+                    return
+
+            selected_cli_flags = ""
+            if override:
+                agent_cli = override.get("agent_cli", "")
+                auto_config_dir = self._resolve_override_config_dir(
+                    override=override,
+                    env=env,
+                    settings=self._settings_data,
+                )
+                agent_instance_id = str(override.get("agent_id") or "").strip()
+                selected_cli_flags = str(override.get("cli_flags") or "").strip()
+                host_codex = auto_config_dir
+            elif (
+                env
+                and env.agent_selection
+                and getattr(env.agent_selection, "agents", None)
+            ):
+                agent_cli, auto_config_dir, agent_instance_id = (
+                    self._select_agent_instance_for_env(
+                        env=env,
+                        settings=self._settings_data,
+                        advance_round_robin=True,
+                    )
+                )
+            else:
+                agent_cli, auto_config_dir = self._effective_agent_and_config(
+                    env=env, advance_round_robin=True
+                )
+            if not host_codex:
+                host_codex = auto_config_dir
+            if not self._ensure_agent_config_dir(agent_cli, host_codex):
+                return
+            if override and not agent_instance_id:
+                agent_instance_id = str(agent_cli or "").strip()
+
+            if override and selected_cli_flags:
+                try:
+                    agent_cli_args = shlex.split(selected_cli_flags)
+                except ValueError as exc:
+                    QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
+                    return
+            elif env and env.agent_cli_args.strip():
+                try:
+                    agent_cli_args = shlex.split(env.agent_cli_args)
+                except ValueError as exc:
+                    QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
+                    return
+
+            command = self._default_interactive_command(agent_cli)
+            extra_preflight_script = str(extra_preflight_script or "")
+            is_help_launch = self._is_agent_help_interactive_launch(
+                prompt=prompt, command=command
+            )
+            if (
+                extra_preflight_script.strip()
+                and "clone_repo" in extra_preflight_script
+            ):
+                is_help_launch = True
+            if is_help_launch:
+                prompt = "\n".join(
+                    [
+                        f"You are running: `{agent_cli}` right now",
+                        "",
+                        str(prompt or "").strip(),
+                    ]
+                ).strip()
+
+            apply_full_prompting = bool(has_typed_prompt and not is_help_launch)
+            prompt_for_agent = str(prompt or "")
+            if apply_full_prompting:
+                prompt_for_agent = self._build_interactive_base_prompt(
+                    prompt=prompt_for_agent,
+                    workspace_type=workspace_type,
+                    env=env,
+                    task_id=task_id,
+                )
 
         image = PIXELARCH_EMERALD_IMAGE
 
@@ -305,6 +417,9 @@ class MainWindowTasksInteractiveMixin:
             agent_cli=agent_cli,
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
+            launch_mode="ide" if run_ide else "interactive_agent",
+            ide_system=ide_system,
+            ide_display_target=ide_display_target,
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -373,7 +488,10 @@ class MainWindowTasksInteractiveMixin:
             "container_workdir": container_workdir,
             "settings_preflight_script": settings_preflight_script,
             "environment_preflight_script": environment_preflight_script,
+            "ide_preflight_script": ide_preflight_script,
             "extra_preflight_script": extra_preflight_script,
+            "ide_system": ide_system,
+            "ide_display_target": ide_display_target,
             "stain": stain,
             "spinner": spinner,
             "desired_base": desired_base,
@@ -403,6 +521,21 @@ class MainWindowTasksInteractiveMixin:
         prep_thread.finished.connect(prep_bridge.deleteLater, Qt.QueuedConnection)
 
         prep_thread.start()
+
+    @staticmethod
+    def _build_ide_install_preflight_script(*, package_name: str) -> str:
+        package = "".join(
+            ch
+            for ch in str(package_name or "").strip()
+            if ch.isalnum() or ch in {"-", "_", "."}
+        )
+        if not package:
+            return ""
+        return (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            f"yay -Syu --noconfirm --needed {package} && yay -Yccc --noconfirm\n"
+        )
 
     def _build_interactive_base_prompt(
         self,
@@ -617,7 +750,9 @@ class MainWindowTasksInteractiveMixin:
                 environment_preflight_script=context.get(
                     "environment_preflight_script"
                 ),
+                ide_preflight_script=context.get("ide_preflight_script"),
                 extra_preflight_script=resolved_extra_preflight_script,
+                ide_display_target=str(context.get("ide_display_target") or ""),
                 stain=context.get("stain"),
                 spinner=context.get("spinner"),
                 desired_base=context.get("desired_base") or "",
