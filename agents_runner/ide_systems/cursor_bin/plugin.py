@@ -7,4 +7,6 @@ PLUGIN = IdeSystemSpec(
     display_name="Cursor",
     package_name="cursor-bin",
     executable="cursor",
+    launch_args=("--no-sandbox",),
+    wait_process_pattern="cursor",
 )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import shlex
 from typing import Protocol
 from typing import runtime_checkable
 
@@ -19,10 +20,21 @@ class IdeSystemSpec:
     display_name: str
     package_name: str
     executable: str
+    launch_args: tuple[str, ...] = ()
+    wait_process_pattern: str = ""
+
+    def build_launch_argv(self, *, workspace_dir: str) -> list[str]:
+        workspace = str(workspace_dir or "").strip() or "/home/midori-ai/workspace"
+        argv: list[str] = [str(self.executable or "").strip()]
+        argv.extend(str(arg or "").strip() for arg in self.launch_args)
+        argv.append(workspace)
+        return [part for part in argv if part]
 
     def build_launch_command(self, *, workspace_dir: str) -> str:
-        workspace = str(workspace_dir or "").strip() or "/home/midori-ai/workspace"
-        return f"{self.executable} {workspace}"
+        return " ".join(
+            shlex.quote(part)
+            for part in self.build_launch_argv(workspace_dir=workspace_dir)
+        )
 
 
 @runtime_checkable
@@ -30,8 +42,10 @@ class IdeSystemPlugin(Protocol):
     name: str
     display_name: str
     package_name: str
+    wait_process_pattern: str
 
     def build_launch_command(self, *, workspace_dir: str) -> str: ...
+    def build_launch_argv(self, *, workspace_dir: str) -> list[str]: ...
 
 
 def normalize_ide_display_target(value: str | None) -> str:

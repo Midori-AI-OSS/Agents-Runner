@@ -7,4 +7,6 @@ PLUGIN = IdeSystemSpec(
     display_name="Visual Studio Code",
     package_name="visual-studio-code-bin",
     executable="code",
+    launch_args=("--no-sandbox",),
+    wait_process_pattern="code",
 )

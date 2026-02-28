@@ -376,9 +376,10 @@ class NewTaskPage(QWidget):
     def _update_run_buttons(self) -> None:
         has_terminal = bool(self._terminal_available and self._terminal_id)
         can_launch = bool(self._workspace_ready and has_terminal)
+        can_launch_ide = bool(self._workspace_ready and self._ide_controls_supported)
         self._run_agent.setEnabled(self._workspace_ready)
         self._run_interactive.setEnabled(can_launch)
-        self._run_ide.setEnabled(bool(can_launch and self._ide_controls_supported))
+        self._run_ide.setEnabled(can_launch_ide)
         self._get_agent_help.setEnabled(can_launch)
 
     def _refresh_terminal_selection(self, terminal_id: str) -> None:
@@ -632,10 +633,6 @@ class NewTaskPage(QWidget):
             )
             return
 
-        terminal_id = self._resolve_terminal_for_launch()
-        if not terminal_id:
-            return
-
         host_codex = os.path.expanduser(str(self._host_codex_dir or "").strip())
         env_id = self._active_env_id
         base_branch = str(self._base_branch.currentData() or "")
@@ -653,7 +650,7 @@ class NewTaskPage(QWidget):
             "",
             host_codex,
             env_id,
-            terminal_id,
+            "",
             base_branch,
             ide_override_payload,
         )
