@@ -1,0 +1,70 @@
+name: CI Docker Matrix
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - main
+      - unstable
+      - nightly
+  workflow_dispatch:
+
+jobs:
+  docker-matrix:
+    name: Docker Matrix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6.6.0
+      - uses: docker/setup-docker-action@v4
+
+      - name: Pull PixelArch Container
+        run: docker pull lunamidori5/pixelarch:emerald
+
+      - name: Prepare Artifacts Directory
+        run: mkdir -p /tmp/agents-artifacts
+
+      - name: Sync
+        run: uv sync --group ci
+
+      - name: Docker Matrix Tests
+        env:
+          AGENTS_RUNNER_MATRIX_MANIFEST: /tmp/agents-artifacts/docker-matrix-manifest.json
+        run: uv run pytest -q agents_runner/tests/test_docker_matrix.py --maxfail=1
+
+      - name: Ensure Matrix Manifest
+        if: always()
+        env:
+          AGENTS_RUNNER_MATRIX_MANIFEST: /tmp/agents-artifacts/docker-matrix-manifest.json
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          path = Path(os.environ["AGENTS_RUNNER_MATRIX_MANIFEST"])
+          if path.exists():
+              raise SystemExit(0)
+
+          path.parent.mkdir(parents=True, exist_ok=True)
+          payload = {
+              "generated_at": datetime.now(timezone.utc).isoformat(),
+              "warning": "matrix manifest was not produced by pytest run",
+              "cases": [],
+              "deferred_issues": [],
+          }
+          path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload Matrix Manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-matrix-manifest
+          path: /tmp/agents-artifacts/docker-matrix-manifest.json
+          if-no-files-found: warn
