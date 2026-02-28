@@ -323,6 +323,7 @@ class EnvironmentsPage(
                 self._preflight_script.setPlainText("")
                 self._cache_system_preflight_enabled.setChecked(False)
                 self._cache_settings_preflight_enabled.setChecked(False)
+                self._cache_ide_preflight_enabled.setChecked(False)
                 self._on_container_caching_toggled(Qt.CheckState.Unchecked.value)
                 self._env_vars_tab.set_env_vars(
                     {},
@@ -440,6 +441,9 @@ class EnvironmentsPage(
             self._cache_settings_preflight_enabled.setChecked(
                 bool(getattr(env, "cache_settings_preflight_enabled", False))
             )
+            self._cache_ide_preflight_enabled.setChecked(
+                bool(getattr(env, "cache_ide_preflight_enabled", False))
+            )
             self._on_container_caching_toggled(
                 Qt.CheckState.Checked.value
                 if bool(getattr(env, "container_caching_enabled", False))
@@ -505,6 +509,7 @@ class EnvironmentsPage(
         for checkbox in (
             self._cache_system_preflight_enabled,
             self._cache_settings_preflight_enabled,
+            self._cache_ide_preflight_enabled,
         ):
             checkbox.setEnabled(is_enabled)
 

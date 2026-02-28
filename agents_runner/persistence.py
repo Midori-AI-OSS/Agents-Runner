@@ -535,6 +535,9 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             cache_settings_preflight_enabled=bool(
                 payload.get("cache_settings_preflight_enabled") or False
             ),
+            cache_ide_preflight_enabled=bool(
+                payload.get("cache_ide_preflight_enabled") or False
+            ),
             container_settings_preflight_path=str(
                 payload.get("container_settings_preflight_path")
                 or "/tmp/agents-runner-preflight-settings-{task_id}.sh"
@@ -561,9 +564,6 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             custom_command_argv=custom_command_argv,
             custom_verify_executable=str(
                 payload.get("custom_verify_executable") or ""
-            ).strip(),
-            custom_wait_process_pattern=str(
-                payload.get("custom_wait_process_pattern") or ""
             ).strip(),
             gh_repo=(
                 str(payload.get("gh_repo") or "").strip()

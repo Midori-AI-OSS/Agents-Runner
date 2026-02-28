@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.log_format import format_log
 from agents_runner.log_format import format_log_display
@@ -574,6 +575,54 @@ class MainWindowTaskEventsMixin:
         self._details.update_task(task)
         self._schedule_save()
 
+    def _remember_ide_safe_mode_if_needed(self, task: Task) -> None:
+        launch_mode = str(getattr(task, "launch_mode", "") or "").strip().lower()
+        if launch_mode != "ide":
+            return
+        ide_system = str(getattr(task, "ide_system", "") or "").strip().lower()
+        if not ide_system:
+            return
+        saw_retry_marker = any(
+            "safe-retry-triggered" in str(line or "") for line in (task.logs or [])
+        )
+        if not saw_retry_marker:
+            return
+        env_id = str(getattr(task, "environment_id", "") or "").strip()
+        if not env_id:
+            return
+        env = self._environments.get(env_id)
+        if env is None:
+            return
+        existing_map = getattr(env, "ide_safe_mode_by_system", {})
+        safe_map = dict(existing_map) if isinstance(existing_map, dict) else {}
+        if bool(safe_map.get(ide_system, False)):
+            return
+        safe_map[ide_system] = True
+        env.ide_safe_mode_by_system = safe_map
+        try:
+            save_environment(env)
+        except Exception as exc:
+            self._on_task_log(
+                task.task_id,
+                format_log(
+                    "ide",
+                    "retry",
+                    "WARN",
+                    f"failed to persist safe mode for ide={ide_system}: {exc}",
+                ),
+            )
+            return
+        self._environments[env.env_id] = env
+        self._on_task_log(
+            task.task_id,
+            format_log(
+                "ide",
+                "retry",
+                "INFO",
+                f"remembered safe mode for ide={ide_system}",
+            ),
+        )
+
     def _on_task_done(
         self,
         task_id: str,
@@ -622,6 +671,7 @@ class MainWindowTaskEventsMixin:
             else:
                 task.status = "done" if int(exit_code) == 0 else "failed"
 
+            self._remember_ide_safe_mode_if_needed(task)
             task.git = derive_task_git_metadata(task)
 
             # Validate git metadata for cloned repo tasks

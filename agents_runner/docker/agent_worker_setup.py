@@ -65,6 +65,7 @@ class RuntimeEnvironment:
     system_preflight_enabled: bool
     system_preflight_cached: bool
     settings_preflight_cached: bool
+    ide_preflight_cached: bool
     environment_preflight_cached: bool
     runtime_image: str
     desktop_enabled: bool
@@ -78,7 +79,6 @@ class RuntimeEnvironment:
     ide_display_target: str
     custom_command_argv: list[str]
     custom_verify_executable: str
-    custom_wait_process_pattern: str
 
 
 class WorkerSetup:
@@ -149,6 +149,7 @@ class WorkerSetup:
             system_preflight_enabled=caching_config.system_preflight_enabled,
             system_preflight_cached=caching_config.system_preflight_cached,
             settings_preflight_cached=caching_config.settings_preflight_cached,
+            ide_preflight_cached=caching_config.ide_preflight_cached,
             environment_preflight_cached=caching_config.environment_preflight_cached,
             runtime_image=caching_config.runtime_image,
             desktop_enabled=caching_config.desktop_enabled,
@@ -164,9 +165,6 @@ class WorkerSetup:
                 str(part) for part in self._config.custom_command_argv
             ],
             custom_verify_executable=str(self._config.custom_verify_executable or ""),
-            custom_wait_process_pattern=str(
-                self._config.custom_wait_process_pattern or ""
-            ),
         )
 
     @dataclass(frozen=True)
@@ -410,6 +408,7 @@ class WorkerSetup:
         system_preflight_enabled: bool
         system_preflight_cached: bool
         settings_preflight_cached: bool
+        ide_preflight_cached: bool
         environment_preflight_cached: bool
         runtime_image: str
         desktop_enabled: bool
@@ -438,6 +437,7 @@ class WorkerSetup:
         system_preflight_enabled = bool(system_preflight_script.strip())
         system_preflight_cached = False
         settings_preflight_cached = False
+        ide_preflight_cached = False
         environment_preflight_cached = False
         container_caching_enabled = bool(self._config.container_caching_enabled)
 
@@ -518,6 +518,49 @@ class WorkerSetup:
                 )
                 runtime_image = desktop_base_image
 
+        ide_preflight_script = str(self._config.ide_preflight_script or "")
+        launch_mode = str(self._config.launch_mode or "").strip().lower()
+        cache_ide_enabled = (
+            container_caching_enabled
+            and self._config.cache_ide_preflight_enabled
+            and launch_mode == "ide"
+        )
+        if cache_ide_enabled and ide_preflight_script.strip():
+            ide_name = "".join(
+                ch
+                for ch in str(self._config.ide_system or "").strip().lower()
+                if ch.isalnum() or ch in {"-", "_"}
+            )
+            if not ide_name:
+                ide_name = "default"
+            phase_name = f"ide-{ide_name}"
+            self._on_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "INFO",
+                    f"{phase_name} caching enabled; checking cached layer",
+                )
+            )
+            next_image = ensure_phase_image(
+                base_image=runtime_image,
+                phase_name=phase_name,
+                script_content=ide_preflight_script,
+                preflights_dir=preflights_host_dir,
+                on_log=self._on_log,
+            )
+            ide_preflight_cached = next_image != runtime_image
+            runtime_image = next_image
+        elif cache_ide_enabled:
+            self._on_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "WARN",
+                    "ide caching enabled but ide script is empty",
+                )
+            )
+
         settings_preflight_script = str(self._config.settings_preflight_script or "")
         if (
             container_caching_enabled
@@ -558,6 +601,7 @@ class WorkerSetup:
             system_preflight_enabled=system_preflight_enabled,
             system_preflight_cached=system_preflight_cached,
             settings_preflight_cached=settings_preflight_cached,
+            ide_preflight_cached=ide_preflight_cached,
             environment_preflight_cached=environment_preflight_cached,
             runtime_image=runtime_image,
             desktop_enabled=desktop_enabled,

@@ -229,11 +229,31 @@ class MainWindowTasksAgentMixin:
         launch_argv = ide_plugin.build_launch_argv(
             workspace_dir="/home/midori-ai/workspace"
         )
+        remembered_safe_mode = False
+        if env is not None:
+            raw_safe_mode_map = getattr(env, "ide_safe_mode_by_system", {})
+            if isinstance(raw_safe_mode_map, dict):
+                remembered_safe_mode = bool(raw_safe_mode_map.get(ide_system, False))
+
+        if remembered_safe_mode:
+            for safe_arg in ("--disable-gpu", "--disable-dev-shm-usage"):
+                if safe_arg not in launch_argv:
+                    launch_argv.append(safe_arg)
+
+        if "--verbose" not in launch_argv:
+            launch_argv.append("--verbose")
+
+        if "--log" in launch_argv:
+            log_index = launch_argv.index("--log")
+            if log_index + 1 < len(launch_argv):
+                launch_argv[log_index + 1] = "debug"
+            else:
+                launch_argv.append("debug")
+        else:
+            launch_argv.extend(["--log", "debug"])
+
         launch_command = " ".join(shlex.quote(part) for part in launch_argv)
         verify_executable = str(getattr(ide_plugin, "executable", "") or "").strip()
-        wait_process_pattern = str(
-            getattr(ide_plugin, "wait_process_pattern", "") or verify_executable
-        ).strip()
         ide_preflight_script = self._build_ide_install_preflight_script(
             package_name=str(getattr(ide_plugin, "package_name", "") or ide_system)
         )
@@ -268,12 +288,18 @@ class MainWindowTasksAgentMixin:
             if env
             else False
         )
+        cache_ide_preflight_enabled = (
+            bool(getattr(env, "cache_ide_preflight_enabled", False)) if env else False
+        )
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
 
         use_host_gh = bool(getattr(env, "gh_use_host_cli", True)) if env else True
         use_host_gh = bool(use_host_gh and is_gh_available())
 
         env_vars_for_task = dict(env.env_vars) if env else {}
+        env_vars_for_task.pop("AGENTS_RUNNER_IDE_SAFE_MODE", None)
+        if remembered_safe_mode:
+            env_vars_for_task["AGENTS_RUNNER_IDE_SAFE_MODE"] = "1"
         extra_mounts_for_task = list(env.extra_mounts) if env else []
         ports_for_task = list(getattr(env, "ports", []) or []) if env else []
 
@@ -313,6 +339,16 @@ class MainWindowTasksAgentMixin:
         spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
+        if remembered_safe_mode:
+            self._on_task_log(
+                task_id,
+                format_log(
+                    "ide",
+                    "retry",
+                    "INFO",
+                    f"safe-mode-initial for ide={ide_system}",
+                ),
+            )
 
         config = DockerRunnerConfig(
             task_id=task_id,
@@ -331,6 +367,7 @@ class MainWindowTasksAgentMixin:
             container_caching_enabled=container_caching_enabled,
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+            cache_ide_preflight_enabled=cache_ide_preflight_enabled,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,
@@ -345,7 +382,6 @@ class MainWindowTasksAgentMixin:
             ide_auto_mounts_enabled=ide_auto_mounts_enabled,
             custom_command_argv=launch_argv,
             custom_verify_executable=verify_executable,
-            custom_wait_process_pattern=wait_process_pattern,
         )
         task._runner_config = config
         task._runner_prompt = launch_command
@@ -732,6 +768,9 @@ class MainWindowTasksAgentMixin:
             if env
             else False
         )
+        cache_ide_preflight_enabled = (
+            bool(getattr(env, "cache_ide_preflight_enabled", False)) if env else False
+        )
         # Only enable cache if desktop is enabled
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
 
@@ -1063,6 +1102,7 @@ class MainWindowTasksAgentMixin:
             container_caching_enabled=container_caching_enabled,
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+            cache_ide_preflight_enabled=cache_ide_preflight_enabled,
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,

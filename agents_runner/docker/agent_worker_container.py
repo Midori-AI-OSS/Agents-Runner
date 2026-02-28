@@ -219,118 +219,52 @@ class ContainerExecutor:
             return ""
         return verify_cli_clause(self._runtime_env.agent_cli)
 
-    @staticmethod
-    def _parse_wait_process_matcher(wait_pattern: str) -> tuple[tuple[str, ...], str]:
-        """Parse wait matcher in `comm=...;argv_contains=...` form."""
-        raw = str(wait_pattern or "").strip()
-        if not raw:
-            return (), ""
-
-        # Backward compatible: plain `code` means exact process name match.
-        if "=" not in raw:
-            return (raw,), ""
-
-        comms: list[str] = []
-        argv_contains = ""
-        for part in raw.split(";"):
-            token = str(part or "").strip()
-            if not token or "=" not in token:
-                continue
-            key, value = token.split("=", 1)
-            k = str(key or "").strip().lower()
-            v = str(value or "").strip()
-            if not v:
-                continue
-            if k in {"comm", "process", "name"}:
-                for comm in v.split("|"):
-                    normalized = str(comm or "").strip()
-                    if normalized and normalized not in comms:
-                        comms.append(normalized)
-            elif k in {"argv_contains", "args_contains", "arg_contains"}:
-                if not argv_contains:
-                    argv_contains = v
-
-        return tuple(comms), argv_contains
-
-    @staticmethod
-    def _awk_quote(value: str) -> str:
-        escaped = str(value or "").replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-
-    def _build_wait_collector_clause(self, wait_pattern: str) -> str:
-        comms, argv_contains = self._parse_wait_process_matcher(wait_pattern)
-        if not comms:
-            return ""
-
-        comm_checks = " || ".join(f"comm == {self._awk_quote(comm)}" for comm in comms)
-        argv_check = "1"
-        if argv_contains:
-            argv_check = f"index(args, {self._awk_quote(argv_contains)}) > 0"
-
-        awk_program = (
-            "{ pid=$1; state=$2; comm=$3; args=$0; "
-            "if (state ~ /^Z/) next; "
-            'sub(/^[[:space:]]*[0-9]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+/, "", args); '
-            f"if (({comm_checks}) && ({argv_check})) print pid; "
-            "}"
-        )
-        awk_program_quoted = shlex.quote(awk_program)
-        return (
-            "ide_collect_matching_pids() { "
-            f"ps -eo pid=,stat=,comm=,args= --no-headers 2>/dev/null | awk {awk_program_quoted}; "
-            "}; "
-        )
-
     def _build_main_command_clause(self, agent_cmd: str) -> str:
         """Build the command execution clause."""
         if not self._runtime_env.custom_command_argv:
             return f"exec {agent_cmd}"
 
-        wait_pattern = str(self._runtime_env.custom_wait_process_pattern or "").strip()
-        if not wait_pattern:
+        launch_mode = str(self._runtime_env.launch_mode or "").strip().lower()
+        if launch_mode != "ide":
             return f"exec {agent_cmd}"
 
-        wait_collector_clause = self._build_wait_collector_clause(wait_pattern)
-        if not wait_collector_clause:
-            return (
-                f"{agent_cmd}; "
-                "IDE_LAUNCH_STATUS=$?; "
-                'if [ "${IDE_LAUNCH_STATUS}" -ne 0 ]; then exit "${IDE_LAUNCH_STATUS}"; fi; '
-                "sleep 15; "
-                "exit 0"
-            )
-
+        ide_log_path = "/tmp/agents-artifacts/ide-cli.log"
+        signature_pattern = (
+            "MIT-SHM|X_ShmAttach|X Window System error|"
+            "X Error of failed request[^\\n]*BadAccess|"
+            "BadAccess[^\\n]*MIT-SHM"
+        )
+        safe_agent_cmd = f"{agent_cmd} --disable-gpu --disable-dev-shm-usage"
         return (
-            f"{wait_collector_clause}"
-            'ide_pid_in_list() { printf "%s\\n" "$2" | grep -Fx -- "$1" >/dev/null 2>&1; }; '
-            'ide_pid_active() { IDE_PID="$1"; '
-            'IDE_STAT="$(ps -o stat= -p "${IDE_PID}" 2>/dev/null | awk \'NR==1 {print $1}\' || true)"; '
-            'if [ -n "${IDE_STAT}" ] && [ "${IDE_STAT#Z}" = "${IDE_STAT}" ]; then return 0; fi; '
-            "return 1; "
-            "}; "
-            'ide_any_tracked_active() { IDE_TRACKED="$1"; '
-            "while IFS= read -r IDE_PID; do "
-            '[ -z "${IDE_PID}" ] && continue; '
-            'if ide_pid_active "${IDE_PID}"; then return 0; fi; '
-            'done <<< "${IDE_TRACKED}"; '
-            "return 1; "
-            "}; "
-            'ide_collect_new_pids() { IDE_BASELINE="$1"; '
-            "ide_collect_matching_pids | while IFS= read -r IDE_PID; do "
-            '[ -z "${IDE_PID}" ] && continue; '
-            'if ! ide_pid_in_list "${IDE_PID}" "${IDE_BASELINE}"; then printf "%s\\n" "${IDE_PID}"; fi; '
-            "done || true; "
-            "}; "
-            'IDE_BASELINE_PIDS="$(ide_collect_matching_pids)"; '
-            f"{agent_cmd}; "
-            "IDE_LAUNCH_STATUS=$?; "
-            'if [ "${IDE_LAUNCH_STATUS}" -ne 0 ]; then exit "${IDE_LAUNCH_STATUS}"; fi; '
-            'IDE_TRACKED_PIDS="$(ide_collect_new_pids "${IDE_BASELINE_PIDS}")"; '
-            'if [ -n "${IDE_TRACKED_PIDS}" ]; then '
-            'while ide_any_tracked_active "${IDE_TRACKED_PIDS}"; do sleep 0.5; done; '
+            "mkdir -p /tmp/agents-artifacts; "
+            f"IDE_LOG={shlex.quote(ide_log_path)}; "
+            "SAFE_INITIAL=0; "
+            'if [ "${AGENTS_RUNNER_IDE_SAFE_MODE:-0}" = "1" ]; then SAFE_INITIAL=1; fi; '
+            'if [ "$SAFE_INITIAL" = "1" ]; then '
+            f"{shell_log_statement('ide', 'retry', 'INFO', 'safe-mode-initial')}; "
+            "set +e; "
+            f'QT_X11_NO_MITSHM=1 {safe_agent_cmd} 2>&1 | tee "$IDE_LOG"; '
+            "IDE_EXIT=${PIPESTATUS[0]}; "
+            "set -e; "
+            "else "
+            f"{shell_log_statement('ide', 'retry', 'INFO', 'attempt=1 mode=normal')}; "
+            "set +e; "
+            f'{agent_cmd} 2>&1 | tee "$IDE_LOG"; '
+            "IDE_EXIT=${PIPESTATUS[0]}; "
+            "set -e; "
             "fi; "
-            "sleep 15; "
-            "exit 0"
+            "SIGNATURE_MATCH=0; "
+            f'if grep -Eiq {shlex.quote(signature_pattern)} "$IDE_LOG"; then SIGNATURE_MATCH=1; fi; '
+            'if [ "$SAFE_INITIAL" = "0" ] && [ "$SIGNATURE_MATCH" = "1" ]; then '
+            f"{shell_log_statement('ide', 'retry', 'WARN', 'safe-retry-triggered')}; "
+            "set +e; "
+            f'AGENTS_RUNNER_IDE_SAFE_RETRY=1 QT_X11_NO_MITSHM=1 {safe_agent_cmd} 2>&1 | tee -a "$IDE_LOG"; '
+            "IDE_EXIT=${PIPESTATUS[0]}; "
+            "set -e; "
+            'elif [ "$SAFE_INITIAL" = "1" ] && [ "$SIGNATURE_MATCH" = "1" ]; then '
+            f"{shell_log_statement('ide', 'retry', 'INFO', 'safe-retry-skipped-already-safe')}; "
+            "fi; "
+            "exit ${IDE_EXIT}"
         )
 
     def _build_preflight_clause(
@@ -350,13 +284,28 @@ class ContainerExecutor:
             preflight_mounts.extend(mounts)
 
         # IDE preflight
-        if self._runtime_env.ide_preflight_tmp_path is not None:
+        if (
+            self._runtime_env.ide_preflight_tmp_path is not None
+            and not self._runtime_env.ide_preflight_cached
+        ):
             clause, mounts = self._build_ide_preflight(
                 self._runtime_env.ide_preflight_tmp_path,
                 self._runtime_env.ide_container_path,
             )
             preflight_clause += clause
             preflight_mounts.extend(mounts)
+        elif (
+            self._runtime_env.ide_preflight_tmp_path is not None
+            and self._runtime_env.ide_preflight_cached
+        ):
+            self._on_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "INFO",
+                    "ide setup cached; skipping runtime ide preflight",
+                )
+            )
 
         # Desktop preflight
         if self._runtime_env.desktop_enabled:
@@ -618,9 +567,7 @@ class ContainerExecutor:
         elif self._runtime_env.ide_display_target == IDE_DISPLAY_HOST_DESKTOP:
             host_display = str(os.environ.get("DISPLAY") or "").strip()
             if host_display:
-                env_args.extend(
-                    ["-e", f"DISPLAY={host_display}", "-e", "QT_X11_NO_MITSHM=1"]
-                )
+                env_args.extend(["-e", f"DISPLAY={host_display}"])
             else:
                 self._on_log(
                     format_log(

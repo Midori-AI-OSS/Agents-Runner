@@ -21,6 +21,7 @@ class DockerRunnerConfig:
     container_caching_enabled: bool = False
     cache_system_preflight_enabled: bool = False
     cache_settings_preflight_enabled: bool = False
+    cache_ide_preflight_enabled: bool = False
     environment_id: str = ""
     # Use a task-specific filename by default to avoid collisions when multiple
     # runs share a container or temp directory.
@@ -41,7 +42,6 @@ class DockerRunnerConfig:
     ide_auto_mounts_enabled: bool = False
     custom_command_argv: list[str] = field(default_factory=list)
     custom_verify_executable: str = ""
-    custom_wait_process_pattern: str = ""
     # GitHub repo preparation
     gh_repo: str | None = None
     gh_prefer_gh_cli: bool = True

@@ -307,6 +307,13 @@ class EnvironmentsFormMixin:
         )
         self._cache_settings_preflight_enabled.setEnabled(False)
 
+        self._cache_ide_preflight_enabled = QCheckBox("Cache IDE setup phase")
+        self._cache_ide_preflight_enabled.setToolTip(
+            "When enabled, the IDE install/setup preflight is cached as an image layer.\n"
+            "Cache key is chained from base image + IDE setup script content."
+        )
+        self._cache_ide_preflight_enabled.setEnabled(False)
+
         self._env_vars_tab = EnvVarsTabWidget()
         self._env_vars_tab.env_vars_changed.connect(self._queue_advanced_autosave)
 
@@ -432,6 +439,7 @@ class EnvironmentsFormMixin:
         caching_body.addWidget(self._cache_desktop_build)
         caching_body.addWidget(self._cache_system_preflight_enabled)
         caching_body.addWidget(self._cache_settings_preflight_enabled)
+        caching_body.addWidget(self._cache_ide_preflight_enabled)
         caching_body.addStretch(1)
         self._register_page("caching", caching_page)
 
