@@ -223,7 +223,20 @@ class ContainerExecutor:
         """Build the command execution clause."""
         if not self._runtime_env.custom_command_argv:
             return f"exec {agent_cmd}"
-        return f"exec {agent_cmd}"
+
+        launch_mode = str(self._runtime_env.launch_mode or "").strip().lower()
+        if launch_mode != "ide":
+            return f"exec {agent_cmd}"
+
+        ide_log_path = "/tmp/agents-artifacts/ide-cli.log"
+        return (
+            "mkdir -p /tmp/agents-artifacts; "
+            "set +e; "
+            f"{agent_cmd} 2>&1 | tee {shlex.quote(ide_log_path)}; "
+            "IDE_EXIT=${PIPESTATUS[0]}; "
+            "set -e; "
+            "exit ${IDE_EXIT}"
+        )
 
     def _build_preflight_clause(
         self, desktop_state: dict[str, Any]

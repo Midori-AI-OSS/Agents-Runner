@@ -229,6 +229,18 @@ class MainWindowTasksAgentMixin:
         launch_argv = ide_plugin.build_launch_argv(
             workspace_dir="/home/midori-ai/workspace"
         )
+        if "--verbose" not in launch_argv:
+            launch_argv.append("--verbose")
+
+        if "--log" in launch_argv:
+            log_index = launch_argv.index("--log")
+            if log_index + 1 < len(launch_argv):
+                launch_argv[log_index + 1] = "debug"
+            else:
+                launch_argv.append("debug")
+        else:
+            launch_argv.extend(["--log", "debug"])
+
         launch_command = " ".join(shlex.quote(part) for part in launch_argv)
         verify_executable = str(getattr(ide_plugin, "executable", "") or "").strip()
         ide_preflight_script = self._build_ide_install_preflight_script(
