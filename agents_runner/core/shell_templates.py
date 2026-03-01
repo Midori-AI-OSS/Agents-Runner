@@ -45,6 +45,27 @@ def git_identity_clause() -> str:
     )
 
 
+def setup_agents_bootstrap_clause(*, container_repo_root: str) -> str:
+    """
+    Build shell clause to run repo-local setup-agents.sh when present.
+
+    Args:
+        container_repo_root: Container path to mounted repository root
+    """
+    repo_root = str(container_repo_root or "").strip() or "."
+    script_path = f"{repo_root.rstrip('/')}/setup-agents.sh"
+    return (
+        f"SETUP_AGENTS_SCRIPT={shlex.quote(script_path)}; "
+        'if [ -f "${SETUP_AGENTS_SCRIPT}" ]; then '
+        f"{shell_log_statement('docker', 'preflight', 'INFO', 'repo-bootstrap: running setup-agents.sh')}; "
+        '/bin/bash "${SETUP_AGENTS_SCRIPT}"; '
+        f"{shell_log_statement('docker', 'preflight', 'INFO', 'repo-bootstrap: done')}; "
+        "else "
+        f"{shell_log_statement('docker', 'preflight', 'INFO', 'repo-bootstrap: setup-agents.sh not found; skipping')}; "
+        "fi; "
+    )
+
+
 def build_git_clone_command(
     *,
     gh_repo: str,

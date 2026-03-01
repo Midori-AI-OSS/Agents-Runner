@@ -34,6 +34,7 @@ from agents_runner.ide_systems import normalize_ide_display_target
 from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.core.shell_templates import git_identity_clause
+from agents_runner.core.shell_templates import setup_agents_bootstrap_clause
 from agents_runner.core.shell_templates import shell_log_statement
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import safe_str
@@ -297,6 +298,7 @@ def launch_docker_terminal_task(
     # runtime desktop services still need to start for each container launch.
     preflight_clause, preflight_mounts, tmp_paths = _prepare_preflight_scripts(
         task_token=task_token,
+        container_workdir=container_workdir,
         ide_preflight_script=str(ide_preflight_script or ""),
         desktop_preflight_script=desktop_preflight_script,
         settings_preflight_script=settings_preflight_script,
@@ -584,6 +586,7 @@ def launch_docker_terminal_task(
 
 def _prepare_preflight_scripts(
     task_token: str,
+    container_workdir: str,
     ide_preflight_script: str,
     desktop_preflight_script: str,
     settings_preflight_script: str | None,
@@ -598,6 +601,7 @@ def _prepare_preflight_scripts(
 
     Args:
         task_token: Unique task token for temp file naming
+        container_workdir: Container path to mounted repository root
         ide_preflight_script: IDE install phase script content
         desktop_preflight_script: Desktop phase script content
         settings_preflight_script: Global preflight script
@@ -689,6 +693,10 @@ def _prepare_preflight_scripts(
                 '/bin/bash "${PREFLIGHT_SYSTEM}"; '
                 f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: done')}; "
             )
+
+        preflight_clause += setup_agents_bootstrap_clause(
+            container_repo_root=container_workdir
+        )
 
         def _append_optional_phase(
             *,

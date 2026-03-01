@@ -35,7 +35,11 @@ from agents_runner.github_token import resolve_github_token
 from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
 from agents_runner.ide_systems import get_ide_system
 from agents_runner.log_format import format_log, wrap_container_log
-from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
+from agents_runner.core.shell_templates import (
+    git_identity_clause,
+    setup_agents_bootstrap_clause,
+    shell_log_statement,
+)
 
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.process import run_docker, inspect_state
@@ -282,6 +286,10 @@ class ContainerExecutor:
             clause, mounts = self._build_system_preflight()
             preflight_clause += clause
             preflight_mounts.extend(mounts)
+
+        preflight_clause += setup_agents_bootstrap_clause(
+            container_repo_root=self._config.container_workdir
+        )
 
         # IDE preflight
         if (
