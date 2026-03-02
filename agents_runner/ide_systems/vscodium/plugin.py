@@ -8,7 +8,7 @@ PLUGIN = IdeSystemSpec(
     display_name="VSCodium",
     package_name="vscodium-bin",
     executable="codium",
-    launch_args=("--no-sandbox", "--wait"),
+    launch_args=("--no-sandbox", "--disable-gpu", "--wait"),
     auto_mount_specs=(
         IdeAutoMountSpec(
             host_path="~/.midoriai/agents-runner/ide/vscodium-config/.config/VSCodium",
