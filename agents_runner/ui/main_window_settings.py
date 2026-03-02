@@ -28,6 +28,18 @@ logger = logging.getLogger(__name__)
 class MainWindowSettingsMixin:
     _AGENT_CONFIG_DIRS_KEY = "agent_config_dirs"
     _AGENT_INTERACTIVE_COMMANDS_KEY = "agent_interactive_commands"
+    _LEGACY_HOST_CONFIG_KEY_BY_AGENT = {
+        "codex": "host_codex_dir",
+        "claude": "host_claude_dir",
+        "copilot": "host_copilot_dir",
+        "gemini": "host_gemini_dir",
+    }
+    _LEGACY_INTERACTIVE_COMMAND_KEY_BY_AGENT = {
+        "codex": "interactive_command",
+        "claude": "interactive_command_claude",
+        "copilot": "interactive_command_copilot",
+        "gemini": "interactive_command_gemini",
+    }
     _REMOVED_LEGACY_SETTINGS_KEYS = (
         "host_codex_dir",
         "host_claude_dir",
@@ -94,17 +106,47 @@ class MainWindowSettingsMixin:
         self, settings: dict[str, object] | None = None
     ) -> dict[str, str]:
         source = settings if settings is not None else self._settings_data
+        configured = self._coerce_agent_map(source.get(self._AGENT_CONFIG_DIRS_KEY))
+        legacy = self._legacy_agent_map_from_settings(
+            source=source,
+            key_by_agent=self._LEGACY_HOST_CONFIG_KEY_BY_AGENT,
+        )
+        merged = dict(legacy)
+        merged.update(configured)
         return self._normalized_agent_config_dirs_map(
-            source.get(self._AGENT_CONFIG_DIRS_KEY)
+            merged,
         )
 
     def _get_agent_interactive_commands_map(
         self, settings: dict[str, object] | None = None
     ) -> dict[str, str]:
         source = settings if settings is not None else self._settings_data
-        return self._normalized_agent_interactive_commands_map(
+        configured = self._coerce_agent_map(
             source.get(self._AGENT_INTERACTIVE_COMMANDS_KEY)
         )
+        legacy = self._legacy_agent_map_from_settings(
+            source=source,
+            key_by_agent=self._LEGACY_INTERACTIVE_COMMAND_KEY_BY_AGENT,
+        )
+        merged = dict(legacy)
+        merged.update(configured)
+        return self._normalized_agent_interactive_commands_map(merged)
+
+    @staticmethod
+    def _legacy_agent_map_from_settings(
+        *,
+        source: dict[str, object],
+        key_by_agent: dict[str, str],
+    ) -> dict[str, str]:
+        values: dict[str, str] = {}
+        for agent_cli in available_agents():
+            legacy_key = key_by_agent.get(agent_cli, "")
+            if not legacy_key:
+                continue
+            configured = str(source.get(legacy_key) or "").strip()
+            if configured:
+                values[agent_cli] = configured
+        return values
 
     def _set_agent_config_dir_setting(
         self,
