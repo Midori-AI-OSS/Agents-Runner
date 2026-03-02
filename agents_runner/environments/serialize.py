@@ -216,8 +216,6 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     except (ValueError, AttributeError):
         max_agents_running = -1
 
-    preflight_enabled = bool(payload.get("preflight_enabled", False))
-    preflight_script = str(payload.get("preflight_script") or "")
     headless_desktop_enabled = bool(payload.get("headless_desktop_enabled", False))
     ide_system_override_raw = str(payload.get("ide_system_override") or "").strip()
     ide_system_override = (
@@ -501,8 +499,6 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         cache_settings_preflight_enabled=cache_settings_preflight_enabled,
         cache_ide_preflight_enabled=cache_ide_preflight_enabled,
         ide_safe_mode_by_system=ide_safe_mode_by_system,
-        preflight_enabled=preflight_enabled,
-        preflight_script=preflight_script,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
         env_vars_advanced_mode=env_vars_advanced_mode,
@@ -611,8 +607,6 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "ide_safe_mode_by_system": _normalize_ide_safe_mode_map(
             getattr(env, "ide_safe_mode_by_system", {})
         ),
-        "preflight_enabled": bool(env.preflight_enabled),
-        "preflight_script": env.preflight_script,
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),
         "env_vars_advanced_mode": bool(getattr(env, "env_vars_advanced_mode", False)),

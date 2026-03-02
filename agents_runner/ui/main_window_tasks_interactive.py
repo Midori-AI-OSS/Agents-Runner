@@ -359,10 +359,6 @@ class MainWindowTasksInteractiveMixin:
                 self._settings_data.get("preflight_script") or ""
             )
 
-        environment_preflight_script: str | None = None
-        if env and env.preflight_enabled and (env.preflight_script or "").strip():
-            environment_preflight_script = env.preflight_script
-
         desktop_enabled = bool(
             "websockify" in extra_preflight_script
             or "noVNC" in extra_preflight_script
@@ -435,7 +431,6 @@ class MainWindowTasksInteractiveMixin:
             has_typed_prompt=has_typed_prompt,
             desktop_enabled=desktop_enabled,
             settings_preflight_script=settings_preflight_script,
-            environment_preflight_script=environment_preflight_script,
             extra_preflight_script=extra_preflight_script,
             launch_mode="ide" if run_ide else "interactive_agent",
             container_caching_enabled=bool(
@@ -471,7 +466,6 @@ class MainWindowTasksInteractiveMixin:
             "container_agent_dir": container_agent_dir,
             "container_workdir": container_workdir,
             "settings_preflight_script": settings_preflight_script,
-            "environment_preflight_script": environment_preflight_script,
             "ide_preflight_script": ide_preflight_script,
             "extra_preflight_script": extra_preflight_script,
             "ide_system": ide_system,
@@ -697,7 +691,6 @@ class MainWindowTasksInteractiveMixin:
             "system_preflight_cached",
             "desktop_preflight_cached",
             "settings_preflight_cached",
-            "environment_preflight_cached",
         }
         has_runtime_cache_overrides = all(
             key in payload and payload.get(key) is not None
@@ -754,11 +747,6 @@ class MainWindowTasksInteractiveMixin:
                 else None,
                 settings_preflight_cached_override=bool(
                     payload.get("settings_preflight_cached")
-                )
-                if has_runtime_cache_overrides
-                else None,
-                environment_preflight_cached_override=bool(
-                    payload.get("environment_preflight_cached")
                 )
                 if has_runtime_cache_overrides
                 else None,

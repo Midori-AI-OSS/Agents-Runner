@@ -65,7 +65,6 @@ class InteractivePrepWorker(QObject):
         has_typed_prompt: bool,
         desktop_enabled: bool,
         settings_preflight_script: str | None,
-        environment_preflight_script: str | None,
         extra_preflight_script: str,
         launch_mode: str,
         container_caching_enabled: bool,
@@ -94,7 +93,6 @@ class InteractivePrepWorker(QObject):
         self._has_typed_prompt = bool(has_typed_prompt)
         self._desktop_enabled = bool(desktop_enabled)
         self._settings_preflight_script = str(settings_preflight_script or "")
-        self._environment_preflight_script = str(environment_preflight_script or "")
         self._extra_preflight_script = str(extra_preflight_script or "")
         self._launch_mode = str(launch_mode or "interactive_agent").strip().lower()
         self._container_caching_enabled = bool(container_caching_enabled)
@@ -209,7 +207,6 @@ class InteractivePrepWorker(QObject):
             "system_preflight_cached": result.system_preflight_cached,
             "desktop_preflight_cached": result.desktop_preflight_cached,
             "settings_preflight_cached": result.settings_preflight_cached,
-            "environment_preflight_cached": result.environment_preflight_cached,
             "resolved_extra_preflight_script": result.desktop_preflight_script,
         }
 
@@ -405,7 +402,6 @@ class InteractivePrepWorker(QObject):
                     host_workdir=self._host_workdir,
                     environment_id=self._env_id,
                     gh_repo=self._gh_repo or None,
-                    legacy_environment_preflight_script=self._environment_preflight_script,
                     launch_mode=self._launch_mode,
                     on_log=lambda line: self.log.emit(self._task_id, str(line or "")),
                 )
@@ -519,9 +515,6 @@ class InteractivePrepWorker(QObject):
                     ),
                     "settings_preflight_cached": cache_resolution.get(
                         "settings_preflight_cached", False
-                    ),
-                    "environment_preflight_cached": cache_resolution.get(
-                        "environment_preflight_cached", False
                     ),
                     "resolved_extra_preflight_script": cache_resolution.get(
                         "resolved_extra_preflight_script", ""

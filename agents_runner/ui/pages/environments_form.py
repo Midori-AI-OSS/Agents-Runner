@@ -39,7 +39,7 @@ from agents_runner.ui.pages.environments_env_vars import EnvVarsTabWidget
 from agents_runner.ui.pages.environments_mounts import MountsTabWidget
 from agents_runner.ui.pages.environments_ports import PortsTabWidget
 from agents_runner.ui.pages.environments_prompts import PromptsTabWidget
-from agents_runner.ui.widgets import EdgeFadeScrollArea
+from agents_runner.ui.widgets import ArtifactSyntaxHighlighter, EdgeFadeScrollArea
 
 
 @dataclass(frozen=True)
@@ -104,7 +104,7 @@ class EnvironmentsFormMixin:
             _EnvironmentPaneSpec(
                 key="preflight",
                 title="Preflight",
-                subtitle="Container setup scripts executed before tasks run.",
+                subtitle="Read-only setup-agents script preview and source details.",
                 section="Automation",
             ),
             _EnvironmentPaneSpec(
@@ -248,23 +248,26 @@ class EnvironmentsFormMixin:
         self._workspace_target.setVisible(False)
         self._gh_management_browse.setVisible(False)
 
-        self._preflight_enabled = QCheckBox("Enable environment preflight")
-        self._preflight_enabled.setToolTip(
-            "Runs after Settings preflight script.\n"
-            "Use for environment-specific setup tasks."
+        self._setup_agents_status = QLabel("")
+        self._setup_agents_status.setWordWrap(True)
+        self._setup_agents_repo_path = QLineEdit()
+        self._setup_agents_repo_path.setReadOnly(True)
+        self._setup_agents_effective_path = QLineEdit()
+        self._setup_agents_effective_path.setReadOnly(True)
+        self._setup_agents_mirror_path = QLineEdit()
+        self._setup_agents_mirror_path.setReadOnly(True)
+        self._setup_agents_guidance = QLabel("")
+        self._setup_agents_guidance.setWordWrap(True)
+        self._setup_agents_preview = QPlainTextEdit()
+        self._setup_agents_preview.setReadOnly(True)
+        self._setup_agents_preview.setPlaceholderText(
+            "# setup-agents preview is unavailable for this environment."
         )
-
-        self._preflight_script = QPlainTextEdit()
-        self._preflight_script.setPlaceholderText(
-            "#!/usr/bin/env bash\n"
-            "set -euo pipefail\n"
-            "\n"
-            "# Runs inside the container before the agent command.\n"
-            "# Runs after Settings preflight (if enabled).\n"
+        self._setup_agents_preview.setTabChangesFocus(True)
+        self._setup_agents_preview_highlighter = ArtifactSyntaxHighlighter(
+            self._setup_agents_preview.document()
         )
-        self._preflight_script.setTabChangesFocus(True)
-        self._preflight_enabled.toggled.connect(self._preflight_script.setEnabled)
-        self._preflight_script.setEnabled(False)
+        self._setup_agents_preview_highlighter.set_language("bash")
 
         self._cache_system_preflight_enabled = QCheckBox("Cache system phase")
         self._cache_system_preflight_enabled.setToolTip(
@@ -393,9 +396,19 @@ class EnvironmentsFormMixin:
         self._register_page("ports", ports_page)
 
         preflight_page, preflight_body = self._create_page(specs_by_key["preflight"])
-        preflight_body.addWidget(self._preflight_enabled)
-        preflight_body.addWidget(QLabel("Environment preflight script"))
-        preflight_body.addWidget(self._preflight_script, 1)
+        preflight_body.addWidget(
+            QLabel("setup-agents status (read-only, edit in repository)")
+        )
+        preflight_body.addWidget(self._setup_agents_status)
+        preflight_body.addWidget(QLabel("Repository edit path"))
+        preflight_body.addWidget(self._setup_agents_repo_path)
+        preflight_body.addWidget(QLabel("Effective script source path"))
+        preflight_body.addWidget(self._setup_agents_effective_path)
+        preflight_body.addWidget(QLabel("Mirror path (managed metadata)"))
+        preflight_body.addWidget(self._setup_agents_mirror_path)
+        preflight_body.addWidget(self._setup_agents_guidance)
+        preflight_body.addWidget(QLabel("setup-agents script preview"))
+        preflight_body.addWidget(self._setup_agents_preview, 1)
         self._register_page("preflight", preflight_page)
 
         caching_page, caching_body = self._create_page(specs_by_key["caching"])

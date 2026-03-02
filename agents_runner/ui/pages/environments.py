@@ -21,6 +21,7 @@ from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.gh_management import is_gh_available
 from agents_runner.persistence import default_state_path
+from agents_runner.setup_agents import resolve_setup_agents_preview
 from agents_runner.ui.constants import (
     AUTOSAVE_DISCRETE_MS,
     AUTOSAVE_IDLE_MS,
@@ -247,6 +248,7 @@ class EnvironmentsPage(
         self._settings_data = settings_data
         self._sync_headless_desktop_override_visibility()
         self._sync_github_polling_override_visibility()
+        self._refresh_setup_agents_preview(self._current_environment())
 
     def _effective_desktop_enabled(self) -> bool:
         force = bool(self._settings_data.get("headless_desktop_enabled") or False)
@@ -309,8 +311,7 @@ class EnvironmentsPage(
                 self._workspace_type_combo.setCurrentIndex(0)
                 self._workspace_target.setText("")
                 self._gh_use_host_cli.setChecked(bool(is_gh_available()))
-                self._preflight_enabled.setChecked(False)
-                self._preflight_script.setPlainText("")
+                self._refresh_setup_agents_preview(None)
                 self._cache_system_preflight_enabled.setChecked(False)
                 self._cache_settings_preflight_enabled.setChecked(False)
                 self._cache_ide_preflight_enabled.setChecked(False)
@@ -398,10 +399,7 @@ class EnvironmentsPage(
                 bool(getattr(env, "gh_use_host_cli", True))
             )
             self._sync_workspace_controls(env=env)
-
-            self._preflight_enabled.setChecked(bool(env.preflight_enabled))
-            self._preflight_script.setEnabled(bool(env.preflight_enabled))
-            self._preflight_script.setPlainText(env.preflight_script or "")
+            self._refresh_setup_agents_preview(env)
             self._cache_system_preflight_enabled.setChecked(
                 bool(getattr(env, "cache_system_preflight_enabled", False))
             )
@@ -499,3 +497,103 @@ class EnvironmentsPage(
             return
         self._load_selected()
         self._apply_environment_tints()
+
+    @staticmethod
+    def _setup_agents_preview_language(script: str) -> str:
+        shebang = str(script or "").split("\n", 1)[0].strip().lower()
+        if shebang.startswith("#!"):
+            if "fish" in shebang:
+                return "fish"
+            if "bash" in shebang or "sh" in shebang:
+                return "bash"
+        return "bash"
+
+    @staticmethod
+    def _path_label(*, repo_root: str, path: str | None) -> str:
+        if not path:
+            return ""
+        root = os.path.abspath(os.path.expanduser(str(repo_root or "").strip()))
+        candidate = os.path.abspath(os.path.expanduser(str(path or "").strip()))
+        if root and candidate.startswith(root + os.sep):
+            return os.path.relpath(candidate, root)
+        return candidate
+
+    def _refresh_setup_agents_preview(self, env: Environment | None) -> None:
+        if env is None:
+            self._setup_agents_status.setText("No environment selected.")
+            self._setup_agents_repo_path.setText("")
+            self._setup_agents_effective_path.setText("")
+            self._setup_agents_mirror_path.setText("")
+            self._setup_agents_guidance.setText("")
+            self._setup_agents_preview.setPlainText("")
+            self._setup_agents_preview_highlighter.set_language("bash")
+            return
+
+        workspace_type = str(getattr(env, "workspace_type", "") or "")
+        if workspace_type == WORKSPACE_MOUNTED:
+            host_workdir = str(getattr(env, "workspace_target", "") or "").strip()
+        else:
+            host_workdir = str(self._settings_data.get("host_workdir") or "").strip()
+        host_workdir = os.path.expanduser(host_workdir) if host_workdir else os.getcwd()
+
+        gh_repo: str | None = None
+        if workspace_type == WORKSPACE_CLONED:
+            candidate = str(getattr(env, "workspace_target", "") or "").strip()
+            gh_repo = candidate or None
+
+        try:
+            preview = resolve_setup_agents_preview(
+                host_workdir=host_workdir,
+                environment_id=env.env_id,
+                gh_repo=gh_repo,
+                data_dir=os.path.dirname(default_state_path()),
+            )
+        except Exception as exc:
+            self._setup_agents_status.setText("Status: error")
+            self._setup_agents_repo_path.setText("")
+            self._setup_agents_effective_path.setText("")
+            self._setup_agents_mirror_path.setText("")
+            self._setup_agents_guidance.setText(
+                f"Could not resolve setup-agents preview: {exc}"
+            )
+            self._setup_agents_preview.setPlainText("")
+            self._setup_agents_preview_highlighter.set_language("bash")
+            return
+
+        source = str(preview.source or "none")
+        status = "Status: missing setup-agents script"
+        if source == "repo":
+            status = "Status: using repository setup-agents script"
+        elif source == "mirror":
+            status = "Status: using mirrored setup-agents script"
+            if preview.repo_script_path:
+                status = "Status: mirror currently wins (newer than repository)"
+        self._setup_agents_status.setText(status)
+
+        self._setup_agents_repo_path.setText(
+            self._path_label(
+                repo_root=preview.repo_root,
+                path=preview.preferred_repo_script_path,
+            )
+        )
+        self._setup_agents_effective_path.setText(
+            self._path_label(
+                repo_root=preview.repo_root,
+                path=preview.effective_script_path,
+            )
+        )
+        self._setup_agents_mirror_path.setText(preview.mirror_script_path)
+        guidance = str(preview.guidance or "").strip()
+        if preview.error:
+            guidance = (
+                f"{guidance}\n\nNote: {preview.error}"
+                if guidance
+                else f"Note: {preview.error}"
+            )
+        self._setup_agents_guidance.setText(guidance)
+
+        preview_text = str(preview.setup_script or "")
+        self._setup_agents_preview.setPlainText(preview_text)
+        self._setup_agents_preview_highlighter.set_language(
+            self._setup_agents_preview_language(preview_text)
+        )

@@ -509,10 +509,6 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
                 payload.get("settings_preflight_script") or ""
             ).strip()
             or None,
-            environment_preflight_script=str(
-                payload.get("environment_preflight_script") or ""
-            ).strip()
-            or None,
             ide_preflight_script=str(payload.get("ide_preflight_script") or "").strip()
             or None,
             headless_desktop_enabled=bool(
@@ -538,10 +534,6 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             container_setup_agents_preflight_path=str(
                 payload.get("container_setup_agents_preflight_path")
                 or "/tmp/agents-runner-preflight-setup-agents-{task_id}.sh"
-            ),
-            container_environment_preflight_path=str(
-                payload.get("container_environment_preflight_path")
-                or "/tmp/agents-runner-preflight-environment-{task_id}.sh"
             ),
             container_ide_preflight_path=str(
                 payload.get("container_ide_preflight_path")

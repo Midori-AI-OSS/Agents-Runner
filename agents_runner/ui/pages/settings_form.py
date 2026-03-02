@@ -312,7 +312,7 @@ class SettingsFormMixin:
             "set -euo pipefail\n"
             "\n"
             "# Runs inside the container before the agent command.\n"
-            "# Runs on every environment, before environment preflight (if enabled).\n"
+            "# Runs on every environment, before setup-agents.sh.\n"
             "# This script is mounted read-only and deleted from the host after task finish.\n"
         )
         self._preflight_script.setTabChangesFocus(True)

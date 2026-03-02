@@ -207,8 +207,6 @@ class EnvironmentsPageActionsMixin:
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
-        preflight_enabled = bool(self._preflight_enabled.isChecked())
-        preflight_script = str(self._preflight_script.toPlainText() or "")
         cache_system_preflight_enabled = bool(
             self._cache_system_preflight_enabled.isChecked()
         )
@@ -237,8 +235,6 @@ class EnvironmentsPageActionsMixin:
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
                 cache_ide_preflight_enabled=cache_ide_preflight_enabled,
-                preflight_enabled=preflight_enabled,
-                preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 env_vars_advanced_mode=env_vars_advanced_mode,
@@ -279,8 +275,6 @@ class EnvironmentsPageActionsMixin:
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
                 cache_ide_preflight_enabled=cache_ide_preflight_enabled,
-                preflight_enabled=preflight_enabled,
-                preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 env_vars_advanced_mode=env_vars_advanced_mode,
@@ -400,8 +394,6 @@ class EnvironmentsPageActionsMixin:
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
-        preflight_enabled = bool(self._preflight_enabled.isChecked())
-        preflight_script = str(self._preflight_script.toPlainText() or "")
         cache_system_preflight_enabled = bool(
             self._cache_system_preflight_enabled.isChecked()
         )
@@ -430,8 +422,6 @@ class EnvironmentsPageActionsMixin:
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
                 cache_ide_preflight_enabled=cache_ide_preflight_enabled,
-                preflight_enabled=preflight_enabled,
-                preflight_script=preflight_script,
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 env_vars_advanced_mode=env_vars_advanced_mode,
@@ -468,8 +458,6 @@ class EnvironmentsPageActionsMixin:
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
             cache_ide_preflight_enabled=cache_ide_preflight_enabled,
-            preflight_enabled=preflight_enabled,
-            preflight_script=preflight_script,
             env_vars=env_vars,
             extra_mounts=mounts,
             env_vars_advanced_mode=env_vars_advanced_mode,

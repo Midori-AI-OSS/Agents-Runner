@@ -115,7 +115,6 @@ class WorkerSetup:
                 host_workdir=workspace_config.host_mount,
                 environment_id=self._config.environment_id,
                 gh_repo=self._config.gh_repo,
-                legacy_environment_preflight_script=self._config.environment_preflight_script,
                 launch_mode=self._config.launch_mode,
                 on_log=self._on_log,
             )

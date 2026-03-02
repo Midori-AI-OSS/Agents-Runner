@@ -86,8 +86,6 @@ class Environment:
     cache_settings_preflight_enabled: bool = False
     cache_ide_preflight_enabled: bool = False
     ide_safe_mode_by_system: dict[str, bool] = field(default_factory=dict)
-    preflight_enabled: bool = False
-    preflight_script: str = ""
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
     env_vars_advanced_mode: bool = False
