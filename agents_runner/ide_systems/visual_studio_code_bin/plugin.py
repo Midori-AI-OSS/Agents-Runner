@@ -8,7 +8,7 @@ PLUGIN = IdeSystemSpec(
     display_name="Visual Studio Code",
     package_name="visual-studio-code-bin",
     executable="code",
-    launch_args=("--no-sandbox", "--wait"),
+    launch_args=("--no-sandbox", "--disable-gpu", "--wait"),
     auto_mount_specs=(
         IdeAutoMountSpec(
             host_path="~/.midoriai/agents-runner/ide/visual-studio-code-bin-config/.config/Code",

@@ -8,7 +8,7 @@ PLUGIN = IdeSystemSpec(
     display_name="Cursor",
     package_name="cursor-bin",
     executable="cursor",
-    launch_args=("--no-sandbox", "--wait"),
+    launch_args=("--no-sandbox", "--disable-gpu", "--wait"),
     auto_mount_specs=(
         IdeAutoMountSpec(
             host_path="~/.midoriai/agents-runner/ide/cursor-bin-config/.config/Cursor",

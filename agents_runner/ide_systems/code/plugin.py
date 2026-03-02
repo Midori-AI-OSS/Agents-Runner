@@ -8,7 +8,7 @@ PLUGIN = IdeSystemSpec(
     display_name="Code OSS",
     package_name="code",
     executable="code",
-    launch_args=("--no-sandbox", "--wait"),
+    launch_args=("--no-sandbox", "--disable-gpu", "--wait"),
     auto_mount_specs=(
         IdeAutoMountSpec(
             host_path="~/.midoriai/agents-runner/ide/code-config/.config/Code - OSS",
