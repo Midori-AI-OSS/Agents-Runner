@@ -8,6 +8,7 @@ from datetime import datetime
 from datetime import timezone
 from typing import Any
 
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
@@ -30,6 +31,160 @@ from agents_runner.ui.utils import stain_color
 
 
 class MainWindowTaskEventsMixin:
+    _IDE_NOVNC_AUTO_OPEN_DELAY_S = 15.0
+
+    def _stop_ide_novnc_auto_open_timer(self, task_id: str) -> None:
+        timer = self._ide_novnc_auto_open_timers.pop(task_id, None)
+        if timer is None:
+            return
+        try:
+            timer.stop()
+            timer.deleteLater()
+        except Exception:
+            pass
+
+    def _clear_ide_novnc_auto_open_state(self, task_id: str) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
+        self._stop_ide_novnc_auto_open_timer(task_id)
+        self._ide_novnc_auto_open_urls.pop(task_id, None)
+        self._ide_novnc_auto_open_ready_s.pop(task_id, None)
+        self._ide_novnc_auto_open_deferred.discard(task_id)
+        self._ide_novnc_auto_opened_tasks.discard(task_id)
+
+    def _is_task_viewed_in_details(self, task_id: str) -> bool:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return False
+        try:
+            if not bool(self._details.isVisible()):
+                return False
+        except Exception:
+            return False
+        try:
+            return str(self._details.current_task_id() or "").strip() == task_id
+        except Exception:
+            return False
+
+    def _is_ide_container_task(self, task: Task) -> bool:
+        launch_mode = str(getattr(task, "launch_mode", "") or "").strip().lower()
+        if launch_mode != "ide":
+            return False
+        if str(getattr(task, "novnc_url", "") or "").strip():
+            return True
+        return bool(getattr(task, "headless_desktop_enabled", False))
+
+    def _schedule_ide_novnc_auto_open_timer(
+        self, *, task_id: str, delay_ms: int
+    ) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
+        existing = self._ide_novnc_auto_open_timers.get(task_id)
+        if existing is not None:
+            try:
+                existing.stop()
+                existing.deleteLater()
+            except Exception:
+                pass
+        timer = QTimer(self)
+        timer.setSingleShot(True)
+        timer.timeout.connect(
+            lambda task_id=task_id: self._on_ide_novnc_auto_open_timeout(task_id)
+        )
+        timer.start(max(0, int(delay_ms)))
+        self._ide_novnc_auto_open_timers[task_id] = timer
+
+    def _maybe_schedule_ide_novnc_auto_open(self, task: Task) -> None:
+        task_id = str(getattr(task, "task_id", "") or "").strip()
+        if not task_id:
+            return
+        if task_id in self._ide_novnc_auto_opened_tasks:
+            self._stop_ide_novnc_auto_open_timer(task_id)
+            return
+        if not self._ide_novnc_auto_open_enabled():
+            self._clear_ide_novnc_auto_open_state(task_id)
+            return
+        if not self._is_ide_container_task(task):
+            self._clear_ide_novnc_auto_open_state(task_id)
+            return
+        if not task.is_active():
+            self._clear_ide_novnc_auto_open_state(task_id)
+            return
+
+        novnc_url = str(getattr(task, "novnc_url", "") or "").strip()
+        if not novnc_url:
+            self._stop_ide_novnc_auto_open_timer(task_id)
+            return
+
+        ready_since = self._ide_novnc_auto_open_ready_s.get(task_id)
+        if ready_since is None:
+            ready_since = time.time()
+            self._ide_novnc_auto_open_ready_s[task_id] = ready_since
+        self._ide_novnc_auto_open_urls[task_id] = novnc_url
+
+        mode = self._ide_novnc_auto_open_mode()
+        if mode == "viewing_only" and not self._is_task_viewed_in_details(task_id):
+            self._ide_novnc_auto_open_deferred.add(task_id)
+            self._stop_ide_novnc_auto_open_timer(task_id)
+            return
+
+        self._ide_novnc_auto_open_deferred.discard(task_id)
+        elapsed_s = max(0.0, time.time() - ready_since)
+        remaining_s = max(0.0, self._IDE_NOVNC_AUTO_OPEN_DELAY_S - elapsed_s)
+        self._schedule_ide_novnc_auto_open_timer(
+            task_id=task_id, delay_ms=int(round(remaining_s * 1000))
+        )
+
+    def _on_ide_novnc_auto_open_timeout(self, task_id: str) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
+        self._stop_ide_novnc_auto_open_timer(task_id)
+        task = self._tasks.get(task_id)
+        if task is None:
+            self._clear_ide_novnc_auto_open_state(task_id)
+            return
+        if not self._ide_novnc_auto_open_enabled():
+            self._clear_ide_novnc_auto_open_state(task_id)
+            return
+        if not self._is_ide_container_task(task) or not task.is_active():
+            self._clear_ide_novnc_auto_open_state(task_id)
+            return
+
+        novnc_url = str(
+            task.novnc_url or self._ide_novnc_auto_open_urls.get(task_id) or ""
+        )
+        novnc_url = novnc_url.strip()
+        if not novnc_url:
+            return
+
+        mode = self._ide_novnc_auto_open_mode()
+        if mode == "viewing_only" and not self._is_task_viewed_in_details(task_id):
+            self._ide_novnc_auto_open_deferred.add(task_id)
+            return
+
+        launched = self._details.launch_desktop_viewer_for_task(
+            task_id=task_id,
+            url=novnc_url,
+        )
+        if launched:
+            self._ide_novnc_auto_opened_tasks.add(task_id)
+            self._ide_novnc_auto_open_deferred.discard(task_id)
+
+    def _on_task_viewed_for_ide_novnc_auto_open(self, task_id: str) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
+        if task_id not in self._ide_novnc_auto_open_deferred:
+            return
+        task = self._tasks.get(task_id)
+        if task is None:
+            self._clear_ide_novnc_auto_open_state(task_id)
+            return
+        self._maybe_schedule_ide_novnc_auto_open(task)
+
     def _open_task_details(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
@@ -50,6 +205,7 @@ class MainWindowTaskEventsMixin:
 
         self._details.show_task(task)
         self._show_task_details()
+        self._on_task_viewed_for_ide_novnc_auto_open(task_id)
 
     def _on_task_container_action(self, task_id: str, action: str) -> None:
         task_id = str(task_id or "").strip()
@@ -209,6 +365,7 @@ class MainWindowTaskEventsMixin:
         task = self._tasks.get(task_id)
         if task is None:
             return
+        self._clear_ide_novnc_auto_open_state(task_id)
 
         prompt = task.prompt_one_line()
         message = (
@@ -512,6 +669,7 @@ class MainWindowTaskEventsMixin:
 
         current = (task.status or "").lower()
         if current in {"cancelled", "killed"}:
+            self._clear_ide_novnc_auto_open_state(task_id)
             if bridge and bridge.container_id:
                 task.container_id = bridge.container_id
             finished_at = parse_docker_time(state.get("FinishedAt"))
@@ -573,6 +731,7 @@ class MainWindowTaskEventsMixin:
         spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
+        self._maybe_schedule_ide_novnc_auto_open(task)
         self._schedule_save()
 
     def _remember_ide_safe_mode_if_needed(self, task: Task) -> None:
@@ -634,6 +793,7 @@ class MainWindowTaskEventsMixin:
         task = self._tasks.get(task_id)
         if task is None:
             return
+        self._clear_ide_novnc_auto_open_state(task_id)
         try:
             self.host_log.emit(
                 task_id,

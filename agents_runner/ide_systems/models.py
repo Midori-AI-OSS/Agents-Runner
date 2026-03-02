@@ -5,20 +5,10 @@ import shlex
 from typing import Protocol
 from typing import runtime_checkable
 
-IDE_DISPLAY_HOST_DESKTOP = "host_desktop"
 IDE_DISPLAY_CONTAINER_DESKTOP = "container_desktop"
-IDE_AUTO_MOUNTS_INHERIT = "inherit"
-IDE_AUTO_MOUNTS_ENABLED = "enabled"
-IDE_AUTO_MOUNTS_DISABLED = "disabled"
 
 _ALLOWED_DISPLAY_TARGETS = {
-    IDE_DISPLAY_HOST_DESKTOP,
     IDE_DISPLAY_CONTAINER_DESKTOP,
-}
-_ALLOWED_AUTO_MOUNTS_OVERRIDES = {
-    IDE_AUTO_MOUNTS_INHERIT,
-    IDE_AUTO_MOUNTS_ENABLED,
-    IDE_AUTO_MOUNTS_DISABLED,
 }
 
 
@@ -72,10 +62,3 @@ def normalize_ide_display_target(value: str | None) -> str:
     if raw in _ALLOWED_DISPLAY_TARGETS:
         return raw
     return IDE_DISPLAY_CONTAINER_DESKTOP
-
-
-def normalize_ide_auto_mounts_override(value: str | None) -> str:
-    raw = str(value or "").strip().lower()
-    if raw in _ALLOWED_AUTO_MOUNTS_OVERRIDES:
-        return raw
-    return IDE_AUTO_MOUNTS_INHERIT

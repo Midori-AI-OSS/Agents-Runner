@@ -20,9 +20,6 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.gh_management import is_gh_available
-from agents_runner.ide_systems import IDE_AUTO_MOUNTS_INHERIT
-from agents_runner.ide_systems import normalize_ide_auto_mounts_override
-from agents_runner.ide_systems import normalize_ide_display_target
 from agents_runner.persistence import default_state_path
 from agents_runner.ui.constants import (
     AUTOSAVE_DISCRETE_MS,
@@ -296,13 +293,6 @@ class EnvironmentsPage(
                 self._max_agents_running.setText("-1")
                 self._headless_desktop_enabled.setChecked(False)
                 self._ide_system_override.setCurrentIndex(0)
-                self._ide_display_target_override.setCurrentIndex(0)
-                ide_auto_mounts_idx = self._ide_auto_mounts_override.findData(
-                    IDE_AUTO_MOUNTS_INHERIT
-                )
-                if ide_auto_mounts_idx < 0:
-                    ide_auto_mounts_idx = 0
-                self._ide_auto_mounts_override.setCurrentIndex(ide_auto_mounts_idx)
                 self._cache_desktop_build.setChecked(False)
                 self._cache_desktop_build.setEnabled(False)
                 self._container_caching_enabled.setChecked(False)
@@ -356,33 +346,10 @@ class EnvironmentsPage(
                 bool(getattr(env, "headless_desktop_enabled", False))
             )
             ide_system_override = str(getattr(env, "ide_system_override", "") or "")
-            ide_display_target_override = str(
-                getattr(env, "ide_display_target_override", "") or ""
-            )
             ide_system_idx = self._ide_system_override.findData(ide_system_override)
             if ide_system_idx < 0:
                 ide_system_idx = 0
             self._ide_system_override.setCurrentIndex(ide_system_idx)
-            normalized_ide_display = (
-                normalize_ide_display_target(ide_display_target_override)
-                if ide_display_target_override
-                else ""
-            )
-            ide_display_idx = self._ide_display_target_override.findData(
-                normalized_ide_display
-            )
-            if ide_display_idx < 0:
-                ide_display_idx = 0
-            self._ide_display_target_override.setCurrentIndex(ide_display_idx)
-            ide_auto_mounts_override = normalize_ide_auto_mounts_override(
-                str(getattr(env, "ide_auto_mounts_override", "inherit") or "inherit")
-            )
-            ide_auto_mounts_idx = self._ide_auto_mounts_override.findData(
-                ide_auto_mounts_override
-            )
-            if ide_auto_mounts_idx < 0:
-                ide_auto_mounts_idx = 0
-            self._ide_auto_mounts_override.setCurrentIndex(ide_auto_mounts_idx)
             self._ports_tab.set_desktop_effective_enabled(
                 self._effective_desktop_enabled()
             )

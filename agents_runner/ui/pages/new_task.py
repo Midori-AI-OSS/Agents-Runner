@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 from typing import Any, Callable
 
@@ -35,12 +34,9 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments.model import AgentInstance
-from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
-from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
 from agents_runner.ide_systems import available_ide_system_names
 from agents_runner.ide_systems import get_default_ide_system_name
 from agents_runner.ide_systems import get_ide_system
-from agents_runner.ide_systems import normalize_ide_display_target
 from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
@@ -82,7 +78,6 @@ class NewTaskPage(QWidget):
         self._env_template_injection: dict[str, bool] = {}
         self._env_desktop_enabled: dict[str, bool] = {}
         self._env_ide_system_overrides: dict[str, str] = {}
-        self._env_ide_display_overrides: dict[str, str] = {}
         self._env_agents: dict[str, list[AgentInstance]] = {}
         self._repo_controls_visible = False
         self._base_branch_host_active = False
@@ -125,8 +120,6 @@ class NewTaskPage(QWidget):
         self._agent_override: dict[str, str] | None = None
         self._ide_override: dict[str, str] | None = None
         self._ide_system_default = get_default_ide_system_name()
-        self._ide_display_target_default = IDE_DISPLAY_CONTAINER_DESKTOP
-        self._ide_controls_supported = sys.platform != "darwin"
         self._base_agent_info: tuple[str, str] = ("", "")
 
         layout = QVBoxLayout(self)
@@ -298,7 +291,6 @@ class NewTaskPage(QWidget):
         self._run_ide.set_glass_enabled(False)
         self._run_ide.set_texture_enabled(False)
         self._run_ide.clicked.connect(self._on_run_ide)
-        self._run_ide.setVisible(self._ide_controls_supported)
         self._run_interactive.setEnabled(False)
         self._run_agent.setEnabled(False)
         self._run_ide.setEnabled(False)
@@ -310,8 +302,8 @@ class NewTaskPage(QWidget):
         self._ide_override_menu.aboutToShow.connect(self._rebuild_ide_override_menu)
         self._run_ide.set_context_menu(self._ide_override_menu)
         buttons.addWidget(self._run_interactive)
-        buttons.addWidget(self._run_ide)
         buttons.addWidget(self._run_agent)
+        buttons.addWidget(self._run_ide)
 
         card_layout.addLayout(prompt_title_row)
         card_layout.addWidget(prompt_container, 1)
@@ -376,7 +368,7 @@ class NewTaskPage(QWidget):
     def _update_run_buttons(self) -> None:
         has_terminal = bool(self._terminal_available and self._terminal_id)
         can_launch = bool(self._workspace_ready and has_terminal)
-        can_launch_ide = bool(self._workspace_ready and self._ide_controls_supported)
+        can_launch_ide = bool(self._workspace_ready)
         self._run_agent.setEnabled(self._workspace_ready)
         self._run_interactive.setEnabled(can_launch)
         self._run_ide.setEnabled(can_launch_ide)
@@ -595,35 +587,22 @@ class NewTaskPage(QWidget):
         )
         self._clear_agent_override()
 
-    def _effective_ide_selection(self) -> tuple[str, str]:
+    def _effective_ide_selection(self) -> str:
         ide_system = normalize_ide_system_name(self._ide_system_default)
-        display_target = normalize_ide_display_target(self._ide_display_target_default)
 
         env_id = self._active_env_id
         env_ide_raw = str(self._env_ide_system_overrides.get(env_id, "") or "").strip()
-        env_display_raw = str(
-            self._env_ide_display_overrides.get(env_id, "") or ""
-        ).strip()
         if env_ide_raw:
             ide_system = normalize_ide_system_name(env_ide_raw)
-        if env_display_raw:
-            display_target = normalize_ide_display_target(env_display_raw)
 
         if self._ide_override:
             override_ide = str(self._ide_override.get("ide_system") or "").strip()
             if override_ide:
                 ide_system = normalize_ide_system_name(override_ide)
 
-        return ide_system, display_target
+        return ide_system
 
     def _emit_ide_launch(self) -> None:
-        if not self._ide_controls_supported:
-            QMessageBox.warning(
-                self,
-                "Run IDE unavailable",
-                "Run IDE is not supported on this platform.",
-            )
-            return
         if not self._workspace_ready:
             QMessageBox.warning(
                 self,
@@ -640,7 +619,7 @@ class NewTaskPage(QWidget):
         if not self._confirm_auto_base_branch(env_id, base_branch):
             return
 
-        ide_system, _display_target = self._effective_ide_selection()
+        ide_system = self._effective_ide_selection()
         ide_override_payload: dict[str, str] = {
             "source": "runtime",
             "env_id": env_id,
@@ -774,15 +753,10 @@ class NewTaskPage(QWidget):
         self,
         *,
         ide_system_overrides: dict[str, str],
-        ide_display_overrides: dict[str, str],
     ) -> None:
         self._env_ide_system_overrides = {
             str(k): str(v or "").strip()
             for k, v in (ide_system_overrides or {}).items()
-        }
-        self._env_ide_display_overrides = {
-            str(k): str(v or "").strip()
-            for k, v in (ide_display_overrides or {}).items()
         }
         self._clear_ide_override_if_invalid()
         self._refresh_ide_button_tooltip()
@@ -860,11 +834,10 @@ class NewTaskPage(QWidget):
         if host_codex:
             self._host_codex_dir = host_codex
 
-    def set_ide_defaults(self, *, ide_system: str, display_target: str) -> None:
+    def set_ide_defaults(self, *, ide_system: str) -> None:
         self._ide_system_default = normalize_ide_system_name(
             str(ide_system or get_default_ide_system_name())
         )
-        self._ide_display_target_default = normalize_ide_display_target(display_target)
         self._clear_ide_override_if_invalid()
         self._refresh_ide_button_tooltip()
 
@@ -1571,12 +1544,6 @@ class NewTaskPage(QWidget):
                 return
         self._set_agent_override(None)
 
-    def _display_target_label(self, display_target: str) -> str:
-        normalized = normalize_ide_display_target(display_target)
-        if normalized == IDE_DISPLAY_HOST_DESKTOP:
-            return "Host desktop"
-        return "In-container desktop"
-
     def _format_ide_menu_label(self, ide_system: str) -> str:
         normalized = normalize_ide_system_name(ide_system)
         try:
@@ -1596,18 +1563,13 @@ class NewTaskPage(QWidget):
         return " ".join(word.capitalize() for word in words)
 
     def _refresh_ide_button_tooltip(self) -> None:
-        ide_system, display_target = self._effective_ide_selection()
+        ide_system = self._effective_ide_selection()
         ide_label = self._format_ide_menu_label(ide_system)
-        display_label = self._display_target_label(display_target)
-        tooltip = f"IDE: {ide_label} | Display: {display_label}"
+        tooltip = f"IDE: {ide_label} | Display: In-container desktop"
         self._run_ide.setToolTip(tooltip)
 
     def _rebuild_ide_override_menu(self) -> None:
         self._ide_override_menu.clear()
-        if not self._ide_controls_supported:
-            action = self._ide_override_menu.addAction("Run IDE unavailable on macOS")
-            action.setEnabled(False)
-            return
 
         ide_names = list(available_ide_system_names())
         for ide_name in ide_names:
