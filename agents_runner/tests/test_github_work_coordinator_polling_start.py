@@ -4,8 +4,8 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from PySide6.QtCore import QCoreApplication
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
 
 import pytest
 
@@ -14,10 +14,10 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.pages.github_work_coordinator import GitHubWorkCoordinator
 
 
-def _app() -> QCoreApplication:
-    app = QCoreApplication.instance()
+def _app() -> QApplication:
+    app = QApplication.instance()
     if app is None:
-        app = QCoreApplication([])
+        app = QApplication([])
     return app
 
 
@@ -171,9 +171,12 @@ def test_runtime_toggle_starts_polling_immediately(
     coordinator.set_settings_data({"github_polling_enabled": False})
 
 
-def test_is_polling_effective_ignores_env_checkbox_when_global_enabled() -> None:
+def test_is_polling_effective_ignores_env_checkbox_when_global_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     _app()
     coordinator = GitHubWorkCoordinator()
+    monkeypatch.setattr(coordinator, "_start_poll_cycle", lambda: None)
     env_id = "env-1"
     coordinator.set_environments(
         {
