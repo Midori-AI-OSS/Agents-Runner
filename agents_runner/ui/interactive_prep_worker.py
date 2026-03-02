@@ -23,7 +23,6 @@ from agents_runner.midoriai_template import MidoriAITemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
-from agents_runner.prompts.sections import append_prompt_sections
 from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
 from agents_runner.pr_metadata import ensure_pr_metadata_file
 from agents_runner.pr_metadata import github_context_prompt_instructions
@@ -274,8 +273,9 @@ class InteractivePrepWorker(QObject):
             standby_prompt = ""
 
         if standby_prompt:
-            prompt_for_agent = append_prompt_sections(
-                prompt_for_agent, [sanitize_prompt(standby_prompt)]
+            prompt_for_agent = insert_prompt_sections_before_user_prompt(
+                prompt_for_agent,
+                [sanitize_prompt(standby_prompt)],
             )
 
         return prompt_for_agent
@@ -385,9 +385,9 @@ class InteractivePrepWorker(QObject):
                                 head_commit="(unknown)",
                             )
                     elif self._is_help_launch:
-                        prompt_for_agent = (
-                            f"{prompt_for_agent}"
-                            f"{pr_metadata_prompt_instructions(pr_container_path)}"
+                        prompt_for_agent = insert_prompt_sections_before_user_prompt(
+                            prompt_for_agent,
+                            [pr_metadata_prompt_instructions(pr_container_path)],
                         )
                     metadata_elapsed_ms = (
                         time.monotonic() - metadata_started_s
@@ -426,7 +426,7 @@ class InteractivePrepWorker(QObject):
                 setup_agents_prompt_instruction = setup_agents_result.prompt_instruction
 
             if setup_agents_prompt_instruction:
-                prompt_for_agent = append_prompt_sections(
+                prompt_for_agent = insert_prompt_sections_before_user_prompt(
                     prompt_for_agent,
                     [sanitize_prompt(setup_agents_prompt_instruction)],
                 )

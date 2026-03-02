@@ -109,7 +109,9 @@ def _write_script(path: Path, text: str, *, executable: bool) -> bool:
         return False
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(prefix="setup-agents-", suffix=".sh")
+    fd, tmp_path = tempfile.mkstemp(
+        prefix="setup-agents-", suffix=".sh", dir=str(path.parent)
+    )
     tmp_file = Path(tmp_path)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:

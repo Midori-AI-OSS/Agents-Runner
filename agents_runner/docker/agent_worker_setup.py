@@ -38,6 +38,7 @@ from agents_runner.midoriai_template import (
     MidoriAITemplateDetection,
     scan_midoriai_agents_template,
 )
+from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
 from agents_runner.setup_agents import prepare_setup_agents_phase
 from agents_runner.setup_agents import missing_setup_agents_instruction
 
@@ -152,8 +153,9 @@ class WorkerSetup:
             caching_config.desktop_display,
         )
         if setup_agents_prompt_instruction:
-            final_prompt = sanitize_prompt(
-                f"{final_prompt}\n\n{setup_agents_prompt_instruction}"
+            final_prompt = insert_prompt_sections_before_user_prompt(
+                final_prompt,
+                [sanitize_prompt(setup_agents_prompt_instruction)],
             )
 
         return RuntimeEnvironment(
