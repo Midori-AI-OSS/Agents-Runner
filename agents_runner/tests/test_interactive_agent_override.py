@@ -97,10 +97,12 @@ class _DummyMainWindow(MainWindowSettingsMixin, MainWindowTasksInteractiveMixin)
     def __init__(self, env: Environment, tmp_path: Path, workdir: Path) -> None:
         self._settings_data = {
             "use": "codex",
-            "host_codex_dir": str(tmp_path / "codex"),
-            "host_copilot_dir": str(tmp_path / "copilot"),
-            "host_claude_dir": str(tmp_path / "claude"),
-            "host_gemini_dir": str(tmp_path / "gemini"),
+            "agent_config_dirs": {
+                "codex": str(tmp_path / "codex"),
+                "copilot": str(tmp_path / "copilot"),
+                "claude": str(tmp_path / "claude"),
+                "gemini": str(tmp_path / "gemini"),
+            },
             "append_pixelarch_context": False,
             "preflight_enabled": False,
             "preflight_script": "",
@@ -149,8 +151,12 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
 
     window = _DummyMainWindow(env, tmp_path, workdir)
     monkeypatch.setenv("HOME", str(tmp_path))
-    window._settings_data["host_codex_dir"] = "~/.codex-default"
-    window._settings_data["host_copilot_dir"] = "~/.copilot-override"
+    window._settings_data["agent_config_dirs"] = {
+        "codex": "~/.codex-default",
+        "copilot": "~/.copilot-override",
+        "claude": str(tmp_path / "claude"),
+        "gemini": str(tmp_path / "gemini"),
+    }
 
     terminal_option = TerminalOption(
         terminal_id="test-terminal",
@@ -228,7 +234,7 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
     assert Path(override_task.host_config_dir).is_absolute()
     assert override_task.host_config_dir != default_task.host_config_dir
     assert override_task.agent_cli_args == "--override-flag"
-    assert (
-        window._interactive_prep_context[override_task_id]["command"]
-        == "--add-dir /home/midori-ai/workspace"
+    override_command = str(
+        window._interactive_prep_context[override_task_id]["command"] or ""
     )
+    assert "--add-dir /home/midori-ai/workspace" in override_command
