@@ -432,6 +432,7 @@ class MainWindowTasksInteractiveMixin:
             prompt_for_agent=prompt_for_agent,
             is_help_launch=is_help_launch,
             apply_full_prompting=apply_full_prompting,
+            has_typed_prompt=has_typed_prompt,
             desktop_enabled=desktop_enabled,
             settings_preflight_script=settings_preflight_script,
             environment_preflight_script=environment_preflight_script,

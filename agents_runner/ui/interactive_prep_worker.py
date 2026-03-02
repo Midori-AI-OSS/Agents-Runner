@@ -62,6 +62,7 @@ class InteractivePrepWorker(QObject):
         prompt_for_agent: str,
         is_help_launch: bool,
         apply_full_prompting: bool,
+        has_typed_prompt: bool,
         desktop_enabled: bool,
         settings_preflight_script: str | None,
         environment_preflight_script: str | None,
@@ -90,6 +91,7 @@ class InteractivePrepWorker(QObject):
         self._prompt_for_agent = str(prompt_for_agent or "")
         self._is_help_launch = bool(is_help_launch)
         self._apply_full_prompting = bool(apply_full_prompting)
+        self._has_typed_prompt = bool(has_typed_prompt)
         self._desktop_enabled = bool(desktop_enabled)
         self._settings_preflight_script = str(settings_preflight_script or "")
         self._environment_preflight_script = str(environment_preflight_script or "")
@@ -384,7 +386,7 @@ class InteractivePrepWorker(QObject):
                                 task_branch=gh_branch,
                                 head_commit="(unknown)",
                             )
-                    elif self._is_help_launch:
+                    elif self._is_help_launch and self._has_typed_prompt:
                         prompt_for_agent = insert_prompt_sections_before_user_prompt(
                             prompt_for_agent,
                             [pr_metadata_prompt_instructions(pr_container_path)],
@@ -425,7 +427,7 @@ class InteractivePrepWorker(QObject):
                 setup_agents_script = str(setup_agents_result.setup_script or "")
                 setup_agents_prompt_instruction = setup_agents_result.prompt_instruction
 
-            if setup_agents_prompt_instruction:
+            if setup_agents_prompt_instruction and self._has_typed_prompt:
                 prompt_for_agent = insert_prompt_sections_before_user_prompt(
                     prompt_for_agent,
                     [sanitize_prompt(setup_agents_prompt_instruction)],
