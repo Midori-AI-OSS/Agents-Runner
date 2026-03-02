@@ -101,7 +101,7 @@ def launch_docker_terminal_task(
     container_agent_dir: str,
     container_workdir: str,
     settings_preflight_script: str | None,
-    environment_preflight_script: str | None,
+    setup_agents_script: str | None,
     ide_preflight_script: str | None,
     extra_preflight_script: str,
     ide_display_target: str,
@@ -145,7 +145,7 @@ def launch_docker_terminal_task(
         container_agent_dir: Container config directory path
         container_workdir: Container workspace directory path
         settings_preflight_script: Global preflight script
-        environment_preflight_script: Environment-specific preflight script
+        setup_agents_script: Repo setup-agents preflight script
         ide_preflight_script: Optional IDE install preflight script
         extra_preflight_script: Additional preflight script (help mode, etc.)
         ide_display_target: IDE runtime display metadata
@@ -157,9 +157,11 @@ def launch_docker_terminal_task(
         system_preflight_cached_override: Optional precomputed system cache status
         desktop_preflight_cached_override: Optional precomputed desktop cache status
         settings_preflight_cached_override: Optional precomputed settings cache status
-        environment_preflight_cached_override: Optional precomputed env cache status
+        environment_preflight_cached_override: Legacy cache status (ignored)
         desktop_preflight_script_override: Optional precomputed desktop script
     """
+    _ = environment_preflight_cached_override
+
     # Apply desktop preflight script override if provided, before desktop detection
     desktop_preflight_script = str(extra_preflight_script or "")
     if desktop_preflight_script_override is not None:
@@ -184,7 +186,6 @@ def launch_docker_terminal_task(
     system_preflight_cached = False
     desktop_preflight_cached = False
     settings_preflight_cached = False
-    environment_preflight_cached = False
     container_caching_enabled = bool(
         env and getattr(env, "container_caching_enabled", False)
     )
@@ -208,7 +209,6 @@ def launch_docker_terminal_task(
             system_preflight_cached_override,
             desktop_preflight_cached_override,
             settings_preflight_cached_override,
-            environment_preflight_cached_override,
         )
     )
 
@@ -220,7 +220,6 @@ def launch_docker_terminal_task(
         system_preflight_cached = bool(system_preflight_cached_override)
         desktop_preflight_cached = bool(desktop_preflight_cached_override)
         settings_preflight_cached = bool(settings_preflight_cached_override)
-        environment_preflight_cached = bool(environment_preflight_cached_override)
     else:
         if cache_system_enabled and system_preflight_script.strip():
             next_image = ensure_phase_image(
@@ -290,16 +289,17 @@ def launch_docker_terminal_task(
     # Prepare preflight scripts and get mounts.
     # Desktop caching only pre-installs desktop dependencies into an image layer;
     # runtime desktop services still need to start for each container launch.
-    preflight_clause, preflight_mounts, tmp_paths = _prepare_preflight_scripts(
-        task_token=task_token,
-        ide_preflight_script=str(ide_preflight_script or ""),
-        desktop_preflight_script=desktop_preflight_script,
-        settings_preflight_script=settings_preflight_script,
-        environment_preflight_script=environment_preflight_script,
-        skip_system=system_preflight_cached,
-        skip_desktop=False,
-        skip_settings=settings_preflight_cached,
-        skip_environment=environment_preflight_cached,
+    preflight_clause, preflight_mounts, tmp_paths, desktop_start_clause = (
+        _prepare_preflight_scripts(
+            task_token=task_token,
+            ide_preflight_script=str(ide_preflight_script or ""),
+            desktop_preflight_script=desktop_preflight_script,
+            settings_preflight_script=settings_preflight_script,
+            setup_agents_script=setup_agents_script,
+            skip_system=system_preflight_cached,
+            skip_desktop=False,
+            skip_settings=settings_preflight_cached,
+        )
     )
 
     if preflight_clause is None:
@@ -402,7 +402,7 @@ def launch_docker_terminal_task(
 
         container_script = (
             "set -euo pipefail; "
-            f"{git_identity_clause()}{preflight_clause}{verify_clause}{target_cmd}"
+            f"{git_identity_clause()}{preflight_clause}{verify_clause}{desktop_start_clause}{target_cmd}"
         )
 
         main_window._on_task_log(
@@ -539,13 +539,13 @@ def _prepare_preflight_scripts(
     ide_preflight_script: str,
     desktop_preflight_script: str,
     settings_preflight_script: str | None,
-    environment_preflight_script: str | None,
+    setup_agents_script: str | None,
     *,
     skip_system: bool = False,
     skip_desktop: bool = False,
     skip_settings: bool = False,
-    skip_environment: bool = False,
-) -> tuple[str | None, list[str], dict[str, str]]:
+    skip_setup_agents: bool = False,
+) -> tuple[str | None, list[str], dict[str, str], str]:
     """Create temporary preflight script files and build mount args.
 
     Args:
@@ -553,34 +553,40 @@ def _prepare_preflight_scripts(
         ide_preflight_script: IDE install phase script content
         desktop_preflight_script: Desktop phase script content
         settings_preflight_script: Global preflight script
-        environment_preflight_script: Environment-specific preflight script
+        setup_agents_script: Repo setup-agents script content
         skip_system: Skip runtime system phase because it was cached
         skip_desktop: Skip runtime desktop phase because it was cached
         skip_settings: Skip runtime settings phase because it was cached
-        skip_environment: Skip runtime environment phase because it was cached
+        skip_setup_agents: Skip setup-agents phase
 
     Returns:
-        Tuple of (preflight_clause, preflight_mounts, tmp_paths)
+        Tuple of (preflight_clause, preflight_mounts, tmp_paths, desktop_start_clause)
         - preflight_clause: Shell commands to execute preflights
         - preflight_mounts: Docker -v mount arguments
         - tmp_paths: Dict mapping label to temp file path for cleanup
-        Returns (None, [], {}) on error
+        - desktop_start_clause: Runtime desktop startup commands
+        Returns (None, [], {}, "") on error
     """
     preflight_clause = ""
+    desktop_start_clause = ""
     preflight_mounts: list[str] = []
     tmp_paths: dict[str, str] = {
         "system": "",
         "ide": "",
         "desktop": "",
+        "desktop_start": "",
         "settings": "",
-        "environment": "",
+        "setup_agents": "",
     }
 
     ide_container_path = f"/tmp/agents-runner-preflight-ide-{task_token}.sh"
     desktop_container_path = f"/tmp/agents-runner-preflight-desktop-{task_token}.sh"
+    desktop_start_container_path = (
+        f"/tmp/agents-runner-preflight-desktop-start-{task_token}.sh"
+    )
     settings_container_path = f"/tmp/agents-runner-preflight-settings-{task_token}.sh"
-    environment_container_path = (
-        f"/tmp/agents-runner-preflight-environment-{task_token}.sh"
+    setup_agents_container_path = (
+        f"/tmp/agents-runner-preflight-setup-agents-{task_token}.sh"
     )
 
     preflights_host_dir = (
@@ -642,6 +648,35 @@ def _prepare_preflight_scripts(
                 f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: done')}; "
             )
 
+        desktop_install_script = str(desktop_preflight_script or "")
+        desktop_start_script = ""
+        desktop_preflight_stripped = desktop_install_script.strip()
+        if desktop_preflight_stripped:
+            headless_script = preflights_scripts.get(
+                "headless_desktop_novnc.sh", ""
+            ).strip()
+            desktop_install_phase_script = preflights_scripts.get(
+                "desktop_install.sh", ""
+            ).strip()
+            desktop_run_script = preflights_scripts.get("desktop_run.sh", "").strip()
+            if headless_script and desktop_preflight_stripped == headless_script:
+                if desktop_install_phase_script:
+                    desktop_install_script = desktop_install_phase_script
+                if desktop_run_script:
+                    desktop_start_script = desktop_run_script
+            elif (
+                desktop_run_script and desktop_preflight_stripped == desktop_run_script
+            ):
+                desktop_install_script = ""
+                desktop_start_script = desktop_run_script
+            elif (
+                desktop_install_phase_script
+                and desktop_preflight_stripped == desktop_install_phase_script
+            ):
+                desktop_install_script = desktop_install_phase_script
+                if desktop_run_script:
+                    desktop_start_script = desktop_run_script
+
         def _append_optional_phase(
             *,
             label: str,
@@ -650,8 +685,9 @@ def _prepare_preflight_scripts(
             tmp_key: str,
             skip: bool,
             env_var: str,
+            to_desktop_start: bool = False,
         ) -> None:
-            nonlocal preflight_clause
+            nonlocal preflight_clause, desktop_start_clause
             if skip:
                 return
             stripped = str(script or "").strip()
@@ -666,23 +702,39 @@ def _prepare_preflight_scripts(
                 None,
             )
             if matched:
-                preflight_clause += (
+                clause = (
                     f'{env_var}="${{PREFLIGHTS_DIR}}/{matched}"; '
                     f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: running')}; "
                     f'/bin/bash "${{{env_var}}}"; '
                     f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: done')}; "
                 )
+                if to_desktop_start:
+                    desktop_start_clause += clause
+                else:
+                    preflight_clause += clause
                 return
 
             tmp_paths[tmp_key] = _write_preflight_script(str(script or ""), label)
             preflight_mounts.extend(["-v", f"{tmp_paths[tmp_key]}:{container_path}:ro"])
-            preflight_clause += (
+            clause = (
                 f"{env_var}={shlex.quote(container_path)}; "
                 f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: running')}; "
                 f'/bin/bash "${{{env_var}}}"; '
                 f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: done')}; "
             )
+            if to_desktop_start:
+                desktop_start_clause += clause
+            else:
+                preflight_clause += clause
 
+        _append_optional_phase(
+            label="settings",
+            script=str(settings_preflight_script or ""),
+            container_path=settings_container_path,
+            tmp_key="settings",
+            skip=skip_settings,
+            env_var="PREFLIGHT_SETTINGS",
+        )
         _append_optional_phase(
             label="ide",
             script=ide_preflight_script,
@@ -693,35 +745,36 @@ def _prepare_preflight_scripts(
         )
         _append_optional_phase(
             label="desktop",
-            script=desktop_preflight_script,
+            script=desktop_install_script,
             container_path=desktop_container_path,
             tmp_key="desktop",
             skip=skip_desktop,
             env_var="PREFLIGHT_DESKTOP",
         )
         _append_optional_phase(
-            label="settings",
-            script=str(settings_preflight_script or ""),
-            container_path=settings_container_path,
-            tmp_key="settings",
-            skip=skip_settings,
-            env_var="PREFLIGHT_SETTINGS",
+            label="setup-agents",
+            script=str(setup_agents_script or ""),
+            container_path=setup_agents_container_path,
+            tmp_key="setup_agents",
+            skip=skip_setup_agents,
+            env_var="PREFLIGHT_SETUP_AGENTS",
         )
         _append_optional_phase(
-            label="environment",
-            script=str(environment_preflight_script or ""),
-            container_path=environment_container_path,
-            tmp_key="environment",
-            skip=skip_environment,
-            env_var="PREFLIGHT_ENV",
+            label="desktop-start",
+            script=desktop_start_script,
+            container_path=desktop_start_container_path,
+            tmp_key="desktop_start",
+            skip=skip_desktop,
+            env_var="PREFLIGHT_DESKTOP_START",
+            to_desktop_start=True,
         )
 
-        return preflight_clause, preflight_mounts, tmp_paths
+        return preflight_clause, preflight_mounts, tmp_paths, desktop_start_clause
 
     except Exception:
         # Clean up any created temp files
         _cleanup_temp_files(tmp_paths)
-        return None, [], tmp_paths
+        return None, [], tmp_paths, ""
 
 
 def _build_docker_command(
@@ -814,16 +867,18 @@ def _build_host_shell_script(
         f"TMP_SYSTEM={shlex.quote(tmp_paths.get('system', ''))}",
         f"TMP_IDE={shlex.quote(tmp_paths.get('ide', ''))}",
         f"TMP_DESKTOP={shlex.quote(tmp_paths.get('desktop', ''))}",
+        f"TMP_DESKTOP_START={shlex.quote(tmp_paths.get('desktop_start', ''))}",
         f"TMP_SETTINGS={shlex.quote(tmp_paths.get('settings', ''))}",
-        f"TMP_ENV={shlex.quote(tmp_paths.get('environment', ''))}",
+        f"TMP_SETUP_AGENTS={shlex.quote(tmp_paths.get('setup_agents', ''))}",
         f"FINISH_FILE={shlex.quote(finish_path)}",
         'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
         'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
         + 'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_IDE" ]; then rm -f -- "$TMP_IDE" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_DESKTOP" ]; then rm -f -- "$TMP_DESKTOP" >/dev/null 2>&1 || true; fi; '
+        + 'if [ -n "$TMP_DESKTOP_START" ]; then rm -f -- "$TMP_DESKTOP_START" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
-        + 'if [ -n "$TMP_ENV" ]; then rm -f -- "$TMP_ENV" >/dev/null 2>&1 || true; fi; '
+        + 'if [ -n "$TMP_SETUP_AGENTS" ]; then rm -f -- "$TMP_SETUP_AGENTS" >/dev/null 2>&1 || true; fi; '
         + "} ",
         'finish() { STATUS=$?; if [ ! -e "$FINISH_FILE" ]; then write_finish "$STATUS"; fi; cleanup; }',
         "trap finish EXIT",
