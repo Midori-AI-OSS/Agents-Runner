@@ -29,6 +29,13 @@ class SetupAgentsResult:
     prompt_instruction: str | None
 
 
+def missing_setup_agents_instruction(*, launch_mode: str) -> str | None:
+    launch_mode_normalized = str(launch_mode or "agent").strip().lower()
+    if launch_mode_normalized == "ide":
+        return None
+    return _missing_instruction()
+
+
 def _safe_segment(value: str, fallback: str = "default") -> str:
     safe = "".join(ch for ch in str(value or "").strip() if ch.isalnum() or ch in "-_")
     return safe or fallback
@@ -245,63 +252,91 @@ def prepare_setup_agents_phase(
     created_from_legacy = False
     committed_legacy_bootstrap = False
 
+    def _sync_scripts(*, src: Path, dst: Path, direction: str) -> bool:
+        try:
+            changed = _copy_script(src, dst)
+        except Exception as exc:
+            _log(
+                "WARN",
+                f"sync {direction} failed ({src} -> {dst}): {exc}",
+            )
+            return False
+        if changed:
+            _log("INFO", f"sync {direction} ({src} -> {dst})")
+        return True
+
     legacy_script = _normalize_script_text(
         str(legacy_environment_preflight_script or "")
     )
     legacy_available = bool(legacy_script.strip())
-    mirror_exists = mirror_path.is_file()
+    try:
+        mirror_exists = mirror_path.is_file()
+    except Exception as exc:
+        _log("WARN", f"failed to inspect setup-agents mirror path {mirror_path}: {exc}")
+        mirror_exists = False
 
     if repo_script_path is None and not mirror_exists and legacy_available:
-        if _write_script(selected_repo_path, legacy_script, executable=True):
-            created_from_legacy = True
-            source = "legacy"
-            _log(
-                "INFO",
-                f"created {selected_repo_path} from legacy environment preflight",
-            )
-        repo_script_path = selected_repo_path
-        if is_git_repo(str(repo_root)):
-            committed_legacy_bootstrap = _commit_bootstrap_script(
-                repo_root, repo_script_path
-            )
-            if committed_legacy_bootstrap:
+        try:
+            if _write_script(selected_repo_path, legacy_script, executable=True):
+                created_from_legacy = True
+                source = "legacy"
                 _log(
                     "INFO",
-                    f"committed bootstrap script to repository at {repo_script_path}",
+                    f"created {selected_repo_path} from legacy environment preflight",
                 )
-            else:
+            repo_script_path = selected_repo_path
+        except Exception as exc:
+            _log(
+                "WARN",
+                f"failed to bootstrap setup-agents script at {selected_repo_path}: {exc}",
+            )
+
+        if repo_script_path is not None and is_git_repo(str(repo_root)):
+            try:
+                committed_legacy_bootstrap = _commit_bootstrap_script(
+                    repo_root, repo_script_path
+                )
+            except Exception as exc:
                 _log(
                     "WARN",
-                    f"auto-commit failed for bootstrap script at {repo_script_path}",
+                    f"auto-commit failed for bootstrap script at {repo_script_path}: {exc}",
                 )
+            else:
+                if committed_legacy_bootstrap:
+                    _log(
+                        "INFO",
+                        f"committed bootstrap script to repository at {repo_script_path}",
+                    )
+                else:
+                    _log(
+                        "WARN",
+                        f"auto-commit failed for bootstrap script at {repo_script_path}",
+                    )
 
-    if repo_script_path is not None and mirror_path.is_file():
-        repo_ts = _repo_script_timestamp(repo_root, repo_script_path)
-        mirror_ts = mirror_path.stat().st_mtime
-        if repo_ts >= mirror_ts:
-            if _copy_script(repo_script_path, mirror_path):
-                _log(
-                    "INFO",
-                    f"sync repo -> mirror ({repo_script_path} -> {mirror_path})",
-                )
+    if repo_script_path is not None and mirror_exists:
+        try:
+            repo_ts = _repo_script_timestamp(repo_root, repo_script_path)
+            mirror_ts = mirror_path.stat().st_mtime
+        except Exception as exc:
+            _log("WARN", f"failed to compare setup-agents sync timestamps: {exc}")
+        else:
+            if repo_ts >= mirror_ts:
+                if _sync_scripts(
+                    src=repo_script_path, dst=mirror_path, direction="repo -> mirror"
+                ):
+                    if source == "none":
+                        source = "repo"
+            elif _sync_scripts(
+                src=mirror_path, dst=repo_script_path, direction="mirror -> repo"
+            ):
+                source = "mirror"
+    elif repo_script_path is not None:
+        if _sync_scripts(
+            src=repo_script_path, dst=mirror_path, direction="repo -> mirror"
+        ):
             if source == "none":
                 source = "repo"
-        else:
-            if _copy_script(mirror_path, repo_script_path):
-                _log(
-                    "INFO",
-                    f"sync mirror -> repo ({mirror_path} -> {repo_script_path})",
-                )
-            source = "mirror"
-    elif repo_script_path is not None:
-        if _copy_script(repo_script_path, mirror_path):
-            _log(
-                "INFO",
-                f"sync repo -> mirror ({repo_script_path} -> {mirror_path})",
-            )
-        if source == "none":
-            source = "repo"
-    elif mirror_path.is_file():
+    elif mirror_exists:
         _log(
             "INFO",
             (
@@ -323,11 +358,13 @@ def prepare_setup_agents_phase(
             )
             setup_script = None
 
-    launch_mode_normalized = str(launch_mode or "agent").strip().lower()
     prompt_instruction = None
-    if not setup_script and launch_mode_normalized != "ide":
-        prompt_instruction = _missing_instruction()
-        _log("INFO", "setup-agents script not found; prompt guidance will be injected")
+    if not setup_script:
+        prompt_instruction = missing_setup_agents_instruction(launch_mode=launch_mode)
+        if prompt_instruction:
+            _log(
+                "INFO", "setup-agents script not found; prompt guidance will be injected"
+            )
 
     return SetupAgentsResult(
         repo_root=str(repo_root),

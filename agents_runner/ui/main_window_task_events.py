@@ -828,6 +828,15 @@ class MainWindowTaskEventsMixin:
             elif error:
                 task.status = "failed"
                 task.error = str(error)
+                self._on_task_log(
+                    task_id,
+                    format_log(
+                        "host",
+                        "finalize",
+                        "ERROR",
+                        f"task failed: {task.error}",
+                    ),
+                )
             else:
                 task.status = "done" if int(exit_code) == 0 else "failed"
 

@@ -30,6 +30,7 @@ from agents_runner.pr_metadata import github_context_prompt_instructions
 from agents_runner.pr_metadata import pr_metadata_container_path
 from agents_runner.pr_metadata import pr_metadata_host_path
 from agents_runner.pr_metadata import pr_metadata_prompt_instructions
+from agents_runner.setup_agents import missing_setup_agents_instruction
 from agents_runner.setup_agents import prepare_setup_agents_phase
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.main_window_tasks_interactive_command import (
@@ -396,19 +397,38 @@ class InteractivePrepWorker(QObject):
                         f"phase=pr_metadata_prepare done elapsed_ms={metadata_elapsed_ms:.0f}",
                     )
 
-            setup_agents_result = prepare_setup_agents_phase(
-                host_workdir=self._host_workdir,
-                environment_id=self._env_id,
-                gh_repo=self._gh_repo or None,
-                legacy_environment_preflight_script=self._environment_preflight_script,
-                launch_mode=self._launch_mode,
-                on_log=lambda line: self.log.emit(self._task_id, str(line or "")),
-            )
-            setup_agents_script = str(setup_agents_result.setup_script or "")
-            if setup_agents_result.prompt_instruction:
+            setup_agents_prompt_instruction: str | None = None
+            try:
+                setup_agents_result = prepare_setup_agents_phase(
+                    host_workdir=self._host_workdir,
+                    environment_id=self._env_id,
+                    gh_repo=self._gh_repo or None,
+                    legacy_environment_preflight_script=self._environment_preflight_script,
+                    launch_mode=self._launch_mode,
+                    on_log=lambda line: self.log.emit(self._task_id, str(line or "")),
+                )
+            except Exception as exc:
+                self.log.emit(
+                    self._task_id,
+                    format_log(
+                        "setup",
+                        "agents",
+                        "WARN",
+                        f"setup-agents preparation failed; continuing without setup phase: {exc}",
+                    ),
+                )
+                setup_agents_script = ""
+                setup_agents_prompt_instruction = missing_setup_agents_instruction(
+                    launch_mode=self._launch_mode
+                )
+            else:
+                setup_agents_script = str(setup_agents_result.setup_script or "")
+                setup_agents_prompt_instruction = setup_agents_result.prompt_instruction
+
+            if setup_agents_prompt_instruction:
                 prompt_for_agent = append_prompt_sections(
                     prompt_for_agent,
-                    [sanitize_prompt(setup_agents_result.prompt_instruction)],
+                    [sanitize_prompt(setup_agents_prompt_instruction)],
                 )
 
             if (

@@ -10,6 +10,7 @@ from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.agent_worker_github import GitHubOperations
 from agents_runner.docker.agent_worker_setup import WorkerSetup
 from agents_runner.docker.agent_worker_container import ContainerExecutor
+from agents_runner.log_format import format_log
 
 
 class DockerAgentWorker:
@@ -141,6 +142,14 @@ class DockerAgentWorker:
             self._on_done(exit_code, None, self._collected_artifacts)
 
         except Exception as exc:
+            self._on_log(
+                format_log(
+                    "host",
+                    "task",
+                    "ERROR",
+                    f"worker execution failed before completion: {exc}",
+                )
+            )
             self._on_done(1, str(exc), self._collected_artifacts)
         finally:
             # Clean up temporary preflight scripts

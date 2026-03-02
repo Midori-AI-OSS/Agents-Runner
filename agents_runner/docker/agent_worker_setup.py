@@ -39,6 +39,7 @@ from agents_runner.midoriai_template import (
     scan_midoriai_agents_template,
 )
 from agents_runner.setup_agents import prepare_setup_agents_phase
+from agents_runner.setup_agents import missing_setup_agents_instruction
 
 
 @dataclass(frozen=True)
@@ -106,17 +107,34 @@ class WorkerSetup:
             workspace_config.host_mount
         )
         artifacts_staging_dir = self._create_artifacts_directory()
-        setup_agents = prepare_setup_agents_phase(
-            host_workdir=workspace_config.host_mount,
-            environment_id=self._config.environment_id,
-            gh_repo=self._config.gh_repo,
-            legacy_environment_preflight_script=self._config.environment_preflight_script,
-            launch_mode=self._config.launch_mode,
-            on_log=self._on_log,
-        )
+        setup_agents_script: str | None = None
+        setup_agents_prompt_instruction: str | None = None
+        try:
+            setup_agents = prepare_setup_agents_phase(
+                host_workdir=workspace_config.host_mount,
+                environment_id=self._config.environment_id,
+                gh_repo=self._config.gh_repo,
+                legacy_environment_preflight_script=self._config.environment_preflight_script,
+                launch_mode=self._config.launch_mode,
+                on_log=self._on_log,
+            )
+            setup_agents_script = setup_agents.setup_script
+            setup_agents_prompt_instruction = setup_agents.prompt_instruction
+        except Exception as exc:
+            self._on_log(
+                format_log(
+                    "setup",
+                    "agents",
+                    "WARN",
+                    f"setup-agents preparation failed; continuing without setup phase: {exc}",
+                )
+            )
+            setup_agents_prompt_instruction = missing_setup_agents_instruction(
+                launch_mode=self._config.launch_mode
+            )
         preflight_config = self._prepare_preflight_scripts(
             preflight_tmp_paths,
-            setup_agents_script=setup_agents.setup_script,
+            setup_agents_script=setup_agents_script,
         )
         self.pull_image_if_needed(
             platform_config.forced_platform, platform_config.platform_args
@@ -133,9 +151,9 @@ class WorkerSetup:
             caching_config.desktop_enabled,
             caching_config.desktop_display,
         )
-        if setup_agents.prompt_instruction:
+        if setup_agents_prompt_instruction:
             final_prompt = sanitize_prompt(
-                f"{final_prompt}\n\n{setup_agents.prompt_instruction}"
+                f"{final_prompt}\n\n{setup_agents_prompt_instruction}"
             )
 
         return RuntimeEnvironment(
@@ -366,12 +384,23 @@ class WorkerSetup:
                 preflight_tmp_paths,
             )
         if (setup_agents_script or "").strip():
-            setup_agents_preflight_tmp_path = write_preflight_script(
-                str(setup_agents_script),
-                "setup-agents",
-                self._config.task_id,
-                preflight_tmp_paths,
-            )
+            try:
+                setup_agents_preflight_tmp_path = write_preflight_script(
+                    str(setup_agents_script),
+                    "setup-agents",
+                    self._config.task_id,
+                    preflight_tmp_paths,
+                )
+            except Exception as exc:
+                self._on_log(
+                    format_log(
+                        "setup",
+                        "agents",
+                        "WARN",
+                        f"failed to prepare setup-agents preflight script; skipping phase: {exc}",
+                    )
+                )
+                setup_agents_preflight_tmp_path = None
         if (self._config.ide_preflight_script or "").strip():
             ide_preflight_tmp_path = write_preflight_script(
                 str(self._config.ide_preflight_script),

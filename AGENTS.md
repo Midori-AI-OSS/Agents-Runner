@@ -69,6 +69,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - Logging:
   - Use the standardized logger package `midori_ai_logger` for application logging; do not add new ad-hoc logging wrappers/utilities.
   - Avoid `print()` for non-CLI output (exceptions: fatal startup/diagnostics paths); use structured logging instead.
+  - Task-system failures and exceptions must be emitted into task logs with structured scopes (for example `setup/agents`, `host/finalize`, `docker/container`); do not rely only on task metadata/error fields.
 - Keep boundaries explicit:
   - Put core logic in pure functions/classes.
   - Keep side effects (filesystem, subprocess, network, Docker) in narrow adapter modules so they are easy to test.
