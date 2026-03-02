@@ -97,6 +97,9 @@ class CodexAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["codex", "--version"]
 
+    def default_interactive_command(self) -> str:
+        return "--sandbox danger-full-access"
+
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         parts = list(cmd_parts)
         if parts and parts[0] == "exec":

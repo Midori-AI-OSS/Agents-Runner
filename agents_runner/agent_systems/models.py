@@ -126,6 +126,8 @@ class AgentSystemPlugin(Protocol):
 
     def verify_command(self) -> list[str]: ...
 
+    def default_interactive_command(self) -> str: ...
+
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         """Normalize interactive command parts for storage in settings.
 

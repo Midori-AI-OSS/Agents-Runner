@@ -176,30 +176,7 @@ class SettingsFormMixin:
         self._ui_theme.currentIndexChanged.connect(self._on_theme_combo_changed)
         self._refresh_theme_options(selected="auto")
 
-        self._host_codex_dir = QLineEdit()
-        self._host_codex_dir.setPlaceholderText(os.path.expanduser("~/.codex"))
-        self._host_claude_dir = QLineEdit()
-        self._host_claude_dir.setPlaceholderText(os.path.expanduser("~/.claude"))
-        self._host_copilot_dir = QLineEdit()
-        self._host_copilot_dir.setPlaceholderText(os.path.expanduser("~/.copilot"))
-        self._host_gemini_dir = QLineEdit()
-        self._host_gemini_dir.setPlaceholderText(os.path.expanduser("~/.gemini"))
-
-        self._browse_codex = QPushButton("Browse…")
-        self._browse_codex.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        self._browse_codex.clicked.connect(self._pick_codex_dir)
-
-        self._browse_claude = QPushButton("Browse…")
-        self._browse_claude.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        self._browse_claude.clicked.connect(self._pick_claude_dir)
-
-        self._browse_copilot = QPushButton("Browse…")
-        self._browse_copilot.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        self._browse_copilot.clicked.connect(self._pick_copilot_dir)
-
-        self._browse_gemini = QPushButton("Browse…")
-        self._browse_gemini.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        self._browse_gemini.clicked.connect(self._pick_gemini_dir)
+        self._agent_config_dir_fields: dict[str, QLineEdit] = {}
 
         self._preflight_enabled = QCheckBox("Enable settings preflight")
         self._preflight_enabled.setToolTip(
@@ -475,18 +452,25 @@ class SettingsFormMixin:
         paths_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
         paths_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
         paths_grid.setColumnStretch(1, 1)
-        paths_grid.addWidget(QLabel("Codex Config folder"), 0, 0)
-        paths_grid.addWidget(self._host_codex_dir, 0, 1)
-        paths_grid.addWidget(self._browse_codex, 0, 2)
-        paths_grid.addWidget(QLabel("Claude Config folder"), 1, 0)
-        paths_grid.addWidget(self._host_claude_dir, 1, 1)
-        paths_grid.addWidget(self._browse_claude, 1, 2)
-        paths_grid.addWidget(QLabel("Copilot Config folder"), 2, 0)
-        paths_grid.addWidget(self._host_copilot_dir, 2, 1)
-        paths_grid.addWidget(self._browse_copilot, 2, 2)
-        paths_grid.addWidget(QLabel("Gemini Config folder"), 3, 0)
-        paths_grid.addWidget(self._host_gemini_dir, 3, 1)
-        paths_grid.addWidget(self._browse_gemini, 3, 2)
+        self._agent_config_dir_fields.clear()
+        for row, agent_cli in enumerate(available_agent_system_names()):
+            field = QLineEdit()
+            plugin = get_agent_system(agent_cli)
+            placeholder = os.path.expanduser(plugin.default_host_config_dir())
+            display_name = str(getattr(plugin, "display_name", "") or "").strip()
+            label = display_name if display_name else self._format_key_label(agent_cli)
+            field.setPlaceholderText(placeholder)
+            self._agent_config_dir_fields[agent_cli] = field
+
+            browse = QPushButton("Browse…")
+            browse.setFixedWidth(STANDARD_BUTTON_WIDTH)
+            browse.clicked.connect(
+                lambda checked=False, cli=agent_cli: self._pick_agent_config_dir(cli)
+            )
+
+            paths_grid.addWidget(QLabel(f"{label} Config folder"), row, 0)
+            paths_grid.addWidget(field, row, 1)
+            paths_grid.addWidget(browse, row, 2)
         paths_body.addLayout(paths_grid)
         paths_body.addStretch(1)
         self._register_page("config_paths", paths_page)
@@ -905,37 +889,20 @@ class SettingsFormMixin:
                 fallback=get_default_ide_system_name(),
             )
 
-            self._host_codex_dir.setText(
-                os.path.expanduser(
-                    str(
-                        settings.get("host_codex_dir") or os.path.expanduser("~/.codex")
-                    )
+            config_dirs_raw = settings.get("agent_config_dirs")
+            config_dirs = config_dirs_raw if isinstance(config_dirs_raw, dict) else {}
+            for agent_cli, field in self._agent_config_dir_fields.items():
+                configured = os.path.expanduser(
+                    str(config_dirs.get(agent_cli) or "").strip()
                 )
-            )
-            self._host_claude_dir.setText(
-                os.path.expanduser(
-                    str(
-                        settings.get("host_claude_dir")
-                        or os.path.expanduser("~/.claude")
-                    )
-                )
-            )
-            self._host_copilot_dir.setText(
-                os.path.expanduser(
-                    str(
-                        settings.get("host_copilot_dir")
-                        or os.path.expanduser("~/.copilot")
-                    )
-                )
-            )
-            self._host_gemini_dir.setText(
-                os.path.expanduser(
-                    str(
-                        settings.get("host_gemini_dir")
-                        or os.path.expanduser("~/.gemini")
-                    )
-                )
-            )
+                if not configured:
+                    try:
+                        configured = os.path.expanduser(
+                            get_agent_system(agent_cli).default_host_config_dir()
+                        )
+                    except Exception:
+                        configured = field.placeholderText()
+                field.setText(configured)
 
             enabled = bool(settings.get("preflight_enabled") or False)
             self._preflight_enabled.setChecked(enabled)
@@ -1062,6 +1029,10 @@ class SettingsFormMixin:
             poll_startup_delay_s = max(0, int(poll_startup_delay_text or "35"))
         except Exception:
             poll_startup_delay_s = 35
+        agent_config_dirs = {
+            agent_cli: os.path.expanduser(str(field.text() or "").strip())
+            for agent_cli, field in self._agent_config_dir_fields.items()
+        }
 
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
@@ -1081,18 +1052,7 @@ class SettingsFormMixin:
             "popup_theme_animation_enabled": bool(
                 self._popup_theme_animation_enabled.isChecked()
             ),
-            "host_codex_dir": os.path.expanduser(
-                str(self._host_codex_dir.text() or "").strip()
-            ),
-            "host_claude_dir": os.path.expanduser(
-                str(self._host_claude_dir.text() or "").strip()
-            ),
-            "host_copilot_dir": os.path.expanduser(
-                str(self._host_copilot_dir.text() or "").strip()
-            ),
-            "host_gemini_dir": os.path.expanduser(
-                str(self._host_gemini_dir.text() or "").strip()
-            ),
+            "agent_config_dirs": agent_config_dirs,
             "preflight_enabled": bool(self._preflight_enabled.isChecked()),
             "preflight_script": str(self._preflight_script.toPlainText() or ""),
             "append_pixelarch_context": bool(
@@ -1164,41 +1124,18 @@ class SettingsFormMixin:
         except Exception:
             pass
 
-    def _pick_codex_dir(self) -> None:
+    def _pick_agent_config_dir(self, agent_cli: str) -> None:
+        agent_cli = normalize_agent(agent_cli)
+        field = self._agent_config_dir_fields.get(agent_cli)
+        if field is None:
+            return
         path = QFileDialog.getExistingDirectory(
             self,
-            "Select Host Config folder",
-            self._host_codex_dir.text() or os.path.expanduser("~/.codex"),
+            f"Select {self._format_key_label(agent_cli)} Config folder",
+            field.text() or field.placeholderText(),
         )
         if path:
-            self._host_codex_dir.setText(path)
-
-    def _pick_claude_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Claude Config folder",
-            self._host_claude_dir.text() or os.path.expanduser("~/.claude"),
-        )
-        if path:
-            self._host_claude_dir.setText(path)
-
-    def _pick_copilot_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Copilot Config folder",
-            self._host_copilot_dir.text() or os.path.expanduser("~/.copilot"),
-        )
-        if path:
-            self._host_copilot_dir.setText(path)
-
-    def _pick_gemini_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Gemini Config folder",
-            self._host_gemini_dir.text() or os.path.expanduser("~/.gemini"),
-        )
-        if path:
-            self._host_gemini_dir.setText(path)
+            field.setText(path)
 
     def _refresh_terminal_options(self, *, selected_terminal_id: str) -> None:
         selected_id = str(selected_terminal_id or "").strip()

@@ -54,7 +54,8 @@ class MainWindowAutoReviewMixin:
             if resolved_base_branch is None:
                 return
 
-        host_codex = str(self._settings_data.get("host_codex_dir") or "").strip()
+        env_for_task = self._environments.get(selected_env_id)
+        _agent_cli, host_config_dir = self._effective_agent_and_config(env=env_for_task)
         pr_context: dict[str, object] | None = None
         if is_pr:
             pr_context = {
@@ -68,7 +69,7 @@ class MainWindowAutoReviewMixin:
             }
         task_id = self._start_task_from_ui(
             prompt,
-            host_codex,
+            host_config_dir,
             selected_env_id,
             resolved_base_branch,
             pr_context,

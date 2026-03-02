@@ -95,6 +95,9 @@ class ClaudeAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["claude", "--version"]
 
+    def default_interactive_command(self) -> str:
+        return "--add-dir /home/midori-ai/workspace"
+
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         return list(cmd_parts)
 

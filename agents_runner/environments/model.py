@@ -76,7 +76,6 @@ class Environment:
     name: str
     color: str = "emerald"
     host_workdir: str = ""
-    host_codex_dir: str = ""
     agent_cli_args: str = ""
     max_agents_running: int = -1
     headless_desktop_enabled: bool = False
