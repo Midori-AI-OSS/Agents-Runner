@@ -188,6 +188,7 @@ class MainWindowTasksAgentMixin:
 
         self._settings_data["active_environment_id"] = env_id
         env = self._environments.get(env_id)
+        agent_cli, auto_config_dir = self._effective_agent_and_config(env=env)
 
         ide_config_override = self._coerce_ide_override(ide_override)
         ide_system, ide_display_target = self._effective_ide_launch_config(
@@ -240,14 +241,14 @@ class MainWindowTasksAgentMixin:
 
         host_config_dir = os.path.expanduser(str(host_codex or "").strip())
         if not host_config_dir:
-            host_config_dir = self._effective_host_config_dir(
-                agent_cli="codex",
-                env=env,
-                settings=self._settings_data,
-            )
-        if not self._ensure_agent_config_dir("codex", host_config_dir):
+            host_config_dir = auto_config_dir
+        if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
             return None
-        self._settings_data[self._host_config_dir_key("codex")] = host_config_dir
+        self._set_agent_config_dir_setting(
+            settings=self._settings_data,
+            agent_cli=agent_cli,
+            config_dir=host_config_dir,
+        )
 
         launch_argv = ide_plugin.build_launch_argv(
             workspace_dir="/home/midori-ai/workspace"
@@ -355,7 +356,7 @@ class MainWindowTasksAgentMixin:
             status="queued",
             gh_use_host_cli=use_host_gh,
             workspace_type=workspace_type,
-            agent_cli="codex",
+            agent_cli=agent_cli,
             launch_mode="ide",
             ide_system=ide_system,
             ide_display_target=ide_display_target,
@@ -382,7 +383,7 @@ class MainWindowTasksAgentMixin:
             image=PIXELARCH_EMERALD_IMAGE,
             host_config_dir=host_config_dir,
             host_workdir=effective_workdir,
-            agent_cli="codex",
+            agent_cli=agent_cli,
             environment_id=env_id,
             auto_remove=True,
             pull_before_run=True,
@@ -735,18 +736,18 @@ class MainWindowTasksAgentMixin:
                 pinned_agent_id=pinned_agent_id,
             )
 
-        host_codex = os.path.expanduser(str(host_codex or "").strip())
+        host_config_override = os.path.expanduser(str(host_codex or "").strip())
         if override:
-            host_codex = auto_config_dir
-        host_config_dir = auto_config_dir
-        if agent_cli == "codex" and host_codex:
-            host_config_dir = host_codex
-        if not host_config_dir:
-            host_config_dir = auto_config_dir
+            host_config_override = auto_config_dir
+        host_config_dir = host_config_override or auto_config_dir
 
         if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
             return
-        self._settings_data[self._host_config_dir_key(agent_cli)] = host_config_dir
+        self._set_agent_config_dir_setting(
+            settings=self._settings_data,
+            agent_cli=agent_cli,
+            config_dir=host_config_dir,
+        )
 
         image = PIXELARCH_EMERALD_IMAGE
 

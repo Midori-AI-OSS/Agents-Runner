@@ -209,10 +209,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     name = str(payload.get("name") or env_id).strip()
     color = str(payload.get("color") or "slate").strip().lower()
     host_workdir = str(payload.get("host_workdir") or "").strip()
-    host_codex_dir = str(payload.get("host_codex_dir") or "").strip()
-    agent_cli_args = str(
-        payload.get("agent_cli_args") or payload.get("codex_extra_args") or ""
-    ).strip()
+    agent_cli_args = str(payload.get("agent_cli_args") or "").strip()
 
     try:
         max_agents_running = int(str(payload.get("max_agents_running", -1)).strip())
@@ -494,7 +491,6 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         name=name or env_id,
         color=color,
         host_workdir=host_workdir,
-        host_codex_dir=host_codex_dir,
         agent_cli_args=agent_cli_args,
         max_agents_running=max_agents_running,
         headless_desktop_enabled=headless_desktop_enabled,
@@ -587,11 +583,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "name": env.name,
         "color": env.normalized_color(),
         "host_workdir": env.host_workdir,
-        "host_codex_dir": env.host_codex_dir,
-        # Stored under a generic key, but we also persist the legacy key for
-        # backwards compatibility with older builds.
         "agent_cli_args": env.agent_cli_args,
-        "codex_extra_args": env.agent_cli_args,
         "max_agents_running": int(env.max_agents_running),
         "headless_desktop_enabled": bool(
             getattr(env, "headless_desktop_enabled", False)

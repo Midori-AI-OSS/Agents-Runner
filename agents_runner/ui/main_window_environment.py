@@ -395,10 +395,6 @@ class MainWindowEnvironmentMixin:
         envs = load_environments()
         if not envs:
             active_workdir = str(self._settings_data.get("host_workdir") or os.getcwd())
-            active_codex = str(
-                self._settings_data.get("host_codex_dir")
-                or os.path.expanduser("~/.codex")
-            )
             try:
                 max_agents_running = int(
                     str(self._settings_data.get("max_agents_running", -1)).strip()
@@ -410,7 +406,6 @@ class MainWindowEnvironmentMixin:
                 name="Default",
                 color="emerald",
                 host_workdir="",
-                host_codex_dir=active_codex,
                 max_agents_running=max_agents_running,
                 preflight_enabled=False,
                 preflight_script="",
@@ -428,7 +423,6 @@ class MainWindowEnvironmentMixin:
                 name=SYSTEM_ENV_NAME,
                 color="slate",
                 host_workdir="",
-                host_codex_dir="",
                 max_agents_running=-1,
                 preflight_enabled=False,
                 preflight_script="",

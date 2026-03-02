@@ -494,8 +494,10 @@ def launch_docker_terminal_task(
 
         # Update settings
         main_window._settings_data["host_workdir"] = host_workdir
-        main_window._settings_data[main_window._host_config_dir_key(agent_cli)] = (
-            host_codex
+        main_window._set_agent_config_dir_setting(
+            settings=main_window._settings_data,
+            agent_cli=agent_cli,
+            config_dir=host_codex,
         )
         main_window._settings_data["active_environment_id"] = env_id
         main_window._settings_data["interactive_terminal_id"] = str(

@@ -365,7 +365,8 @@ def prepare_setup_agents_phase(
         prompt_instruction = missing_setup_agents_instruction(launch_mode=launch_mode)
         if prompt_instruction:
             _log(
-                "INFO", "setup-agents script not found; prompt guidance will be injected"
+                "INFO",
+                "setup-agents script not found; prompt guidance will be injected",
             )
 
     return SetupAgentsResult(

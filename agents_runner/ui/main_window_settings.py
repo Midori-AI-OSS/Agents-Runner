@@ -12,6 +12,8 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import available_agents
+from agents_runner.agent_cli import default_host_config_dir
+from agents_runner.agent_systems import get_agent_system
 from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
 from agents_runner.ide_systems import get_default_ide_system_name
 from agents_runner.ide_systems import normalize_ide_display_target
@@ -24,6 +26,19 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindowSettingsMixin:
+    _AGENT_CONFIG_DIRS_KEY = "agent_config_dirs"
+    _AGENT_INTERACTIVE_COMMANDS_KEY = "agent_interactive_commands"
+    _REMOVED_LEGACY_SETTINGS_KEYS = (
+        "host_codex_dir",
+        "host_claude_dir",
+        "host_copilot_dir",
+        "host_gemini_dir",
+        "interactive_command",
+        "interactive_command_claude",
+        "interactive_command_copilot",
+        "interactive_command_gemini",
+    )
+
     def _apply_settings_to_pages(self) -> None:
         if not self._settings.isVisible():
             self._settings.set_settings(self._settings_data)
@@ -39,6 +54,89 @@ class MainWindowSettingsMixin:
         self._new_task.set_spellcheck_enabled(spellcheck_enabled)
         self._new_task.set_stt_mode("offline")
 
+    @staticmethod
+    def _coerce_agent_map(raw: object) -> dict[str, str]:
+        if not isinstance(raw, dict):
+            return {}
+        known = set(available_agents())
+        normalized: dict[str, str] = {}
+        for key, value in raw.items():
+            agent_cli = str(key or "").strip().lower()
+            if not agent_cli or agent_cli not in known:
+                continue
+            normalized[agent_cli] = str(value or "").strip()
+        return normalized
+
+    def _normalized_agent_config_dirs_map(self, raw: object) -> dict[str, str]:
+        values = self._coerce_agent_map(raw)
+        normalized: dict[str, str] = {}
+        for agent_cli in available_agents():
+            configured = os.path.expanduser(str(values.get(agent_cli) or "").strip())
+            if not configured:
+                configured = os.path.expanduser(default_host_config_dir(agent_cli))
+            normalized[agent_cli] = configured
+        return normalized
+
+    def _normalized_agent_interactive_commands_map(self, raw: object) -> dict[str, str]:
+        values = self._coerce_agent_map(raw)
+        normalized: dict[str, str] = {}
+        for agent_cli in available_agents():
+            configured = str(values.get(agent_cli) or "").strip()
+            if not configured:
+                configured = self._plugin_default_interactive_command(agent_cli)
+            normalized[agent_cli] = self._sanitize_interactive_command_value(
+                agent_cli=agent_cli,
+                raw=configured,
+            )
+        return normalized
+
+    def _get_agent_config_dirs_map(
+        self, settings: dict[str, object] | None = None
+    ) -> dict[str, str]:
+        source = settings if settings is not None else self._settings_data
+        return self._normalized_agent_config_dirs_map(
+            source.get(self._AGENT_CONFIG_DIRS_KEY)
+        )
+
+    def _get_agent_interactive_commands_map(
+        self, settings: dict[str, object] | None = None
+    ) -> dict[str, str]:
+        source = settings if settings is not None else self._settings_data
+        return self._normalized_agent_interactive_commands_map(
+            source.get(self._AGENT_INTERACTIVE_COMMANDS_KEY)
+        )
+
+    def _set_agent_config_dir_setting(
+        self,
+        *,
+        settings: dict[str, object],
+        agent_cli: str,
+        config_dir: str,
+    ) -> None:
+        agent_cli = str(agent_cli or "").strip().lower()
+        if not agent_cli or agent_cli not in set(available_agents()):
+            return
+        normalized = self._get_agent_config_dirs_map(settings)
+        normalized[agent_cli] = os.path.expanduser(str(config_dir or "").strip())
+        settings[self._AGENT_CONFIG_DIRS_KEY] = normalized
+
+    def _set_agent_interactive_command_setting(
+        self,
+        *,
+        settings: dict[str, object],
+        agent_cli: str,
+        command: str,
+    ) -> None:
+        agent_cli = str(agent_cli or "").strip().lower()
+        if not agent_cli or agent_cli not in set(available_agents()):
+            return
+        normalized = self._get_agent_interactive_commands_map(settings)
+        normalized[agent_cli] = self._sanitize_interactive_command_value(
+            agent_cli=agent_cli,
+            raw=command,
+        )
+        settings[self._AGENT_INTERACTIVE_COMMANDS_KEY] = normalized
+
     def _apply_settings(self, settings: dict[str, Any]) -> None:
         previous_radio_enabled = bool(self._settings_data.get("radio_enabled") or False)
         merged = dict(self._settings_data)
@@ -52,33 +150,9 @@ class MainWindowSettingsMixin:
             shell_value = "bash"
         merged["shell"] = shell_value
 
-        host_codex_dir = os.path.expanduser(
-            str(merged.get("host_codex_dir") or "").strip()
+        merged[self._AGENT_CONFIG_DIRS_KEY] = self._normalized_agent_config_dirs_map(
+            merged.get(self._AGENT_CONFIG_DIRS_KEY)
         )
-        if not host_codex_dir:
-            host_codex_dir = os.path.expanduser("~/.codex")
-        merged["host_codex_dir"] = host_codex_dir
-
-        host_claude_dir = os.path.expanduser(
-            str(merged.get("host_claude_dir") or "").strip()
-        )
-        if not host_claude_dir:
-            host_claude_dir = os.path.expanduser("~/.claude")
-        merged["host_claude_dir"] = host_claude_dir
-
-        host_copilot_dir = os.path.expanduser(
-            str(merged.get("host_copilot_dir") or "").strip()
-        )
-        if not host_copilot_dir:
-            host_copilot_dir = os.path.expanduser("~/.copilot")
-        merged["host_copilot_dir"] = host_copilot_dir
-
-        host_gemini_dir = os.path.expanduser(
-            str(merged.get("host_gemini_dir") or "").strip()
-        )
-        if not host_gemini_dir:
-            host_gemini_dir = os.path.expanduser("~/.gemini")
-        merged["host_gemini_dir"] = host_gemini_dir
 
         merged["preflight_enabled"] = bool(merged.get("preflight_enabled") or False)
         merged["preflight_script"] = str(merged.get("preflight_script") or "")
@@ -98,25 +172,13 @@ class MainWindowSettingsMixin:
             == "always"
             else "viewing_only"
         )
-        merged["interactive_command"] = str(
-            merged.get("interactive_command") or "--sandbox danger-full-access"
+        merged[self._AGENT_INTERACTIVE_COMMANDS_KEY] = (
+            self._normalized_agent_interactive_commands_map(
+                merged.get(self._AGENT_INTERACTIVE_COMMANDS_KEY)
+            )
         )
-        merged["interactive_command_claude"] = str(
-            merged.get("interactive_command_claude") or ""
-        )
-        merged["interactive_command_copilot"] = str(
-            merged.get("interactive_command_copilot") or ""
-        )
-        merged["interactive_command_gemini"] = str(
-            merged.get("interactive_command_gemini") or ""
-        )
-        for key in (
-            "interactive_command",
-            "interactive_command_claude",
-            "interactive_command_copilot",
-            "interactive_command_gemini",
-        ):
-            merged[key] = self._sanitize_interactive_command_value(key, merged.get(key))
+        for key in self._REMOVED_LEGACY_SETTINGS_KEYS:
+            merged.pop(key, None)
         merged["append_pixelarch_context"] = bool(
             merged.get("append_pixelarch_context") or False
         )
@@ -239,37 +301,32 @@ class MainWindowSettingsMixin:
         self._apply_settings_to_pages()
         self._schedule_save()
 
-    def _interactive_command_key(self, agent_cli: str) -> str:
-        agent_cli = normalize_agent(agent_cli)
-        if agent_cli == "claude":
-            return "interactive_command_claude"
-        if agent_cli == "copilot":
-            return "interactive_command_copilot"
-        if agent_cli == "gemini":
-            return "interactive_command_gemini"
-        return "interactive_command"
-
-    def _host_config_dir_key(self, agent_cli: str) -> str:
-        agent_cli = normalize_agent(agent_cli)
-        if agent_cli == "claude":
-            return "host_claude_dir"
-        if agent_cli == "copilot":
-            return "host_copilot_dir"
-        if agent_cli == "gemini":
-            return "host_gemini_dir"
-        return "host_codex_dir"
+    def _plugin_default_interactive_command(self, agent_cli: str) -> str:
+        agent_cli = str(agent_cli or "").strip().lower()
+        if not agent_cli or agent_cli not in set(available_agents()):
+            return ""
+        try:
+            plugin = get_agent_system(agent_cli)
+        except Exception:
+            return ""
+        return str(plugin.default_interactive_command() or "").strip()
 
     def _default_interactive_command(self, agent_cli: str) -> str:
-        agent_cli = normalize_agent(agent_cli)
-        if agent_cli == "claude":
-            return "--add-dir /home/midori-ai/workspace"
-        if agent_cli == "copilot":
-            return "--add-dir /home/midori-ai/workspace"
-        if agent_cli == "gemini":
-            return "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace"
-        return "--sandbox danger-full-access"
+        agent_cli = str(agent_cli or "").strip().lower()
+        if not agent_cli or agent_cli not in set(available_agents()):
+            return ""
+        commands = self._get_agent_interactive_commands_map(self._settings_data)
+        configured = str(commands.get(agent_cli) or "").strip()
+        if configured:
+            return configured
+        return self._plugin_default_interactive_command(agent_cli)
 
-    def _sanitize_interactive_command_value(self, key: str, raw: object) -> str:
+    def _sanitize_interactive_command_value(
+        self, *, agent_cli: str, raw: object
+    ) -> str:
+        agent_cli = str(agent_cli or "").strip().lower()
+        if agent_cli not in set(available_agents()):
+            agent_cli = ""
         value = str(raw or "").strip()
         if not value:
             return ""
@@ -281,8 +338,6 @@ class MainWindowSettingsMixin:
         if cmd_parts and cmd_parts[0] in set(available_agents()):
             head = cmd_parts.pop(0)
             try:
-                from agents_runner.agent_systems import get_agent_system
-
                 cmd_parts = get_agent_system(head).sanitize_interactive_command_parts(
                     cmd_parts=cmd_parts
                 )
@@ -291,16 +346,7 @@ class MainWindowSettingsMixin:
             value = " ".join(shlex.quote(part) for part in cmd_parts)
 
         if looks_like_agent_help_command(value):
-            from agents_runner.agent_systems import get_default_agent_system_name
-
-            agent_cli = get_default_agent_system_name()
-            if str(key or "").endswith("_claude"):
-                agent_cli = "claude"
-            elif str(key or "").endswith("_copilot"):
-                agent_cli = "copilot"
-            elif str(key or "").endswith("_gemini"):
-                agent_cli = "gemini"
-            return self._default_interactive_command(agent_cli)
+            return self._plugin_default_interactive_command(agent_cli)
 
         return value
 
@@ -322,14 +368,17 @@ class MainWindowSettingsMixin:
 
         Precedence:
         1. Environment agent_selection (first matching agent instance with config_dir)
-        2. Global per-agent settings (host_*_dir)
-        3. Legacy env.host_codex_dir override (deprecated)
+        2. Global per-agent settings (agent_config_dirs map)
+        3. Plugin default host config dir
         """
-        agent_cli = normalize_agent(agent_cli)
+        agent_cli = str(agent_cli or "").strip().lower()
+        if agent_cli not in set(available_agents()):
+            return ""
 
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
             for inst in env.agent_selection.agents or []:
-                if normalize_agent(getattr(inst, "agent_cli", "")) != agent_cli:
+                inst_cli = str(getattr(inst, "agent_cli", "") or "").strip().lower()
+                if inst_cli != agent_cli:
                     continue
                 inst_dir = os.path.expanduser(
                     str(getattr(inst, "config_dir", "") or "").strip()
@@ -337,27 +386,11 @@ class MainWindowSettingsMixin:
                 if inst_dir:
                     return inst_dir
 
-        # Fall back to global settings-based config dir
-        config_dir = ""
-        if agent_cli == "claude":
-            config_dir = str(settings.get("host_claude_dir") or "")
-        elif agent_cli == "copilot":
-            config_dir = str(settings.get("host_copilot_dir") or "")
-        elif agent_cli == "gemini":
-            config_dir = str(settings.get("host_gemini_dir") or "")
-        else:
-            config_dir = str(
-                settings.get("host_codex_dir")
-                or os.environ.get(
-                    "CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")
-                )
-            )
-
-        # Legacy: check env.host_codex_dir override (deprecated) — only apply for codex
-        if agent_cli == "codex" and env and env.host_codex_dir:
-            config_dir = env.host_codex_dir
-
-        return os.path.expanduser(str(config_dir or "").strip())
+        config_dirs = self._get_agent_config_dirs_map(settings)
+        configured = os.path.expanduser(str(config_dirs.get(agent_cli) or "").strip())
+        if configured:
+            return configured
+        return os.path.expanduser(default_host_config_dir(agent_cli))
 
     def _select_agent_instance_for_env(
         self,
@@ -450,11 +483,6 @@ class MainWindowSettingsMixin:
             config_dir = self._resolve_config_dir_for_agent(
                 agent_cli=agent_cli, env=env, settings=settings
             )
-        # Legacy: env.host_codex_dir was historically used as a global config-dir
-        # override. Preserve backwards compatibility for Codex only; other agents
-        # have their own per-agent settings (e.g. host_copilot_dir).
-        if agent_cli == "codex" and env and env.host_codex_dir:
-            config_dir = os.path.expanduser(str(env.host_codex_dir or "").strip())
 
         return agent_cli, config_dir, agent_id
 
@@ -481,21 +509,9 @@ class MainWindowSettingsMixin:
            * If no environment-specific agent is found, the agent is taken from
             ``settings["use"]`` (defaulting to ``"codex"``) and normalized via
              :func:`normalize_agent`.
-           * The config directory is then derived from the corresponding
-             ``host_*_dir`` entry:
-
-               - ``"claude"``  -> ``settings["host_claude_dir"]``
-               - ``"copilot"`` -> ``settings["host_copilot_dir"]``
-               - ``"gemini"``  -> ``settings["host_gemini_dir"]``
-               - ``"codex"``   -> ``settings["host_codex_dir"]`` or, if unset,
-                 ``$CODEX_HOST_CODEX_DIR`` or ``~/.codex``.
-
-        3. Legacy ``Environment.host_codex_dir`` override
-
-           * If ``env`` is provided and ``env.host_codex_dir`` is set, its value
-             (after :func:`os.path.expanduser`) overrides the config directory
-             computed from global settings. This field is deprecated and kept
-             only for backwards compatibility.
+           * The config directory is then derived from
+             ``settings["agent_config_dirs"][agent_cli]`` with plugin defaults as
+             fallback.
 
         The returned ``config_dir`` is always a string with ``~`` expanded via
         :func:`os.path.expanduser`.
@@ -536,16 +552,8 @@ class MainWindowSettingsMixin:
         1. If an ``env`` is provided and it has an ``agent_selection`` entry with an
            agent instance matching this (normalized) ``agent_cli`` and a non-empty
            ``config_dir``, that directory is used.
-        2. Otherwise, per-agent settings are consulted:
-
-           * ``host_claude_dir`` when ``agent_cli == "claude"``
-           * ``host_copilot_dir`` when ``agent_cli == "copilot"``
-           * ``host_gemini_dir`` when ``agent_cli == "gemini"``
-           * ``host_codex_dir`` for all other agents; if unset, falls back to the
-             ``CODEX_HOST_CODEX_DIR`` environment variable, then to ``~/.codex``.
-        3. Finally, for legacy/backwards compatibility, if ``env`` defines
-           ``host_codex_dir`` and ``agent_cli == "codex"``, that value overrides
-           whichever directory was selected earlier.
+        2. Otherwise, per-agent settings are consulted from
+           ``agent_config_dirs``. If missing, plugin defaults are used.
 
         The returned path is normalized with :func:`os.path.expanduser`.
 
@@ -557,7 +565,9 @@ class MainWindowSettingsMixin:
         Returns:
             The resolved config directory path (with ~ expanded)
         """
-        agent_cli = normalize_agent(agent_cli)
+        agent_cli = str(agent_cli or "").strip().lower()
+        if agent_cli not in set(available_agents()):
+            return ""
         settings = settings or self._settings_data
 
         # Use helper method to resolve config directory
@@ -570,7 +580,9 @@ class MainWindowSettingsMixin:
     def _coerce_agent_override(self, override: object) -> dict[str, str] | None:
         if not isinstance(override, dict):
             return None
-        agent_cli = normalize_agent(str(override.get("agent_cli") or ""))
+        agent_cli = str(override.get("agent_cli") or "").strip().lower()
+        if agent_cli not in set(available_agents()):
+            return None
         if not agent_cli:
             return None
         return {
@@ -663,7 +675,9 @@ class MainWindowSettingsMixin:
         if config_dir:
             return os.path.expanduser(config_dir)
 
-        agent_cli = normalize_agent(str(override.get("agent_cli") or ""))
+        agent_cli = str(override.get("agent_cli") or "").strip().lower()
+        if agent_cli not in set(available_agents()):
+            return ""
         if not agent_cli:
             return ""
 
@@ -681,21 +695,27 @@ class MainWindowSettingsMixin:
         )
 
     def _ensure_agent_config_dir(self, agent_cli: str, host_config_dir: str) -> bool:
-        agent_cli = normalize_agent(agent_cli)
+        agent_cli = str(agent_cli or "").strip().lower()
         host_config_dir = os.path.expanduser(str(host_config_dir or "").strip())
-        if agent_cli in {"claude", "copilot", "gemini"} and not host_config_dir:
+        if not host_config_dir:
+            agent_label = agent_cli
+            try:
+                agent_label = (
+                    str(
+                        getattr(get_agent_system(agent_cli), "display_name", "") or ""
+                    ).strip()
+                    or agent_cli
+                )
+            except Exception:
+                pass
             agent_label = (
-                "Claude"
-                if agent_cli == "claude"
-                else ("Copilot" if agent_cli == "copilot" else "Gemini")
+                agent_label[0].upper() + agent_label[1:] if agent_label else "Agent"
             )
             QMessageBox.warning(
                 self,
                 "Missing config folder",
                 f"Set the {agent_label} Config folder in Settings (or override it per-environment).",
             )
-            return False
-        if not host_config_dir:
             return False
         if os.path.exists(host_config_dir) and not os.path.isdir(host_config_dir):
             QMessageBox.warning(

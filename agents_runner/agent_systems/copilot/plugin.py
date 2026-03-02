@@ -82,6 +82,9 @@ class CopilotAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["copilot", "--version"]
 
+    def default_interactive_command(self) -> str:
+        return "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace"
+
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         return list(cmd_parts)
 
