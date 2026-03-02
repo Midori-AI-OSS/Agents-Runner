@@ -32,7 +32,6 @@ from typing import Any, Callable
 from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
 from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.github_token import resolve_github_token
-from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
 from agents_runner.ide_systems import get_ide_system
 from agents_runner.log_format import format_log, wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
@@ -564,26 +563,6 @@ class ContainerExecutor:
                     f"DISPLAY={self._runtime_env.desktop_display}",
                 ]
             )
-        elif self._runtime_env.ide_display_target == IDE_DISPLAY_HOST_DESKTOP:
-            host_display = str(os.environ.get("DISPLAY") or "").strip()
-            if host_display:
-                env_args.extend(["-e", f"DISPLAY={host_display}"])
-            else:
-                self._on_log(
-                    format_log(
-                        "desktop",
-                        "host",
-                        "WARN",
-                        "host desktop mode selected but DISPLAY is not set",
-                    )
-                )
-
-            xauthority = str(os.environ.get("XAUTHORITY") or "").strip()
-            if xauthority:
-                xauthority = os.path.expanduser(xauthority)
-                if os.path.isfile(xauthority):
-                    env_args.extend(["-e", f"XAUTHORITY={xauthority}"])
-
         return env_args, docker_env
 
     def _build_port_args(self) -> list[str]:
@@ -655,27 +634,34 @@ class ContainerExecutor:
                 all_mounts.append(m)
 
         auto_mounts, _auto_env_vars = self._resolve_ide_auto_mount_data()
-        all_mounts.extend(auto_mounts)
+        conflicting_paths: set[str] = set()
+        existing_container_paths = {
+            self._mount_container_path(mount)
+            for mount in all_mounts
+            if self._mount_container_path(mount)
+        }
+        for auto_mount in auto_mounts:
+            container_path = self._mount_container_path(auto_mount)
+            if container_path and container_path in existing_container_paths:
+                conflicting_paths.add(container_path)
 
-        if self._runtime_env.ide_display_target == IDE_DISPLAY_HOST_DESKTOP:
-            x11_socket_dir = "/tmp/.X11-unix"
-            if os.path.isdir(x11_socket_dir):
-                all_mounts.append(f"{x11_socket_dir}:{x11_socket_dir}:rw")
-            else:
+        if conflicting_paths:
+            for container_path in sorted(conflicting_paths):
                 self._on_log(
                     format_log(
-                        "desktop",
-                        "host",
+                        "ide",
+                        "mounts",
                         "WARN",
-                        f"host desktop mode could not find {x11_socket_dir}",
+                        f"managed ide mount overrides existing mount at {container_path}",
                     )
                 )
 
-            xauthority = str(os.environ.get("XAUTHORITY") or "").strip()
-            if xauthority:
-                xauthority = os.path.expanduser(xauthority)
-                if os.path.isfile(xauthority):
-                    all_mounts.append(f"{xauthority}:{xauthority}:ro")
+        filtered_mounts = [
+            mount
+            for mount in all_mounts
+            if self._mount_container_path(mount) not in conflicting_paths
+        ]
+        all_mounts = [*auto_mounts, *filtered_mounts]
 
         # Deduplicate by container path, preserving order
         deduplicated = deduplicate_mounts(all_mounts)
@@ -698,10 +684,15 @@ class ContainerExecutor:
     def _expand_host_path(path: str) -> str:
         return os.path.abspath(os.path.expanduser(os.path.expandvars(str(path or ""))))
 
-    def _is_ide_auto_mounts_enabled(self) -> bool:
-        return str(
-            self._runtime_env.launch_mode or ""
-        ).strip().lower() == "ide" and bool(self._config.ide_auto_mounts_enabled)
+    @staticmethod
+    def _mount_container_path(mount: str) -> str:
+        parts = str(mount or "").strip().split(":")
+        if len(parts) < 2:
+            return ""
+        return str(parts[1] or "").strip()
+
+    def _is_ide_launch_mode(self) -> bool:
+        return str(self._runtime_env.launch_mode or "").strip().lower() == "ide"
 
     def _resolve_ide_auto_mount_data(self) -> tuple[list[str], dict[str, str]]:
         if (
@@ -715,7 +706,7 @@ class ContainerExecutor:
         self._ide_auto_mounts_cache = []
         self._ide_auto_env_cache = {}
 
-        if not self._is_ide_auto_mounts_enabled():
+        if not self._is_ide_launch_mode():
             return resolved_mounts, resolved_env
 
         ide_name = str(self._config.ide_system or "").strip()
@@ -725,7 +716,7 @@ class ContainerExecutor:
                     "ide",
                     "mounts",
                     "WARN",
-                    "auto-mounts enabled but ide_system is empty; skipping",
+                    "ide launch requested but ide_system is empty; skipping managed mounts",
                 )
             )
             return resolved_mounts, resolved_env
@@ -738,7 +729,7 @@ class ContainerExecutor:
                     "ide",
                     "mounts",
                     "WARN",
-                    f"auto-mounts skipped for unknown IDE system '{ide_name}': {exc}",
+                    f"managed mounts skipped for unknown IDE system '{ide_name}': {exc}",
                 )
             )
             return resolved_mounts, resolved_env
@@ -752,17 +743,19 @@ class ContainerExecutor:
             mode = self._normalize_mount_mode(str(getattr(spec, "mode", "rw") or "rw"))
             if not host_path or not container_path:
                 continue
-            if os.path.exists(host_path):
-                resolved_mounts.append(f"{host_path}:{container_path}:{mode}")
-                continue
-            self._on_log(
-                format_log(
-                    "ide",
-                    "mounts",
-                    "WARN",
-                    f"auto-mount skipped (missing host path): {host_path}",
+            try:
+                os.makedirs(host_path, exist_ok=True)
+            except Exception as exc:
+                self._on_log(
+                    format_log(
+                        "ide",
+                        "mounts",
+                        "WARN",
+                        f"managed ide mount skipped (host path unavailable): {host_path} ({exc})",
+                    )
                 )
-            )
+                continue
+            resolved_mounts.append(f"{host_path}:{container_path}:{mode}")
 
         if bool(getattr(plugin, "auto_mount_host_keyring", False)):
             host_keyrings = self._expand_host_path("~/.local/share/keyrings")

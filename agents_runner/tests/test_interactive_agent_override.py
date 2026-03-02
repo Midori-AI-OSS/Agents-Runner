@@ -7,7 +7,9 @@ from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.terminal_apps import TerminalOption
 from agents_runner.ui.main_window_settings import MainWindowSettingsMixin
-from agents_runner.ui.main_window_tasks_interactive import MainWindowTasksInteractiveMixin
+from agents_runner.ui.main_window_tasks_interactive import (
+    MainWindowTasksInteractiveMixin,
+)
 import agents_runner.ui.main_window_tasks_interactive as interactive_module
 
 

@@ -29,8 +29,6 @@ from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
 from agents_runner.docker.phase_image_builder import ensure_phase_image
 from agents_runner.environments import Environment
 from agents_runner.github_token import resolve_github_token
-from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
-from agents_runner.ide_systems import normalize_ide_display_target
 from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.core.shell_templates import git_identity_clause
@@ -150,7 +148,7 @@ def launch_docker_terminal_task(
         environment_preflight_script: Environment-specific preflight script
         ide_preflight_script: Optional IDE install preflight script
         extra_preflight_script: Additional preflight script (help mode, etc.)
-        ide_display_target: IDE display target (host_desktop/container_desktop)
+        ide_display_target: IDE runtime display metadata
         stain: Task color stain
         spinner: Task spinner color
         desired_base: Desired base branch for git
@@ -173,9 +171,6 @@ def launch_docker_terminal_task(
         or "noVNC" in desktop_preflight_script
         or "[desktop]" in desktop_preflight_script
     )
-    ide_display_mode = normalize_ide_display_target(ide_display_target)
-    use_host_display = ide_display_mode == IDE_DISPLAY_HOST_DESKTOP
-
     preflights_host_dir = PREFLIGHTS_DIR.resolve()
     system_preflight_path = preflights_host_dir / "pixelarch_yay.sh"
     system_preflight_script = ""
@@ -393,49 +388,6 @@ def launch_docker_terminal_task(
             if not m:
                 continue
             all_mounts.append(m)
-
-        if use_host_display:
-            host_display = str(os.environ.get("DISPLAY") or "").strip()
-            if host_display:
-                env_args.extend(
-                    [
-                        "-e",
-                        f"DISPLAY={host_display}",
-                        "-e",
-                        "QT_X11_NO_MITSHM=1",
-                    ]
-                )
-            else:
-                main_window._on_task_log(
-                    task_id,
-                    format_log(
-                        "desktop",
-                        "host",
-                        "WARN",
-                        "host desktop mode selected but DISPLAY is not set",
-                    ),
-                )
-
-            x11_socket_dir = "/tmp/.X11-unix"
-            if os.path.isdir(x11_socket_dir):
-                all_mounts.append(f"{x11_socket_dir}:{x11_socket_dir}:rw")
-            else:
-                main_window._on_task_log(
-                    task_id,
-                    format_log(
-                        "desktop",
-                        "host",
-                        "WARN",
-                        f"host desktop mode could not find {x11_socket_dir}",
-                    ),
-                )
-
-            xauthority = str(os.environ.get("XAUTHORITY") or "").strip()
-            if xauthority:
-                xauthority = os.path.expanduser(xauthority)
-                if os.path.isfile(xauthority):
-                    all_mounts.append(f"{xauthority}:{xauthority}:ro")
-                    env_args.extend(["-e", f"XAUTHORITY={xauthority}"])
 
         deduplicated_mounts = deduplicate_mounts(all_mounts)
         extra_mount_args: list[str] = []

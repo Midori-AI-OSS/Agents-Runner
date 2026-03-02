@@ -4,7 +4,6 @@ import logging
 import os
 import shlex
 import shutil
-import sys
 import time
 
 from uuid import uuid4
@@ -21,7 +20,6 @@ from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh_management import is_gh_available
 from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
-from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
 from agents_runner.ide_systems import get_ide_system
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.log_format import format_log
@@ -51,6 +49,51 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindowTasksAgentMixin:
+    @staticmethod
+    def _mount_container_path_from_spec(spec: str) -> str:
+        parts = str(spec or "").strip().split(":")
+        if len(parts) < 2:
+            return ""
+        return str(parts[1] or "").strip()
+
+    def _warn_ide_mount_conflicts(
+        self, *, ide_system: str, extra_mounts: list[str]
+    ) -> None:
+        try:
+            plugin = get_ide_system(ide_system)
+        except Exception:
+            return
+        managed_paths = {
+            str(getattr(spec, "container_path", "") or "").strip()
+            for spec in tuple(getattr(plugin, "auto_mount_specs", ()) or ())
+            if str(getattr(spec, "container_path", "") or "").strip()
+        }
+        if not managed_paths:
+            return
+
+        conflicts = sorted(
+            {
+                container_path
+                for container_path in (
+                    self._mount_container_path_from_spec(mount)
+                    for mount in extra_mounts
+                )
+                if container_path and container_path in managed_paths
+            }
+        )
+        if not conflicts:
+            return
+
+        joined = "\n".join(f"- {path}" for path in conflicts[:8])
+        QMessageBox.information(
+            self,
+            "IDE mount path reserved",
+            "One or more environment mounts target container paths reserved by the IDE system.\n\n"
+            "Managed IDE mounts will override these paths:\n"
+            f"{joined}\n\n"
+            "If you need to use your own mount at these paths, turn off the IDE system for this run.",
+        )
+
     def _clean_old_tasks(self) -> None:
         to_remove: set[str] = set()
         for task_id, task in self._tasks.items():
@@ -91,6 +134,7 @@ class MainWindowTasksAgentMixin:
 
         self._dashboard.remove_tasks(to_remove)
         for task_id in to_remove:
+            self._clear_ide_novnc_auto_open_state(task_id)
             self._tasks.pop(task_id, None)
             self._threads.pop(task_id, None)
             self._bridges.pop(task_id, None)
@@ -128,13 +172,6 @@ class MainWindowTasksAgentMixin:
     ) -> str | None:
         del prompt
         del terminal_id
-        if sys.platform == "darwin":
-            QMessageBox.warning(
-                self,
-                "Run IDE unavailable",
-                "Run IDE is not supported on macOS.",
-            )
-            return None
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -158,20 +195,6 @@ class MainWindowTasksAgentMixin:
             override=ide_config_override,
             settings=self._settings_data,
         )
-        ide_auto_mounts_enabled = self._effective_ide_auto_mounts_enabled(
-            env=env,
-            settings=self._settings_data,
-        )
-        if (
-            ide_display_target == IDE_DISPLAY_HOST_DESKTOP
-            and not sys.platform.startswith("linux")
-        ):
-            QMessageBox.warning(
-                self,
-                "Host desktop unsupported",
-                "Run IDE host desktop mode is only supported on Linux.",
-            )
-            return None
         try:
             ide_plugin = get_ide_system(ide_system)
         except Exception as exc:
@@ -307,6 +330,10 @@ class MainWindowTasksAgentMixin:
             host_cache = os.path.expanduser("~/.cache")
             container_cache = "/home/midori-ai/.cache"
             extra_mounts_for_task.append(f"{host_cache}:{container_cache}:rw")
+        self._warn_ide_mount_conflicts(
+            ide_system=ide_system,
+            extra_mounts=extra_mounts_for_task,
+        )
 
         gh_repo: str | None = None
         if workspace_type == WORKSPACE_CLONED and env:
@@ -379,7 +406,6 @@ class MainWindowTasksAgentMixin:
             launch_mode="ide",
             ide_system=ide_system,
             ide_display_target=ide_display_target,
-            ide_auto_mounts_enabled=ide_auto_mounts_enabled,
             custom_command_argv=launch_argv,
             custom_verify_executable=verify_executable,
         )

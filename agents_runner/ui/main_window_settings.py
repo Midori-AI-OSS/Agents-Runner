@@ -12,10 +12,8 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import available_agents
-from agents_runner.ide_systems import IDE_AUTO_MOUNTS_DISABLED
-from agents_runner.ide_systems import IDE_AUTO_MOUNTS_ENABLED
+from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
 from agents_runner.ide_systems import get_default_ide_system_name
-from agents_runner.ide_systems import normalize_ide_auto_mounts_override
 from agents_runner.ide_systems import normalize_ide_display_target
 from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.radio import RadioController
@@ -46,6 +44,7 @@ class MainWindowSettingsMixin:
         merged = dict(self._settings_data)
         merged.update(settings or {})
         merged.pop("stt_mode", None)
+        merged.pop("ide_auto_mounts_enabled", None)
         merged["use"] = normalize_agent(str(merged.get("use") or "codex"))
 
         shell_value = str(merged.get("shell") or "bash").lower()
@@ -89,15 +88,15 @@ class MainWindowSettingsMixin:
         merged["ide_system_default"] = normalize_ide_system_name(
             str(merged.get("ide_system_default") or get_default_ide_system_name())
         )
-        merged["ide_display_target_default"] = normalize_ide_display_target(
-            str(
-                merged.get("ide_display_target_default")
-                or merged.get("ide_display_target")
-                or ""
-            )
+        merged["ide_display_target_default"] = IDE_DISPLAY_CONTAINER_DESKTOP
+        merged["ide_novnc_auto_open_enabled"] = bool(
+            merged.get("ide_novnc_auto_open_enabled", True)
         )
-        merged["ide_auto_mounts_enabled"] = bool(
-            merged.get("ide_auto_mounts_enabled", False)
+        merged["ide_novnc_auto_open_mode"] = (
+            "always"
+            if str(merged.get("ide_novnc_auto_open_mode") or "").strip().lower()
+            == "always"
+            else "viewing_only"
         )
         merged["interactive_command"] = str(
             merged.get("interactive_command") or "--sandbox danger-full-access"
@@ -220,6 +219,19 @@ class MainWindowSettingsMixin:
         except Exception:
             merged["max_agents_running"] = -1
         self._settings_data = merged
+        if not self._ide_novnc_auto_open_enabled(settings=merged):
+            task_ids = {
+                *self._ide_novnc_auto_open_timers.keys(),
+                *self._ide_novnc_auto_open_urls.keys(),
+                *self._ide_novnc_auto_open_ready_s.keys(),
+                *self._ide_novnc_auto_open_deferred,
+                *self._ide_novnc_auto_opened_tasks,
+            }
+            for task_id in list(task_ids):
+                self._clear_ide_novnc_auto_open_state(task_id)
+        else:
+            for task in list(self._tasks.values()):
+                self._maybe_schedule_ide_novnc_auto_open(task)
         self._sync_radio_controller_from_settings(
             user_initiated=True,
             previous_enabled=previous_radio_enabled,
@@ -606,57 +618,39 @@ class MainWindowSettingsMixin:
                 settings_data.get("ide_system_default") or get_default_ide_system_name()
             )
         )
-        display_target = normalize_ide_display_target(
-            str(
-                settings_data.get("ide_display_target_default")
-                or settings_data.get("ide_display_target")
-                or ""
-            )
-        )
+        display_target = IDE_DISPLAY_CONTAINER_DESKTOP
 
         if env is not None:
             env_ide_system_raw = str(
                 getattr(env, "ide_system_override", "") or ""
             ).strip()
-            env_display_raw = str(
-                getattr(env, "ide_display_target_override", "") or ""
-            ).strip()
             if env_ide_system_raw:
                 ide_system = normalize_ide_system_name(env_ide_system_raw)
-            if env_display_raw:
-                display_target = normalize_ide_display_target(env_display_raw)
 
         coerced_override = self._coerce_ide_override(override)
         if coerced_override:
             override_ide = str(coerced_override.get("ide_system") or "").strip()
-            override_display = str(coerced_override.get("display_target") or "").strip()
             if override_ide:
                 ide_system = normalize_ide_system_name(override_ide)
-            if override_display:
-                display_target = normalize_ide_display_target(override_display)
 
         return ide_system, display_target
 
-    def _effective_ide_auto_mounts_enabled(
-        self,
-        *,
-        env: Environment | None,
-        settings: dict[str, object] | None = None,
+    def _ide_novnc_auto_open_enabled(
+        self, *, settings: dict[str, object] | None = None
     ) -> bool:
         settings_data = settings or self._settings_data
-        enabled = bool(settings_data.get("ide_auto_mounts_enabled", False))
+        return bool(settings_data.get("ide_novnc_auto_open_enabled", True))
 
-        if env is None:
-            return enabled
-
-        override = normalize_ide_auto_mounts_override(
-            str(getattr(env, "ide_auto_mounts_override", "inherit") or "inherit")
+    def _ide_novnc_auto_open_mode(
+        self, *, settings: dict[str, object] | None = None
+    ) -> str:
+        settings_data = settings or self._settings_data
+        return (
+            "always"
+            if str(settings_data.get("ide_novnc_auto_open_mode") or "").strip().lower()
+            == "always"
+            else "viewing_only"
         )
-        if override == IDE_AUTO_MOUNTS_ENABLED:
-            return True
-        if override == IDE_AUTO_MOUNTS_DISABLED:
-            return False
-        return enabled
 
     def _resolve_override_config_dir(
         self,

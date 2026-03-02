@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
-import sys
 import threading
 import time
 from datetime import datetime
@@ -29,7 +28,6 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
 from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
-from agents_runner.ide_systems import IDE_DISPLAY_HOST_DESKTOP
 from agents_runner.ide_systems import get_ide_system
 from agents_runner.log_format import format_log
 from agents_runner.prompt_sanitizer import sanitize_prompt
@@ -63,13 +61,6 @@ class MainWindowTasksInteractiveMixin:
         base_branch: str,
         ide_override: dict[str, str] | None,
     ) -> None:
-        if sys.platform == "darwin":
-            QMessageBox.warning(
-                self,
-                "Run IDE unavailable",
-                "Run IDE is not supported on macOS.",
-            )
-            return
         self._start_interactive_task_from_ui(
             prompt=str(prompt or ""),
             command="",
@@ -194,16 +185,6 @@ class MainWindowTasksInteractiveMixin:
                 override=ide_config_override,
                 settings=self._settings_data,
             )
-            if (
-                ide_display_target == IDE_DISPLAY_HOST_DESKTOP
-                and not sys.platform.startswith("linux")
-            ):
-                QMessageBox.warning(
-                    self,
-                    "Host desktop unsupported",
-                    "Run IDE host desktop mode is only supported on Linux.",
-                )
-                return
 
             ide_plugin = get_ide_system(ide_system)
             command = ide_plugin.build_launch_command(

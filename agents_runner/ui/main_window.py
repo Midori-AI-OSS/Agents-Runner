@@ -100,7 +100,8 @@ class MainWindow(
             "interactive_terminal_id": "",
             "ide_system_default": get_default_ide_system_name(),
             "ide_display_target_default": IDE_DISPLAY_CONTAINER_DESKTOP,
-            "ide_auto_mounts_enabled": False,
+            "ide_novnc_auto_open_enabled": True,
+            "ide_novnc_auto_open_mode": "viewing_only",
             "interactive_command": "--sandbox danger-full-access",
             "interactive_command_claude": "--add-dir /home/midori-ai/workspace",
             "interactive_command_copilot": "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace",
@@ -144,6 +145,11 @@ class MainWindow(
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}
+        self._ide_novnc_auto_open_timers: dict[str, QTimer] = {}
+        self._ide_novnc_auto_open_urls: dict[str, str] = {}
+        self._ide_novnc_auto_open_ready_s: dict[str, float] = {}
+        self._ide_novnc_auto_open_deferred: set[str] = set()
+        self._ide_novnc_auto_opened_tasks: set[str] = set()
         self._repo_branches_request_id: int = 0
         self._repo_branches_request_meta: dict[int, dict[str, object]] = {}
         self._repo_branches_cache: dict[str, list[str]] = {}
@@ -329,6 +335,13 @@ class MainWindow(
         # Clean up external viewer process
         if hasattr(self, "_details"):
             self._details.cleanup()
+        for timer in list(getattr(self, "_ide_novnc_auto_open_timers", {}).values()):
+            try:
+                timer.stop()
+                timer.deleteLater()
+            except Exception:
+                pass
+        self._ide_novnc_auto_open_timers.clear()
         super().closeEvent(event)
 
     def _sync_radio_controller_from_settings(

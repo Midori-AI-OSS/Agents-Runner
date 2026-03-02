@@ -11,16 +11,16 @@ PLUGIN = IdeSystemSpec(
     launch_args=("--no-sandbox", "--wait"),
     auto_mount_specs=(
         IdeAutoMountSpec(
-            host_path="~/.config/Code - OSS",
+            host_path="~/.midoriai/agents-runner/ide/code-config/.config/Code - OSS",
             container_path="/home/midori-ai/.config/Code - OSS",
             mode="rw",
         ),
         IdeAutoMountSpec(
-            host_path="~/.vscode-oss",
+            host_path="~/.midoriai/agents-runner/ide/code-config/.vscode-oss",
             container_path="/home/midori-ai/.vscode-oss",
             mode="rw",
         ),
     ),
-    auto_mount_host_keyring=True,
-    auto_mount_session_dbus=True,
+    auto_mount_host_keyring=False,
+    auto_mount_session_dbus=False,
 )

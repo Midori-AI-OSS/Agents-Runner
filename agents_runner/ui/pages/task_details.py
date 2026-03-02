@@ -369,9 +369,15 @@ class TaskDetailsPage(QWidget):
             return
 
         url = str(self._last_task.novnc_url or "").strip()
+        task_id = str(self._last_task.task_id or self._current_task_id or "")
+        self.launch_desktop_viewer_for_task(task_id=task_id, url=url)
+
+    def launch_desktop_viewer_for_task(self, *, task_id: str, url: str) -> bool:
+        """Launch viewer for a specific task noVNC URL."""
+        url = str(url or "").strip()
         if not url:
             logger.warning("Cannot launch desktop viewer: no noVNC URL available")
-            return
+            return False
 
         try:
             from PySide6 import QtWebEngineWidgets as _  # noqa: F401
@@ -380,7 +386,7 @@ class TaskDetailsPage(QWidget):
                 "QtWebEngine not available; opening noVNC URL in system browser instead"
             )
             QDesktopServices.openUrl(QUrl(url))
-            return
+            return True
 
         # If viewer is already running for this URL, don't launch another
         if (
@@ -389,7 +395,7 @@ class TaskDetailsPage(QWidget):
             and self._desktop_viewer_url == url
         ):
             logger.info("Desktop viewer already running")
-            return
+            return True
 
         # Clean up old process if it exists
         if self._desktop_viewer_process is not None:
@@ -398,7 +404,6 @@ class TaskDetailsPage(QWidget):
             self._desktop_viewer_process = None
 
         # Launch new viewer process
-        task_id = str(self._current_task_id or "")
         title = f"Task {task_id}" if task_id else "Desktop"
 
         self._desktop_viewer_process = QProcess(self)
@@ -453,8 +458,10 @@ class TaskDetailsPage(QWidget):
             logger.error("Failed to start desktop viewer process")
             self._desktop_viewer_process = None
             self._desktop_viewer_url = ""
+            return False
         else:
             logger.info(f"Desktop viewer launched: {title}")
+            return True
 
     def _on_viewer_output(self) -> None:
         """Capture desktop viewer output for crash diagnostics."""

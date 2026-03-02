@@ -148,6 +148,7 @@ class MainWindowPersistenceMixin:
         if isinstance(settings, dict):
             self._settings_data.update(settings)
         self._settings_data.pop("stt_mode", None)
+        self._settings_data.pop("ide_auto_mounts_enabled", None)
         self._settings_data["use"] = normalize_agent(
             str(self._settings_data.get("use") or "codex")
         )
@@ -186,7 +187,8 @@ class MainWindowPersistenceMixin:
                 str(self._settings_data.get("ide_display_target") or "")
             ),
         )
-        self._settings_data.setdefault("ide_auto_mounts_enabled", False)
+        self._settings_data.setdefault("ide_novnc_auto_open_enabled", True)
+        self._settings_data.setdefault("ide_novnc_auto_open_mode", "viewing_only")
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("auto_navigate_on_run_agent_start", False)
         self._settings_data.setdefault("auto_navigate_on_run_interactive_start", False)
@@ -253,6 +255,17 @@ class MainWindowPersistenceMixin:
                     or ""
                 )
             )
+        )
+        self._settings_data["ide_novnc_auto_open_enabled"] = bool(
+            self._settings_data.get("ide_novnc_auto_open_enabled", True)
+        )
+        self._settings_data["ide_novnc_auto_open_mode"] = (
+            "always"
+            if str(self._settings_data.get("ide_novnc_auto_open_mode") or "")
+            .strip()
+            .lower()
+            == "always"
+            else "viewing_only"
         )
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
@@ -383,6 +396,7 @@ class MainWindowPersistenceMixin:
             stain = env.color if env else None
             spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+            self._maybe_schedule_ide_novnc_auto_open(task)
 
         # Run startup reconciliation once
         # Guard prevents accidental re-runs if _load_state() is called multiple times
