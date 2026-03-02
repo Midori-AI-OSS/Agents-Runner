@@ -85,6 +85,8 @@ def ensure_pr_metadata_file(path: str, *, task_id: str) -> None:
         "title": "",
         "body": "",
     }
+    # Startup/prep calls intentionally reset title/body to defaults for a new run.
+    # Manual metadata edits must happen after this write and before finalization.
     with open(path, "wb") as f:
         tomli_w.dump(payload, f)
 
