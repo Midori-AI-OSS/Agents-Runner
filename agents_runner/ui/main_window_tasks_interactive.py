@@ -434,7 +434,9 @@ class MainWindowTasksInteractiveMixin:
             apply_full_prompting=apply_full_prompting,
             desktop_enabled=desktop_enabled,
             settings_preflight_script=settings_preflight_script,
+            environment_preflight_script=environment_preflight_script,
             extra_preflight_script=extra_preflight_script,
+            launch_mode="ide" if run_ide else "interactive_agent",
             container_caching_enabled=bool(
                 env and getattr(env, "container_caching_enabled", False)
             ),
@@ -728,9 +730,7 @@ class MainWindowTasksInteractiveMixin:
                 container_agent_dir=context.get("container_agent_dir") or "",
                 container_workdir=context.get("container_workdir") or "",
                 settings_preflight_script=context.get("settings_preflight_script"),
-                environment_preflight_script=context.get(
-                    "environment_preflight_script"
-                ),
+                setup_agents_script=str(payload.get("setup_agents_script") or ""),
                 ide_preflight_script=context.get("ide_preflight_script"),
                 extra_preflight_script=resolved_extra_preflight_script,
                 ide_display_target=str(context.get("ide_display_target") or ""),

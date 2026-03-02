@@ -542,6 +542,10 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
                 payload.get("container_settings_preflight_path")
                 or "/tmp/agents-runner-preflight-settings-{task_id}.sh"
             ),
+            container_setup_agents_preflight_path=str(
+                payload.get("container_setup_agents_preflight_path")
+                or "/tmp/agents-runner-preflight-setup-agents-{task_id}.sh"
+            ),
             container_environment_preflight_path=str(
                 payload.get("container_environment_preflight_path")
                 or "/tmp/agents-runner-preflight-environment-{task_id}.sh"

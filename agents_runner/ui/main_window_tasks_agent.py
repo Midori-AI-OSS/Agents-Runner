@@ -1210,8 +1210,7 @@ class MainWindowTasksAgentMixin:
             config=config,
             prompt=prompt,
             agent_selection=agent_selection,
-            use_supervisor=str(getattr(task, "launch_mode", "") or "").strip().lower()
-            != "ide",
+            use_supervisor=True,
             watch_states=self._watch_states,
         )
         thread = QThread(self)

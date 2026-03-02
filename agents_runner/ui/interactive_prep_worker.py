@@ -30,6 +30,7 @@ from agents_runner.pr_metadata import github_context_prompt_instructions
 from agents_runner.pr_metadata import pr_metadata_container_path
 from agents_runner.pr_metadata import pr_metadata_host_path
 from agents_runner.pr_metadata import pr_metadata_prompt_instructions
+from agents_runner.setup_agents import prepare_setup_agents_phase
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.main_window_tasks_interactive_command import (
     build_agent_command_parts,
@@ -63,7 +64,9 @@ class InteractivePrepWorker(QObject):
         apply_full_prompting: bool,
         desktop_enabled: bool,
         settings_preflight_script: str | None,
+        environment_preflight_script: str | None,
         extra_preflight_script: str,
+        launch_mode: str,
         container_caching_enabled: bool,
         cache_system_preflight_enabled: bool,
         cache_settings_preflight_enabled: bool,
@@ -89,7 +92,9 @@ class InteractivePrepWorker(QObject):
         self._apply_full_prompting = bool(apply_full_prompting)
         self._desktop_enabled = bool(desktop_enabled)
         self._settings_preflight_script = str(settings_preflight_script or "")
+        self._environment_preflight_script = str(environment_preflight_script or "")
         self._extra_preflight_script = str(extra_preflight_script or "")
+        self._launch_mode = str(launch_mode or "interactive_agent").strip().lower()
         self._container_caching_enabled = bool(container_caching_enabled)
         self._cache_system_preflight_enabled = bool(cache_system_preflight_enabled)
         self._cache_settings_preflight_enabled = bool(cache_settings_preflight_enabled)
@@ -287,6 +292,7 @@ class InteractivePrepWorker(QObject):
             pr_container_path = ""
             pr_metadata_mount = ""
             prompt_for_agent = self._prompt_for_agent
+            setup_agents_script = ""
 
             if self._workspace_type == WORKSPACE_CLONED and self._gh_repo:
                 self._emit_stage("starting", "Preparing task workspace")
@@ -390,6 +396,21 @@ class InteractivePrepWorker(QObject):
                         f"phase=pr_metadata_prepare done elapsed_ms={metadata_elapsed_ms:.0f}",
                     )
 
+            setup_agents_result = prepare_setup_agents_phase(
+                host_workdir=self._host_workdir,
+                environment_id=self._env_id,
+                gh_repo=self._gh_repo or None,
+                legacy_environment_preflight_script=self._environment_preflight_script,
+                launch_mode=self._launch_mode,
+                on_log=lambda line: self.log.emit(self._task_id, str(line or "")),
+            )
+            setup_agents_script = str(setup_agents_result.setup_script or "")
+            if setup_agents_result.prompt_instruction:
+                prompt_for_agent = append_prompt_sections(
+                    prompt_for_agent,
+                    [sanitize_prompt(setup_agents_result.prompt_instruction)],
+                )
+
             if (
                 self._workspace_type != WORKSPACE_CLONED
                 and self._gh_context_enabled
@@ -483,6 +504,7 @@ class InteractivePrepWorker(QObject):
                     "resolved_extra_preflight_script": cache_resolution.get(
                         "resolved_extra_preflight_script", ""
                     ),
+                    "setup_agents_script": setup_agents_script,
                 },
             )
         except Exception as exc:

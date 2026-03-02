@@ -135,8 +135,8 @@ class ContainerExecutor:
             desktop_state: dict[str, Any] = {}
 
             # Build preflight clause and mounts
-            preflight_clause, preflight_mounts = self._build_preflight_clause(
-                desktop_state
+            preflight_clause, preflight_mounts, desktop_start_clause = (
+                self._build_preflight_clause(desktop_state)
             )
 
             # Build environment variables
@@ -157,6 +157,7 @@ class ContainerExecutor:
                 env_args=env_args,
                 preflight_clause=preflight_clause,
                 verify_clause=verify_clause,
+                desktop_start_clause=desktop_start_clause,
                 command_clause=command_clause,
             )
 
@@ -268,10 +269,15 @@ class ContainerExecutor:
 
     def _build_preflight_clause(
         self, desktop_state: dict[str, Any]
-    ) -> tuple[str, list[str]]:
-        """Build preflight clause and mounts. Returns (clause, mounts)."""
+    ) -> tuple[str, list[str], str]:
+        """Build phase clauses and mounts.
+
+        Returns:
+            Tuple of (preflight_clause, preflight_mounts, desktop_start_clause)
+        """
         preflight_clause = ""
         preflight_mounts: list[str] = []
+        desktop_start_clause = ""
 
         # System preflight
         if (
@@ -279,6 +285,18 @@ class ContainerExecutor:
             and not self._runtime_env.system_preflight_cached
         ):
             clause, mounts = self._build_system_preflight()
+            preflight_clause += clause
+            preflight_mounts.extend(mounts)
+
+        # Settings preflight
+        if (
+            self._runtime_env.settings_preflight_tmp_path is not None
+            and not self._runtime_env.settings_preflight_cached
+        ):
+            clause, mounts = self._build_settings_preflight(
+                self._runtime_env.settings_preflight_tmp_path,
+                self._runtime_env.settings_container_path,
+            )
             preflight_clause += clause
             preflight_mounts.extend(mounts)
 
@@ -306,9 +324,12 @@ class ContainerExecutor:
                 )
             )
 
-        # Desktop preflight
+        # Desktop install preflight
         if self._runtime_env.desktop_enabled:
-            preflight_clause += self._build_desktop_preflight_clause()
+            preflight_clause += self._build_desktop_install_preflight_clause()
+            desktop_start_clause = self._build_desktop_start_clause(
+                self._runtime_env.desktop_display
+            )
             desktop_state.update(
                 {
                     "DesktopEnabled": True,
@@ -316,31 +337,16 @@ class ContainerExecutor:
                 }
             )
 
-        # Settings preflight
-        if (
-            self._runtime_env.settings_preflight_tmp_path is not None
-            and not self._runtime_env.settings_preflight_cached
-        ):
-            clause, mounts = self._build_settings_preflight(
-                self._runtime_env.settings_preflight_tmp_path,
-                self._runtime_env.settings_container_path,
+        # setup-agents preflight (runs after install phases)
+        if self._runtime_env.setup_agents_preflight_tmp_path is not None:
+            clause, mounts = self._build_setup_agents_preflight(
+                self._runtime_env.setup_agents_preflight_tmp_path,
+                self._runtime_env.setup_agents_container_path,
             )
             preflight_clause += clause
             preflight_mounts.extend(mounts)
 
-        # Environment preflight
-        if (
-            self._runtime_env.environment_preflight_tmp_path is not None
-            and not self._runtime_env.environment_preflight_cached
-        ):
-            clause, mounts = self._build_environment_preflight(
-                self._runtime_env.environment_preflight_tmp_path,
-                self._runtime_env.environment_container_path,
-            )
-            preflight_clause += clause
-            preflight_mounts.extend(mounts)
-
-        return preflight_clause, preflight_mounts
+        return preflight_clause, preflight_mounts, desktop_start_clause
 
     def _build_system_preflight(self) -> tuple[str, list[str]]:
         """Build system preflight clause and mounts."""
@@ -366,8 +372,8 @@ class ContainerExecutor:
             ["-v", f"{host_preflights_dir}:{container_dir}:ro"],
         )
 
-    def _build_desktop_preflight_clause(self) -> str:
-        """Build desktop preflight clause based on cached vs runtime setup."""
+    def _build_desktop_install_preflight_clause(self) -> str:
+        """Build desktop install preflight clause based on cached vs runtime setup."""
         using_cached_image = bool(self._runtime_env.desktop_cached)
         if using_cached_image:
             self._on_log(
@@ -378,13 +384,29 @@ class ContainerExecutor:
                     "using pre-installed desktop from cached image",
                 )
             )
-            return self._build_desktop_cached_preflight(
+            return self._build_desktop_cached_install_preflight(
                 self._runtime_env.desktop_display
             )
-        return self._build_desktop_runtime_preflight(self._runtime_env.desktop_display)
+        return self._build_desktop_runtime_install_preflight(
+            self._runtime_env.desktop_display
+        )
 
-    def _build_desktop_cached_preflight(self, desktop_display: str) -> str:
-        """Build preflight clause for cached desktop image."""
+    def _build_desktop_cached_install_preflight(self, _desktop_display: str) -> str:
+        """Build install preflight clause for cached desktop image."""
+        return f"{shell_log_statement('desktop', 'setup', 'INFO', 'desktop install: cached')}; "
+
+    def _build_desktop_runtime_install_preflight(self, _desktop_display: str) -> str:
+        """Build install preflight clause for runtime desktop installation."""
+        return (
+            f"{shell_log_statement('desktop', 'setup', 'INFO', 'desktop install: running')}; "
+            "if command -v yay >/dev/null 2>&1; then "
+            "yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify wmctrl xdotool xorg-xprop xorg-xauth ttf-dejavu xorg-fonts-misc || true; "
+            "fi; "
+            f"{shell_log_statement('desktop', 'setup', 'INFO', 'desktop install: done')}; "
+        )
+
+    def _build_desktop_start_clause(self, desktop_display: str) -> str:
+        """Build desktop runtime startup clause."""
         common_setup = (
             f"{shell_log_statement('desktop', 'vnc', 'INFO', 'starting headless desktop (noVNC)')}; "
             f"export DISPLAY={desktop_display}; "
@@ -416,40 +438,6 @@ class ContainerExecutor:
             f"{shell_log_statement('desktop', 'vnc', 'INFO', 'screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png')}; "
         )
 
-    def _build_desktop_runtime_preflight(self, desktop_display: str) -> str:
-        """Build preflight clause for runtime desktop installation."""
-        common_setup = (
-            f"{shell_log_statement('desktop', 'vnc', 'INFO', 'starting headless desktop (noVNC)')}; "
-            f"export DISPLAY={desktop_display}; "
-            'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
-            'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
-            'mkdir -p "${XDG_RUNTIME_DIR}"; '
-            'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
-            'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
-        )
-        install_packages = (
-            "if command -v yay >/dev/null 2>&1; then "
-            "yay -S --noconfirm --needed tigervnc fluxbox xterm imagemagick xorg-xwininfo xcb-util-cursor novnc websockify wmctrl xdotool xorg-xprop xorg-xauth ttf-dejavu xorg-fonts-misc || true; fi; "
-        )
-        service_start = (
-            'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & sleep 0.25; '
-            '(fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true; '
-            '(xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true; '
-            'NOVNC_WEB=""; for candidate in "/usr/share/webapps/novnc" "/usr/share/novnc" "/usr/share/noVNC"; do '
-            'if [ -d "${candidate}" ]; then NOVNC_WEB="${candidate}"; break; fi; done; '
-            'if [ -z "${NOVNC_WEB}" ]; then '
-            f"{shell_log_statement('desktop', 'vnc', 'ERROR', 'noVNC web root not found')} >&2; "
-            'else websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & fi; '
-        )
-        return (
-            common_setup
-            + install_packages
-            + service_start
-            + f"{shell_log_statement('desktop', 'vnc', 'INFO', 'ready')}; "
-            f"{shell_log_statement('desktop', 'vnc', 'INFO', 'DISPLAY=${DISPLAY}')}; "
-            f"{shell_log_statement('desktop', 'vnc', 'INFO', 'screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png')}; "
-        )
-
     def _build_settings_preflight(
         self, tmp_path: str, container_path: str
     ) -> tuple[str, list[str]]:
@@ -470,23 +458,23 @@ class ContainerExecutor:
             ["-v", f"{tmp_path}:{container_path}:ro"],
         )
 
-    def _build_environment_preflight(
+    def _build_setup_agents_preflight(
         self, tmp_path: str, container_path: str
     ) -> tuple[str, list[str]]:
-        """Build environment preflight clause and mounts."""
+        """Build setup-agents preflight clause and mounts."""
         self._on_log(
             format_log(
                 "host",
                 "none",
                 "INFO",
-                f"environment preflight enabled; mounting -> {container_path} (ro)",
+                f"setup-agents phase enabled; mounting -> {container_path} (ro)",
             )
         )
         return (
-            f"PREFLIGHT_ENV={shlex.quote(container_path)}; "
-            f"{shell_log_statement('env', 'setup', 'INFO', 'environment: running')}; "
-            '/bin/bash "${PREFLIGHT_ENV}"; '
-            f"{shell_log_statement('env', 'setup', 'INFO', 'environment: done')}; ",
+            f"PREFLIGHT_SETUP_AGENTS={shlex.quote(container_path)}; "
+            f"{shell_log_statement('env', 'setup', 'INFO', 'setup-agents: running')}; "
+            '/bin/bash "${PREFLIGHT_SETUP_AGENTS}"; '
+            f"{shell_log_statement('env', 'setup', 'INFO', 'setup-agents: done')}; ",
             ["-v", f"{tmp_path}:{container_path}:ro"],
         )
 
@@ -801,6 +789,7 @@ class ContainerExecutor:
         env_args: list[str],
         preflight_clause: str,
         verify_clause: str,
+        desktop_start_clause: str,
         command_clause: str,
     ) -> list[str]:
         """Build complete Docker run command arguments."""
@@ -824,6 +813,7 @@ class ContainerExecutor:
             f"{git_identity_clause()}"
             f"{preflight_clause}"
             f"{verify_clause}"
+            f"{desktop_start_clause}"
             f"{command_clause}",
         ]
 
