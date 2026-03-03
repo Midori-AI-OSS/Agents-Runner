@@ -104,7 +104,7 @@ class EnvironmentsFormMixin:
             _EnvironmentPaneSpec(
                 key="preflight",
                 title="Preflight",
-                subtitle="Read-only setup-agents script preview and source details.",
+                subtitle="Read-only setup-agents.sh preview.",
                 section="Automation",
             ),
             _EnvironmentPaneSpec(
@@ -248,21 +248,12 @@ class EnvironmentsFormMixin:
         self._workspace_target.setVisible(False)
         self._gh_management_browse.setVisible(False)
 
-        self._setup_agents_status = QLabel("")
-        self._setup_agents_status.setWordWrap(True)
-        self._setup_agents_repo_path = QLineEdit()
-        self._setup_agents_repo_path.setReadOnly(True)
-        self._setup_agents_effective_path = QLineEdit()
-        self._setup_agents_effective_path.setReadOnly(True)
-        self._setup_agents_mirror_path = QLineEdit()
-        self._setup_agents_mirror_path.setReadOnly(True)
-        self._setup_agents_guidance = QLabel("")
-        self._setup_agents_guidance.setWordWrap(True)
         self._setup_agents_preview = QPlainTextEdit()
         self._setup_agents_preview.setReadOnly(True)
         self._setup_agents_preview.setPlaceholderText(
-            "# setup-agents preview is unavailable for this environment."
+            "# setup-agents.sh is not available for this environment."
         )
+        self._setup_agents_preview.setToolTip("Create in repo: .agents/setup-agents.sh")
         self._setup_agents_preview.setTabChangesFocus(True)
         self._setup_agents_preview_highlighter = ArtifactSyntaxHighlighter(
             self._setup_agents_preview.document()
@@ -396,18 +387,6 @@ class EnvironmentsFormMixin:
         self._register_page("ports", ports_page)
 
         preflight_page, preflight_body = self._create_page(specs_by_key["preflight"])
-        preflight_body.addWidget(
-            QLabel("setup-agents status (read-only, edit in repository)")
-        )
-        preflight_body.addWidget(self._setup_agents_status)
-        preflight_body.addWidget(QLabel("Repository edit path"))
-        preflight_body.addWidget(self._setup_agents_repo_path)
-        preflight_body.addWidget(QLabel("Effective script source path"))
-        preflight_body.addWidget(self._setup_agents_effective_path)
-        preflight_body.addWidget(QLabel("Mirror path (managed metadata)"))
-        preflight_body.addWidget(self._setup_agents_mirror_path)
-        preflight_body.addWidget(self._setup_agents_guidance)
-        preflight_body.addWidget(QLabel("setup-agents script preview"))
         preflight_body.addWidget(self._setup_agents_preview, 1)
         self._register_page("preflight", preflight_page)
 

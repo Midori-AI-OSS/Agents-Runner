@@ -520,12 +520,10 @@ class EnvironmentsPage(
 
     def _refresh_setup_agents_preview(self, env: Environment | None) -> None:
         if env is None:
-            self._setup_agents_status.setText("No environment selected.")
-            self._setup_agents_repo_path.setText("")
-            self._setup_agents_effective_path.setText("")
-            self._setup_agents_mirror_path.setText("")
-            self._setup_agents_guidance.setText("")
             self._setup_agents_preview.setPlainText("")
+            self._setup_agents_preview.setToolTip(
+                "Create in repo: .agents/setup-agents.sh"
+            )
             self._setup_agents_preview_highlighter.set_language("bash")
             return
 
@@ -548,52 +546,32 @@ class EnvironmentsPage(
                 gh_repo=gh_repo,
                 data_dir=os.path.dirname(default_state_path()),
             )
-        except Exception as exc:
-            self._setup_agents_status.setText("Status: error")
-            self._setup_agents_repo_path.setText("")
-            self._setup_agents_effective_path.setText("")
-            self._setup_agents_mirror_path.setText("")
-            self._setup_agents_guidance.setText(
-                f"Could not resolve setup-agents preview: {exc}"
-            )
+        except Exception:
             self._setup_agents_preview.setPlainText("")
+            self._setup_agents_preview.setToolTip(
+                "Create in repo: .agents/setup-agents.sh"
+            )
             self._setup_agents_preview_highlighter.set_language("bash")
             return
 
-        source = str(preview.source or "none")
-        status = "Status: missing setup-agents script"
-        if source == "repo":
-            status = "Status: using repository setup-agents script"
-        elif source == "mirror":
-            status = "Status: using mirrored setup-agents script"
-            if preview.repo_script_path:
-                status = "Status: mirror currently wins (newer than repository)"
-        self._setup_agents_status.setText(status)
-
-        self._setup_agents_repo_path.setText(
-            self._path_label(
-                repo_root=preview.repo_root,
-                path=preview.preferred_repo_script_path,
-            )
+        repo_edit_path = self._path_label(
+            repo_root=preview.repo_root,
+            path=preview.preferred_repo_script_path,
         )
-        self._setup_agents_effective_path.setText(
-            self._path_label(
-                repo_root=preview.repo_root,
-                path=preview.effective_script_path,
-            )
-        )
-        self._setup_agents_mirror_path.setText(preview.mirror_script_path)
-        guidance = str(preview.guidance or "").strip()
-        if preview.error:
-            guidance = (
-                f"{guidance}\n\nNote: {preview.error}"
-                if guidance
-                else f"Note: {preview.error}"
-            )
-        self._setup_agents_guidance.setText(guidance)
+        if not repo_edit_path:
+            repo_edit_path = ".agents/setup-agents.sh"
+        if preview.repo_script_path:
+            tooltip = f"Edit in repo: {repo_edit_path}"
+        else:
+            tooltip = f"Create in repo: {repo_edit_path}"
+        self._setup_agents_preview.setToolTip(tooltip)
 
         preview_text = str(preview.setup_script or "")
         self._setup_agents_preview.setPlainText(preview_text)
-        self._setup_agents_preview_highlighter.set_language(
-            self._setup_agents_preview_language(preview_text)
-        )
+        if preview_text.strip():
+            self._setup_agents_preview_highlighter.set_language(
+                self._setup_agents_preview_language(preview_text)
+            )
+        else:
+            self._setup_agents_preview_highlighter.set_language("bash")
+        self._setup_agents_preview.document().setModified(False)
