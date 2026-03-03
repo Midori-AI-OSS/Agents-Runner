@@ -557,15 +557,11 @@ class SettingsFormMixin:
         preflight_page, preflight_body = self._create_page(
             specs_by_key["preflight_script"]
         )
-        preflight_header = QHBoxLayout()
-        preflight_header.setSpacing(BUTTON_ROW_SPACING)
-        preflight_header.addStretch(1)
-        preflight_header.addWidget(self._recommended_preflights)
-        preflight_body.addLayout(preflight_header)
         preflight_body.addWidget(self._preflight_script, 1)
         preflight_actions = QHBoxLayout()
         preflight_actions.setSpacing(BUTTON_ROW_SPACING)
         preflight_actions.addWidget(self._preflight_enabled)
+        preflight_actions.addWidget(self._recommended_preflights)
         preflight_actions.addWidget(self._test_preflights)
         preflight_actions.addStretch(1)
         autosave_hint = QLabel("Changes save automatically.")
