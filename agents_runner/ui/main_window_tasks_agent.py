@@ -491,6 +491,12 @@ class MainWindowTasksAgentMixin:
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
         selected_cli_flags = ""
+        uses_environment_agent_selection = bool(
+            not override
+            and env
+            and env.agent_selection
+            and getattr(env.agent_selection, "agents", None)
+        )
         if override:
             agent_cli = override.get("agent_cli", "")
             auto_config_dir = self._resolve_override_config_dir(
@@ -507,7 +513,7 @@ class MainWindowTasksAgentMixin:
                 self._select_agent_instance_for_env(
                     env=env,
                     settings=self._settings_data,
-                    advance_round_robin=True,
+                    advance_round_robin=False,
                 )
             )
         else:
@@ -720,6 +726,23 @@ class MainWindowTasksAgentMixin:
                         cli_flags=str(getattr(inst, "cli_flags", "") or "").strip(),
                     )
                 )
+            if (
+                selection_mode.strip().lower() in {"round-robin", "least-used"}
+                and agent_instance_id
+            ):
+                selected_lower = agent_instance_id.lower()
+                selected_index: int | None = None
+                for idx, inst in enumerate(resolved_agents):
+                    inst_id = str(getattr(inst, "agent_id", "") or "").strip()
+                    if (
+                        inst_id == agent_instance_id
+                        or inst_id.lower() == selected_lower
+                    ):
+                        selected_index = idx
+                        break
+                if selected_index is not None and selected_index > 0:
+                    selected_inst = resolved_agents.pop(selected_index)
+                    resolved_agents.insert(0, selected_inst)
             resolved_agent_selection = AgentSelection(
                 agents=resolved_agents,
                 selection_mode=selection_mode,
@@ -753,6 +776,11 @@ class MainWindowTasksAgentMixin:
             except ValueError as exc:
                 QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
                 return
+        if uses_environment_agent_selection:
+            self._commit_round_robin_selection(
+                env=env,
+                selected_agent_id=agent_instance_id,
+            )
 
         settings_preflight_script: str | None = None
         if (
@@ -1148,6 +1176,7 @@ class MainWindowTasksAgentMixin:
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
 
+        self._refresh_new_task_agent_info()
         self._maybe_auto_navigate_on_task_start(interactive=False)
         self._new_task.reset_for_new_run()
         return task_id

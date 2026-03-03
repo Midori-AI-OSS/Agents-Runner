@@ -19,6 +19,15 @@ from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
+from agents_runner.environments import managed_repo_checkout_path
+from agents_runner.environments import save_environment
+from agents_runner.environments.preflight_snapshot import (
+    build_preflight_identity_token,
+    decrypt_setup_agents_snapshot,
+    encrypt_setup_agents_snapshot,
+    normalize_setup_agents_snapshot_hash,
+    setup_agents_snapshot_hash,
+)
 from agents_runner.gh_management import is_gh_available
 from agents_runner.persistence import default_state_path
 from agents_runner.setup_agents import resolve_setup_agents_preview
@@ -518,6 +527,92 @@ class EnvironmentsPage(
             return os.path.relpath(candidate, root)
         return candidate
 
+    @staticmethod
+    def _setup_agents_preview_workdir(env: Environment) -> str:
+        workspace_type = str(getattr(env, "workspace_type", "") or "")
+        if workspace_type == WORKSPACE_MOUNTED:
+            candidate = str(getattr(env, "workspace_target", "") or "").strip()
+        elif workspace_type == WORKSPACE_CLONED:
+            candidate = managed_repo_checkout_path(
+                env.env_id, data_dir=os.path.dirname(default_state_path())
+            )
+        else:
+            candidate = str(getattr(env, "host_workdir", "") or "").strip()
+        candidate = os.path.expanduser(candidate) if candidate else ""
+        return candidate or os.getcwd()
+
+    @staticmethod
+    def _load_direct_setup_agents_script(path: str | None) -> str | None:
+        script_path = str(path or "").strip()
+        if not script_path:
+            return None
+        try:
+            with open(script_path, "r", encoding="utf-8") as handle:
+                return handle.read()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _ensure_preflight_identity_token(env: Environment) -> tuple[str, bool]:
+        token = str(getattr(env, "preflight_identity_token", "") or "").strip()
+        if token:
+            return token, False
+        token = build_preflight_identity_token(
+            env_id=str(getattr(env, "env_id", "") or ""),
+            workspace_type=str(getattr(env, "workspace_type", "") or ""),
+            workspace_target=str(getattr(env, "workspace_target", "") or ""),
+            host_workdir=str(getattr(env, "host_workdir", "") or ""),
+        )
+        env.preflight_identity_token = token
+        return token, True
+
+    @staticmethod
+    def _persist_environment(env: Environment) -> None:
+        try:
+            save_environment(env)
+        except Exception:
+            pass
+
+    def _snapshot_setup_agents_script(self, env: Environment, script: str) -> None:
+        plaintext_hash = setup_agents_snapshot_hash(script)
+        stored_hash = normalize_setup_agents_snapshot_hash(
+            getattr(env, "setup_agents_preflight_snapshot_sha256", "")
+        )
+        stored_ciphertext = str(
+            getattr(env, "setup_agents_preflight_snapshot_ciphertext", "") or ""
+        ).strip()
+        identity_token, token_created = self._ensure_preflight_identity_token(env)
+
+        if plaintext_hash == stored_hash and stored_ciphertext:
+            if token_created:
+                self._persist_environment(env)
+            return
+
+        ciphertext, normalized_hash = encrypt_setup_agents_snapshot(
+            env_id=env.env_id,
+            identity_token=identity_token,
+            plaintext=script,
+        )
+        env.setup_agents_preflight_snapshot_ciphertext = ciphertext
+        env.setup_agents_preflight_snapshot_sha256 = normalized_hash
+        self._persist_environment(env)
+
+    def _load_encrypted_setup_agents_snapshot(self, env: Environment) -> str | None:
+        identity_token, token_created = self._ensure_preflight_identity_token(env)
+        snapshot = decrypt_setup_agents_snapshot(
+            env_id=env.env_id,
+            identity_token=identity_token,
+            ciphertext=str(
+                getattr(env, "setup_agents_preflight_snapshot_ciphertext", "") or ""
+            ),
+            expected_hash=str(
+                getattr(env, "setup_agents_preflight_snapshot_sha256", "") or ""
+            ),
+        )
+        if token_created:
+            self._persist_environment(env)
+        return snapshot
+
     def _refresh_setup_agents_preview(self, env: Environment | None) -> None:
         if env is None:
             self._setup_agents_preview.setPlainText("")
@@ -528,17 +623,14 @@ class EnvironmentsPage(
             return
 
         workspace_type = str(getattr(env, "workspace_type", "") or "")
-        if workspace_type == WORKSPACE_MOUNTED:
-            host_workdir = str(getattr(env, "workspace_target", "") or "").strip()
-        else:
-            host_workdir = str(self._settings_data.get("host_workdir") or "").strip()
-        host_workdir = os.path.expanduser(host_workdir) if host_workdir else os.getcwd()
+        host_workdir = self._setup_agents_preview_workdir(env)
 
         gh_repo: str | None = None
         if workspace_type == WORKSPACE_CLONED:
             candidate = str(getattr(env, "workspace_target", "") or "").strip()
             gh_repo = candidate or None
 
+        preview = None
         try:
             preview = resolve_setup_agents_preview(
                 host_workdir=host_workdir,
@@ -547,26 +639,32 @@ class EnvironmentsPage(
                 data_dir=os.path.dirname(default_state_path()),
             )
         except Exception:
-            self._setup_agents_preview.setPlainText("")
-            self._setup_agents_preview.setToolTip(
-                "Create in repo: .agents/setup-agents.sh"
-            )
-            self._setup_agents_preview_highlighter.set_language("bash")
-            return
+            preview = None
 
-        repo_edit_path = self._path_label(
-            repo_root=preview.repo_root,
-            path=preview.preferred_repo_script_path,
-        )
+        repo_edit_path = ".agents/setup-agents.sh"
+        if preview is not None:
+            repo_edit_path = self._path_label(
+                repo_root=preview.repo_root,
+                path=preview.preferred_repo_script_path,
+            )
         if not repo_edit_path:
             repo_edit_path = ".agents/setup-agents.sh"
-        if preview.repo_script_path:
+
+        direct_script = self._load_direct_setup_agents_script(
+            preview.repo_script_path if preview is not None else None
+        )
+        if direct_script is not None:
+            preview_text = direct_script
             tooltip = f"Edit in repo: {repo_edit_path}"
+            self._snapshot_setup_agents_script(env, direct_script)
         else:
-            tooltip = f"Create in repo: {repo_edit_path}"
+            preview_text = str(self._load_encrypted_setup_agents_snapshot(env) or "")
+            if preview_text:
+                tooltip = f"Create in repo: {repo_edit_path} (showing saved snapshot)"
+            else:
+                tooltip = f"Create in repo: {repo_edit_path}"
         self._setup_agents_preview.setToolTip(tooltip)
 
-        preview_text = str(preview.setup_script or "")
         self._setup_agents_preview.setPlainText(preview_text)
         if preview_text.strip():
             self._setup_agents_preview_highlighter.set_language(

@@ -75,6 +75,7 @@ class MainWindowTasksInteractiveFinalizeMixin:
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
+        self._refresh_new_task_agent_info()
         QApplication.beep()
         self._on_task_log(
             task_id,

@@ -15,12 +15,17 @@ from PySide6.QtCore import Signal
 from agents_runner.environments import Environment
 from agents_runner.environments import GitHubRepoContext
 from agents_runner.environments import resolve_environment_github_repo
-from agents_runner.gh.work_items import AUTO_REVIEW_MARKER_TOKEN
 from agents_runner.gh.work_items import GitHubComment
 from agents_runner.gh.work_items import GitHubWorkItem
 from agents_runner.gh.work_items import add_issue_comment_reaction
 from agents_runner.gh.work_items import add_issue_reaction
 from agents_runner.gh.work_items import add_pull_request_review_comment_reaction
+from agents_runner.gh.work_items import add_pull_request_review_reaction
+from agents_runner.gh.work_items import get_authenticated_github_login
+from agents_runner.gh.work_items import has_actor_issue_comment_reaction
+from agents_runner.gh.work_items import has_actor_issue_reaction
+from agents_runner.gh.work_items import has_actor_pull_request_review_comment_reaction
+from agents_runner.gh.work_items import has_actor_pull_request_review_reaction
 from agents_runner.gh.work_items import list_issue_comments
 from agents_runner.gh.work_items import list_open_issues
 from agents_runner.gh.work_items import list_open_pull_requests
@@ -56,6 +61,7 @@ class GitHubWorkCoordinator(QObject):
     _cycle_finished = Signal()
 
     _CACHE_TTL_S = 45.0
+    _AUTO_REVIEW_THREAD_SCAN_LIMIT = 300
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -563,7 +569,16 @@ class GitHubWorkCoordinator(QObject):
         )
         if not trusted_users:
             return []
-
+        bot_login = get_authenticated_github_login()
+        if not bot_login:
+            logger.rprint(
+                (
+                    "[github-auto-review] skipped auto-start scan: failed to resolve "
+                    "authenticated GitHub login for eyes gating."
+                ),
+                mode="warn",
+            )
+            return []
         auto_reactions_enabled = bool(
             self._settings.get("agentsnova_auto_reactions_enabled", True)
         )
@@ -588,19 +603,15 @@ class GitHubWorkCoordinator(QObject):
                 repo_owner,
                 repo_name,
                 issue_number=item.number,
-                limit=100,
+                limit=self._AUTO_REVIEW_THREAD_SCAN_LIMIT,
+                newest_first=True,
             )
-            (
-                marker_created_at_s,
-                marker_comment_id,
-            ) = self._latest_marker_checkpoint(comments)
             candidates: list[dict[str, object]] = []
 
             def _add_comment_candidate(
                 comment: GitHubComment,
                 *,
                 source: str,
-                allow_id_compare: bool,
             ) -> None:
                 if not self._is_trusted_comment_author(comment, trusted_users):
                     return
@@ -608,14 +619,6 @@ class GitHubWorkCoordinator(QObject):
                     return
                 mention_created_at = str(comment.created_at or "")
                 mention_created_at_s = self._parse_iso_timestamp_s(mention_created_at)
-                mention_comment_id = comment.comment_id if allow_id_compare else 0
-                if not self._is_mention_newer_than_marker(
-                    mention_created_at_s=mention_created_at_s,
-                    mention_comment_id=mention_comment_id,
-                    marker_created_at_s=marker_created_at_s,
-                    marker_comment_id=marker_comment_id,
-                ):
-                    return
                 mention_key = f"{source}:{comment.comment_id}"
                 candidates.append(
                     {
@@ -628,6 +631,7 @@ class GitHubWorkCoordinator(QObject):
                         "created_at_s": mention_created_at_s or 0.0,
                         "sort_id": comment.comment_id,
                         "comment": comment,
+                        "anchor_id": comment.comment_id,
                     }
                 )
 
@@ -635,7 +639,6 @@ class GitHubWorkCoordinator(QObject):
                 _add_comment_candidate(
                     comment,
                     source="issue_comment",
-                    allow_id_compare=True,
                 )
 
             if item.item_type == "pr":
@@ -643,20 +646,21 @@ class GitHubWorkCoordinator(QObject):
                     repo_owner,
                     repo_name,
                     pull_number=item.number,
-                    limit=100,
+                    limit=self._AUTO_REVIEW_THREAD_SCAN_LIMIT,
+                    newest_first=True,
                 )
                 for comment in review_comments:
                     _add_comment_candidate(
                         comment,
                         source="review_comment",
-                        allow_id_compare=False,
                     )
 
                 review_bodies = list_pull_request_reviews(
                     repo_owner,
                     repo_name,
                     pull_number=item.number,
-                    limit=100,
+                    limit=self._AUTO_REVIEW_THREAD_SCAN_LIMIT,
+                    newest_first=True,
                 )
                 for review in review_bodies:
                     author = str(review.author or "").strip().lower()
@@ -668,13 +672,6 @@ class GitHubWorkCoordinator(QObject):
                     mention_created_at_s = self._parse_iso_timestamp_s(
                         mention_created_at
                     )
-                    if not self._is_mention_newer_than_marker(
-                        mention_created_at_s=mention_created_at_s,
-                        mention_comment_id=0,
-                        marker_created_at_s=marker_created_at_s,
-                        marker_comment_id=marker_comment_id,
-                    ):
-                        continue
                     mention_key = f"review_body:{review.review_id}"
                     candidates.append(
                         {
@@ -686,6 +683,7 @@ class GitHubWorkCoordinator(QObject):
                             "mention_url": str(review.url or ""),
                             "created_at_s": mention_created_at_s or 0.0,
                             "sort_id": review.review_id,
+                            "anchor_id": review.review_id,
                         }
                     )
 
@@ -702,27 +700,22 @@ class GitHubWorkCoordinator(QObject):
                     mention_created_at_s = self._parse_iso_timestamp_s(
                         mention_created_at
                     )
-                    if self._is_mention_newer_than_marker(
-                        mention_created_at_s=mention_created_at_s,
-                        mention_comment_id=0,
-                        marker_created_at_s=marker_created_at_s,
-                        marker_comment_id=marker_comment_id,
-                    ):
-                        source = "pr_body" if item.item_type == "pr" else "issue_body"
-                        mention_key = f"{source}:{item_key}"
-                        mention_author = str(getattr(item, "author", "") or "")
-                        candidates.append(
-                            {
-                                "source": source,
-                                "mention_key": mention_key,
-                                "mention_text": str(mention_text or ""),
-                                "mention_author": mention_author,
-                                "mention_created_at": mention_created_at,
-                                "mention_url": str(item.url or ""),
-                                "created_at_s": mention_created_at_s or 0.0,
-                                "sort_id": item.number,
-                            }
-                        )
+                    source = "pr_body" if item.item_type == "pr" else "issue_body"
+                    mention_key = f"{source}:{item_key}"
+                    mention_author = str(getattr(item, "author", "") or "")
+                    candidates.append(
+                        {
+                            "source": source,
+                            "mention_key": mention_key,
+                            "mention_text": str(mention_text or ""),
+                            "mention_author": mention_author,
+                            "mention_created_at": mention_created_at,
+                            "mention_url": str(item.url or ""),
+                            "created_at_s": mention_created_at_s or 0.0,
+                            "sort_id": item.number,
+                            "anchor_id": item.number,
+                        }
+                    )
 
             if not candidates:
                 continue
@@ -744,46 +737,47 @@ class GitHubWorkCoordinator(QObject):
                     continue
 
                 source = str(candidate.get("source") or "").strip().lower()
-                comment = candidate.get("comment")
+                try:
+                    bot_has_eyes = self._anchor_has_bot_eyes(
+                        repo_owner=repo_owner,
+                        repo_name=repo_name,
+                        item_number=item.number,
+                        source=source,
+                        anchor_id=candidate.get("anchor_id"),
+                        bot_login=bot_login,
+                    )
+                except Exception as exc:
+                    logger.rprint(
+                        (
+                            "[github-auto-review] skipped auto-start: failed to read "
+                            f"eyes reaction on {repo_owner}/{repo_name} "
+                            f"{item.item_type} #{item.number} ({source}): {exc}"
+                        ),
+                        mode="warn",
+                    )
+                    continue
+                if bot_has_eyes:
+                    continue
+
                 if auto_reactions_enabled:
-                    if (
-                        source == "issue_comment"
-                        and isinstance(comment, GitHubComment)
-                        and self._can_apply_reaction(comment=comment)
-                    ):
-                        try:
-                            add_issue_comment_reaction(
-                                repo_owner,
-                                repo_name,
-                                comment_id=comment.comment_id,
-                                reaction="eyes",
-                            )
-                        except Exception:
-                            pass
-                    if (
-                        source == "review_comment"
-                        and isinstance(comment, GitHubComment)
-                        and self._can_apply_reaction(comment=comment)
-                    ):
-                        try:
-                            add_pull_request_review_comment_reaction(
-                                repo_owner,
-                                repo_name,
-                                comment_id=comment.comment_id,
-                                reaction="eyes",
-                            )
-                        except Exception:
-                            pass
-                    if source in {"pr_body", "issue_body"}:
-                        try:
-                            add_issue_reaction(
-                                repo_owner,
-                                repo_name,
-                                issue_number=item.number,
-                                reaction="eyes",
-                            )
-                        except Exception:
-                            pass
+                    try:
+                        self._add_anchor_eyes_reaction(
+                            repo_owner=repo_owner,
+                            repo_name=repo_name,
+                            item_number=item.number,
+                            source=source,
+                            anchor_id=candidate.get("anchor_id"),
+                        )
+                    except Exception as exc:
+                        logger.rprint(
+                            (
+                                "[github-auto-review] skipped auto-start: failed to add "
+                                f"eyes reaction on {repo_owner}/{repo_name} "
+                                f"{item.item_type} #{item.number} ({source}): {exc}"
+                            ),
+                            mode="warn",
+                        )
+                        continue
 
                 results.append(
                     {
@@ -812,79 +806,120 @@ class GitHubWorkCoordinator(QObject):
 
         return results
 
-    @classmethod
-    def _latest_marker_checkpoint(
-        cls, comments: list[GitHubComment]
-    ) -> tuple[float | None, int]:
-        marker_created_at_s: float | None = None
-        marker_comment_id = 0
-
-        for comment in comments:
-            body = str(comment.body or "")
-            if AUTO_REVIEW_MARKER_TOKEN not in body:
-                continue
-
-            comment_created_at_s = cls._parse_iso_timestamp_s(comment.created_at)
-            try:
-                comment_id = max(0, int(comment.comment_id))
-            except Exception:
-                comment_id = 0
-
-            if marker_created_at_s is None and comment_created_at_s is None:
-                if comment_id > marker_comment_id:
-                    marker_comment_id = comment_id
-                continue
-
-            if marker_created_at_s is None and comment_created_at_s is not None:
-                marker_created_at_s = comment_created_at_s
-                marker_comment_id = comment_id
-                continue
-
-            if marker_created_at_s is not None and comment_created_at_s is None:
-                continue
-
-            if comment_created_at_s is None:
-                continue
-
-            current_marker_created_at_s = marker_created_at_s
-            if current_marker_created_at_s is None:
-                continue
-
-            if comment_created_at_s > current_marker_created_at_s or (
-                comment_created_at_s == current_marker_created_at_s
-                and comment_id > marker_comment_id
-            ):
-                marker_created_at_s = comment_created_at_s
-                marker_comment_id = comment_id
-
-        return marker_created_at_s, marker_comment_id
-
     @staticmethod
-    def _is_mention_newer_than_marker(
+    def _safe_positive_int(value: object) -> int:
+        try:
+            parsed = int(value or 0)
+        except Exception:
+            return 0
+        return parsed if parsed > 0 else 0
+
+    def _anchor_has_bot_eyes(
+        self,
         *,
-        mention_created_at_s: float | None,
-        mention_comment_id: int,
-        marker_created_at_s: float | None,
-        marker_comment_id: int,
+        repo_owner: str,
+        repo_name: str,
+        item_number: int,
+        source: str,
+        anchor_id: object,
+        bot_login: str,
     ) -> bool:
-        if marker_created_at_s is None and marker_comment_id <= 0:
-            return True
+        if source == "issue_comment":
+            comment_id = self._safe_positive_int(anchor_id)
+            if comment_id <= 0:
+                raise ValueError("invalid issue comment anchor id")
+            return has_actor_issue_comment_reaction(
+                repo_owner,
+                repo_name,
+                comment_id=comment_id,
+                reaction="eyes",
+                actor_login=bot_login,
+            )
+        if source == "review_comment":
+            comment_id = self._safe_positive_int(anchor_id)
+            if comment_id <= 0:
+                raise ValueError("invalid review comment anchor id")
+            return has_actor_pull_request_review_comment_reaction(
+                repo_owner,
+                repo_name,
+                comment_id=comment_id,
+                reaction="eyes",
+                actor_login=bot_login,
+            )
+        if source == "review_body":
+            review_id = self._safe_positive_int(anchor_id)
+            if review_id <= 0:
+                raise ValueError("invalid review anchor id")
+            return has_actor_pull_request_review_reaction(
+                repo_owner,
+                repo_name,
+                pull_number=item_number,
+                review_id=review_id,
+                reaction="eyes",
+                actor_login=bot_login,
+            )
+        if source in {"pr_body", "issue_body"}:
+            return has_actor_issue_reaction(
+                repo_owner,
+                repo_name,
+                issue_number=item_number,
+                reaction="eyes",
+                actor_login=bot_login,
+            )
+        raise ValueError(f"unsupported mention source: {source}")
 
-        if marker_created_at_s is None:
-            if mention_comment_id > 0:
-                return mention_comment_id > marker_comment_id
-            return True
-
-        if mention_created_at_s is None:
-            return True
-
-        if mention_created_at_s > marker_created_at_s:
-            return True
-        if mention_created_at_s < marker_created_at_s:
-            return False
-        if mention_comment_id > 0 and marker_comment_id > 0:
-            return mention_comment_id > marker_comment_id
-        return False
+    def _add_anchor_eyes_reaction(
+        self,
+        *,
+        repo_owner: str,
+        repo_name: str,
+        item_number: int,
+        source: str,
+        anchor_id: object,
+    ) -> None:
+        if source == "issue_comment":
+            comment_id = self._safe_positive_int(anchor_id)
+            if comment_id <= 0:
+                raise ValueError("invalid issue comment anchor id")
+            add_issue_comment_reaction(
+                repo_owner,
+                repo_name,
+                comment_id=comment_id,
+                reaction="eyes",
+            )
+            return
+        if source == "review_comment":
+            comment_id = self._safe_positive_int(anchor_id)
+            if comment_id <= 0:
+                raise ValueError("invalid review comment anchor id")
+            add_pull_request_review_comment_reaction(
+                repo_owner,
+                repo_name,
+                comment_id=comment_id,
+                reaction="eyes",
+            )
+            return
+        if source == "review_body":
+            review_id = self._safe_positive_int(anchor_id)
+            if review_id <= 0:
+                raise ValueError("invalid review anchor id")
+            add_pull_request_review_reaction(
+                repo_owner,
+                repo_name,
+                pull_number=item_number,
+                review_id=review_id,
+                reaction="eyes",
+            )
+            return
+        if source in {"pr_body", "issue_body"}:
+            add_issue_reaction(
+                repo_owner,
+                repo_name,
+                issue_number=item_number,
+                reaction="eyes",
+            )
+            return
+        raise ValueError(f"unsupported mention source: {source}")
 
     @staticmethod
     def _parse_iso_timestamp_s(value: object) -> float | None:
@@ -915,10 +950,6 @@ class GitHubWorkCoordinator(QObject):
     ) -> bool:
         author = str(getattr(item, "author", "") or "").strip().lower()
         return bool(author and author in trusted_users)
-
-    @staticmethod
-    def _can_apply_reaction(*, comment: GitHubComment) -> bool:
-        return comment.reactions.eyes <= 0
 
     @staticmethod
     def _normalize_item_type(value: object) -> str:

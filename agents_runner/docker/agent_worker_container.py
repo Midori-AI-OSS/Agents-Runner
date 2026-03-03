@@ -473,8 +473,15 @@ class ContainerExecutor:
         return (
             f"PREFLIGHT_SETUP_AGENTS={shlex.quote(container_path)}; "
             f"{shell_log_statement('env', 'setup', 'INFO', 'setup-agents: running')}; "
+            "set +e; "
             '/bin/bash "${PREFLIGHT_SETUP_AGENTS}"; '
-            f"{shell_log_statement('env', 'setup', 'INFO', 'setup-agents: done')}; ",
+            "SETUP_AGENTS_EXIT=$?; "
+            "set -e; "
+            'if [ "$SETUP_AGENTS_EXIT" -ne 0 ]; then '
+            'echo "[env/setup][ERROR] setup-agents failed (exit ${SETUP_AGENTS_EXIT}); continuing startup"; '
+            "else "
+            f"{shell_log_statement('env', 'setup', 'INFO', 'setup-agents: done')}; "
+            "fi; ",
             ["-v", f"{tmp_path}:{container_path}:ro"],
         )
 

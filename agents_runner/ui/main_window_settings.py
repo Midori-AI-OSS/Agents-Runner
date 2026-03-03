@@ -486,6 +486,62 @@ class MainWindowSettingsMixin:
 
         return agent_cli, config_dir, agent_id
 
+    def _commit_round_robin_selection(
+        self,
+        *,
+        env: Environment | None,
+        selected_agent_id: str,
+    ) -> None:
+        if (
+            env is None
+            or not env.agent_selection
+            or not getattr(env.agent_selection, "agents", None)
+        ):
+            return
+
+        mode = (
+            str(getattr(env.agent_selection, "selection_mode", "") or "round-robin")
+            .strip()
+            .lower()
+        )
+        if mode != "round-robin":
+            return
+
+        agents = list(env.agent_selection.agents or [])
+        if not agents:
+            return
+
+        env_id = str(getattr(env, "env_id", "") or "").strip()
+        if not env_id:
+            return
+
+        if not hasattr(self, "_agent_selection_round_robin_cursor"):
+            self._agent_selection_round_robin_cursor = {}
+        cursor_map = getattr(self, "_agent_selection_round_robin_cursor", {})
+
+        selected_id = str(selected_agent_id or "").strip()
+        selected_idx: int | None = None
+        if selected_id:
+            selected_lower = selected_id.lower()
+            for idx, inst in enumerate(agents):
+                inst_id = str(getattr(inst, "agent_id", "") or "").strip()
+                if inst_id == selected_id or inst_id.lower() == selected_lower:
+                    selected_idx = idx
+                    break
+
+        if selected_idx is None:
+            cursor = int(cursor_map.get(env_id, 0))
+            selected_idx = cursor % len(agents)
+
+        cursor_map[env_id] = selected_idx + 1
+
+    def _refresh_new_task_agent_info(self) -> None:
+        if not hasattr(self, "_new_task"):
+            return
+        env = self._environments.get(self._active_environment_id())
+        current_agent, next_agent = self._get_next_agent_info(env=env)
+        self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)
+
     def _effective_agent_and_config(
         self,
         *,

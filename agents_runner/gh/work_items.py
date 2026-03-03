@@ -44,6 +44,9 @@ _TRANSIENT_GH_ERROR_MARKERS = (
     "context deadline exceeded",
 )
 
+_GITHUB_API_PER_PAGE_MAX = 100
+_REACTION_SCAN_LIMIT = 1000
+
 
 @dataclass(frozen=True)
 class GitHubReactionSummary:
@@ -330,6 +333,90 @@ def _repo_full_name(repo_owner: str, repo_name: str) -> str:
     return f"{owner}/{name}"
 
 
+def _with_api_pagination(path: str, *, page: int, per_page: int) -> str:
+    delimiter = "&" if "?" in path else "?"
+    return f"{path}{delimiter}per_page={max(1, int(per_page))}&page={max(1, int(page))}"
+
+
+def _list_api_rows_paginated(
+    path: str,
+    *,
+    limit: int,
+    keep_latest: bool = False,
+    timeout_s: float = 45.0,
+    retry_on_transient: bool = True,
+) -> list[object]:
+    safe_limit = max(1, int(limit))
+    per_page = min(_GITHUB_API_PER_PAGE_MAX, safe_limit)
+    rows: list[object] = []
+    page = 1
+
+    while True:
+        data = run_gh_gh_json_read(
+            [
+                "api",
+                _with_api_pagination(path, page=page, per_page=per_page),
+                "-H",
+                "Accept: application/vnd.github+json",
+            ],
+            timeout_s=timeout_s,
+            retry_on_transient=retry_on_transient,
+        )
+        page_rows = _as_object_list(data) or []
+        if not page_rows:
+            break
+        rows.extend(page_rows)
+        if keep_latest and len(rows) > safe_limit:
+            rows = rows[-safe_limit:]
+        if not keep_latest and len(rows) >= safe_limit:
+            break
+        if len(page_rows) < per_page:
+            break
+        page += 1
+
+    if keep_latest:
+        return rows
+    return rows[:safe_limit]
+
+
+def _has_actor_reaction_on_endpoint(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    endpoint: str,
+    reaction: str,
+    actor_login: str,
+    limit: int = _REACTION_SCAN_LIMIT,
+    retry_on_transient: bool = True,
+) -> bool:
+    repo = _repo_full_name(repo_owner, repo_name)
+    content_value = _safe_text(reaction).lower()
+    if content_value not in {"+1", "-1", "eyes", "rocket", "hooray"}:
+        raise GhManagementError(f"unsupported reaction: {content_value}")
+    actor = _safe_text(actor_login).lower()
+    if not actor:
+        raise GhManagementError("missing actor login for reaction check")
+
+    rows = _list_api_rows_paginated(
+        f"repos/{repo}/{endpoint}",
+        limit=limit,
+        timeout_s=45.0,
+        retry_on_transient=retry_on_transient,
+    )
+    for row in rows:
+        row_dict = _as_object_dict(row)
+        if row_dict is None:
+            continue
+        content = _safe_text(row_dict.get("content")).lower()
+        if content != content_value:
+            continue
+        user_dict = _as_object_dict(row_dict.get("user"))
+        user_login = _safe_text(user_dict.get("login") if user_dict else "").lower()
+        if user_login == actor:
+            return True
+    return False
+
+
 def list_open_pull_requests(
     repo_owner: str,
     repo_name: str,
@@ -407,21 +494,17 @@ def list_issue_comments(
     *,
     issue_number: int,
     limit: int = 100,
+    newest_first: bool = False,
     retry_on_transient: bool = True,
 ) -> list[GitHubComment]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = run_gh_gh_json_read(
-        [
-            "api",
-            f"repos/{repo}/issues/{int(issue_number)}/comments?per_page={max(1, int(limit))}",
-            "-H",
-            "Accept: application/vnd.github+json",
-        ],
+    rows = _list_api_rows_paginated(
+        f"repos/{repo}/issues/{int(issue_number)}/comments",
+        limit=limit,
+        keep_latest=newest_first,
         timeout_s=45.0,
         retry_on_transient=retry_on_transient,
     )
-
-    rows = _as_object_list(data) or []
     comments: list[GitHubComment] = []
     for row in rows:
         row_dict = _as_object_dict(row)
@@ -457,24 +540,17 @@ def list_pull_request_review_comments(
     *,
     pull_number: int,
     limit: int = 100,
+    newest_first: bool = False,
     retry_on_transient: bool = True,
 ) -> list[GitHubComment]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = run_gh_gh_json_read(
-        [
-            "api",
-            (
-                f"repos/{repo}/pulls/{int(pull_number)}/comments?"
-                f"per_page={max(1, int(limit))}"
-            ),
-            "-H",
-            "Accept: application/vnd.github+json",
-        ],
+    rows = _list_api_rows_paginated(
+        f"repos/{repo}/pulls/{int(pull_number)}/comments",
+        limit=limit,
+        keep_latest=newest_first,
         timeout_s=45.0,
         retry_on_transient=retry_on_transient,
     )
-
-    rows = _as_object_list(data) or []
     comments: list[GitHubComment] = []
     for row in rows:
         row_dict = _as_object_dict(row)
@@ -510,24 +586,17 @@ def list_pull_request_reviews(
     *,
     pull_number: int,
     limit: int = 100,
+    newest_first: bool = False,
     retry_on_transient: bool = True,
 ) -> list[GitHubReview]:
     repo = _repo_full_name(repo_owner, repo_name)
-    data = run_gh_gh_json_read(
-        [
-            "api",
-            (
-                f"repos/{repo}/pulls/{int(pull_number)}/reviews?"
-                f"per_page={max(1, int(limit))}"
-            ),
-            "-H",
-            "Accept: application/vnd.github+json",
-        ],
+    rows = _list_api_rows_paginated(
+        f"repos/{repo}/pulls/{int(pull_number)}/reviews",
+        limit=limit,
+        keep_latest=newest_first,
         timeout_s=45.0,
         retry_on_transient=retry_on_transient,
     )
-
-    rows = _as_object_list(data) or []
     reviews: list[GitHubReview] = []
     for row in rows:
         row_dict = _as_object_dict(row)
@@ -829,6 +898,34 @@ def add_pull_request_review_comment_reaction(
     )
 
 
+def add_pull_request_review_reaction(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    pull_number: int,
+    review_id: int,
+    reaction: str,
+) -> None:
+    repo = _repo_full_name(repo_owner, repo_name)
+    reaction_value = _safe_text(reaction)
+    if reaction_value not in {"+1", "-1", "eyes", "rocket", "hooray"}:
+        raise GhManagementError(f"unsupported reaction: {reaction_value}")
+
+    run_gh_gh_json(
+        [
+            "api",
+            "--method",
+            "POST",
+            f"repos/{repo}/pulls/{int(pull_number)}/reviews/{int(review_id)}/reactions",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-f",
+            f"content={reaction_value}",
+        ],
+        timeout_s=30.0,
+    )
+
+
 def add_issue_reaction(
     repo_owner: str,
     repo_name: str,
@@ -853,6 +950,91 @@ def add_issue_reaction(
             f"content={reaction_value}",
         ],
         timeout_s=30.0,
+    )
+
+
+def has_actor_issue_reaction(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    issue_number: int,
+    reaction: str,
+    actor_login: str,
+    limit: int = _REACTION_SCAN_LIMIT,
+    retry_on_transient: bool = True,
+) -> bool:
+    return _has_actor_reaction_on_endpoint(
+        repo_owner,
+        repo_name,
+        endpoint=f"issues/{int(issue_number)}/reactions",
+        reaction=reaction,
+        actor_login=actor_login,
+        limit=limit,
+        retry_on_transient=retry_on_transient,
+    )
+
+
+def has_actor_issue_comment_reaction(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    comment_id: int,
+    reaction: str,
+    actor_login: str,
+    limit: int = _REACTION_SCAN_LIMIT,
+    retry_on_transient: bool = True,
+) -> bool:
+    return _has_actor_reaction_on_endpoint(
+        repo_owner,
+        repo_name,
+        endpoint=f"issues/comments/{int(comment_id)}/reactions",
+        reaction=reaction,
+        actor_login=actor_login,
+        limit=limit,
+        retry_on_transient=retry_on_transient,
+    )
+
+
+def has_actor_pull_request_review_comment_reaction(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    comment_id: int,
+    reaction: str,
+    actor_login: str,
+    limit: int = _REACTION_SCAN_LIMIT,
+    retry_on_transient: bool = True,
+) -> bool:
+    return _has_actor_reaction_on_endpoint(
+        repo_owner,
+        repo_name,
+        endpoint=f"pulls/comments/{int(comment_id)}/reactions",
+        reaction=reaction,
+        actor_login=actor_login,
+        limit=limit,
+        retry_on_transient=retry_on_transient,
+    )
+
+
+def has_actor_pull_request_review_reaction(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    pull_number: int,
+    review_id: int,
+    reaction: str,
+    actor_login: str,
+    limit: int = _REACTION_SCAN_LIMIT,
+    retry_on_transient: bool = True,
+) -> bool:
+    return _has_actor_reaction_on_endpoint(
+        repo_owner,
+        repo_name,
+        endpoint=f"pulls/{int(pull_number)}/reviews/{int(review_id)}/reactions",
+        reaction=reaction,
+        actor_login=actor_login,
+        limit=limit,
+        retry_on_transient=retry_on_transient,
     )
 
 

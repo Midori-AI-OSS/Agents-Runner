@@ -299,6 +299,7 @@ class MainWindowTaskEventsMixin:
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._details.update_task(task)
             self._schedule_save()
+            self._refresh_new_task_agent_info()
 
             # SYNCHRONIZATION: Set finalization_state to "pending" BEFORE calling _queue_task_finalization().
             # This atomic state transition ensures recovery_tick sees the state change and avoids
@@ -441,6 +442,7 @@ class MainWindowTaskEventsMixin:
         self._dashboard_log_refresh_s.pop(task_id, None)
         self._interactive_watch.pop(task_id, None)
         self._schedule_save()
+        self._refresh_new_task_agent_info()
 
         if self._details.isVisible() and self._details.current_task_id() == task_id:
             self._show_dashboard()
@@ -880,6 +882,7 @@ class MainWindowTaskEventsMixin:
                 ),
             )
             self._try_start_queued_tasks()
+            self._refresh_new_task_agent_info()
 
             if (task.finalization_state or "").lower().strip() == "done":
                 self.host_log.emit(
