@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
@@ -42,6 +44,7 @@ from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
 from agents_runner.ui.graphics import normalize_ui_theme_name
 from agents_runner.ui.widgets import EdgeFadeScrollArea
+from agents_runner.ui.widgets.artifact_highlighter import ArtifactSyntaxHighlighter
 from agents_runner.ui.widgets.theme_preview import ThemePreviewTile
 from agents_runner.ui.constants import (
     GRID_HORIZONTAL_SPACING,
@@ -60,6 +63,9 @@ class _SettingsPaneSpec:
 
 
 class SettingsFormMixin:
+    _PREFLIGHT_PRESETS_DIRNAME = "preflight-scripts"
+    _PREFLIGHT_PRESET_SUFFIXES = {".sh", ".bash", ".zsh"}
+
     @staticmethod
     def _normalize_novnc_auto_open_mode(value: object) -> str:
         mode = str(value or "").strip().lower()
@@ -114,7 +120,7 @@ class SettingsFormMixin:
             _SettingsPaneSpec(
                 key="preflight_script",
                 title="Preflight Script",
-                subtitle="Global setup script executed before environment scripts.",
+                subtitle="Global setup script executed before setup-agents.sh.",
                 section="Runtime",
             ),
         ]
@@ -178,11 +184,13 @@ class SettingsFormMixin:
 
         self._agent_config_dir_fields: dict[str, QLineEdit] = {}
 
-        self._preflight_enabled = QCheckBox("Enable settings preflight")
+        self._preflight_enabled = QToolButton()
+        self._preflight_enabled.setCheckable(True)
+        self._preflight_enabled.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self._preflight_enabled.setToolTip(
-            "Runs on all environments before environment-specific preflight.\n"
-            "Useful for global setup tasks like installing system packages."
+            "Run global preflight before setup-agents.sh."
         )
+        self._preflight_enabled.toggled.connect(self._on_preflight_enabled_toggled)
 
         self._append_pixelarch_context = QCheckBox("Append PixelArch context")
         self._append_pixelarch_context.setToolTip(
@@ -312,16 +320,35 @@ class SettingsFormMixin:
             "set -euo pipefail\n"
             "\n"
             "# Runs inside the container before the agent command.\n"
-            "# Runs on every environment, before environment preflight (if enabled).\n"
+            "# Runs on every environment, before setup-agents.sh.\n"
             "# This script is mounted read-only and deleted from the host after task finish.\n"
         )
         self._preflight_script.setTabChangesFocus(True)
         self._preflight_script.setEnabled(False)
-        self._preflight_enabled.toggled.connect(self._preflight_script.setEnabled)
+        self._on_preflight_enabled_toggled(bool(self._preflight_enabled.isChecked()))
+        self._preflight_script.textChanged.connect(
+            self._on_preflight_script_text_changed
+        )
+        self._preflight_script_highlighter = ArtifactSyntaxHighlighter(
+            self._preflight_script.document()
+        )
+        self._refresh_preflight_script_highlighting(
+            str(self._preflight_script.toPlainText() or "")
+        )
+
+        self._recommended_preflights = QComboBox()
+        self._recommended_preflights.setToolTip("Load a recommended preflight script.")
+        self._populate_recommended_preflights()
+        self._recommended_preflights.currentIndexChanged.connect(
+            self._on_recommended_preflight_selected
+        )
 
         self._test_preflights = QToolButton()
-        self._test_preflights.setText("Test preflights (all envs)")
+        self._test_preflights.setText("Run preflight checks")
         self._test_preflights.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._test_preflights.setToolTip(
+            "Run preflight smoke test for all environments."
+        )
         self._test_preflights.clicked.connect(self._on_test_preflight)
 
         self._radio_enabled = QCheckBox("Enable Midori AI Radio")
@@ -530,11 +557,11 @@ class SettingsFormMixin:
         preflight_page, preflight_body = self._create_page(
             specs_by_key["preflight_script"]
         )
-        preflight_body.addWidget(self._preflight_enabled)
-        preflight_body.addWidget(QLabel("Preflight script"))
         preflight_body.addWidget(self._preflight_script, 1)
         preflight_actions = QHBoxLayout()
         preflight_actions.setSpacing(BUTTON_ROW_SPACING)
+        preflight_actions.addWidget(self._preflight_enabled)
+        preflight_actions.addWidget(self._recommended_preflights)
         preflight_actions.addWidget(self._test_preflights)
         preflight_actions.addStretch(1)
         autosave_hint = QLabel("Changes save automatically.")
@@ -910,6 +937,10 @@ class SettingsFormMixin:
             self._preflight_script.setPlainText(
                 str(settings.get("preflight_script") or "")
             )
+            self._refresh_preflight_script_highlighting(
+                str(self._preflight_script.toPlainText() or "")
+            )
+            self._reset_recommended_preflight_selection()
 
             self._append_pixelarch_context.setChecked(
                 bool(settings.get("append_pixelarch_context") or False)
@@ -1020,6 +1051,98 @@ class SettingsFormMixin:
             self._refresh_radio_volume_label()
         finally:
             self._suppress_autosave = False
+
+    def _on_preflight_enabled_toggled(self, enabled: bool) -> None:
+        self._preflight_enabled.setText(
+            "Preflight Enabled" if bool(enabled) else "Enable Preflight"
+        )
+        if hasattr(self, "_preflight_script"):
+            self._preflight_script.setEnabled(bool(enabled))
+
+    def _on_preflight_script_text_changed(self) -> None:
+        self._refresh_preflight_script_highlighting(
+            str(self._preflight_script.toPlainText() or "")
+        )
+
+    @staticmethod
+    def _detect_preflight_script_language(script: str) -> str:
+        shebang = str(script or "").split("\n", 1)[0].strip().lower()
+        if shebang.startswith("#!"):
+            if "fish" in shebang:
+                return "fish"
+            if "bash" in shebang or "zsh" in shebang or "sh" in shebang:
+                return "bash"
+        return "bash"
+
+    def _refresh_preflight_script_highlighting(self, script: str) -> None:
+        self._preflight_script_highlighter.set_language(
+            self._detect_preflight_script_language(script)
+        )
+
+    @staticmethod
+    def _recommended_preflights_dir() -> Path:
+        return (
+            Path(__file__).resolve().parents[2]
+            / SettingsFormMixin._PREFLIGHT_PRESETS_DIRNAME
+        )
+
+    def _load_recommended_preflights(self) -> list[tuple[str, str]]:
+        scripts_dir = self._recommended_preflights_dir()
+        if not scripts_dir.is_dir():
+            return []
+
+        presets: list[tuple[str, str]] = []
+        for file_path in scripts_dir.iterdir():
+            if not file_path.is_file():
+                continue
+            if file_path.suffix.lower() not in self._PREFLIGHT_PRESET_SUFFIXES:
+                continue
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            label = self._format_key_label(file_path.stem)
+            presets.append((label, content))
+        presets.sort(key=lambda item: item[0].lower())
+        return presets
+
+    def _populate_recommended_preflights(self) -> None:
+        with QSignalBlocker(self._recommended_preflights):
+            self._recommended_preflights.clear()
+            self._recommended_preflights.addItem("Recommended preflights...", None)
+            for label, content in self._load_recommended_preflights():
+                self._recommended_preflights.addItem(label, content)
+            self._recommended_preflights.setCurrentIndex(0)
+
+    def _reset_recommended_preflight_selection(self) -> None:
+        with QSignalBlocker(self._recommended_preflights):
+            self._recommended_preflights.setCurrentIndex(0)
+
+    def _on_recommended_preflight_selected(self, index: int) -> None:
+        if index <= 0:
+            return
+
+        preset_script = str(self._recommended_preflights.itemData(index) or "")
+        if not preset_script.strip():
+            self._reset_recommended_preflight_selection()
+            return
+
+        current_script = str(self._preflight_script.toPlainText() or "")
+        should_replace = True
+        if current_script.strip():
+            should_replace = (
+                QMessageBox.question(
+                    None,
+                    "Replace preflight script?",
+                    "Would you like to replace what you have with the recommended preflight?",
+                )
+                == QMessageBox.StandardButton.Yes
+            )
+
+        if should_replace:
+            self._preflight_script.setPlainText(preset_script)
+            self._refresh_preflight_script_highlighting(preset_script)
+        self._reset_recommended_preflight_selection()
 
     def get_settings(self) -> dict[str, Any]:
         poll_startup_delay_text = str(

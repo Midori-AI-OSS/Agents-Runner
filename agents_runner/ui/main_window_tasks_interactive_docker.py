@@ -113,7 +113,6 @@ def launch_docker_terminal_task(
     system_preflight_cached_override: bool | None = None,
     desktop_preflight_cached_override: bool | None = None,
     settings_preflight_cached_override: bool | None = None,
-    environment_preflight_cached_override: bool | None = None,
     desktop_preflight_script_override: str | None = None,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
@@ -157,11 +156,8 @@ def launch_docker_terminal_task(
         system_preflight_cached_override: Optional precomputed system cache status
         desktop_preflight_cached_override: Optional precomputed desktop cache status
         settings_preflight_cached_override: Optional precomputed settings cache status
-        environment_preflight_cached_override: Legacy cache status (ignored)
         desktop_preflight_script_override: Optional precomputed desktop script
     """
-    _ = environment_preflight_cached_override
-
     # Apply desktop preflight script override if provided, before desktop detection
     desktop_preflight_script = str(extra_preflight_script or "")
     if desktop_preflight_script_override is not None:

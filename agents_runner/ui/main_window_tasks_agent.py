@@ -291,10 +291,6 @@ class MainWindowTasksAgentMixin:
                 self._settings_data.get("preflight_script") or ""
             )
 
-        environment_preflight_script: str | None = None
-        if env and env.preflight_enabled and (env.preflight_script or "").strip():
-            environment_preflight_script = env.preflight_script
-
         headless_desktop_enabled = ide_display_target == IDE_DISPLAY_CONTAINER_DESKTOP
         desktop_cache_enabled = (
             bool(getattr(env, "cache_desktop_build", False)) if env else False
@@ -388,7 +384,6 @@ class MainWindowTasksAgentMixin:
             auto_remove=True,
             pull_before_run=True,
             settings_preflight_script=settings_preflight_script,
-            environment_preflight_script=environment_preflight_script,
             ide_preflight_script=ide_preflight_script,
             headless_desktop_enabled=headless_desktop_enabled,
             desktop_cache_enabled=desktop_cache_enabled,
@@ -768,10 +763,6 @@ class MainWindowTasksAgentMixin:
                 self._settings_data.get("preflight_script") or ""
             )
 
-        environment_preflight_script: str | None = None
-        if env and env.preflight_enabled and (env.preflight_script or "").strip():
-            environment_preflight_script = env.preflight_script
-
         force_headless_desktop = bool(
             self._settings_data.get("headless_desktop_enabled") or False
         )
@@ -1123,7 +1114,6 @@ class MainWindowTasksAgentMixin:
             auto_remove=True,
             pull_before_run=True,
             settings_preflight_script=settings_preflight_script,
-            environment_preflight_script=environment_preflight_script,
             headless_desktop_enabled=headless_desktop_enabled,
             desktop_cache_enabled=desktop_cache_enabled,
             container_caching_enabled=container_caching_enabled,

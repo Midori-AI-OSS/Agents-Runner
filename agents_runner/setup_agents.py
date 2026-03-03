@@ -24,9 +24,20 @@ class SetupAgentsResult:
     mirror_script_path: str
     setup_script: str | None
     source: str
-    created_from_legacy: bool
-    committed_legacy_bootstrap: bool
     prompt_instruction: str | None
+
+
+@dataclass(frozen=True)
+class SetupAgentsPreviewResult:
+    repo_root: str
+    repo_script_path: str | None
+    preferred_repo_script_path: str
+    mirror_script_path: str
+    effective_script_path: str | None
+    setup_script: str | None
+    source: str
+    guidance: str
+    error: str | None
 
 
 def missing_setup_agents_instruction(*, launch_mode: str) -> str | None:
@@ -163,71 +174,17 @@ def _repo_script_timestamp(repo_root: Path, script_path: Path) -> float:
     return max(mtime, _git_last_commit_timestamp(repo_root, script_path))
 
 
-def _commit_bootstrap_script(repo_root: Path, script_path: Path) -> bool:
-    try:
-        rel = str(script_path.relative_to(repo_root))
-    except ValueError:
-        return False
-
-    add_proc = subprocess.run(
-        ["git", "-C", str(repo_root), "add", "--", rel],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if add_proc.returncode != 0:
-        return False
-
-    staged_proc = subprocess.run(
-        ["git", "-C", str(repo_root), "diff", "--cached", "--quiet", "--", rel],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if staged_proc.returncode == 0:
-        return False
-
-    commit_proc = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(repo_root),
-            "commit",
-            "-m",
-            "[CHORE] Bootstrap setup-agents.sh from legacy preflight",
-            "--",
-            rel,
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    return commit_proc.returncode == 0
-
-
 def _missing_instruction() -> str:
-    return (
-        "Repository bootstrap is missing. Create `.agents/setup-agents.sh` "
-        "(or `.github/setup-agents.sh`), make it executable, add your setup steps, "
-        "then commit the file to the repository."
-    )
+    return "Repository bootstrap is missing. Create `.agents/setup-agents.sh`, make it executable, add your setup steps, then commit the file to the repository."
 
 
-def prepare_setup_agents_phase(
+def _resolve_repo_and_mirror_paths(
     *,
     host_workdir: str,
     environment_id: str,
-    gh_repo: str | None = None,
-    data_dir: str | None = None,
-    legacy_environment_preflight_script: str | None = None,
-    launch_mode: str = "agent",
-    on_log: Callable[[str], None] | None = None,
-) -> SetupAgentsResult:
-    def _log(level: str, message: str) -> None:
-        if on_log is None:
-            return
-        on_log(format_log("setup", "agents", level, message))
-
+    gh_repo: str | None,
+    data_dir: str | None,
+) -> tuple[Path, Path, Path, Path, Path]:
     repo_root = _resolve_repo_root(host_workdir)
     primary = repo_root / SETUP_AGENTS_PRIMARY_RELATIVE_PATH
     fallback = repo_root / SETUP_AGENTS_FALLBACK_RELATIVE_PATH
@@ -249,10 +206,131 @@ def prepare_setup_agents_phase(
         / _repo_key(repo_root=repo_root, gh_repo=gh_repo)
         / "setup-agents.sh"
     )
+    return repo_root, primary, fallback, mirror_path, selected_repo_path
 
+
+def _read_script(path: Path) -> tuple[str | None, str | None]:
+    try:
+        return _normalize_script_text(path.read_text(encoding="utf-8")), None
+    except Exception as exc:
+        return None, str(exc)
+
+
+def _path_relative_to_repo(*, repo_root: Path, path: Path) -> str:
+    try:
+        return str(path.relative_to(repo_root))
+    except ValueError:
+        return str(path)
+
+
+def resolve_setup_agents_preview(
+    *,
+    host_workdir: str,
+    environment_id: str,
+    gh_repo: str | None = None,
+    data_dir: str | None = None,
+) -> SetupAgentsPreviewResult:
+    repo_root, primary, fallback, mirror_path, selected_repo_path = (
+        _resolve_repo_and_mirror_paths(
+            host_workdir=host_workdir,
+            environment_id=environment_id,
+            gh_repo=gh_repo,
+            data_dir=data_dir,
+        )
+    )
+    repo_script_path: Path | None = None
+    if primary.is_file():
+        repo_script_path = primary
+    elif fallback.is_file():
+        repo_script_path = fallback
+
+    preferred_repo_path = selected_repo_path
     source = "none"
-    created_from_legacy = False
-    committed_legacy_bootstrap = False
+    effective_script_path: Path | None = None
+    setup_script: str | None = None
+    read_error: str | None = None
+
+    mirror_exists = mirror_path.is_file()
+    if repo_script_path is not None and mirror_exists:
+        try:
+            repo_ts = _repo_script_timestamp(repo_root, repo_script_path)
+            mirror_ts = mirror_path.stat().st_mtime
+            if repo_ts >= mirror_ts:
+                source = "repo"
+                effective_script_path = repo_script_path
+            else:
+                source = "mirror"
+                effective_script_path = mirror_path
+        except Exception as exc:
+            source = "repo"
+            effective_script_path = repo_script_path
+            read_error = f"failed to compare setup-agents timestamps: {exc}"
+    elif repo_script_path is not None:
+        source = "repo"
+        effective_script_path = repo_script_path
+    elif mirror_exists:
+        source = "mirror"
+        effective_script_path = mirror_path
+
+    if effective_script_path is not None:
+        setup_script, script_error = _read_script(effective_script_path)
+        if script_error:
+            read_error = f"failed to read setup-agents script at {effective_script_path}: {script_error}"
+
+    preferred_rel = _path_relative_to_repo(
+        repo_root=repo_root, path=preferred_repo_path
+    )
+    guidance = (
+        "This script preview is read-only. "
+        f"Edit `{preferred_rel}` in your repository and commit the change."
+    )
+    if source == "none":
+        guidance = (
+            "setup-agents script is missing. "
+            f"Create `{preferred_rel}` in your repository, make it executable, and commit it."
+        )
+
+    return SetupAgentsPreviewResult(
+        repo_root=str(repo_root),
+        repo_script_path=str(repo_script_path) if repo_script_path else None,
+        preferred_repo_script_path=str(preferred_repo_path),
+        mirror_script_path=str(mirror_path),
+        effective_script_path=str(effective_script_path)
+        if effective_script_path
+        else None,
+        setup_script=setup_script,
+        source=source,
+        guidance=guidance,
+        error=read_error,
+    )
+
+
+def prepare_setup_agents_phase(
+    *,
+    host_workdir: str,
+    environment_id: str,
+    gh_repo: str | None = None,
+    data_dir: str | None = None,
+    launch_mode: str = "agent",
+    on_log: Callable[[str], None] | None = None,
+) -> SetupAgentsResult:
+    def _log(level: str, message: str) -> None:
+        if on_log is None:
+            return
+        on_log(format_log("setup", "agents", level, message))
+
+    repo_root, primary, fallback, mirror_path, _ = _resolve_repo_and_mirror_paths(
+        host_workdir=host_workdir,
+        environment_id=environment_id,
+        gh_repo=gh_repo,
+        data_dir=data_dir,
+    )
+    repo_script_path: Path | None = None
+    if primary.is_file():
+        repo_script_path = primary
+    elif fallback.is_file():
+        repo_script_path = fallback
+    source = "none"
 
     def _sync_scripts(*, src: Path, dst: Path, direction: str) -> bool:
         try:
@@ -267,53 +345,11 @@ def prepare_setup_agents_phase(
             _log("INFO", f"sync {direction} ({src} -> {dst})")
         return True
 
-    legacy_script = _normalize_script_text(
-        str(legacy_environment_preflight_script or "")
-    )
-    legacy_available = bool(legacy_script.strip())
     try:
         mirror_exists = mirror_path.is_file()
     except Exception as exc:
         _log("WARN", f"failed to inspect setup-agents mirror path {mirror_path}: {exc}")
         mirror_exists = False
-
-    if repo_script_path is None and not mirror_exists and legacy_available:
-        try:
-            if _write_script(selected_repo_path, legacy_script, executable=True):
-                created_from_legacy = True
-                source = "legacy"
-                _log(
-                    "INFO",
-                    f"created {selected_repo_path} from legacy environment preflight",
-                )
-            repo_script_path = selected_repo_path
-        except Exception as exc:
-            _log(
-                "WARN",
-                f"failed to bootstrap setup-agents script at {selected_repo_path}: {exc}",
-            )
-
-        if repo_script_path is not None and is_git_repo(str(repo_root)):
-            try:
-                committed_legacy_bootstrap = _commit_bootstrap_script(
-                    repo_root, repo_script_path
-                )
-            except Exception as exc:
-                _log(
-                    "WARN",
-                    f"auto-commit failed for bootstrap script at {repo_script_path}: {exc}",
-                )
-            else:
-                if committed_legacy_bootstrap:
-                    _log(
-                        "INFO",
-                        f"committed bootstrap script to repository at {repo_script_path}",
-                    )
-                else:
-                    _log(
-                        "WARN",
-                        f"auto-commit failed for bootstrap script at {repo_script_path}",
-                    )
 
     if repo_script_path is not None and mirror_exists:
         try:
@@ -326,8 +362,7 @@ def prepare_setup_agents_phase(
                 if _sync_scripts(
                     src=repo_script_path, dst=mirror_path, direction="repo -> mirror"
                 ):
-                    if source == "none":
-                        source = "repo"
+                    source = "repo"
             elif _sync_scripts(
                 src=mirror_path, dst=repo_script_path, direction="mirror -> repo"
             ):
@@ -375,7 +410,5 @@ def prepare_setup_agents_phase(
         mirror_script_path=str(mirror_path),
         setup_script=setup_script,
         source=source,
-        created_from_legacy=created_from_legacy,
-        committed_legacy_bootstrap=committed_legacy_bootstrap,
         prompt_instruction=prompt_instruction,
     )

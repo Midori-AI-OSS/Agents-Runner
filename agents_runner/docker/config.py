@@ -14,7 +14,6 @@ class DockerRunnerConfig:
     auto_remove: bool = True
     pull_before_run: bool = True
     settings_preflight_script: str | None = None
-    environment_preflight_script: str | None = None
     ide_preflight_script: str | None = None
     headless_desktop_enabled: bool = False
     desktop_cache_enabled: bool = False
@@ -30,9 +29,6 @@ class DockerRunnerConfig:
     )
     container_setup_agents_preflight_path: str = (
         "/tmp/agents-runner-preflight-setup-agents-{task_id}.sh"
-    )
-    container_environment_preflight_path: str = (
-        "/tmp/agents-runner-preflight-environment-{task_id}.sh"
     )
     container_ide_preflight_path: str = "/tmp/agents-runner-preflight-ide-{task_id}.sh"
     env_vars: dict[str, str] = field(default_factory=dict)

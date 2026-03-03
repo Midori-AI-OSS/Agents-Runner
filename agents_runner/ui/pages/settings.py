@@ -181,6 +181,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._github_poll_startup_delay_s.textChanged.connect(
             self._queue_debounced_autosave
         )
+        self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
         self._agentsnova_trusted_users_global.usernames_changed.connect(
             self._queue_debounced_autosave
         )

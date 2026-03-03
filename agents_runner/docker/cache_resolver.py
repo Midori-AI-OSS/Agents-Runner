@@ -33,7 +33,6 @@ class CacheResolutionResult:
     system_preflight_cached: bool
     desktop_preflight_cached: bool
     settings_preflight_cached: bool
-    environment_preflight_cached: bool
     desktop_preflight_script: str
 
 
@@ -74,7 +73,6 @@ def resolve_runtime_cache(
     system_preflight_cached = False
     desktop_preflight_cached = False
     settings_preflight_cached = False
-    environment_preflight_cached = False
 
     def noop_log(line: str) -> None:
         pass
@@ -170,6 +168,5 @@ def resolve_runtime_cache(
         system_preflight_cached=system_preflight_cached,
         desktop_preflight_cached=desktop_preflight_cached,
         settings_preflight_cached=settings_preflight_cached,
-        environment_preflight_cached=environment_preflight_cached,
         desktop_preflight_script=desktop_preflight_script,
     )

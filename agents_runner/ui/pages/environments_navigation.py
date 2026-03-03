@@ -35,7 +35,6 @@ class EnvironmentsNavigationMixin:
             self._gh_context_enabled,
             self._github_polling_enabled,
             self._gh_use_host_cli,
-            self._preflight_enabled,
             self._cache_system_preflight_enabled,
             self._cache_settings_preflight_enabled,
             self._cache_ide_preflight_enabled,

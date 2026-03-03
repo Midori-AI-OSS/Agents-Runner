@@ -34,7 +34,6 @@ class MainWindowPreflightMixin:
         host_workdir: str,
         host_codex: str,
         settings_preflight_script: str | None,
-        environment_preflight_script: str | None,
     ) -> None:
         if shutil.which("docker") is None:
             QMessageBox.critical(
@@ -117,7 +116,6 @@ class MainWindowPreflightMixin:
             auto_remove=True,
             pull_before_run=True,
             settings_preflight_script=settings_preflight_script,
-            environment_preflight_script=environment_preflight_script,
             headless_desktop_enabled=headless_desktop_enabled,
             desktop_cache_enabled=desktop_cache_enabled,
             container_caching_enabled=bool(
@@ -215,11 +213,6 @@ class MainWindowPreflightMixin:
         skipped: list[str] = []
         started = 0
         for env in self._environment_list():
-            env_script: str | None = None
-            candidate = str(env.preflight_script or "")
-            if env.preflight_enabled and candidate.strip():
-                env_script = candidate
-
             # Get effective agent and config for each environment
             agent_cli, host_codex = self._effective_agent_and_config(
                 env=env, settings=settings
@@ -237,7 +230,6 @@ class MainWindowPreflightMixin:
                 host_workdir=host_workdir,
                 host_codex=host_codex,
                 settings_preflight_script=settings_script,
-                environment_preflight_script=env_script,
             )
             started += 1
 
@@ -265,10 +257,6 @@ class MainWindowPreflightMixin:
                 self._settings_data.get("preflight_script") or ""
             )
 
-        environment_preflight_script: str | None = None
-        if env.preflight_enabled and (env.preflight_script or "").strip():
-            environment_preflight_script = env.preflight_script
-
         host_workdir_base = str(self._settings_data.get("host_workdir") or os.getcwd())
         # Get effective agent and config for this environment
         agent_cli, host_codex = self._effective_agent_and_config(env=env)
@@ -283,7 +271,6 @@ class MainWindowPreflightMixin:
             host_workdir=host_workdir,
             host_codex=host_codex,
             settings_preflight_script=settings_preflight_script,
-            environment_preflight_script=environment_preflight_script,
         )
 
     def _get_extra_mounts_with_cache(self, env: Environment | None) -> list[str]:

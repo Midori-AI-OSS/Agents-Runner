@@ -7,7 +7,6 @@ from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
 
 from agents_runner.docker_runner import DockerAgentWorker
-from agents_runner.docker_runner import DockerPreflightWorker
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.environments.model import AgentSelection
 from agents_runner.execution.supervisor import SupervisorConfig
@@ -39,16 +38,7 @@ class TaskRunnerBridge(QObject):
         self.task_id = task_id
         self._use_supervisor = use_supervisor
 
-        if mode == "preflight":
-            self._worker = DockerPreflightWorker(
-                config=config,
-                on_state=lambda state: self.state.emit(self.task_id, state),
-                on_log=lambda line: self.log.emit(self.task_id, line),
-                on_done=lambda code, err: self.done.emit(
-                    self.task_id, code, err, [], {}
-                ),
-            )
-        elif use_supervisor and mode != "preflight":
+        if use_supervisor:
             # Use supervisor for agent runs
             supervisor_config = SupervisorConfig(
                 max_retries_per_agent=0,
