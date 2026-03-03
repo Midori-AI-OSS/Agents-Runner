@@ -191,7 +191,6 @@ class SettingsFormMixin:
             "Run global preflight before setup-agents.sh."
         )
         self._preflight_enabled.toggled.connect(self._on_preflight_enabled_toggled)
-        self._on_preflight_enabled_toggled(False)
 
         self._append_pixelarch_context = QCheckBox("Append PixelArch context")
         self._append_pixelarch_context.setToolTip(
@@ -326,6 +325,7 @@ class SettingsFormMixin:
         )
         self._preflight_script.setTabChangesFocus(True)
         self._preflight_script.setEnabled(False)
+        self._on_preflight_enabled_toggled(bool(self._preflight_enabled.isChecked()))
         self._preflight_script.textChanged.connect(
             self._on_preflight_script_text_changed
         )
@@ -1060,7 +1060,8 @@ class SettingsFormMixin:
         self._preflight_enabled.setText(
             "Preflight Enabled" if bool(enabled) else "Enable Preflight"
         )
-        self._preflight_script.setEnabled(bool(enabled))
+        if hasattr(self, "_preflight_script"):
+            self._preflight_script.setEnabled(bool(enabled))
 
     def _on_preflight_script_text_changed(self) -> None:
         self._refresh_preflight_script_highlighting(
