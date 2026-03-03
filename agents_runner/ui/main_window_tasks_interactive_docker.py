@@ -684,6 +684,7 @@ def _prepare_preflight_scripts(
             skip: bool,
             env_var: str,
             to_desktop_start: bool = False,
+            continue_on_error: bool = False,
         ) -> None:
             nonlocal preflight_clause, desktop_start_clause
             if skip:
@@ -691,6 +692,24 @@ def _prepare_preflight_scripts(
             stripped = str(script or "").strip()
             if not stripped:
                 return
+
+            run_clause = (
+                "set +e; "
+                f'/bin/bash "${{{env_var}}}"; '
+                "PHASE_EXIT=$?; "
+                "set -e; "
+                'if [ "$PHASE_EXIT" -ne 0 ]; then '
+                f'echo "[docker/preflight][ERROR] {label}: failed (exit $PHASE_EXIT); continuing startup"; '
+                "else "
+                f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: done')}; "
+                "fi; "
+                if continue_on_error
+                else (
+                    f'/bin/bash "${{{env_var}}}"; '
+                    f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: done')}; "
+                )
+            )
+
             matched = next(
                 (
                     name
@@ -703,8 +722,7 @@ def _prepare_preflight_scripts(
                 clause = (
                     f'{env_var}="${{PREFLIGHTS_DIR}}/{matched}"; '
                     f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: running')}; "
-                    f'/bin/bash "${{{env_var}}}"; '
-                    f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: done')}; "
+                    f"{run_clause}"
                 )
                 if to_desktop_start:
                     desktop_start_clause += clause
@@ -717,8 +735,7 @@ def _prepare_preflight_scripts(
             clause = (
                 f"{env_var}={shlex.quote(container_path)}; "
                 f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: running')}; "
-                f'/bin/bash "${{{env_var}}}"; '
-                f"{shell_log_statement('docker', 'preflight', 'INFO', f'{label}: done')}; "
+                f"{run_clause}"
             )
             if to_desktop_start:
                 desktop_start_clause += clause
@@ -756,6 +773,7 @@ def _prepare_preflight_scripts(
             tmp_key="setup_agents",
             skip=skip_setup_agents,
             env_var="PREFLIGHT_SETUP_AGENTS",
+            continue_on_error=True,
         )
         _append_optional_phase(
             label="desktop-start",
@@ -887,8 +905,8 @@ def _build_host_shell_script(
 
     host_script_parts.extend(
         [
-            f'{docker_pull_cmd} || {{ STATUS=$?; {shell_log_statement("host", "docker", "ERROR", "docker pull failed (exit $STATUS)")}; write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; }}',
-            f'{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then {shell_log_statement("host", "docker", "ERROR", "container command failed (exit $STATUS)")}; fi; write_finish "$STATUS"; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS',
+            f'{docker_pull_cmd} || {{ STATUS=$?; echo "[host/docker][ERROR] docker pull failed (exit $STATUS)"; write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; }}',
+            f'{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then echo "[host/docker][ERROR] container command failed (exit $STATUS)"; fi; write_finish "$STATUS"; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS',
         ]
     )
 
