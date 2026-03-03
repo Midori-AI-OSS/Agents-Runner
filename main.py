@@ -12,7 +12,7 @@ def _is_truthy_env(name: str) -> bool:
     }
 
 
-def _append_qt_logging_rules(existing: str, extra_rules: list[str]) -> str:
+def _upsert_qt_logging_rules(existing: str, required_rules: list[str]) -> str:
     tokens: list[str] = []
     existing_rules = (existing or "").replace("\n", ";").strip()
     if existing_rules:
@@ -20,14 +20,25 @@ def _append_qt_logging_rules(existing: str, extra_rules: list[str]) -> str:
             rule.strip() for rule in existing_rules.split(";") if rule.strip()
         )
 
-    existing_keys = {
-        str(rule.split("=", 1)[0]).strip().lower() for rule in tokens if "=" in rule
-    }
-    for rule in extra_rules:
+    # Keep the last seen index for each key so we can replace effective rules.
+    key_to_index: dict[str, int] = {}
+    for idx, rule in enumerate(tokens):
+        if "=" not in rule:
+            continue
         key = str(rule.split("=", 1)[0]).strip().lower()
-        if key and key not in existing_keys:
+        if key:
+            key_to_index[key] = idx
+
+    for rule in required_rules:
+        key = str(rule.split("=", 1)[0]).strip().lower()
+        if not key:
+            continue
+        existing_idx = key_to_index.get(key)
+        if existing_idx is None:
+            key_to_index[key] = len(tokens)
             tokens.append(rule)
-            existing_keys.add(key)
+            continue
+        tokens[existing_idx] = rule
     return ";".join(tokens)
 
 
@@ -35,12 +46,14 @@ def _configure_qt_logging_env() -> None:
     # Keep full Qt output in explicit diagnostics mode.
     if _is_truthy_env("AGENTS_RUNNER_QT_DIAGNOSTICS"):
         return
-    os.environ["QT_LOGGING_RULES"] = _append_qt_logging_rules(
+    os.environ.pop("QT_FFMPEG_DEBUG", None)
+    os.environ["QT_LOGGING_RULES"] = _upsert_qt_logging_rules(
         os.environ.get("QT_LOGGING_RULES", ""),
         [
             "default.warning=false",
             "qt.core.qfuture.continuations.warning=false",
             "qt.multimedia.ffmpeg=false",
+            "qt.multimedia.ffmpeg.*=false",
         ],
     )
 

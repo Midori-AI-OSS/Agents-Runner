@@ -4,6 +4,7 @@ import os
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from midori_ai_logger import MidoriAiLogger
 
@@ -122,7 +123,7 @@ def _append_chromium_flags(existing: str, extra_flags: list[str]) -> str:
     return " ".join(tokens).strip()
 
 
-def _append_qt_logging_rules(existing: str, extra_rules: list[str]) -> str:
+def _upsert_qt_logging_rules(existing: str, required_rules: list[str]) -> str:
     tokens: list[str] = []
     existing_rules = (existing or "").replace("\n", ";").strip()
     if existing_rules:
@@ -130,14 +131,25 @@ def _append_qt_logging_rules(existing: str, extra_rules: list[str]) -> str:
             rule.strip() for rule in existing_rules.split(";") if rule.strip()
         )
 
-    existing_keys = {
-        str(rule.split("=", 1)[0]).strip().lower() for rule in tokens if "=" in rule
-    }
-    for rule in extra_rules:
+    # Keep the last seen index for each key so we can replace effective rules.
+    key_to_index: dict[str, int] = {}
+    for idx, rule in enumerate(tokens):
+        if "=" not in rule:
+            continue
         key = str(rule.split("=", 1)[0]).strip().lower()
-        if key and key not in existing_keys:
+        if key:
+            key_to_index[key] = idx
+
+    for rule in required_rules:
+        key = str(rule.split("=", 1)[0]).strip().lower()
+        if not key:
+            continue
+        existing_idx = key_to_index.get(key)
+        if existing_idx is None:
+            key_to_index[key] = len(tokens)
             tokens.append(rule)
-            existing_keys.add(key)
+            continue
+        tokens[existing_idx] = rule
     return ";".join(tokens)
 
 
@@ -146,15 +158,72 @@ def _configure_qt_logging_runtime() -> None:
     if _is_truthy_env("AGENTS_RUNNER_QT_DIAGNOSTICS"):
         return
 
+    os.environ.pop("QT_FFMPEG_DEBUG", None)
     existing_rules = os.environ.get("QT_LOGGING_RULES", "")
-    os.environ["QT_LOGGING_RULES"] = _append_qt_logging_rules(
+    os.environ["QT_LOGGING_RULES"] = _upsert_qt_logging_rules(
         existing_rules,
         [
             "default.warning=false",
             "qt.core.qfuture.continuations.warning=false",
             "qt.multimedia.ffmpeg=false",
+            "qt.multimedia.ffmpeg.*=false",
         ],
     )
+
+
+def _suppress_ffmpeg_native_logging() -> None:
+    if _is_truthy_env("AGENTS_RUNNER_QT_DIAGNOSTICS"):
+        return
+    try:
+        import ctypes
+        import ctypes.util
+        import PySide6
+    except Exception:
+        return
+
+    mode = int(getattr(os, "RTLD_GLOBAL", 0) | getattr(os, "RTLD_NOW", 0))
+    qt_lib_dir = Path(PySide6.__file__).resolve().parent / "Qt" / "lib"
+
+    for stub_name in ("libQt6FFmpegStub-crypto.so.3", "libQt6FFmpegStub-ssl.so.3"):
+        stub_path = qt_lib_dir / stub_name
+        if not stub_path.is_file():
+            continue
+        try:
+            ctypes.CDLL(str(stub_path), mode=mode)
+        except Exception:
+            continue
+
+    avutil: Any | None = None
+    for candidate in (
+        qt_lib_dir / "libavutil.so.59",
+        qt_lib_dir / "libavutil.so.60",
+        qt_lib_dir / "libavutil.so",
+    ):
+        if not candidate.is_file():
+            continue
+        try:
+            avutil = ctypes.CDLL(str(candidate), mode=mode)
+            break
+        except Exception:
+            continue
+
+    if avutil is None:
+        candidate_name = str(ctypes.util.find_library("avutil") or "").strip()
+        if candidate_name:
+            try:
+                avutil = ctypes.CDLL(candidate_name, mode=mode)
+            except Exception:
+                avutil = None
+    if avutil is None:
+        return
+
+    try:
+        av_log_set_level = avutil.av_log_set_level
+        av_log_set_level.argtypes = [ctypes.c_int]
+        av_log_set_level.restype = None
+        av_log_set_level(16)  # AV_LOG_WARNING
+    except Exception:
+        return
 
 
 def configure_qtwebengine_runtime() -> None:
@@ -196,6 +265,7 @@ def _initialize_qtwebengine() -> None:
 def run_app(argv: list[str]) -> None:
     _maybe_enable_faulthandler()
     _configure_qt_logging_runtime()
+    _suppress_ffmpeg_native_logging()
     configure_qtwebengine_runtime()
 
     from agents_runner.diagnostics.crash_reporting import install_exception_hooks
