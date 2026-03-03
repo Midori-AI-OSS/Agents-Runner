@@ -230,6 +230,12 @@ class MainWindowTasksInteractiveMixin:
             prompt = ""
         else:
             override = self._coerce_agent_override(agent_override)
+            uses_environment_agent_selection = bool(
+                not override
+                and env
+                and env.agent_selection
+                and getattr(env.agent_selection, "agents", None)
+            )
 
             if (
                 not override
@@ -292,7 +298,7 @@ class MainWindowTasksInteractiveMixin:
                     self._select_agent_instance_for_env(
                         env=env,
                         settings=self._settings_data,
-                        advance_round_robin=True,
+                        advance_round_robin=False,
                     )
                 )
             else:
@@ -346,6 +352,11 @@ class MainWindowTasksInteractiveMixin:
                     workspace_type=workspace_type,
                     env=env,
                     task_id=task_id,
+                )
+            if uses_environment_agent_selection:
+                self._commit_round_robin_selection(
+                    env=env,
+                    selected_agent_id=agent_instance_id,
                 )
 
         image = PIXELARCH_EMERALD_IMAGE
@@ -402,6 +413,7 @@ class MainWindowTasksInteractiveMixin:
         stain = env.color if env else None
         spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+        self._refresh_new_task_agent_info()
         self._schedule_save()
 
         if env:
@@ -642,6 +654,7 @@ class MainWindowTasksInteractiveMixin:
             format_log("ui", "prep", "ERROR", task.error),
         )
         self._refresh_interactive_prep_task_card(task)
+        self._refresh_new_task_agent_info()
         self._clear_interactive_prep_refs(task_id)
 
     def _on_interactive_prep_succeeded(
