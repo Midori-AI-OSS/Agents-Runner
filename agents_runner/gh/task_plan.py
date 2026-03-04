@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from ..agent_display import format_agent_markdown_link
 from ..prompts.loader import load_prompt
+from .auth import is_gh_authenticated
 from .errors import GhManagementError
 from .gh_cli import is_gh_available
 from .git_ops import (
@@ -411,8 +412,7 @@ def commit_push_and_pr(
     if not use_gh or not is_gh_available():
         return ""
 
-    auth_proc = run_gh(["gh", "auth", "status"], timeout_s=10.0)
-    if auth_proc.returncode != 0:
+    if not is_gh_authenticated(timeout_s=10.0, use_cache=True):
         raise GhManagementError("`gh` is not authenticated; run `gh auth login`")
 
     # Create PR with retry for transient network issues

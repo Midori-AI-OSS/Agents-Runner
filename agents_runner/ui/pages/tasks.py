@@ -79,6 +79,7 @@ class TasksPage(QWidget):
         self._pane_specs = self._default_pane_specs()
         self._pane_index_by_key: dict[str, int] = {}
         self._nav_buttons: dict[str, QToolButton] = {}
+        # Single fetch/cache engine; list panes and polling both route through this.
         self._github_work_coordinator = GitHubWorkCoordinator(self)
 
         layout = QVBoxLayout(self)

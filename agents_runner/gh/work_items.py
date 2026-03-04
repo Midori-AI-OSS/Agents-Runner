@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 from typing import cast
 
+from .auth import resolve_authenticated_login
 from .errors import GhManagementError
 from .process import run_gh
 
@@ -379,13 +380,13 @@ def _list_api_rows_paginated(
     return rows[:safe_limit]
 
 
-def _has_actor_reaction_on_endpoint(
+def _has_reaction_on_endpoint(
     repo_owner: str,
     repo_name: str,
     *,
     endpoint: str,
     reaction: str,
-    actor_login: str,
+    actor_login: str | None = None,
     limit: int = _REACTION_SCAN_LIMIT,
     retry_on_transient: bool = True,
 ) -> bool:
@@ -394,8 +395,7 @@ def _has_actor_reaction_on_endpoint(
     if content_value not in {"+1", "-1", "eyes", "rocket", "hooray"}:
         raise GhManagementError(f"unsupported reaction: {content_value}")
     actor = _safe_text(actor_login).lower()
-    if not actor:
-        raise GhManagementError("missing actor login for reaction check")
+    actor_filter_enabled = bool(actor)
 
     rows = _list_api_rows_paginated(
         f"repos/{repo}/{endpoint}",
@@ -410,6 +410,8 @@ def _has_actor_reaction_on_endpoint(
         content = _safe_text(row_dict.get("content")).lower()
         if content != content_value:
             continue
+        if not actor_filter_enabled:
+            return True
         user_dict = _as_object_dict(row_dict.get("user"))
         user_login = _safe_text(user_dict.get("login") if user_dict else "").lower()
         if user_login == actor:
@@ -963,12 +965,15 @@ def has_actor_issue_reaction(
     limit: int = _REACTION_SCAN_LIMIT,
     retry_on_transient: bool = True,
 ) -> bool:
-    return _has_actor_reaction_on_endpoint(
+    actor = _safe_text(actor_login).lower()
+    if not actor:
+        raise GhManagementError("missing actor login for reaction check")
+    return _has_reaction_on_endpoint(
         repo_owner,
         repo_name,
         endpoint=f"issues/{int(issue_number)}/reactions",
         reaction=reaction,
-        actor_login=actor_login,
+        actor_login=actor,
         limit=limit,
         retry_on_transient=retry_on_transient,
     )
@@ -984,12 +989,15 @@ def has_actor_issue_comment_reaction(
     limit: int = _REACTION_SCAN_LIMIT,
     retry_on_transient: bool = True,
 ) -> bool:
-    return _has_actor_reaction_on_endpoint(
+    actor = _safe_text(actor_login).lower()
+    if not actor:
+        raise GhManagementError("missing actor login for reaction check")
+    return _has_reaction_on_endpoint(
         repo_owner,
         repo_name,
         endpoint=f"issues/comments/{int(comment_id)}/reactions",
         reaction=reaction,
-        actor_login=actor_login,
+        actor_login=actor,
         limit=limit,
         retry_on_transient=retry_on_transient,
     )
@@ -1005,12 +1013,15 @@ def has_actor_pull_request_review_comment_reaction(
     limit: int = _REACTION_SCAN_LIMIT,
     retry_on_transient: bool = True,
 ) -> bool:
-    return _has_actor_reaction_on_endpoint(
+    actor = _safe_text(actor_login).lower()
+    if not actor:
+        raise GhManagementError("missing actor login for reaction check")
+    return _has_reaction_on_endpoint(
         repo_owner,
         repo_name,
         endpoint=f"pulls/comments/{int(comment_id)}/reactions",
         reaction=reaction,
-        actor_login=actor_login,
+        actor_login=actor,
         limit=limit,
         retry_on_transient=retry_on_transient,
     )
@@ -1027,12 +1038,54 @@ def has_actor_pull_request_review_reaction(
     limit: int = _REACTION_SCAN_LIMIT,
     retry_on_transient: bool = True,
 ) -> bool:
-    return _has_actor_reaction_on_endpoint(
+    actor = _safe_text(actor_login).lower()
+    if not actor:
+        raise GhManagementError("missing actor login for reaction check")
+    return _has_reaction_on_endpoint(
         repo_owner,
         repo_name,
         endpoint=f"pulls/{int(pull_number)}/reviews/{int(review_id)}/reactions",
         reaction=reaction,
-        actor_login=actor_login,
+        actor_login=actor,
+        limit=limit,
+        retry_on_transient=retry_on_transient,
+    )
+
+
+def has_issue_reaction(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    issue_number: int,
+    reaction: str,
+    limit: int = _REACTION_SCAN_LIMIT,
+    retry_on_transient: bool = True,
+) -> bool:
+    return _has_reaction_on_endpoint(
+        repo_owner,
+        repo_name,
+        endpoint=f"issues/{int(issue_number)}/reactions",
+        reaction=reaction,
+        limit=limit,
+        retry_on_transient=retry_on_transient,
+    )
+
+
+def has_pull_request_review_reaction(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    pull_number: int,
+    review_id: int,
+    reaction: str,
+    limit: int = _REACTION_SCAN_LIMIT,
+    retry_on_transient: bool = True,
+) -> bool:
+    return _has_reaction_on_endpoint(
+        repo_owner,
+        repo_name,
+        endpoint=f"pulls/{int(pull_number)}/reviews/{int(review_id)}/reactions",
+        reaction=reaction,
         limit=limit,
         retry_on_transient=retry_on_transient,
     )
@@ -1041,21 +1094,9 @@ def has_actor_pull_request_review_reaction(
 def get_authenticated_github_login() -> str:
     """Return the currently authenticated ``gh`` login (or empty string)."""
     try:
-        data = run_gh_gh_json(
-            [
-                "api",
-                "user",
-                "-H",
-                "Accept: application/vnd.github+json",
-            ],
-            timeout_s=20.0,
-        )
+        return resolve_authenticated_login(timeout_s=20.0, use_cache=True)
     except Exception:
         return ""
-    data_dict = _as_object_dict(data)
-    if data_dict is None:
-        return ""
-    return _safe_text(data_dict.get("login")).lower()
 
 
 def list_org_members(owner: str, *, limit: int = 100) -> list[str]:
