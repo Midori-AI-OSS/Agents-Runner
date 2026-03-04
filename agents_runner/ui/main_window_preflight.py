@@ -45,7 +45,7 @@ class MainWindowPreflightMixin:
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return
 
-        smoke_agent_cli = "sh"
+        smoke_agent_cli = "smoke_agent"
         agent_cli = normalize_agent(
             str(agent_cli or self._settings_data.get("use") or "codex")
         )
@@ -132,7 +132,8 @@ class MainWindowPreflightMixin:
             ),
             env_vars=dict(env.env_vars) if env else {},
             extra_mounts=self._get_extra_mounts_with_cache(env),
-            agent_cli_args=["-c", smoke_command],
+            custom_command_argv=["sh", "-c", smoke_command],
+            custom_verify_executable="sh",
             gh_repo=gh_repo or None,
             gh_prefer_gh_cli=gh_prefer_gh_cli,
             gh_recreate_if_needed=gh_recreate_if_needed,
@@ -142,6 +143,9 @@ class MainWindowPreflightMixin:
         # Clean up any existing bridge/thread for this task to prevent duplicate log emissions
         old_bridge = self._bridges.pop(task_id, None)
         old_thread = self._threads.pop(task_id, None)
+        remove_proxy = getattr(self, "_remove_task_event_proxy", None)
+        if callable(remove_proxy):
+            remove_proxy(task_id)
         if old_bridge is not None:
             try:
                 # Disconnect all signal connections to prevent duplicate log emissions
@@ -176,17 +180,25 @@ class MainWindowPreflightMixin:
         bridge = TaskRunnerBridge(
             task_id=task_id,
             config=config,
-            prompt="",
-            mode="codex",
+            prompt="this is a preflight test",
+            mode=smoke_agent_cli,
             use_supervisor=False,
         )
         thread = QThread(self)
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
 
-        bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
-        bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
-        bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
+        connect_events = getattr(self, "_connect_task_bridge_events", None)
+        if callable(connect_events):
+            connect_events(
+                task_id=task_id,
+                bridge=bridge,
+                include_supervisor_events=False,
+            )
+        else:
+            bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
+            bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
+            bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
 
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)

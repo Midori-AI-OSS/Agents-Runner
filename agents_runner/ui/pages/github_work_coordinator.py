@@ -21,11 +21,8 @@ from agents_runner.gh.work_items import add_issue_comment_reaction
 from agents_runner.gh.work_items import add_issue_reaction
 from agents_runner.gh.work_items import add_pull_request_review_comment_reaction
 from agents_runner.gh.work_items import add_pull_request_review_reaction
-from agents_runner.gh.work_items import get_authenticated_github_login
-from agents_runner.gh.work_items import has_actor_issue_comment_reaction
-from agents_runner.gh.work_items import has_actor_issue_reaction
-from agents_runner.gh.work_items import has_actor_pull_request_review_comment_reaction
-from agents_runner.gh.work_items import has_actor_pull_request_review_reaction
+from agents_runner.gh.work_items import has_issue_reaction
+from agents_runner.gh.work_items import has_pull_request_review_reaction
 from agents_runner.gh.work_items import list_issue_comments
 from agents_runner.gh.work_items import list_open_issues
 from agents_runner.gh.work_items import list_open_pull_requests
@@ -73,6 +70,7 @@ class GitHubWorkCoordinator(QObject):
 
         self._auto_review_seen_mentions: set[str] = set()
         self._auto_review_emit_keys: set[str] = set()
+        self._auto_review_warned_keys: set[str] = set()
 
         self._state_lock = threading.Lock()
         self._poll_cycle_running = False
@@ -569,16 +567,6 @@ class GitHubWorkCoordinator(QObject):
         )
         if not trusted_users:
             return []
-        bot_login = get_authenticated_github_login()
-        if not bot_login:
-            logger.rprint(
-                (
-                    "[github-auto-review] skipped auto-start scan: failed to resolve "
-                    "authenticated GitHub login for eyes gating."
-                ),
-                mode="warn",
-            )
-            return []
         auto_reactions_enabled = bool(
             self._settings.get("agentsnova_auto_reactions_enabled", True)
         )
@@ -738,25 +726,25 @@ class GitHubWorkCoordinator(QObject):
 
                 source = str(candidate.get("source") or "").strip().lower()
                 try:
-                    bot_has_eyes = self._anchor_has_bot_eyes(
+                    anchor_has_eyes = self._anchor_has_any_eyes(
                         repo_owner=repo_owner,
                         repo_name=repo_name,
                         item_number=item.number,
                         source=source,
                         anchor_id=candidate.get("anchor_id"),
-                        bot_login=bot_login,
+                        candidate_comment=candidate.get("comment"),
                     )
                 except Exception as exc:
-                    logger.rprint(
-                        (
-                            "[github-auto-review] skipped auto-start: failed to read "
-                            f"eyes reaction on {repo_owner}/{repo_name} "
-                            f"{item.item_type} #{item.number} ({source}): {exc}"
+                    self._log_auto_review_warning_once(
+                        key="auto_review_read_eyes_failed",
+                        message=(
+                            "[github-auto-review] skipped auto-start scans: failed to "
+                            "read eyes reaction anchors. "
+                            f"first_error={exc}"
                         ),
-                        mode="warn",
                     )
                     continue
-                if bot_has_eyes:
+                if anchor_has_eyes:
                     continue
 
                 if auto_reactions_enabled:
@@ -769,15 +757,14 @@ class GitHubWorkCoordinator(QObject):
                             anchor_id=candidate.get("anchor_id"),
                         )
                     except Exception as exc:
-                        logger.rprint(
-                            (
-                                "[github-auto-review] skipped auto-start: failed to add "
-                                f"eyes reaction on {repo_owner}/{repo_name} "
-                                f"{item.item_type} #{item.number} ({source}): {exc}"
+                        self._log_auto_review_warning_once(
+                            key="auto_review_add_eyes_failed",
+                            message=(
+                                "[github-auto-review] failed to add eyes reactions "
+                                "during auto-start scans. "
+                                f"first_error={exc}"
                             ),
-                            mode="warn",
                         )
-                        continue
 
                 results.append(
                     {
@@ -814,7 +801,19 @@ class GitHubWorkCoordinator(QObject):
             return 0
         return parsed if parsed > 0 else 0
 
-    def _anchor_has_bot_eyes(
+    def _log_auto_review_warning_once(self, *, key: str, message: str) -> None:
+        message_text = str(message or "").strip()
+        if not key or not message_text:
+            return
+        should_log = False
+        with self._state_lock:
+            if key not in self._auto_review_warned_keys:
+                self._auto_review_warned_keys.add(key)
+                should_log = True
+        if should_log:
+            logger.rprint(message_text, mode="warn")
+
+    def _anchor_has_any_eyes(
         self,
         *,
         repo_owner: str,
@@ -822,49 +821,33 @@ class GitHubWorkCoordinator(QObject):
         item_number: int,
         source: str,
         anchor_id: object,
-        bot_login: str,
+        candidate_comment: object | None = None,
     ) -> bool:
         if source == "issue_comment":
-            comment_id = self._safe_positive_int(anchor_id)
-            if comment_id <= 0:
-                raise ValueError("invalid issue comment anchor id")
-            return has_actor_issue_comment_reaction(
-                repo_owner,
-                repo_name,
-                comment_id=comment_id,
-                reaction="eyes",
-                actor_login=bot_login,
-            )
+            if not isinstance(candidate_comment, GitHubComment):
+                raise ValueError("missing issue comment candidate")
+            return candidate_comment.reactions.eyes > 0
         if source == "review_comment":
-            comment_id = self._safe_positive_int(anchor_id)
-            if comment_id <= 0:
-                raise ValueError("invalid review comment anchor id")
-            return has_actor_pull_request_review_comment_reaction(
-                repo_owner,
-                repo_name,
-                comment_id=comment_id,
-                reaction="eyes",
-                actor_login=bot_login,
-            )
+            if not isinstance(candidate_comment, GitHubComment):
+                raise ValueError("missing review comment candidate")
+            return candidate_comment.reactions.eyes > 0
         if source == "review_body":
             review_id = self._safe_positive_int(anchor_id)
             if review_id <= 0:
                 raise ValueError("invalid review anchor id")
-            return has_actor_pull_request_review_reaction(
+            return has_pull_request_review_reaction(
                 repo_owner,
                 repo_name,
                 pull_number=item_number,
                 review_id=review_id,
                 reaction="eyes",
-                actor_login=bot_login,
             )
         if source in {"pr_body", "issue_body"}:
-            return has_actor_issue_reaction(
+            return has_issue_reaction(
                 repo_owner,
                 repo_name,
                 issue_number=item_number,
                 reaction="eyes",
-                actor_login=bot_login,
             )
         raise ValueError(f"unsupported mention source: {source}")
 

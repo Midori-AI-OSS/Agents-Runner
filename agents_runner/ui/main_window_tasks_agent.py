@@ -138,6 +138,9 @@ class MainWindowTasksAgentMixin:
             self._tasks.pop(task_id, None)
             self._threads.pop(task_id, None)
             self._bridges.pop(task_id, None)
+            remove_proxy = getattr(self, "_remove_task_event_proxy", None)
+            if callable(remove_proxy):
+                remove_proxy(task_id)
             self._run_started_s.pop(task_id, None)
             self._dashboard_log_refresh_s.pop(task_id, None)
         for task in archived_tasks:
@@ -1197,6 +1200,9 @@ class MainWindowTasksAgentMixin:
         # Clean up any existing bridge/thread for this task to prevent duplicate log emissions
         old_bridge = self._bridges.pop(task.task_id, None)
         old_thread = self._threads.pop(task.task_id, None)
+        remove_proxy = getattr(self, "_remove_task_event_proxy", None)
+        if callable(remove_proxy):
+            remove_proxy(task.task_id)
         if old_bridge is not None:
             try:
                 # Disconnect all signal connections to prevent duplicate log emissions
@@ -1237,13 +1243,23 @@ class MainWindowTasksAgentMixin:
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
 
-        bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
-        bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
-        bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
-        bridge.retry_attempt.connect(self._on_bridge_retry_attempt, Qt.QueuedConnection)
-        bridge.agent_switched.connect(
-            self._on_bridge_agent_switched, Qt.QueuedConnection
-        )
+        connect_events = getattr(self, "_connect_task_bridge_events", None)
+        if callable(connect_events):
+            connect_events(
+                task_id=task.task_id,
+                bridge=bridge,
+                include_supervisor_events=True,
+            )
+        else:
+            bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
+            bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
+            bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
+            bridge.retry_attempt.connect(
+                self._on_bridge_retry_attempt, Qt.QueuedConnection
+            )
+            bridge.agent_switched.connect(
+                self._on_bridge_agent_switched, Qt.QueuedConnection
+            )
 
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)

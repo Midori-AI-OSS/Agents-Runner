@@ -8,6 +8,7 @@ from datetime import datetime
 from datetime import timezone
 from typing import Any
 
+from PySide6.QtCore import Qt
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
@@ -24,6 +25,8 @@ from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.ui.bridges import TaskRunnerBridge
+from agents_runner.ui.task_event_proxy import BufferedTaskEvent
+from agents_runner.ui.task_event_proxy import TaskEventProxy
 from agents_runner.ui.task_git_metadata import derive_task_git_metadata
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import parse_docker_time
@@ -441,6 +444,7 @@ class MainWindowTaskEventsMixin:
         self._run_started_s.pop(task_id, None)
         self._dashboard_log_refresh_s.pop(task_id, None)
         self._interactive_watch.pop(task_id, None)
+        self._remove_task_event_proxy(task_id)
         self._schedule_save()
         self._refresh_new_task_agent_info()
 
@@ -488,6 +492,136 @@ class MainWindowTaskEventsMixin:
             data_dir=data_dir,
             on_log=None,  # Silent cleanup (no UI updates)
         )
+
+    def _ensure_task_event_proxy(self, task_id: str) -> TaskEventProxy:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            raise ValueError("task_id is required")
+        proxies = getattr(self, "_task_event_proxies", {})
+        proxy = proxies.get(task_id)
+        if proxy is None:
+            proxy = TaskEventProxy(task_id=task_id)
+            proxies[task_id] = proxy
+            self._task_event_proxies = proxies
+        timer = getattr(self, "_task_event_drain_timer", None)
+        if timer is not None and not timer.isActive():
+            timer.start()
+        return proxy
+
+    def _remove_task_event_proxy(self, task_id: str) -> None:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return
+        proxies = getattr(self, "_task_event_proxies", {})
+        proxy = proxies.pop(task_id, None)
+        if proxy is not None:
+            proxy.clear()
+        timer = getattr(self, "_task_event_drain_timer", None)
+        if timer is not None and timer.isActive() and not proxies:
+            timer.stop()
+
+    def _connect_task_bridge_events(
+        self,
+        *,
+        task_id: str,
+        bridge: TaskRunnerBridge,
+        include_supervisor_events: bool,
+    ) -> None:
+        proxy = self._ensure_task_event_proxy(task_id)
+        bridge.state.connect(proxy.enqueue_state, Qt.DirectConnection)
+        bridge.log.connect(proxy.enqueue_log, Qt.DirectConnection)
+        bridge.done.connect(proxy.enqueue_done, Qt.DirectConnection)
+        if include_supervisor_events:
+            bridge.retry_attempt.connect(proxy.enqueue_retry, Qt.DirectConnection)
+            bridge.agent_switched.connect(
+                proxy.enqueue_agent_switched, Qt.DirectConnection
+            )
+
+    def _drain_task_event_proxies(self) -> None:
+        proxies = getattr(self, "_task_event_proxies", {})
+        if not proxies:
+            timer = getattr(self, "_task_event_drain_timer", None)
+            if timer is not None and timer.isActive():
+                timer.stop()
+            return
+
+        for task_id, proxy in list(proxies.items()):
+            events = proxy.drain(max_events=600)
+            if not events:
+                continue
+            self._dispatch_buffered_task_events(
+                task_id=task_id, proxy=proxy, events=events
+            )
+            if proxy.releasable():
+                self._remove_task_event_proxy(task_id)
+
+    def _dispatch_buffered_task_events(
+        self,
+        *,
+        task_id: str,
+        proxy: TaskEventProxy,
+        events: list[BufferedTaskEvent],
+    ) -> None:
+        if not events:
+            return
+
+        state_events: list[dict[str, Any]] = []
+        misc_events: list[BufferedTaskEvent] = []
+        done_event: BufferedTaskEvent | None = None
+
+        for event in events:
+            if event.kind == "state":
+                payload = event.payload if isinstance(event.payload, dict) else {}
+                state_events.append(dict(payload))
+                continue
+            if event.kind == "done" and done_event is None:
+                done_event = event
+                continue
+            misc_events.append(event)
+
+        for state in state_events:
+            self._on_task_state(task_id, state)
+
+        for event in misc_events:
+            if event.kind in {"log", "host_log"}:
+                self._on_task_log(task_id, str(event.payload or ""))
+                continue
+            if event.kind == "retry":
+                payload = event.payload
+                if isinstance(payload, tuple) and len(payload) == 3:
+                    attempt_number, agent, delay = payload
+                    self._on_bridge_retry_attempt(
+                        task_id,
+                        int(attempt_number),
+                        str(agent),
+                        float(delay),
+                    )
+                continue
+            if event.kind == "agent_switched":
+                payload = event.payload
+                if isinstance(payload, tuple) and len(payload) == 2:
+                    from_agent, to_agent = payload
+                    self._on_bridge_agent_switched(
+                        task_id,
+                        str(from_agent),
+                        str(to_agent),
+                    )
+
+        if done_event is None:
+            return
+
+        done_payload = done_event.payload
+        if not isinstance(done_payload, tuple) or len(done_payload) != 4:
+            return
+        exit_code, error, artifacts, metadata = done_payload
+        self._on_bridge_done(
+            task_id,
+            int(exit_code),
+            error,
+            list(artifacts or []),
+            dict(metadata or {}),
+        )
+        proxy.mark_bridge_done_dispatched()
 
     def _on_bridge_state(self, task_id: str, state: dict[str, Any]) -> None:
         self._on_task_state(task_id, state)
@@ -603,6 +737,12 @@ class MainWindowTaskEventsMixin:
         self._on_task_done(task_id, exit_code, error, metadata=metadata)
 
     def _on_host_log(self, task_id: str, line: str) -> None:
+        task_id = str(task_id or "").strip()
+        if task_id:
+            proxy = getattr(self, "_task_event_proxies", {}).get(task_id)
+            if proxy is not None:
+                proxy.enqueue_host_log(task_id, line)
+                return
         self._on_task_log(task_id, line)
 
     def _on_host_pr_url(self, task_id: str, pr_url: str) -> None:

@@ -440,6 +440,7 @@ class GitHubWorkListPage(QWidget):
                     self._initial_load_seen_keys.add(load_key)
                     self._render_loading_rows(stain=self._current_stain())
             if self._pane_active:
+                # Pane/manual refresh trigger that still uses shared coordinator fetches.
                 self._coordinator.request_refresh(
                     item_type=self._item_type,
                     env_id=env_id,

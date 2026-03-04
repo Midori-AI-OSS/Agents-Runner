@@ -14,9 +14,16 @@ _DEFAULT_AGENT_SYSTEM = "codex"
 _registry: dict[str, AgentSystemPlugin] | None = None
 
 
-def available_agent_system_names() -> list[str]:
+def available_agent_system_names(*, include_internal: bool = True) -> list[str]:
     """Return discovered agent system plugin names."""
-    return sorted(_ensure_registry().keys())
+    registry = _ensure_registry()
+    if include_internal:
+        return sorted(registry.keys())
+    return sorted(
+        name
+        for name, plugin in registry.items()
+        if not bool(getattr(plugin, "internal_only", False))
+    )
 
 
 def get_default_agent_system_name() -> str:

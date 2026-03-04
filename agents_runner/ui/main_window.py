@@ -4,6 +4,8 @@ import os
 import re
 import threading
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtCore import QTimer
@@ -57,6 +59,9 @@ from agents_runner.ui.main_window_tasks_interactive_finalize import (
     MainWindowTasksInteractiveFinalizeMixin,
 )
 
+if TYPE_CHECKING:
+    from agents_runner.ui.task_event_proxy import TaskEventProxy
+
 
 class MainWindow(
     QMainWindow,
@@ -89,7 +94,7 @@ class MainWindow(
 
         agent_config_dirs: dict[str, str] = {}
         agent_interactive_commands: dict[str, str] = {}
-        for agent_cli in available_agent_system_names():
+        for agent_cli in available_agent_system_names(include_internal=False):
             agent_config_dirs[agent_cli] = os.path.expanduser(
                 default_host_config_dir(agent_cli)
             )
@@ -148,6 +153,7 @@ class MainWindow(
         self._tasks: dict[str, Task] = {}
         self._threads: dict[str, QThread] = {}
         self._bridges: dict[str, TaskRunnerBridge] = {}
+        self._task_event_proxies: dict[str, TaskEventProxy] = {}
         self._interactive_prep_threads: dict[str, QThread] = {}
         self._interactive_prep_workers: dict[str, object] = {}
         self._interactive_prep_bridges: dict[str, object] = {}
@@ -168,6 +174,9 @@ class MainWindow(
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(450)
         self._save_timer.timeout.connect(self._save_state)
+        self._task_event_drain_timer = QTimer(self)
+        self._task_event_drain_timer.setInterval(50)
+        self._task_event_drain_timer.timeout.connect(self._drain_task_event_proxies)
 
         # Agent watch states for cooldown tracking
         from agents_runner.core.agent.watch_state import AgentWatchState
