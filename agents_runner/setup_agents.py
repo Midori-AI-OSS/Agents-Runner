@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from agents_runner.environments.paths import default_data_dir, managed_repos_dir
 from agents_runner.gh.git_ops import git_repo_root, is_git_repo
 from agents_runner.log_format import format_log
 
@@ -178,6 +177,11 @@ def _missing_instruction() -> str:
     return "Repository bootstrap is missing. Create `.agents/setup-agents.sh`, make it executable, add your setup steps, then commit the file to the repository."
 
 
+def _setup_agents_metadata_root() -> Path:
+    # Keep setup-agents metadata outside managed repo checkouts.
+    return Path.home() / ".midoriai" / "agents-runner" / "metadata-repos"
+
+
 def _resolve_repo_and_mirror_paths(
     *,
     host_workdir: str,
@@ -185,6 +189,7 @@ def _resolve_repo_and_mirror_paths(
     gh_repo: str | None,
     data_dir: str | None,
 ) -> tuple[Path, Path, Path, Path, Path]:
+    _ = data_dir
     repo_root = _resolve_repo_root(host_workdir)
     primary = repo_root / SETUP_AGENTS_PRIMARY_RELATIVE_PATH
     fallback = repo_root / SETUP_AGENTS_FALLBACK_RELATIVE_PATH
@@ -197,11 +202,10 @@ def _resolve_repo_and_mirror_paths(
 
     selected_repo_path = repo_script_path or primary
 
-    base_dir = Path(managed_repos_dir(data_dir or default_data_dir()))
+    base_dir = _setup_agents_metadata_root()
     mirror_path = (
         base_dir
         / _safe_segment(environment_id)
-        / "metadata"
         / "setup-agents"
         / _repo_key(repo_root=repo_root, gh_repo=gh_repo)
         / "setup-agents.sh"
