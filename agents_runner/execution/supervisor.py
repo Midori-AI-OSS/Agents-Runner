@@ -546,6 +546,8 @@ class TaskSupervisor:
             cache_settings_preflight_enabled=self._config.cache_settings_preflight_enabled,
             cache_ide_preflight_enabled=self._config.cache_ide_preflight_enabled,
             environment_id=self._config.environment_id,
+            workspace_type=self._config.workspace_type,
+            workspace_target=self._config.workspace_target,
             gh_context_file_path=self._config.gh_context_file_path,
             container_settings_preflight_path=self._config.container_settings_preflight_path,
             container_setup_agents_preflight_path=self._config.container_setup_agents_preflight_path,

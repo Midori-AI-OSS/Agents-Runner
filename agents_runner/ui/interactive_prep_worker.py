@@ -49,6 +49,7 @@ class InteractivePrepWorker(QObject):
         task_id: str,
         env_id: str,
         workspace_type: str,
+        workspace_target: str,
         gh_repo: str,
         host_workdir: str,
         desired_base: str,
@@ -77,6 +78,7 @@ class InteractivePrepWorker(QObject):
         self._task_id = str(task_id or "").strip()
         self._env_id = str(env_id or "").strip()
         self._workspace_type = str(workspace_type or "").strip()
+        self._workspace_target = str(workspace_target or "").strip()
         self._gh_repo = str(gh_repo or "").strip()
         self._host_workdir = str(host_workdir or "").strip()
         self._desired_base = str(desired_base or "").strip()
@@ -401,6 +403,8 @@ class InteractivePrepWorker(QObject):
                 setup_agents_result = prepare_setup_agents_phase(
                     host_workdir=self._host_workdir,
                     environment_id=self._env_id,
+                    workspace_type=self._workspace_type,
+                    workspace_target=self._workspace_target,
                     gh_repo=self._gh_repo or None,
                     launch_mode=self._launch_mode,
                     on_log=lambda line: self.log.emit(self._task_id, str(line or "")),

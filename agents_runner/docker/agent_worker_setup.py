@@ -114,6 +114,8 @@ class WorkerSetup:
             setup_agents = prepare_setup_agents_phase(
                 host_workdir=workspace_config.host_mount,
                 environment_id=self._config.environment_id,
+                workspace_type=self._config.workspace_type,
+                workspace_target=self._config.workspace_target,
                 gh_repo=self._config.gh_repo,
                 launch_mode=self._config.launch_mode,
                 on_log=self._on_log,

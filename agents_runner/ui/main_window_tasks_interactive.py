@@ -427,6 +427,7 @@ class MainWindowTasksInteractiveMixin:
             task_id=task_id,
             env_id=env_id,
             workspace_type=workspace_type,
+            workspace_target=str(env.workspace_target or "") if env else "",
             gh_repo=gh_repo,
             host_workdir=host_workdir,
             desired_base=desired_base,

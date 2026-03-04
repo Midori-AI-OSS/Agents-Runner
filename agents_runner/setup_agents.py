@@ -3,17 +3,22 @@ from __future__ import annotations
 import hashlib
 import os
 import stat
-import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from agents_runner.gh.git_ops import git_repo_root, is_git_repo
+from agents_runner.environments.preflight_snapshot import (
+    build_preflight_identity_token,
+    decrypt_setup_agents_snapshot,
+    encrypt_setup_agents_snapshot,
+)
+from agents_runner.gh.git_ops import git_repo_root
 from agents_runner.log_format import format_log
 
 SETUP_AGENTS_PRIMARY_RELATIVE_PATH = ".agents/setup-agents.sh"
 SETUP_AGENTS_FALLBACK_RELATIVE_PATH = ".github/setup-agents.sh"
+SETUP_AGENTS_MIRROR_ENCRYPTED_PREFIX = "midori-setup-agents:v1:"
 
 
 @dataclass(frozen=True)
@@ -139,40 +144,6 @@ def _write_script(path: Path, text: str, *, executable: bool) -> bool:
     return True
 
 
-def _copy_script(source: Path, destination: Path) -> bool:
-    text = source.read_text(encoding="utf-8")
-    return _write_script(destination, text, executable=_is_executable(source))
-
-
-def _git_last_commit_timestamp(repo_root: Path, script_path: Path) -> float:
-    try:
-        rel_path = str(script_path.relative_to(repo_root))
-    except ValueError:
-        return 0.0
-    proc = subprocess.run(
-        ["git", "-C", str(repo_root), "log", "-1", "--format=%ct", "--", rel_path],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if proc.returncode != 0:
-        return 0.0
-    output = str(proc.stdout or "").strip()
-    if not output.isdigit():
-        return 0.0
-    return float(output)
-
-
-def _repo_script_timestamp(repo_root: Path, script_path: Path) -> float:
-    try:
-        mtime = script_path.stat().st_mtime
-    except OSError:
-        return 0.0
-    if not is_git_repo(str(repo_root)):
-        return mtime
-    return max(mtime, _git_last_commit_timestamp(repo_root, script_path))
-
-
 def _missing_instruction() -> str:
     return "Repository bootstrap is missing. Create `.agents/setup-agents.sh`, make it executable, add your setup steps, then commit the file to the repository."
 
@@ -220,6 +191,97 @@ def _read_script(path: Path) -> tuple[str | None, str | None]:
         return None, str(exc)
 
 
+def _preflight_identity_token(
+    *,
+    environment_id: str,
+    workspace_type: str,
+    workspace_target: str,
+    host_workdir: str,
+) -> str:
+    return build_preflight_identity_token(
+        env_id=environment_id,
+        workspace_type=workspace_type,
+        workspace_target=workspace_target,
+        host_workdir=host_workdir,
+    )
+
+
+def _encode_encrypted_mirror_payload(ciphertext: str) -> str:
+    token = str(ciphertext or "").strip()
+    return f"{SETUP_AGENTS_MIRROR_ENCRYPTED_PREFIX}{token}\n"
+
+
+def _read_mirror_script(
+    *,
+    mirror_path: Path,
+    environment_id: str,
+    workspace_type: str,
+    workspace_target: str,
+    host_workdir: str,
+) -> tuple[str | None, str | None]:
+    try:
+        payload = mirror_path.read_text(encoding="utf-8")
+    except Exception as exc:
+        return None, str(exc)
+
+    marker = SETUP_AGENTS_MIRROR_ENCRYPTED_PREFIX
+    stripped = str(payload or "").strip()
+    if not stripped:
+        return "", None
+    if not stripped.startswith(marker):
+        # Backward compatibility: legacy plaintext mirrors are accepted read-only.
+        return _normalize_script_text(payload), None
+
+    ciphertext = stripped.removeprefix(marker).strip()
+    if not ciphertext:
+        return None, "encrypted mirror payload is missing ciphertext"
+
+    identity_token = _preflight_identity_token(
+        environment_id=environment_id,
+        workspace_type=workspace_type,
+        workspace_target=workspace_target,
+        host_workdir=host_workdir,
+    )
+    plaintext = decrypt_setup_agents_snapshot(
+        env_id=environment_id,
+        identity_token=identity_token,
+        ciphertext=ciphertext,
+    )
+    if plaintext is None:
+        return (
+            None,
+            "encrypted mirror payload could not be decrypted for current workspace identity",
+        )
+    return _normalize_script_text(plaintext), None
+
+
+def _write_encrypted_mirror_script(
+    *,
+    mirror_path: Path,
+    plaintext_script: str,
+    environment_id: str,
+    workspace_type: str,
+    workspace_target: str,
+    host_workdir: str,
+) -> bool:
+    identity_token = _preflight_identity_token(
+        environment_id=environment_id,
+        workspace_type=workspace_type,
+        workspace_target=workspace_target,
+        host_workdir=host_workdir,
+    )
+    ciphertext, _ = encrypt_setup_agents_snapshot(
+        env_id=environment_id,
+        identity_token=identity_token,
+        plaintext=plaintext_script,
+    )
+    return _write_script(
+        mirror_path,
+        _encode_encrypted_mirror_payload(ciphertext),
+        executable=False,
+    )
+
+
 def _path_relative_to_repo(*, repo_root: Path, path: Path) -> str:
     try:
         return str(path.relative_to(repo_root))
@@ -231,6 +293,8 @@ def resolve_setup_agents_preview(
     *,
     host_workdir: str,
     environment_id: str,
+    workspace_type: str = "",
+    workspace_target: str = "",
     gh_repo: str | None = None,
     data_dir: str | None = None,
 ) -> SetupAgentsPreviewResult:
@@ -255,31 +319,43 @@ def resolve_setup_agents_preview(
     read_error: str | None = None
 
     mirror_exists = mirror_path.is_file()
-    if repo_script_path is not None and mirror_exists:
-        try:
-            repo_ts = _repo_script_timestamp(repo_root, repo_script_path)
-            mirror_ts = mirror_path.stat().st_mtime
-            if repo_ts >= mirror_ts:
-                source = "repo"
-                effective_script_path = repo_script_path
-            else:
-                source = "mirror"
-                effective_script_path = mirror_path
-        except Exception as exc:
-            source = "repo"
-            effective_script_path = repo_script_path
-            read_error = f"failed to compare setup-agents timestamps: {exc}"
-    elif repo_script_path is not None:
+    if repo_script_path is not None:
         source = "repo"
         effective_script_path = repo_script_path
+        setup_script, script_error = _read_script(repo_script_path)
+        if script_error:
+            read_error = (
+                f"failed to read setup-agents script at {repo_script_path}: "
+                f"{script_error}"
+            )
+            if mirror_exists:
+                mirror_script, mirror_error = _read_mirror_script(
+                    mirror_path=mirror_path,
+                    environment_id=environment_id,
+                    workspace_type=workspace_type,
+                    workspace_target=workspace_target,
+                    host_workdir=host_workdir,
+                )
+                if mirror_error:
+                    read_error = f"{read_error}; mirror fallback failed: {mirror_error}"
+                else:
+                    source = "mirror"
+                    effective_script_path = mirror_path
+                    setup_script = mirror_script
     elif mirror_exists:
         source = "mirror"
         effective_script_path = mirror_path
-
-    if effective_script_path is not None:
-        setup_script, script_error = _read_script(effective_script_path)
+        setup_script, script_error = _read_mirror_script(
+            mirror_path=mirror_path,
+            environment_id=environment_id,
+            workspace_type=workspace_type,
+            workspace_target=workspace_target,
+            host_workdir=host_workdir,
+        )
         if script_error:
-            read_error = f"failed to read setup-agents script at {effective_script_path}: {script_error}"
+            read_error = (
+                f"failed to read setup-agents mirror at {mirror_path}: {script_error}"
+            )
 
     preferred_rel = _path_relative_to_repo(
         repo_root=repo_root, path=preferred_repo_path
@@ -313,6 +389,8 @@ def prepare_setup_agents_phase(
     *,
     host_workdir: str,
     environment_id: str,
+    workspace_type: str = "",
+    workspace_target: str = "",
     gh_repo: str | None = None,
     data_dir: str | None = None,
     launch_mode: str = "agent",
@@ -336,55 +414,11 @@ def prepare_setup_agents_phase(
         repo_script_path = fallback
     source = "none"
 
-    def _sync_scripts(*, src: Path, dst: Path, direction: str) -> bool:
-        try:
-            changed = _copy_script(src, dst)
-        except Exception as exc:
-            _log(
-                "WARN",
-                f"sync {direction} failed ({src} -> {dst}): {exc}",
-            )
-            return False
-        if changed:
-            _log("INFO", f"sync {direction} ({src} -> {dst})")
-        return True
-
     try:
         mirror_exists = mirror_path.is_file()
     except Exception as exc:
         _log("WARN", f"failed to inspect setup-agents mirror path {mirror_path}: {exc}")
         mirror_exists = False
-
-    if repo_script_path is not None and mirror_exists:
-        try:
-            repo_ts = _repo_script_timestamp(repo_root, repo_script_path)
-            mirror_ts = mirror_path.stat().st_mtime
-        except Exception as exc:
-            _log("WARN", f"failed to compare setup-agents sync timestamps: {exc}")
-        else:
-            if repo_ts >= mirror_ts:
-                if _sync_scripts(
-                    src=repo_script_path, dst=mirror_path, direction="repo -> mirror"
-                ):
-                    source = "repo"
-            elif _sync_scripts(
-                src=mirror_path, dst=repo_script_path, direction="mirror -> repo"
-            ):
-                source = "mirror"
-    elif repo_script_path is not None:
-        if _sync_scripts(
-            src=repo_script_path, dst=mirror_path, direction="repo -> mirror"
-        ):
-            if source == "none":
-                source = "repo"
-    elif mirror_exists:
-        _log(
-            "INFO",
-            (
-                "repo setup script missing; skipping mirror restore "
-                "(repo delete authority is active)"
-            ),
-        )
 
     setup_script: str | None = None
     if repo_script_path is not None and repo_script_path.is_file():
@@ -397,7 +431,36 @@ def prepare_setup_agents_phase(
                 "WARN",
                 f"failed to read setup-agents script at {repo_script_path}: {exc}",
             )
-            setup_script = None
+        else:
+            source = "repo"
+            try:
+                changed = _write_encrypted_mirror_script(
+                    mirror_path=mirror_path,
+                    plaintext_script=setup_script,
+                    environment_id=environment_id,
+                    workspace_type=workspace_type,
+                    workspace_target=workspace_target,
+                    host_workdir=host_workdir,
+                )
+            except Exception as exc:
+                _log(
+                    "WARN",
+                    f"sync repo -> mirror failed ({repo_script_path} -> {mirror_path}): {exc}",
+                )
+            else:
+                if changed:
+                    _log(
+                        "INFO",
+                        f"sync repo -> mirror ({repo_script_path} -> {mirror_path})",
+                    )
+    elif mirror_exists:
+        _log(
+            "INFO",
+            (
+                "repo setup script missing; skipping mirror restore "
+                "(repo delete authority is active)"
+            ),
+        )
 
     prompt_instruction = None
     if not setup_script:

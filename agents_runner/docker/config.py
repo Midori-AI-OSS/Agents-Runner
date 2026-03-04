@@ -22,6 +22,8 @@ class DockerRunnerConfig:
     cache_settings_preflight_enabled: bool = False
     cache_ide_preflight_enabled: bool = False
     environment_id: str = ""
+    workspace_type: str = "none"
+    workspace_target: str = ""
     # Use a task-specific filename by default to avoid collisions when multiple
     # runs share a container or temp directory.
     container_settings_preflight_path: str = (

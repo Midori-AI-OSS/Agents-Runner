@@ -113,6 +113,8 @@ class MainWindowPreflightMixin:
             host_workdir=host_workdir,
             agent_cli=smoke_agent_cli,
             environment_id=env.env_id if env else "",
+            workspace_type=str(getattr(env, "workspace_type", "none") or "none"),
+            workspace_target=str(getattr(env, "workspace_target", "") or ""),
             auto_remove=True,
             pull_before_run=True,
             settings_preflight_script=settings_preflight_script,

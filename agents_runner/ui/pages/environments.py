@@ -20,14 +20,6 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import managed_repo_checkout_path
-from agents_runner.environments import save_environment
-from agents_runner.environments.preflight_snapshot import (
-    build_preflight_identity_token,
-    decrypt_setup_agents_snapshot,
-    encrypt_setup_agents_snapshot,
-    normalize_setup_agents_snapshot_hash,
-    setup_agents_snapshot_hash,
-)
 from agents_runner.gh_management import is_gh_available
 from agents_runner.persistence import default_state_path
 from agents_runner.setup_agents import resolve_setup_agents_preview
@@ -552,67 +544,6 @@ class EnvironmentsPage(
         except Exception:
             return None
 
-    @staticmethod
-    def _ensure_preflight_identity_token(env: Environment) -> tuple[str, bool]:
-        token = str(getattr(env, "preflight_identity_token", "") or "").strip()
-        if token:
-            return token, False
-        token = build_preflight_identity_token(
-            env_id=str(getattr(env, "env_id", "") or ""),
-            workspace_type=str(getattr(env, "workspace_type", "") or ""),
-            workspace_target=str(getattr(env, "workspace_target", "") or ""),
-            host_workdir=str(getattr(env, "host_workdir", "") or ""),
-        )
-        env.preflight_identity_token = token
-        return token, True
-
-    @staticmethod
-    def _persist_environment(env: Environment) -> None:
-        try:
-            save_environment(env)
-        except Exception:
-            pass
-
-    def _snapshot_setup_agents_script(self, env: Environment, script: str) -> None:
-        plaintext_hash = setup_agents_snapshot_hash(script)
-        stored_hash = normalize_setup_agents_snapshot_hash(
-            getattr(env, "setup_agents_preflight_snapshot_sha256", "")
-        )
-        stored_ciphertext = str(
-            getattr(env, "setup_agents_preflight_snapshot_ciphertext", "") or ""
-        ).strip()
-        identity_token, token_created = self._ensure_preflight_identity_token(env)
-
-        if plaintext_hash == stored_hash and stored_ciphertext:
-            if token_created:
-                self._persist_environment(env)
-            return
-
-        ciphertext, normalized_hash = encrypt_setup_agents_snapshot(
-            env_id=env.env_id,
-            identity_token=identity_token,
-            plaintext=script,
-        )
-        env.setup_agents_preflight_snapshot_ciphertext = ciphertext
-        env.setup_agents_preflight_snapshot_sha256 = normalized_hash
-        self._persist_environment(env)
-
-    def _load_encrypted_setup_agents_snapshot(self, env: Environment) -> str | None:
-        identity_token, token_created = self._ensure_preflight_identity_token(env)
-        snapshot = decrypt_setup_agents_snapshot(
-            env_id=env.env_id,
-            identity_token=identity_token,
-            ciphertext=str(
-                getattr(env, "setup_agents_preflight_snapshot_ciphertext", "") or ""
-            ),
-            expected_hash=str(
-                getattr(env, "setup_agents_preflight_snapshot_sha256", "") or ""
-            ),
-        )
-        if token_created:
-            self._persist_environment(env)
-        return snapshot
-
     def _refresh_setup_agents_preview(self, env: Environment | None) -> None:
         if env is None:
             self._setup_agents_preview.setPlainText("")
@@ -635,6 +566,8 @@ class EnvironmentsPage(
             preview = resolve_setup_agents_preview(
                 host_workdir=host_workdir,
                 environment_id=env.env_id,
+                workspace_type=workspace_type,
+                workspace_target=str(getattr(env, "workspace_target", "") or ""),
                 gh_repo=gh_repo,
                 data_dir=os.path.dirname(default_state_path()),
             )
@@ -656,13 +589,15 @@ class EnvironmentsPage(
         if direct_script is not None:
             preview_text = direct_script
             tooltip = f"Edit in repo: {repo_edit_path}"
-            self._snapshot_setup_agents_script(env, direct_script)
-        else:
-            preview_text = str(self._load_encrypted_setup_agents_snapshot(env) or "")
+        elif preview is not None:
+            preview_text = str(preview.setup_script or "")
             if preview_text:
-                tooltip = f"Create in repo: {repo_edit_path} (showing saved snapshot)"
+                tooltip = f"Create in repo: {repo_edit_path} (showing metadata mirror)"
             else:
                 tooltip = f"Create in repo: {repo_edit_path}"
+        else:
+            preview_text = ""
+            tooltip = f"Create in repo: {repo_edit_path}"
         self._setup_agents_preview.setToolTip(tooltip)
 
         self._setup_agents_preview.setPlainText(preview_text)

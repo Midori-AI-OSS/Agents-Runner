@@ -12,8 +12,6 @@ from .model import normalize_workspace_type
 from .model import PromptConfig
 from .model import AgentSelection
 from .model import AgentInstance
-from .preflight_snapshot import build_preflight_identity_token
-from .preflight_snapshot import normalize_setup_agents_snapshot_hash
 from .prompt_storage import save_prompt_to_file
 from .prompt_storage import load_prompt_from_file
 from .prompt_storage import delete_prompt_file
@@ -311,23 +309,6 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     # Normalize using the new function
     workspace_type = normalize_workspace_type(workspace_type)
 
-    preflight_identity_token = str(
-        payload.get("preflight_identity_token") or ""
-    ).strip()
-    if not preflight_identity_token:
-        preflight_identity_token = build_preflight_identity_token(
-            env_id=env_id,
-            workspace_type=workspace_type,
-            workspace_target=workspace_target,
-            host_workdir=host_workdir,
-        )
-    setup_agents_preflight_snapshot_ciphertext = str(
-        payload.get("setup_agents_preflight_snapshot_ciphertext") or ""
-    ).strip()
-    setup_agents_preflight_snapshot_sha256 = normalize_setup_agents_snapshot_hash(
-        payload.get("setup_agents_preflight_snapshot_sha256")
-    )
-
     try:
         midoriai_template_likelihood = float(
             payload.get("midoriai_template_likelihood", 0.0)
@@ -517,9 +498,6 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         cache_system_preflight_enabled=cache_system_preflight_enabled,
         cache_settings_preflight_enabled=cache_settings_preflight_enabled,
         cache_ide_preflight_enabled=cache_ide_preflight_enabled,
-        preflight_identity_token=preflight_identity_token,
-        setup_agents_preflight_snapshot_ciphertext=setup_agents_preflight_snapshot_ciphertext,
-        setup_agents_preflight_snapshot_sha256=setup_agents_preflight_snapshot_sha256,
         ide_safe_mode_by_system=ide_safe_mode_by_system,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
@@ -597,21 +575,6 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
     workspace_type = normalize_workspace_type(getattr(env, "workspace_type", "none"))
     workspace_target = str(getattr(env, "workspace_target", "") or "").strip()
     host_workdir = str(getattr(env, "host_workdir", "") or "").strip()
-    preflight_identity_token = str(getattr(env, "preflight_identity_token", "") or "")
-    preflight_identity_token = preflight_identity_token.strip()
-    if not preflight_identity_token:
-        preflight_identity_token = build_preflight_identity_token(
-            env_id=str(getattr(env, "env_id", "") or ""),
-            workspace_type=workspace_type,
-            workspace_target=workspace_target,
-            host_workdir=host_workdir,
-        )
-    setup_agents_preflight_snapshot_ciphertext = str(
-        getattr(env, "setup_agents_preflight_snapshot_ciphertext", "") or ""
-    ).strip()
-    setup_agents_preflight_snapshot_sha256 = normalize_setup_agents_snapshot_hash(
-        getattr(env, "setup_agents_preflight_snapshot_sha256", "")
-    )
 
     return {
         "version": ENVIRONMENT_VERSION,
@@ -644,9 +607,6 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "cache_ide_preflight_enabled": bool(
             getattr(env, "cache_ide_preflight_enabled", False)
         ),
-        "preflight_identity_token": preflight_identity_token,
-        "setup_agents_preflight_snapshot_ciphertext": setup_agents_preflight_snapshot_ciphertext,
-        "setup_agents_preflight_snapshot_sha256": setup_agents_preflight_snapshot_sha256,
         "ide_safe_mode_by_system": _normalize_ide_safe_mode_map(
             getattr(env, "ide_safe_mode_by_system", {})
         ),
