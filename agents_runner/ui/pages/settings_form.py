@@ -480,7 +480,9 @@ class SettingsFormMixin:
         paths_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
         paths_grid.setColumnStretch(1, 1)
         self._agent_config_dir_fields.clear()
-        for row, agent_cli in enumerate(available_agent_system_names()):
+        for row, agent_cli in enumerate(
+            available_agent_system_names(include_internal=False)
+        ):
             field = QLineEdit()
             plugin = get_agent_system(agent_cli)
             placeholder = os.path.expanduser(plugin.default_host_config_dir())
@@ -676,7 +678,7 @@ class SettingsFormMixin:
 
         with QSignalBlocker(self._use):
             self._use.clear()
-            for agent_name in available_agent_system_names():
+            for agent_name in available_agent_system_names(include_internal=False):
                 label = self._format_key_label(agent_name)
                 try:
                     plugin = get_agent_system(agent_name)

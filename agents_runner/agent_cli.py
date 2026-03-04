@@ -14,10 +14,10 @@ def normalize_agent(value: str | None) -> str:
     return normalize_agent_system_name(value)
 
 
-def available_agents() -> list[str]:
+def available_agents(*, include_internal: bool = True) -> list[str]:
     from agents_runner.agent_systems import available_agent_system_names
 
-    return available_agent_system_names()
+    return available_agent_system_names(include_internal=include_internal)
 
 
 def _safe_agent_token(value: str) -> str:

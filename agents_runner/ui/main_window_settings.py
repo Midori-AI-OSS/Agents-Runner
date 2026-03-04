@@ -58,7 +58,7 @@ class MainWindowSettingsMixin:
     def _coerce_agent_map(raw: object) -> dict[str, str]:
         if not isinstance(raw, dict):
             return {}
-        known = set(available_agents())
+        known = set(available_agents(include_internal=False))
         normalized: dict[str, str] = {}
         for key, value in raw.items():
             agent_cli = str(key or "").strip().lower()
@@ -70,7 +70,7 @@ class MainWindowSettingsMixin:
     def _normalized_agent_config_dirs_map(self, raw: object) -> dict[str, str]:
         values = self._coerce_agent_map(raw)
         normalized: dict[str, str] = {}
-        for agent_cli in available_agents():
+        for agent_cli in available_agents(include_internal=False):
             configured = os.path.expanduser(str(values.get(agent_cli) or "").strip())
             if not configured:
                 configured = os.path.expanduser(default_host_config_dir(agent_cli))
@@ -80,7 +80,7 @@ class MainWindowSettingsMixin:
     def _normalized_agent_interactive_commands_map(self, raw: object) -> dict[str, str]:
         values = self._coerce_agent_map(raw)
         normalized: dict[str, str] = {}
-        for agent_cli in available_agents():
+        for agent_cli in available_agents(include_internal=False):
             configured = str(values.get(agent_cli) or "").strip()
             if not configured:
                 configured = self._plugin_default_interactive_command(agent_cli)
@@ -114,7 +114,9 @@ class MainWindowSettingsMixin:
         config_dir: str,
     ) -> None:
         agent_cli = str(agent_cli or "").strip().lower()
-        if not agent_cli or agent_cli not in set(available_agents()):
+        if not agent_cli or agent_cli not in set(
+            available_agents(include_internal=False)
+        ):
             return
         normalized = self._get_agent_config_dirs_map(settings)
         normalized[agent_cli] = os.path.expanduser(str(config_dir or "").strip())
@@ -128,7 +130,9 @@ class MainWindowSettingsMixin:
         command: str,
     ) -> None:
         agent_cli = str(agent_cli or "").strip().lower()
-        if not agent_cli or agent_cli not in set(available_agents()):
+        if not agent_cli or agent_cli not in set(
+            available_agents(include_internal=False)
+        ):
             return
         normalized = self._get_agent_interactive_commands_map(settings)
         normalized[agent_cli] = self._sanitize_interactive_command_value(
@@ -144,6 +148,8 @@ class MainWindowSettingsMixin:
         merged.pop("stt_mode", None)
         merged.pop("ide_auto_mounts_enabled", None)
         merged["use"] = normalize_agent(str(merged.get("use") or "codex"))
+        if merged["use"] not in set(available_agents(include_internal=False)):
+            merged["use"] = "codex"
 
         shell_value = str(merged.get("shell") or "bash").lower()
         if shell_value not in {"bash", "sh", "zsh", "fish", "tmux"}:
@@ -303,7 +309,9 @@ class MainWindowSettingsMixin:
 
     def _plugin_default_interactive_command(self, agent_cli: str) -> str:
         agent_cli = str(agent_cli or "").strip().lower()
-        if not agent_cli or agent_cli not in set(available_agents()):
+        if not agent_cli or agent_cli not in set(
+            available_agents(include_internal=False)
+        ):
             return ""
         try:
             plugin = get_agent_system(agent_cli)
@@ -313,7 +321,9 @@ class MainWindowSettingsMixin:
 
     def _default_interactive_command(self, agent_cli: str) -> str:
         agent_cli = str(agent_cli or "").strip().lower()
-        if not agent_cli or agent_cli not in set(available_agents()):
+        if not agent_cli or agent_cli not in set(
+            available_agents(include_internal=False)
+        ):
             return ""
         commands = self._get_agent_interactive_commands_map(self._settings_data)
         configured = str(commands.get(agent_cli) or "").strip()
@@ -325,7 +335,7 @@ class MainWindowSettingsMixin:
         self, *, agent_cli: str, raw: object
     ) -> str:
         agent_cli = str(agent_cli or "").strip().lower()
-        if agent_cli not in set(available_agents()):
+        if agent_cli not in set(available_agents(include_internal=False)):
             agent_cli = ""
         value = str(raw or "").strip()
         if not value:
@@ -335,7 +345,7 @@ class MainWindowSettingsMixin:
             cmd_parts = shlex.split(value)
         except ValueError:
             cmd_parts = []
-        if cmd_parts and cmd_parts[0] in set(available_agents()):
+        if cmd_parts and cmd_parts[0] in set(available_agents(include_internal=False)):
             head = cmd_parts.pop(0)
             try:
                 cmd_parts = get_agent_system(head).sanitize_interactive_command_parts(
@@ -372,7 +382,7 @@ class MainWindowSettingsMixin:
         3. Plugin default host config dir
         """
         agent_cli = str(agent_cli or "").strip().lower()
-        if agent_cli not in set(available_agents()):
+        if agent_cli not in set(available_agents(include_internal=False)):
             return ""
 
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
@@ -538,6 +548,8 @@ class MainWindowSettingsMixin:
     def _refresh_new_task_agent_info(self) -> None:
         if not hasattr(self, "_new_task"):
             return
+        if not hasattr(self._new_task, "set_agent_info"):
+            return
         env = self._environments.get(self._active_environment_id())
         current_agent, next_agent = self._get_next_agent_info(env=env)
         self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)
@@ -622,7 +634,7 @@ class MainWindowSettingsMixin:
             The resolved config directory path (with ~ expanded)
         """
         agent_cli = str(agent_cli or "").strip().lower()
-        if agent_cli not in set(available_agents()):
+        if agent_cli not in set(available_agents(include_internal=False)):
             return ""
         settings = settings or self._settings_data
 
@@ -637,7 +649,7 @@ class MainWindowSettingsMixin:
         if not isinstance(override, dict):
             return None
         agent_cli = str(override.get("agent_cli") or "").strip().lower()
-        if agent_cli not in set(available_agents()):
+        if agent_cli not in set(available_agents(include_internal=False)):
             return None
         if not agent_cli:
             return None
@@ -732,7 +744,7 @@ class MainWindowSettingsMixin:
             return os.path.expanduser(config_dir)
 
         agent_cli = str(override.get("agent_cli") or "").strip().lower()
-        if agent_cli not in set(available_agents()):
+        if agent_cli not in set(available_agents(include_internal=False)):
             return ""
         if not agent_cli:
             return ""

@@ -126,7 +126,7 @@ class AgentsTabWidget(QWidget):
         # Add agent controls
         controls_row.addWidget(QLabel("Add agent"))
         self._add_agent_cli = QComboBox()
-        for agent in available_agents():
+        for agent in available_agents(include_internal=False):
             self._add_agent_cli.addItem(agent.title(), agent)
         controls_row.addWidget(self._add_agent_cli)
 

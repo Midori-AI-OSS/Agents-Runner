@@ -92,6 +92,10 @@ class _DummyNewTask:
     def reset_for_new_run(self) -> None:
         return
 
+    def set_agent_info(self, agent: str, next_agent: str = "") -> None:
+        del agent, next_agent
+        return
+
 
 class _DummyMainWindow(MainWindowSettingsMixin, MainWindowTasksInteractiveMixin):
     def __init__(self, env: Environment, tmp_path: Path, workdir: Path) -> None:

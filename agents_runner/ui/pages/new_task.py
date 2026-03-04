@@ -1496,7 +1496,7 @@ class NewTaskPage(QWidget):
                     )
                 )
         else:
-            agents = list(available_agents())
+            agents = list(available_agents(include_internal=False))
             if not agents:
                 action = self._override_menu.addAction("No agents available")
                 action.setEnabled(False)
