@@ -8,6 +8,16 @@ A GUI for running AI agents in Docker containers with workspace and GitHub manag
 uv run main.py
 ```
 
+Or run without cloning:
+
+```bash
+# Nightly (bleeding edge, recommended)
+uvx --from "git+https://github.com/Midori-AI-OSS/Agents-Runner.git@nightly" python -m agents_runner
+
+# Main (not recommended / fallback)
+uvx --from "git+https://github.com/Midori-AI-OSS/Agents-Runner.git@main" python -m agents_runner
+```
+
 Requires `docker` and `ffmpeg` installed on the host.
 
 ## Supported Agents
