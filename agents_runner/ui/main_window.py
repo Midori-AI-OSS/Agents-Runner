@@ -20,7 +20,6 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import default_host_config_dir
 from agents_runner.agent_systems import available_agent_system_names
-from agents_runner.agent_systems import get_agent_system
 from agents_runner.environments import Environment
 from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
 from agents_runner.ide_systems import get_default_ide_system_name
@@ -93,19 +92,10 @@ class MainWindow(
         self.resize(1280, 720)
 
         agent_config_dirs: dict[str, str] = {}
-        agent_interactive_commands: dict[str, str] = {}
         for agent_cli in available_agent_system_names(include_internal=False):
             agent_config_dirs[agent_cli] = os.path.expanduser(
                 default_host_config_dir(agent_cli)
             )
-            interactive_default = ""
-            try:
-                interactive_default = str(
-                    get_agent_system(agent_cli).default_interactive_command() or ""
-                ).strip()
-            except Exception:
-                pass
-            agent_interactive_commands[agent_cli] = interactive_default
 
         self._settings_data: dict[str, object] = {
             "use": "codex",
@@ -120,7 +110,6 @@ class MainWindow(
             "ide_display_target_default": IDE_DISPLAY_CONTAINER_DESKTOP,
             "ide_novnc_auto_open_enabled": True,
             "ide_novnc_auto_open_mode": "viewing_only",
-            "agent_interactive_commands": dict(agent_interactive_commands),
             "window_w": 1280,
             "window_h": 720,
             "max_agents_running": -1,
