@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -81,7 +80,6 @@ class NewTaskPage(QWidget):
         self._env_agents: dict[str, list[AgentInstance]] = {}
         self._repo_controls_visible = False
         self._base_branch_host_active = False
-        self._host_config_dir = os.path.expanduser("~/.codex")
         self._workspace_ready = False
         self._workspace_error = ""
         self._spellcheck_enabled = True  # Default to enabled
@@ -437,8 +435,6 @@ class NewTaskPage(QWidget):
             )
             return
 
-        host_config_dir = os.path.expanduser(str(self._host_config_dir or "").strip())
-
         env_id = self._active_env_id
         base_branch = str(self._base_branch.currentData() or "")
 
@@ -450,7 +446,7 @@ class NewTaskPage(QWidget):
         agent_override = dict(self._agent_override) if self._agent_override else None
         self.requested_run.emit(
             prompt,
-            host_config_dir,
+            "",
             env_id,
             base_branch,
             pr_context,
@@ -495,7 +491,6 @@ class NewTaskPage(QWidget):
             )
             return
 
-        host_config_dir = os.path.expanduser(str(self._host_config_dir or "").strip())
         env_id = self._active_env_id
         base_branch = str(self._base_branch.currentData() or "")
 
@@ -512,7 +507,7 @@ class NewTaskPage(QWidget):
         self.requested_launch.emit(
             prompt,
             command,
-            host_config_dir,
+            "",
             env_id,
             terminal_id,
             base_branch,
@@ -561,8 +556,6 @@ class NewTaskPage(QWidget):
             )
             return
 
-        host_config_dir = os.path.expanduser(str(self._host_config_dir or "").strip())
-
         terminal_id = self._resolve_terminal_for_launch()
         if not terminal_id:
             return
@@ -578,7 +571,7 @@ class NewTaskPage(QWidget):
         self.requested_launch.emit(
             prompt,
             command,
-            host_config_dir,
+            "",
             env_id,
             terminal_id,
             base_branch,
@@ -612,7 +605,6 @@ class NewTaskPage(QWidget):
             )
             return
 
-        host_config_dir = os.path.expanduser(str(self._host_config_dir or "").strip())
         env_id = self._active_env_id
         base_branch = str(self._base_branch.currentData() or "")
 
@@ -627,7 +619,7 @@ class NewTaskPage(QWidget):
         }
         self.requested_launch_ide.emit(
             "",
-            host_config_dir,
+            "",
             env_id,
             "",
             base_branch,
@@ -829,10 +821,6 @@ class NewTaskPage(QWidget):
         self._refresh_ide_button_tooltip()
         if previous != self._active_env_id:
             self.environment_changed.emit(self._active_env_id)
-
-    def set_defaults(self, host_config_dir: str) -> None:
-        if host_config_dir:
-            self._host_config_dir = host_config_dir
 
     def set_ide_defaults(self, *, ide_system: str) -> None:
         self._ide_system_default = normalize_ide_system_name(

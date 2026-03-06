@@ -156,9 +156,6 @@ class MainWindowPersistenceMixin:
             )
         except Exception:
             self._settings_data["max_agents_running"] = -1
-        self._settings_data["agent_config_dirs"] = self._get_agent_config_dirs_map(
-            self._settings_data
-        )
         for key in self._REMOVED_LEGACY_SETTINGS_KEYS:
             self._settings_data.pop(key, None)
         self._settings_data.setdefault(

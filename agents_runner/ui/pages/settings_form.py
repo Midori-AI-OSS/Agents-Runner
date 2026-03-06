@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Any
@@ -10,7 +9,6 @@ from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QDoubleSpinBox
-from PySide6.QtWidgets import QFileDialog
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
@@ -18,7 +16,6 @@ from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
-from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QSlider
 from PySide6.QtWidgets import QToolButton
@@ -50,7 +47,6 @@ from agents_runner.ui.constants import (
     GRID_HORIZONTAL_SPACING,
     GRID_VERTICAL_SPACING,
     BUTTON_ROW_SPACING,
-    STANDARD_BUTTON_WIDTH,
 )
 
 
@@ -91,12 +87,6 @@ class SettingsFormMixin:
                 key="agent_defaults",
                 title="Agent Defaults",
                 subtitle="Default agent and shell behavior.",
-                section="Agent Setup",
-            ),
-            _SettingsPaneSpec(
-                key="config_paths",
-                title="Config Paths",
-                subtitle="Host config folders used by each agent.",
                 section="Agent Setup",
             ),
             _SettingsPaneSpec(
@@ -181,8 +171,6 @@ class SettingsFormMixin:
         self._theme_preview_host: QWidget | None = None
         self._ui_theme.currentIndexChanged.connect(self._on_theme_combo_changed)
         self._refresh_theme_options(selected="auto")
-
-        self._agent_config_dir_fields: dict[str, QLineEdit] = {}
 
         self._preflight_enabled = QToolButton()
         self._preflight_enabled.setCheckable(True)
@@ -473,36 +461,6 @@ class SettingsFormMixin:
         agent_body.addLayout(agent_grid)
         agent_body.addStretch(1)
         self._register_page("agent_defaults", agent_page)
-
-        paths_page, paths_body = self._create_page(specs_by_key["config_paths"])
-        paths_grid = QGridLayout()
-        paths_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        paths_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        paths_grid.setColumnStretch(1, 1)
-        self._agent_config_dir_fields.clear()
-        for row, agent_cli in enumerate(
-            available_agent_system_names(include_internal=False)
-        ):
-            field = QLineEdit()
-            plugin = get_agent_system(agent_cli)
-            placeholder = os.path.expanduser(plugin.default_host_config_dir())
-            display_name = str(getattr(plugin, "display_name", "") or "").strip()
-            label = display_name if display_name else self._format_key_label(agent_cli)
-            field.setPlaceholderText(placeholder)
-            self._agent_config_dir_fields[agent_cli] = field
-
-            browse = QPushButton("Browse…")
-            browse.setFixedWidth(STANDARD_BUTTON_WIDTH)
-            browse.clicked.connect(
-                lambda checked=False, cli=agent_cli: self._pick_agent_config_dir(cli)
-            )
-
-            paths_grid.addWidget(QLabel(f"{label} Config folder"), row, 0)
-            paths_grid.addWidget(field, row, 1)
-            paths_grid.addWidget(browse, row, 2)
-        paths_body.addLayout(paths_grid)
-        paths_body.addStretch(1)
-        self._register_page("config_paths", paths_page)
 
         github_config_page, github_config_body = self._create_page(
             specs_by_key["github_config"]
@@ -918,21 +876,6 @@ class SettingsFormMixin:
                 fallback=get_default_ide_system_name(),
             )
 
-            config_dirs_raw = settings.get("agent_config_dirs")
-            config_dirs = config_dirs_raw if isinstance(config_dirs_raw, dict) else {}
-            for agent_cli, field in self._agent_config_dir_fields.items():
-                configured = os.path.expanduser(
-                    str(config_dirs.get(agent_cli) or "").strip()
-                )
-                if not configured:
-                    try:
-                        configured = os.path.expanduser(
-                            get_agent_system(agent_cli).default_host_config_dir()
-                        )
-                    except Exception:
-                        configured = field.placeholderText()
-                field.setText(configured)
-
             enabled = bool(settings.get("preflight_enabled") or False)
             self._preflight_enabled.setChecked(enabled)
             self._preflight_script.setEnabled(enabled)
@@ -1154,11 +1097,6 @@ class SettingsFormMixin:
             poll_startup_delay_s = max(0, int(poll_startup_delay_text or "35"))
         except Exception:
             poll_startup_delay_s = 35
-        agent_config_dirs = {
-            agent_cli: os.path.expanduser(str(field.text() or "").strip())
-            for agent_cli, field in self._agent_config_dir_fields.items()
-        }
-
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
@@ -1177,7 +1115,6 @@ class SettingsFormMixin:
             "popup_theme_animation_enabled": bool(
                 self._popup_theme_animation_enabled.isChecked()
             ),
-            "agent_config_dirs": agent_config_dirs,
             "preflight_enabled": bool(self._preflight_enabled.isChecked()),
             "preflight_script": str(self._preflight_script.toPlainText() or ""),
             "append_pixelarch_context": bool(
@@ -1248,19 +1185,6 @@ class SettingsFormMixin:
             self._queue_debounced_autosave()
         except Exception:
             pass
-
-    def _pick_agent_config_dir(self, agent_cli: str) -> None:
-        agent_cli = normalize_agent(agent_cli)
-        field = self._agent_config_dir_fields.get(agent_cli)
-        if field is None:
-            return
-        path = QFileDialog.getExistingDirectory(
-            self,
-            f"Select {self._format_key_label(agent_cli)} Config folder",
-            field.text() or field.placeholderText(),
-        )
-        if path:
-            field.setText(path)
 
     def _refresh_terminal_options(self, *, selected_terminal_id: str) -> None:
         selected_id = str(selected_terminal_id or "").strip()

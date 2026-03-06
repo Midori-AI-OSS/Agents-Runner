@@ -18,8 +18,6 @@ from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
-from agents_runner.agent_cli import default_host_config_dir
-from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.environments import Environment
 from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
 from agents_runner.ide_systems import get_default_ide_system_name
@@ -91,19 +89,12 @@ class MainWindow(
         self.setMinimumSize(1024, 640)
         self.resize(1280, 720)
 
-        agent_config_dirs: dict[str, str] = {}
-        for agent_cli in available_agent_system_names(include_internal=False):
-            agent_config_dirs[agent_cli] = os.path.expanduser(
-                default_host_config_dir(agent_cli)
-            )
-
         self._settings_data: dict[str, object] = {
             "use": "codex",
             "shell": "bash",
             "preflight_enabled": False,
             "preflight_script": "",
             "host_workdir": os.environ.get("CODEX_HOST_WORKDIR", os.getcwd()),
-            "agent_config_dirs": dict(agent_config_dirs),
             "active_environment_id": "default",
             "interactive_terminal_id": "",
             "ide_system_default": get_default_ide_system_name(),

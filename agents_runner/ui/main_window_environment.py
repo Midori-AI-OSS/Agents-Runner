@@ -308,7 +308,7 @@ class MainWindowEnvironmentMixin:
     ) -> None:
         env = self._environments.get(self._active_environment_id())
         # Get effective agent and config dir (environment agent_selection overrides settings)
-        agent_cli, host_config_dir = self._effective_agent_and_config(env=env)
+        agent_cli, _ = self._effective_agent_and_config(env=env)
         if hasattr(self, "_root"):
             try:
                 from agents_runner.ui.graphics import normalize_ui_theme_name
@@ -348,7 +348,6 @@ class MainWindowEnvironmentMixin:
             for env_id, env_data in self._environments.items()
         }
         self._new_task.set_environment_agents(env_agents)
-        self._new_task.set_defaults(host_config_dir=host_config_dir)
         self._new_task.set_workspace_status(path=workdir, ready=ready, message=message)
         self._new_task.set_agent_info(agent=current_agent, next_agent=next_agent)
         self._sync_new_task_repo_controls(
