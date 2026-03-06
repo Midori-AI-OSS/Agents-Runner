@@ -138,7 +138,7 @@ class _DummyMainWindow(MainWindowSettingsMixin, MainWindowTasksInteractiveMixin)
         return
 
 
-def test_interactive_task_uses_codex_default_and_copilot_override(
+def test_interactive_task_uses_default_and_copilot_override(
     monkeypatch, tmp_path
 ) -> None:
     workdir = tmp_path / "workspace"
@@ -188,7 +188,7 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
     window._start_interactive_task_from_ui(
         prompt="default",
         command="echo default",
-        host_codex="",
+        host_config_dir="",
         env_id=env.env_id,
         terminal_id="test-terminal",
         base_branch="",
@@ -219,7 +219,7 @@ def test_interactive_task_uses_codex_default_and_copilot_override(
     window._start_interactive_task_from_ui(
         prompt="hello",
         command="--sandbox danger-full-access",
-        host_codex=str(tmp_path / "codex-explicit"),
+        host_config_dir=str(tmp_path / "codex-explicit"),
         env_id=env.env_id,
         terminal_id="test-terminal",
         base_branch="",
