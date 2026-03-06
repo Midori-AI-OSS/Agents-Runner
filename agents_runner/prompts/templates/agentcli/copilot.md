@@ -14,9 +14,10 @@ This section is appended because Copilot CLI is selected and available for this 
 **How Agents Runner runs it**
 - Command:
   ```
-  copilot --allow-all-tools --allow-all-paths --add-dir <WORKDIR> [extra_args] -p <PROMPT>
+  copilot --yolo --add-dir <WORKDIR> [extra_args] -p <PROMPT>
   ```
-- Access: all tools + all paths allowed; `<WORKDIR>` is included (default `~/workspace`)
+- Access: all tools + all paths + all URLs allowed; `<WORKDIR>` is included (default `~/workspace`)
+- Note: `--yolo` is broader than the older tools+paths-only setup because it also auto-approves URL access
 - Timeout: if the main agent is invoking Copilot for long tasks (especially as Router/Orchestrator), the main agent must bypass automatic command timeouts by setting a very high timeout (8+ hours). Some runtimes (including Codex) apply an automatic timeout to command runs.
 
 **MCP servers**

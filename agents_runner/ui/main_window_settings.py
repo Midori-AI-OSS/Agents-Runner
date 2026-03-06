@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-import shlex
 
 from typing import Any
 
@@ -27,12 +26,12 @@ logger = logging.getLogger(__name__)
 
 class MainWindowSettingsMixin:
     _AGENT_CONFIG_DIRS_KEY = "agent_config_dirs"
-    _AGENT_INTERACTIVE_COMMANDS_KEY = "agent_interactive_commands"
     _REMOVED_LEGACY_SETTINGS_KEYS = (
         "host_codex_dir",
         "host_claude_dir",
         "host_copilot_dir",
         "host_gemini_dir",
+        "agent_interactive_commands",
         "interactive_command",
         "interactive_command_claude",
         "interactive_command_copilot",
@@ -77,33 +76,12 @@ class MainWindowSettingsMixin:
             normalized[agent_cli] = configured
         return normalized
 
-    def _normalized_agent_interactive_commands_map(self, raw: object) -> dict[str, str]:
-        values = self._coerce_agent_map(raw)
-        normalized: dict[str, str] = {}
-        for agent_cli in available_agents(include_internal=False):
-            configured = str(values.get(agent_cli) or "").strip()
-            if not configured:
-                configured = self._plugin_default_interactive_command(agent_cli)
-            normalized[agent_cli] = self._sanitize_interactive_command_value(
-                agent_cli=agent_cli,
-                raw=configured,
-            )
-        return normalized
-
     def _get_agent_config_dirs_map(
         self, settings: dict[str, object] | None = None
     ) -> dict[str, str]:
         source = settings if settings is not None else self._settings_data
         return self._normalized_agent_config_dirs_map(
             source.get(self._AGENT_CONFIG_DIRS_KEY)
-        )
-
-    def _get_agent_interactive_commands_map(
-        self, settings: dict[str, object] | None = None
-    ) -> dict[str, str]:
-        source = settings if settings is not None else self._settings_data
-        return self._normalized_agent_interactive_commands_map(
-            source.get(self._AGENT_INTERACTIVE_COMMANDS_KEY)
         )
 
     def _set_agent_config_dir_setting(
@@ -121,25 +99,6 @@ class MainWindowSettingsMixin:
         normalized = self._get_agent_config_dirs_map(settings)
         normalized[agent_cli] = os.path.expanduser(str(config_dir or "").strip())
         settings[self._AGENT_CONFIG_DIRS_KEY] = normalized
-
-    def _set_agent_interactive_command_setting(
-        self,
-        *,
-        settings: dict[str, object],
-        agent_cli: str,
-        command: str,
-    ) -> None:
-        agent_cli = str(agent_cli or "").strip().lower()
-        if not agent_cli or agent_cli not in set(
-            available_agents(include_internal=False)
-        ):
-            return
-        normalized = self._get_agent_interactive_commands_map(settings)
-        normalized[agent_cli] = self._sanitize_interactive_command_value(
-            agent_cli=agent_cli,
-            raw=command,
-        )
-        settings[self._AGENT_INTERACTIVE_COMMANDS_KEY] = normalized
 
     def _apply_settings(self, settings: dict[str, Any]) -> None:
         previous_radio_enabled = bool(self._settings_data.get("radio_enabled") or False)
@@ -177,11 +136,6 @@ class MainWindowSettingsMixin:
             if str(merged.get("ide_novnc_auto_open_mode") or "").strip().lower()
             == "always"
             else "viewing_only"
-        )
-        merged[self._AGENT_INTERACTIVE_COMMANDS_KEY] = (
-            self._normalized_agent_interactive_commands_map(
-                merged.get(self._AGENT_INTERACTIVE_COMMANDS_KEY)
-            )
         )
         for key in self._REMOVED_LEGACY_SETTINGS_KEYS:
             merged.pop(key, None)
@@ -325,40 +279,7 @@ class MainWindowSettingsMixin:
             available_agents(include_internal=False)
         ):
             return ""
-        commands = self._get_agent_interactive_commands_map(self._settings_data)
-        configured = str(commands.get(agent_cli) or "").strip()
-        if configured:
-            return configured
         return self._plugin_default_interactive_command(agent_cli)
-
-    def _sanitize_interactive_command_value(
-        self, *, agent_cli: str, raw: object
-    ) -> str:
-        agent_cli = str(agent_cli or "").strip().lower()
-        if agent_cli not in set(available_agents(include_internal=False)):
-            agent_cli = ""
-        value = str(raw or "").strip()
-        if not value:
-            return ""
-
-        try:
-            cmd_parts = shlex.split(value)
-        except ValueError:
-            cmd_parts = []
-        if cmd_parts and cmd_parts[0] in set(available_agents(include_internal=False)):
-            head = cmd_parts.pop(0)
-            try:
-                cmd_parts = get_agent_system(head).sanitize_interactive_command_parts(
-                    cmd_parts=cmd_parts
-                )
-            except Exception:
-                pass
-            value = " ".join(shlex.quote(part) for part in cmd_parts)
-
-        if looks_like_agent_help_command(value):
-            return self._plugin_default_interactive_command(agent_cli)
-
-        return value
 
     @staticmethod
     def _is_agent_help_interactive_launch(prompt: str, command: str) -> bool:

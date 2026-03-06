@@ -17,6 +17,16 @@ from agents_runner.agent_systems.interactive_command import move_flag_value_to_e
 
 
 CONTAINER_HOME = Path("/home/midori-ai")
+WORKSPACE_DIR = "/home/midori-ai/workspace"
+
+
+def _has_yolo_permissions(parts: list[str]) -> bool:
+    if "--yolo" in parts or "--allow-all" in parts:
+        return True
+    return all(
+        flag in parts
+        for flag in ("--allow-all-tools", "--allow-all-paths", "--allow-all-urls")
+    )
 
 
 class CopilotAgentSystemPlugin:
@@ -37,8 +47,7 @@ class CopilotAgentSystemPlugin:
 
         argv = [
             "copilot",
-            "--allow-all-tools",
-            "--allow-all-paths",
+            "--yolo",
             "--add-dir",
             str(context.workspace_container),
             *list(context.extra_cli_args),
@@ -83,7 +92,7 @@ class CopilotAgentSystemPlugin:
         return ["copilot", "--version"]
 
     def default_interactive_command(self) -> str:
-        return "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace"
+        return f"--yolo --add-dir {WORKSPACE_DIR}"
 
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         return list(cmd_parts)
@@ -103,13 +112,11 @@ class CopilotAgentSystemPlugin:
             parts.extend(agent_cli_args)
 
         if "--add-dir" not in parts:
-            parts[1:1] = ["--add-dir", "/home/midori-ai/workspace"]
+            parts[1:1] = ["--add-dir", WORKSPACE_DIR]
 
         if is_help_launch:
-            if "--allow-all-tools" not in parts:
-                parts[1:1] = ["--allow-all-tools"]
-            if "--allow-all-paths" not in parts:
-                parts[1:1] = ["--allow-all-paths"]
+            if not _has_yolo_permissions(parts):
+                parts[1:1] = ["--yolo"]
             if help_repos_dir not in parts:
                 parts[1:1] = ["--add-dir", help_repos_dir]
 
