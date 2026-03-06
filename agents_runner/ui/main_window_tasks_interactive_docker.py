@@ -282,6 +282,18 @@ def launch_docker_terminal_task(
                 )
             )
 
+    run_interactive_mode = task.is_interactive_run()
+    skip_system_preflight = bool(system_preflight_cached and not run_interactive_mode)
+    if run_interactive_mode and system_preflight_cached:
+        on_phase_log(
+            format_log(
+                "phase",
+                "cache",
+                "INFO",
+                "interactive run requires runtime system preflight; skipping cache-only shortcut",
+            )
+        )
+
     # Prepare preflight scripts and get mounts.
     # Desktop caching only pre-installs desktop dependencies into an image layer;
     # runtime desktop services still need to start for each container launch.
@@ -292,7 +304,7 @@ def launch_docker_terminal_task(
             desktop_preflight_script=desktop_preflight_script,
             settings_preflight_script=settings_preflight_script,
             setup_agents_script=setup_agents_script,
-            skip_system=system_preflight_cached,
+            skip_system=skip_system_preflight,
             skip_desktop=False,
             skip_settings=settings_preflight_cached,
         )
