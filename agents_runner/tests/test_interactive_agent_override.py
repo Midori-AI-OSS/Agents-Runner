@@ -5,6 +5,7 @@ from pathlib import Path
 
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_NONE
+from agents_runner.ui.main_window_environment import MainWindowEnvironmentMixin
 from agents_runner.terminal_apps import TerminalOption
 from agents_runner.ui.main_window_settings import MainWindowSettingsMixin
 from agents_runner.ui.main_window_tasks_interactive import (
@@ -97,7 +98,11 @@ class _DummyNewTask:
         return
 
 
-class _DummyMainWindow(MainWindowSettingsMixin, MainWindowTasksInteractiveMixin):
+class _DummyMainWindow(
+    MainWindowEnvironmentMixin,
+    MainWindowSettingsMixin,
+    MainWindowTasksInteractiveMixin,
+):
     def __init__(self, env: Environment, tmp_path: Path, workdir: Path) -> None:
         self._settings_data = {
             "use": "codex",
