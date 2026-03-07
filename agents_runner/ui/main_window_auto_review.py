@@ -57,6 +57,12 @@ class MainWindowAutoReviewMixin:
             pr_head_repo_owner and pr_head_repo_name and not same_repo
         )
 
+        env_for_task = self._environments.get(selected_env_id)
+        if not resolve_effective_auto_review_enabled(
+            settings=self._settings_data,
+            env=env_for_task,
+        ):
+            return
         resolved_base_branch = ""
         if is_pr and pr_base_ref:
             resolved_base_branch = pr_base_ref
@@ -66,13 +72,6 @@ class MainWindowAutoReviewMixin:
             )
             if resolved_base_branch is None:
                 return
-
-        env_for_task = self._environments.get(selected_env_id)
-        if not resolve_effective_auto_review_enabled(
-            settings=self._settings_data,
-            env=env_for_task,
-        ):
-            return
         _agent_cli, host_config_dir = self._effective_agent_and_config(env=env_for_task)
         pr_context: dict[str, object] | None = None
         if is_pr:
@@ -290,8 +289,8 @@ class MainWindowAutoReviewMixin:
                 return None
 
             selected = str(dialog.selected_branch() or "").strip()
-            if not selected:
-                return ""
-            return branch_lookup.get(selected.casefold(), "")
+            selected_branch = branch_lookup.get(selected.casefold(), "")
+            self._remember_environment_base_branch(env, selected_branch)
+            return selected_branch
 
         return ""

@@ -77,6 +77,9 @@ class InteractivePrepWorker(QObject):
         cache_desktop_build: bool,
         setup_agents_missing_prompt_enabled: bool,
         pull_before_run: bool,
+        branch_work_mode: str,
+        task_branch_naming_style: str,
+        task_branch_custom_template: str,
         prep_id: str = "",
     ) -> None:
         super().__init__()
@@ -110,6 +113,13 @@ class InteractivePrepWorker(QObject):
             setup_agents_missing_prompt_enabled
         )
         self._pull_before_run = bool(pull_before_run)
+        self._branch_work_mode = str(branch_work_mode or "").strip() or "task_branch"
+        self._task_branch_naming_style = (
+            str(task_branch_naming_style or "").strip() or "standard"
+        )
+        self._task_branch_custom_template = (
+            str(task_branch_custom_template or "").strip() or "{task_id}"
+        )
         self._prep_id = str(prep_id or "").strip()
         self._stop_requested = False
 
@@ -354,6 +364,9 @@ class InteractivePrepWorker(QObject):
                         self._host_workdir,
                         task_id=self._task_id,
                         base_branch=self._desired_base or None,
+                        branch_work_mode=self._branch_work_mode,
+                        task_branch_naming_style=self._task_branch_naming_style,
+                        task_branch_custom_template=self._task_branch_custom_template,
                         prefer_gh=self._gh_use_host_cli,
                         recreate_if_needed=False,
                         on_log=lambda line: self.log.emit(
@@ -373,7 +386,7 @@ class InteractivePrepWorker(QObject):
                 gh_branch = str(gh_result.get("branch") or "").strip()
                 if not gh_repo_root or not gh_branch:
                     raise RuntimeError(
-                        "Could not prepare a task branch for this cloned repository."
+                        "Could not prepare this cloned repository for the task."
                     )
 
                 if self._gh_context_enabled:

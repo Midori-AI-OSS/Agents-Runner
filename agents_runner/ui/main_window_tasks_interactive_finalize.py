@@ -92,6 +92,8 @@ class MainWindowTasksInteractiveFinalizeMixin:
             and task.workspace_type == WORKSPACE_CLONED
             and task.gh_repo_root
             and task.gh_branch
+            and str(task.gh_branch or "").strip()
+            != str(task.gh_base_branch or "").strip()
             and not task.gh_pr_url
             and bool(
                 getattr(env, "interactive_pr_prompt_enabled", True) if env else True

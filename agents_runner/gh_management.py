@@ -71,6 +71,9 @@ def prepare_github_repo_for_task(
     *,
     task_id: str,
     base_branch: str | None = None,
+    branch_work_mode: str = "task_branch",
+    task_branch_naming_style: str = "standard",
+    task_branch_custom_template: str = "{task_id}",
     pr_head_ref: str | None = None,
     pr_base_ref: str | None = None,
     prefer_gh: bool = True,
@@ -236,6 +239,9 @@ def prepare_github_repo_for_task(
                 dest_dir,
                 task_id=task_id or "task",
                 base_branch=(base_branch or None),
+                branch_work_mode=branch_work_mode,
+                task_branch_naming_style=task_branch_naming_style,
+                task_branch_custom_template=task_branch_custom_template,
             )
             if plan is None:
                 _log(
@@ -247,12 +253,17 @@ def prepare_github_repo_for_task(
 
             current_branch = git_current_branch(plan.repo_root)
             if current_branch and current_branch == plan.branch:
+                ready_label = (
+                    f"already on base branch {plan.base_branch}"
+                    if plan.branch == plan.base_branch
+                    else f"already on task branch {plan.branch}"
+                )
                 _log(
                     format_log(
                         "gh",
                         "branch",
                         "INFO",
-                        f"already on task branch {plan.branch}; skipping branch prep",
+                        f"{ready_label}; skipping branch prep",
                     )
                 )
                 return {
@@ -281,7 +292,11 @@ def prepare_github_repo_for_task(
                     "gh",
                     "branch",
                     "INFO",
-                    f"creating branch {plan.branch} (base {plan.base_branch})",
+                    (
+                        f"using base branch {plan.base_branch}"
+                        if plan.branch == plan.base_branch
+                        else f"creating branch {plan.branch} (base {plan.base_branch})"
+                    ),
                 )
             )
             resolved_base_branch, branch = prepare_branch_for_task(
@@ -307,3 +322,5 @@ def prepare_github_repo_for_task(
                 _delete_checkout_dir(dest_dir, on_log=on_log)
                 continue
             raise
+
+    raise GhManagementError("repo preparation failed after retry")

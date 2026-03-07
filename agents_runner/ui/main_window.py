@@ -261,6 +261,9 @@ class MainWindow(
         self._new_task.requested_launch.connect(self._start_interactive_task_from_ui)
         self._new_task.requested_launch_ide.connect(self._start_ide_task_from_ui)
         self._new_task.environment_changed.connect(self._on_new_task_env_changed)
+        self._new_task.base_branch_changed.connect(
+            self._on_new_task_base_branch_changed
+        )
         self._new_task.back_requested.connect(self._show_dashboard)
         self._tasks_page = TasksPage(new_task_page=self._new_task)
         self._tasks_page.auto_review_requested.connect(self._on_auto_review_requested)

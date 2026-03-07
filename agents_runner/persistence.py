@@ -527,6 +527,9 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             cache_ide_preflight_enabled=bool(
                 payload.get("cache_ide_preflight_enabled") or False
             ),
+            setup_agents_missing_prompt_enabled=bool(
+                payload.get("setup_agents_missing_prompt_enabled") or False
+            ),
             workspace_type=str(payload.get("workspace_type") or "none"),
             workspace_target=str(payload.get("workspace_target") or ""),
             container_settings_preflight_path=str(
@@ -576,6 +579,18 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
                 if str(payload.get("gh_base_branch") or "").strip()
                 else None
             ),
+            gh_branch_work_mode=str(
+                payload.get("gh_branch_work_mode") or "task_branch"
+            ).strip()
+            or "task_branch",
+            gh_task_branch_naming_style=str(
+                payload.get("gh_task_branch_naming_style") or "standard"
+            ).strip()
+            or "standard",
+            gh_task_branch_custom_template=str(
+                payload.get("gh_task_branch_custom_template") or "{task_id}"
+            ).strip()
+            or "{task_id}",
             gh_pr_head_ref=(
                 str(payload.get("gh_pr_head_ref") or "").strip()
                 if str(payload.get("gh_pr_head_ref") or "").strip()

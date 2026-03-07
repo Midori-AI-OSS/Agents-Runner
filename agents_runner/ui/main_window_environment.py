@@ -91,6 +91,26 @@ class MainWindowEnvironmentMixin:
             "Set Workspace to a local folder or GitHub repo in Environments.",
         )
 
+    def _remember_environment_base_branch(
+        self,
+        env: Environment | None,
+        base_branch: str,
+    ) -> None:
+        if (
+            env is None
+            or str(getattr(env, "workspace_type", "") or "") != WORKSPACE_CLONED
+        ):
+            return
+        normalized_base = str(base_branch or "").strip()
+        if (
+            str(getattr(env, "gh_last_base_branch", "") or "").strip()
+            == normalized_base
+        ):
+            return
+        env.gh_last_base_branch = normalized_base
+        save_environment(env)
+        self._environments[env.env_id] = env
+
     def _refresh_active_environment_repo_branches(
         self,
         *,
@@ -389,6 +409,10 @@ class MainWindowEnvironmentMixin:
                 preserve_branch_selection=False,
             )
             self._schedule_save()
+
+    def _on_new_task_base_branch_changed(self, env_id: str, base_branch: str) -> None:
+        env = self._environments.get(str(env_id or "").strip())
+        self._remember_environment_base_branch(env, base_branch)
 
     def _reload_environments(self, preferred_env_id: str = "") -> None:
         envs = load_environments()
