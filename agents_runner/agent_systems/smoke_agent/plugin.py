@@ -86,6 +86,9 @@ class SmokeAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["sh", "-lc", "echo smoke_agent ready"]
 
+    def install_command(self) -> str:
+        return 'echo "smoke agent installing"'
+
     def default_interactive_command(self) -> str:
         return ""
 

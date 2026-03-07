@@ -91,6 +91,9 @@ class CopilotAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["copilot", "--version"]
 
+    def install_command(self) -> str:
+        return "yay -S --noconfirm --needed github-copilot-cli"
+
     def default_interactive_command(self) -> str:
         return f"--yolo --add-dir {WORKSPACE_DIR}"
 

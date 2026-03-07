@@ -97,6 +97,9 @@ class CodexAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["codex", "--version"]
 
+    def install_command(self) -> str:
+        return "yay -S --noconfirm --needed openai-codex"
+
     def default_interactive_command(self) -> str:
         return "--sandbox danger-full-access"
 

@@ -85,6 +85,9 @@ class GeminiAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["gemini", "--version"]
 
+    def install_command(self) -> str:
+        return "yay -S --noconfirm --needed gemini-cli"
+
     def default_interactive_command(self) -> str:
         return (
             "--no-sandbox --approval-mode yolo --include-directories "

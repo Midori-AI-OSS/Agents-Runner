@@ -95,6 +95,9 @@ class ClaudeAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["claude", "--version"]
 
+    def install_command(self) -> str:
+        return "yay -S --noconfirm --needed claude-code"
+
     def default_interactive_command(self) -> str:
         return "--add-dir /home/midori-ai/workspace"
 
