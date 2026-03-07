@@ -16,6 +16,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox
 
+from agents_runner.agent_install import resolve_agent_install_plan
 from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.agent_cli import available_agents
 from agents_runner.agent_cli import verify_cli_clause
@@ -103,6 +104,8 @@ def launch_docker_terminal_task(
     settings_preflight_script: str | None,
     setup_agents_script: str | None,
     ide_preflight_script: str | None,
+    install_preflight_script: str,
+    install_phase_name: str,
     extra_preflight_script: str,
     ide_display_target: str,
     stain: str | None,
@@ -113,6 +116,7 @@ def launch_docker_terminal_task(
     system_preflight_cached_override: bool | None = None,
     desktop_preflight_cached_override: bool | None = None,
     settings_preflight_cached_override: bool | None = None,
+    install_preflight_cached_override: bool | None = None,
     desktop_preflight_script_override: str | None = None,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
@@ -146,6 +150,8 @@ def launch_docker_terminal_task(
         settings_preflight_script: Global preflight script
         setup_agents_script: Repo setup-agents preflight script
         ide_preflight_script: Optional IDE install preflight script
+        install_preflight_script: Optional install preflight script
+        install_phase_name: Optional install phase cache name
         extra_preflight_script: Additional preflight script (help mode, etc.)
         ide_display_target: IDE runtime display metadata
         stain: Task color stain
@@ -156,6 +162,7 @@ def launch_docker_terminal_task(
         system_preflight_cached_override: Optional precomputed system cache status
         desktop_preflight_cached_override: Optional precomputed desktop cache status
         settings_preflight_cached_override: Optional precomputed settings cache status
+        install_preflight_cached_override: Optional precomputed install cache status
         desktop_preflight_script_override: Optional precomputed desktop script
     """
     # Apply desktop preflight script override if provided, before desktop detection
@@ -179,6 +186,9 @@ def launch_docker_terminal_task(
             system_preflight_script = ""
 
     runtime_image = image
+    resolved_install_preflight_script = str(install_preflight_script or "").strip()
+    resolved_install_phase_name = str(install_phase_name or "").strip()
+    install_preflight_cached = False
     system_preflight_cached = False
     desktop_preflight_cached = False
     settings_preflight_cached = False
@@ -202,6 +212,7 @@ def launch_docker_terminal_task(
         value is not None
         for value in (
             runtime_image_override,
+            install_preflight_cached_override,
             system_preflight_cached_override,
             desktop_preflight_cached_override,
             settings_preflight_cached_override,
@@ -213,10 +224,33 @@ def launch_docker_terminal_task(
 
     if use_precomputed_cache:
         runtime_image = str(runtime_image_override or image)
+        install_preflight_cached = bool(install_preflight_cached_override)
         system_preflight_cached = bool(system_preflight_cached_override)
         desktop_preflight_cached = bool(desktop_preflight_cached_override)
         settings_preflight_cached = bool(settings_preflight_cached_override)
     else:
+        if not resolved_install_preflight_script and cmd_parts:
+            install_plan = resolve_agent_install_plan(
+                agent_cli=str(cmd_parts[0]),
+                include_internal=False,
+            )
+            if install_plan is not None:
+                resolved_install_preflight_script = str(
+                    install_plan.script_content or ""
+                ).strip()
+                resolved_install_phase_name = str(install_plan.phase_name or "").strip()
+
+        if container_caching_enabled and resolved_install_preflight_script:
+            next_image = ensure_phase_image(
+                base_image=runtime_image,
+                phase_name=resolved_install_phase_name or "install-agent",
+                script_content=resolved_install_preflight_script,
+                preflights_dir=preflights_host_dir,
+                on_log=on_phase_log,
+            )
+            install_preflight_cached = next_image != runtime_image
+            runtime_image = next_image
+
         if cache_system_enabled and system_preflight_script.strip():
             next_image = ensure_phase_image(
                 base_image=runtime_image,
@@ -304,6 +338,8 @@ def launch_docker_terminal_task(
             desktop_preflight_script=desktop_preflight_script,
             settings_preflight_script=settings_preflight_script,
             setup_agents_script=setup_agents_script,
+            install_preflight_script=resolved_install_preflight_script,
+            skip_install=install_preflight_cached,
             skip_system=skip_system_preflight,
             skip_desktop=False,
             skip_settings=settings_preflight_cached,
@@ -545,7 +581,9 @@ def _prepare_preflight_scripts(
     desktop_preflight_script: str,
     settings_preflight_script: str | None,
     setup_agents_script: str | None,
+    install_preflight_script: str,
     *,
+    skip_install: bool = False,
     skip_system: bool = False,
     skip_desktop: bool = False,
     skip_settings: bool = False,
@@ -559,6 +597,8 @@ def _prepare_preflight_scripts(
         desktop_preflight_script: Desktop phase script content
         settings_preflight_script: Global preflight script
         setup_agents_script: Repo setup-agents script content
+        install_preflight_script: Agent install phase script content
+        skip_install: Skip install phase because it was cached
         skip_system: Skip runtime system phase because it was cached
         skip_desktop: Skip runtime desktop phase because it was cached
         skip_settings: Skip runtime settings phase because it was cached
@@ -577,6 +617,7 @@ def _prepare_preflight_scripts(
     preflight_mounts: list[str] = []
     tmp_paths: dict[str, str] = {
         "system": "",
+        "install": "",
         "ide": "",
         "desktop": "",
         "desktop_start": "",
@@ -588,6 +629,9 @@ def _prepare_preflight_scripts(
     desktop_container_path = f"/tmp/agents-runner-preflight-desktop-{task_token}.sh"
     desktop_start_container_path = (
         f"/tmp/agents-runner-preflight-desktop-start-{task_token}.sh"
+    )
+    install_container_path = (
+        f"/tmp/agents-runner-preflight-install-agent-{task_token}.sh"
     )
     settings_container_path = f"/tmp/agents-runner-preflight-settings-{task_token}.sh"
     setup_agents_container_path = (
@@ -644,14 +688,6 @@ def _prepare_preflight_scripts(
             f"PREFLIGHTS_DIR={shlex.quote(preflights_container_dir)}; "
             'export AGENTS_RUNNER_PREFLIGHTS_DIR="${PREFLIGHTS_DIR}"; '
         )
-
-        if not skip_system:
-            preflight_clause += (
-                'PREFLIGHT_SYSTEM="${PREFLIGHTS_DIR}/pixelarch_yay.sh"; '
-                f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: starting')}; "
-                '/bin/bash "${PREFLIGHT_SYSTEM}"; '
-                f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: done')}; "
-            )
 
         desktop_install_script = str(desktop_preflight_script or "")
         desktop_start_script = ""
@@ -748,6 +784,23 @@ def _prepare_preflight_scripts(
                 desktop_start_clause += clause
             else:
                 preflight_clause += clause
+
+        _append_optional_phase(
+            label="install-agent",
+            script=str(install_preflight_script or ""),
+            container_path=install_container_path,
+            tmp_key="install",
+            skip=skip_install,
+            env_var="PREFLIGHT_INSTALL",
+        )
+
+        if not skip_system:
+            preflight_clause += (
+                'PREFLIGHT_SYSTEM="${PREFLIGHTS_DIR}/pixelarch_yay.sh"; '
+                f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: starting')}; "
+                '/bin/bash "${PREFLIGHT_SYSTEM}"; '
+                f"{shell_log_statement('docker', 'preflight', 'INFO', 'system: done')}; "
+            )
 
         _append_optional_phase(
             label="settings",

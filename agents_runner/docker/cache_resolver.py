@@ -30,6 +30,7 @@ class CacheResolutionResult:
     """
 
     runtime_image: str
+    install_preflight_cached: bool
     system_preflight_cached: bool
     desktop_preflight_cached: bool
     settings_preflight_cached: bool
@@ -38,6 +39,9 @@ class CacheResolutionResult:
 
 def resolve_runtime_cache(
     base_image: str,
+    cache_install_enabled: bool,
+    install_preflight_script: str,
+    install_phase_name: str,
     cache_system_enabled: bool,
     cache_settings_enabled: bool,
     desktop_cache_enabled: bool,
@@ -51,6 +55,9 @@ def resolve_runtime_cache(
 
     Args:
         base_image: Starting Docker image
+        cache_install_enabled: Whether to cache agent install preflight
+        install_preflight_script: Install preflight script content
+        install_phase_name: Install preflight cache phase name
         cache_system_enabled: Whether to cache system preflight
         cache_settings_enabled: Whether to cache settings preflight
         desktop_cache_enabled: Whether to cache desktop build
@@ -70,6 +77,7 @@ def resolve_runtime_cache(
 
     runtime_image = base_image
     desktop_preflight_script = str(extra_preflight_script or "")
+    install_preflight_cached = False
     system_preflight_cached = False
     desktop_preflight_cached = False
     settings_preflight_cached = False
@@ -82,6 +90,29 @@ def resolve_runtime_cache(
 
     log_fn = on_log or noop_log
     check_fn = check_stop or noop_check
+
+    # Install preflight cache layer
+    if cache_install_enabled and install_preflight_script.strip():
+        check_fn()
+        with _cache_build_lock:
+            next_image = ensure_phase_image(
+                base_image=runtime_image,
+                phase_name=str(install_phase_name or "").strip() or "install-agent",
+                script_content=install_preflight_script,
+                preflights_dir=preflights_host_dir,
+                on_log=log_fn,
+            )
+        install_preflight_cached = next_image != runtime_image
+        runtime_image = next_image
+    elif cache_install_enabled:
+        log_fn(
+            format_log(
+                "phase",
+                "cache",
+                "WARN",
+                "install caching enabled but install script is empty",
+            )
+        )
 
     # System preflight cache layer
     system_preflight_script = ""
@@ -165,6 +196,7 @@ def resolve_runtime_cache(
 
     return CacheResolutionResult(
         runtime_image=runtime_image,
+        install_preflight_cached=install_preflight_cached,
         system_preflight_cached=system_preflight_cached,
         desktop_preflight_cached=desktop_preflight_cached,
         settings_preflight_cached=settings_preflight_cached,
