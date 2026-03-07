@@ -279,6 +279,30 @@ class ContainerExecutor:
         preflight_mounts: list[str] = []
         desktop_start_clause = ""
 
+        # Agent install preflight
+        if (
+            self._runtime_env.install_preflight_tmp_path is not None
+            and not self._runtime_env.install_preflight_cached
+        ):
+            clause, mounts = self._build_install_preflight(
+                self._runtime_env.install_preflight_tmp_path,
+                self._runtime_env.install_container_path,
+            )
+            preflight_clause += clause
+            preflight_mounts.extend(mounts)
+        elif (
+            self._runtime_env.install_preflight_tmp_path is not None
+            and self._runtime_env.install_preflight_cached
+        ):
+            self._on_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "INFO",
+                    "agent install cached; skipping runtime install preflight",
+                )
+            )
+
         # System preflight
         if (
             self._runtime_env.system_preflight_enabled
@@ -347,6 +371,26 @@ class ContainerExecutor:
             preflight_mounts.extend(mounts)
 
         return preflight_clause, preflight_mounts, desktop_start_clause
+
+    def _build_install_preflight(
+        self, tmp_path: str, container_path: str
+    ) -> tuple[str, list[str]]:
+        """Build install preflight clause and mounts."""
+        self._on_log(
+            format_log(
+                "host",
+                "none",
+                "INFO",
+                f"agent install phase enabled; mounting -> {container_path} (ro)",
+            )
+        )
+        return (
+            f"PREFLIGHT_INSTALL={shlex.quote(container_path)}; "
+            f"{shell_log_statement('install', 'agent', 'INFO', 'phase: running')}; "
+            '/bin/bash "${PREFLIGHT_INSTALL}"; '
+            f"{shell_log_statement('install', 'agent', 'INFO', 'phase: done')}; ",
+            ["-v", f"{tmp_path}:{container_path}:ro"],
+        )
 
     def _build_system_preflight(self) -> tuple[str, list[str]]:
         """Build system preflight clause and mounts."""
