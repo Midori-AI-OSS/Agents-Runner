@@ -31,6 +31,7 @@ from agents_runner.environments import (
     WORKSPACE_CLONED,
     WORKSPACE_MOUNTED,
 )
+from agents_runner.environments.model import GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
 from agents_runner.gh.git_ops import parse_github_url
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
@@ -498,6 +499,15 @@ read
             headless_desktop_enabled=self._headless_check.isChecked(),
             container_caching_enabled=self._caching_check.isChecked(),
             gh_context_enabled=self._gh_context_check.isChecked(),
+            agentsnova_auto_review_mode="inherit",
+            agentsnova_auto_reactions_mode="inherit",
+            agentsnova_marker_comment_mode="inherit",
+            interactive_pr_prompt_enabled=True,
+            setup_agents_missing_prompt_enabled=False,
+            interactive_pull_before_run_enabled=True,
+            gh_branch_work_mode="task_branch",
+            gh_task_branch_naming_style="standard",
+            gh_task_branch_custom_template=GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
         )
         return env
 

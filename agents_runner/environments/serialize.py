@@ -8,7 +8,13 @@ from agents_runner.ide_systems import available_ide_system_names
 
 from .model import ENVIRONMENT_VERSION
 from .model import Environment
+from .model import GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
 from .model import normalize_workspace_type
+from .model import normalize_agentsnova_auto_mode
+from .model import normalize_agentsnova_marker_comment_mode
+from .model import normalize_gh_branch_work_mode
+from .model import normalize_gh_task_branch_custom_template
+from .model import normalize_gh_task_branch_naming_style
 from .model import PromptConfig
 from .model import AgentSelection
 from .model import AgentInstance
@@ -279,6 +285,35 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     agentsnova_trusted_mode = _normalize_trusted_mode(
         payload.get("agentsnova_trusted_mode", "inherit")
     )
+    agentsnova_auto_review_mode = normalize_agentsnova_auto_mode(
+        payload.get("agentsnova_auto_review_mode", "inherit")
+    )
+    agentsnova_auto_reactions_mode = normalize_agentsnova_auto_mode(
+        payload.get("agentsnova_auto_reactions_mode", "inherit")
+    )
+    agentsnova_marker_comment_mode = normalize_agentsnova_marker_comment_mode(
+        payload.get("agentsnova_marker_comment_mode", "inherit")
+    )
+    interactive_pr_prompt_enabled = bool(
+        payload.get("interactive_pr_prompt_enabled", True)
+    )
+    setup_agents_missing_prompt_enabled = bool(
+        payload.get("setup_agents_missing_prompt_enabled", False)
+    )
+    interactive_pull_before_run_enabled = bool(
+        payload.get("interactive_pull_before_run_enabled", True)
+    )
+    gh_branch_work_mode = normalize_gh_branch_work_mode(
+        payload.get("gh_branch_work_mode", "task_branch")
+    )
+    gh_task_branch_naming_style = normalize_gh_task_branch_naming_style(
+        payload.get("gh_task_branch_naming_style", "standard")
+    )
+    gh_task_branch_custom_template = normalize_gh_task_branch_custom_template(
+        payload.get(
+            "gh_task_branch_custom_template", GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
+        )
+    )
 
     # Migration: Rename gh_pr_metadata_enabled to gh_context_enabled
     # Check both old and new field names for backward compatibility
@@ -475,6 +510,15 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         github_polling_enabled=github_polling_enabled,
         agentsnova_trusted_users_env=agentsnova_trusted_users_env,
         agentsnova_trusted_mode=agentsnova_trusted_mode,
+        agentsnova_auto_review_mode=agentsnova_auto_review_mode,
+        agentsnova_auto_reactions_mode=agentsnova_auto_reactions_mode,
+        agentsnova_marker_comment_mode=agentsnova_marker_comment_mode,
+        interactive_pr_prompt_enabled=interactive_pr_prompt_enabled,
+        setup_agents_missing_prompt_enabled=setup_agents_missing_prompt_enabled,
+        interactive_pull_before_run_enabled=interactive_pull_before_run_enabled,
+        gh_branch_work_mode=gh_branch_work_mode,
+        gh_task_branch_naming_style=gh_task_branch_naming_style,
+        gh_task_branch_custom_template=gh_task_branch_custom_template,
         prompts=prompts,
         prompts_unlocked=prompts_unlocked,
         agent_selection=agent_selection,
@@ -582,6 +626,37 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         ),
         "agentsnova_trusted_mode": _normalize_trusted_mode(
             getattr(env, "agentsnova_trusted_mode", "inherit")
+        ),
+        "agentsnova_auto_review_mode": normalize_agentsnova_auto_mode(
+            getattr(env, "agentsnova_auto_review_mode", "inherit")
+        ),
+        "agentsnova_auto_reactions_mode": normalize_agentsnova_auto_mode(
+            getattr(env, "agentsnova_auto_reactions_mode", "inherit")
+        ),
+        "agentsnova_marker_comment_mode": normalize_agentsnova_marker_comment_mode(
+            getattr(env, "agentsnova_marker_comment_mode", "inherit")
+        ),
+        "interactive_pr_prompt_enabled": bool(
+            getattr(env, "interactive_pr_prompt_enabled", True)
+        ),
+        "setup_agents_missing_prompt_enabled": bool(
+            getattr(env, "setup_agents_missing_prompt_enabled", False)
+        ),
+        "interactive_pull_before_run_enabled": bool(
+            getattr(env, "interactive_pull_before_run_enabled", True)
+        ),
+        "gh_branch_work_mode": normalize_gh_branch_work_mode(
+            getattr(env, "gh_branch_work_mode", "task_branch")
+        ),
+        "gh_task_branch_naming_style": normalize_gh_task_branch_naming_style(
+            getattr(env, "gh_task_branch_naming_style", "standard")
+        ),
+        "gh_task_branch_custom_template": normalize_gh_task_branch_custom_template(
+            getattr(
+                env,
+                "gh_task_branch_custom_template",
+                GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
+            )
         ),
         # Also save with old name for backward compatibility with older builds
         "gh_pr_metadata_enabled": bool(env.gh_context_enabled),

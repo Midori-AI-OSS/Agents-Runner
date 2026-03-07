@@ -24,6 +24,9 @@ from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
+from agents_runner.environments.model import (
+    GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
+)
 from agents_runner.ide_systems import available_ide_system_names
 from agents_runner.ide_systems import get_ide_system
 from agents_runner.ui.constants import (
@@ -204,6 +207,108 @@ class EnvironmentsFormMixin:
         self._agentsnova_trusted_mode.setToolTip(
             "Controls how this environment resolves trusted usernames for auto-review mention checks."
         )
+        self._agentsnova_auto_review_mode = QComboBox()
+        self._agentsnova_auto_review_mode.addItem(
+            "Auto-review: Inherit app setting", "inherit"
+        )
+        self._agentsnova_auto_review_mode.addItem("Auto-review: Enabled", "enabled")
+        self._agentsnova_auto_review_mode.addItem("Auto-review: Disabled", "disabled")
+        self._agentsnova_auto_review_mode.setToolTip(
+            "Override whether @agentsnova mentions auto-queue review work for this environment."
+        )
+        self._agentsnova_auto_reactions_mode = QComboBox()
+        self._agentsnova_auto_reactions_mode.addItem(
+            "Auto reactions: Inherit app setting", "inherit"
+        )
+        self._agentsnova_auto_reactions_mode.addItem(
+            "Auto reactions: Enabled", "enabled"
+        )
+        self._agentsnova_auto_reactions_mode.addItem(
+            "Auto reactions: Disabled", "disabled"
+        )
+        self._agentsnova_auto_reactions_mode.setToolTip(
+            "Override whether @agentsnova queue triggers add GitHub reactions for this environment."
+        )
+        self._agentsnova_marker_comment_mode = QComboBox()
+        self._agentsnova_marker_comment_mode.addItem(
+            "Marker comments: Inherit app setting", "inherit"
+        )
+        self._agentsnova_marker_comment_mode.addItem("Marker comments: Keep", "keep")
+        self._agentsnova_marker_comment_mode.addItem(
+            "Marker comments: Delete after 15s", "delete_after_15s"
+        )
+        self._agentsnova_marker_comment_mode.addItem(
+            "Marker comments: Disabled", "disabled"
+        )
+        self._agentsnova_marker_comment_mode.setToolTip(
+            "Override marker-comment behavior for @agentsnova auto-review activity in this environment."
+        )
+        self._interactive_pr_prompt_enabled = QCheckBox("Show interactive PR prompt")
+        self._interactive_pr_prompt_enabled.setToolTip(
+            "When enabled, interactive GitHub work can keep showing the PR prompt for this environment."
+        )
+        self._setup_agents_missing_prompt_enabled = QCheckBox(
+            "Inject missing setup-agents prompt"
+        )
+        self._setup_agents_missing_prompt_enabled.setToolTip(
+            "When enabled, missing setup-agents guidance can be injected for this environment."
+        )
+        self._interactive_pull_before_run_enabled = QCheckBox(
+            "Pull before interactive run"
+        )
+        self._interactive_pull_before_run_enabled.setToolTip(
+            "When enabled, interactive runs can pull/update before starting for this environment."
+        )
+        self._gh_branch_work_mode = QComboBox()
+        self._gh_branch_work_mode.addItem(
+            "Branch work: Use task branches", "task_branch"
+        )
+        self._gh_branch_work_mode.addItem(
+            "Branch work: Work on direct base", "direct_base"
+        )
+        self._gh_branch_work_mode.setToolTip(
+            "Controls whether GitHub work for this environment uses per-task branches or works directly on the selected base branch."
+        )
+        self._gh_task_branch_naming_style = QComboBox()
+        self._gh_task_branch_naming_style.addItem(
+            "Task branch naming: Standard", "standard"
+        )
+        self._gh_task_branch_naming_style.addItem("Task branch naming: Songs", "songs")
+        self._gh_task_branch_naming_style.addItem("Task branch naming: Foods", "foods")
+        self._gh_task_branch_naming_style.addItem(
+            "Task branch naming: Animals", "animals"
+        )
+        self._gh_task_branch_naming_style.addItem(
+            "Task branch naming: Colors", "colors"
+        )
+        self._gh_task_branch_naming_style.addItem("Task branch naming: Space", "space")
+        self._gh_task_branch_naming_style.addItem(
+            "Task branch naming: Custom", "custom"
+        )
+        self._gh_task_branch_naming_style.setToolTip(
+            "Controls how future task branches are named for this environment."
+        )
+        self._gh_task_branch_custom_template = QLineEdit()
+        self._gh_task_branch_custom_template.setPlaceholderText(
+            GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
+        )
+        self._gh_task_branch_custom_template.setToolTip(
+            "Custom template used when task branch naming style is set to Custom."
+        )
+        self._gh_task_branch_custom_template_helper = QLabel(
+            "Custom templates can use placeholders like {task_id}."
+        )
+        self._gh_task_branch_custom_template_helper.setObjectName(
+            "SettingsPaneSubtitle"
+        )
+        self._gh_task_branch_custom_template.setVisible(False)
+        self._gh_task_branch_custom_template_helper.setVisible(False)
+        self._gh_branch_work_mode.currentIndexChanged.connect(
+            self._sync_github_branch_naming_controls
+        )
+        self._gh_task_branch_naming_style.currentIndexChanged.connect(
+            self._sync_github_branch_naming_controls
+        )
         self._agentsnova_trusted_users_env = GitHubUsernameListWidget()
         self._agentsnova_trusted_users_env.set_add_button_visible(False)
         self._add_trusted_user_env = (
@@ -358,6 +463,16 @@ class EnvironmentsFormMixin:
         github_config_body.addWidget(self._gh_context_enabled)
         github_config_body.addWidget(self._github_polling_enabled)
         github_config_body.addWidget(self._agentsnova_trusted_mode)
+        github_config_body.addWidget(self._agentsnova_auto_review_mode)
+        github_config_body.addWidget(self._agentsnova_auto_reactions_mode)
+        github_config_body.addWidget(self._agentsnova_marker_comment_mode)
+        github_config_body.addWidget(self._interactive_pr_prompt_enabled)
+        github_config_body.addWidget(self._setup_agents_missing_prompt_enabled)
+        github_config_body.addWidget(self._interactive_pull_before_run_enabled)
+        github_config_body.addWidget(self._gh_branch_work_mode)
+        github_config_body.addWidget(self._gh_task_branch_naming_style)
+        github_config_body.addWidget(self._gh_task_branch_custom_template)
+        github_config_body.addWidget(self._gh_task_branch_custom_template_helper)
         github_config_body.addStretch(1)
         self._register_page("github_config", github_config_page)
 

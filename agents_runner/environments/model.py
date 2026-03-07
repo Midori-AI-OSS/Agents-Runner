@@ -29,6 +29,51 @@ WORKSPACE_NONE = "none"
 WORKSPACE_MOUNTED = "mounted"
 WORKSPACE_CLONED = "cloned"
 
+AGENTSNOVA_AUTO_MODE_INHERIT = "inherit"
+AGENTSNOVA_AUTO_MODE_ENABLED = "enabled"
+AGENTSNOVA_AUTO_MODE_DISABLED = "disabled"
+AGENTSNOVA_AUTO_MODES = (
+    AGENTSNOVA_AUTO_MODE_INHERIT,
+    AGENTSNOVA_AUTO_MODE_ENABLED,
+    AGENTSNOVA_AUTO_MODE_DISABLED,
+)
+
+AGENTSNOVA_MARKER_COMMENT_MODE_INHERIT = "inherit"
+AGENTSNOVA_MARKER_COMMENT_MODE_KEEP = "keep"
+AGENTSNOVA_MARKER_COMMENT_MODE_DELETE_AFTER_15S = "delete_after_15s"
+AGENTSNOVA_MARKER_COMMENT_MODE_DISABLED = "disabled"
+AGENTSNOVA_MARKER_COMMENT_MODES = (
+    AGENTSNOVA_MARKER_COMMENT_MODE_INHERIT,
+    AGENTSNOVA_MARKER_COMMENT_MODE_KEEP,
+    AGENTSNOVA_MARKER_COMMENT_MODE_DELETE_AFTER_15S,
+    AGENTSNOVA_MARKER_COMMENT_MODE_DISABLED,
+)
+
+GH_BRANCH_WORK_MODE_TASK_BRANCH = "task_branch"
+GH_BRANCH_WORK_MODE_DIRECT_BASE = "direct_base"
+GH_BRANCH_WORK_MODES = (
+    GH_BRANCH_WORK_MODE_TASK_BRANCH,
+    GH_BRANCH_WORK_MODE_DIRECT_BASE,
+)
+
+GH_TASK_BRANCH_NAMING_STYLE_STANDARD = "standard"
+GH_TASK_BRANCH_NAMING_STYLE_SONGS = "songs"
+GH_TASK_BRANCH_NAMING_STYLE_FOODS = "foods"
+GH_TASK_BRANCH_NAMING_STYLE_ANIMALS = "animals"
+GH_TASK_BRANCH_NAMING_STYLE_COLORS = "colors"
+GH_TASK_BRANCH_NAMING_STYLE_SPACE = "space"
+GH_TASK_BRANCH_NAMING_STYLE_CUSTOM = "custom"
+GH_TASK_BRANCH_NAMING_STYLES = (
+    GH_TASK_BRANCH_NAMING_STYLE_STANDARD,
+    GH_TASK_BRANCH_NAMING_STYLE_SONGS,
+    GH_TASK_BRANCH_NAMING_STYLE_FOODS,
+    GH_TASK_BRANCH_NAMING_STYLE_ANIMALS,
+    GH_TASK_BRANCH_NAMING_STYLE_COLORS,
+    GH_TASK_BRANCH_NAMING_STYLE_SPACE,
+    GH_TASK_BRANCH_NAMING_STYLE_CUSTOM,
+)
+GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT = "{task_id}"
+
 
 def normalize_workspace_type(value: str) -> str:
     """Normalize workspace type to canonical values."""
@@ -39,6 +84,44 @@ def normalize_workspace_type(value: str) -> str:
     if value in ("local", "folder", "mounted"):
         return WORKSPACE_MOUNTED
     return WORKSPACE_NONE
+
+
+def normalize_agentsnova_auto_mode(value: str) -> str:
+    """Normalize additive AgentsNova automation mode values."""
+    normalized = str(value or "").strip().lower()
+    if normalized in AGENTSNOVA_AUTO_MODES:
+        return normalized
+    return AGENTSNOVA_AUTO_MODE_INHERIT
+
+
+def normalize_agentsnova_marker_comment_mode(value: str) -> str:
+    """Normalize additive AgentsNova marker-comment mode values."""
+    normalized = str(value or "").strip().lower()
+    if normalized in AGENTSNOVA_MARKER_COMMENT_MODES:
+        return normalized
+    return AGENTSNOVA_MARKER_COMMENT_MODE_INHERIT
+
+
+def normalize_gh_branch_work_mode(value: str) -> str:
+    """Normalize environment Git branch work mode values."""
+    normalized = str(value or "").strip().lower()
+    if normalized in GH_BRANCH_WORK_MODES:
+        return normalized
+    return GH_BRANCH_WORK_MODE_TASK_BRANCH
+
+
+def normalize_gh_task_branch_naming_style(value: str) -> str:
+    """Normalize environment task-branch naming style values."""
+    normalized = str(value or "").strip().lower()
+    if normalized in GH_TASK_BRANCH_NAMING_STYLES:
+        return normalized
+    return GH_TASK_BRANCH_NAMING_STYLE_STANDARD
+
+
+def normalize_gh_task_branch_custom_template(value: str) -> str:
+    """Normalize custom task-branch template text."""
+    normalized = str(value or "").strip()
+    return normalized or GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
 
 
 @dataclass
@@ -104,6 +187,15 @@ class Environment:
     github_polling_enabled: bool = False
     agentsnova_trusted_users_env: list[str] = field(default_factory=list)
     agentsnova_trusted_mode: str = "inherit"
+    agentsnova_auto_review_mode: str = AGENTSNOVA_AUTO_MODE_INHERIT
+    agentsnova_auto_reactions_mode: str = AGENTSNOVA_AUTO_MODE_INHERIT
+    agentsnova_marker_comment_mode: str = AGENTSNOVA_MARKER_COMMENT_MODE_INHERIT
+    interactive_pr_prompt_enabled: bool = True
+    setup_agents_missing_prompt_enabled: bool = False
+    interactive_pull_before_run_enabled: bool = True
+    gh_branch_work_mode: str = GH_BRANCH_WORK_MODE_TASK_BRANCH
+    gh_task_branch_naming_style: str = GH_TASK_BRANCH_NAMING_STYLE_STANDARD
+    gh_task_branch_custom_template: str = GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
     prompts: list[PromptConfig] = field(default_factory=list)
     prompts_unlocked: bool = False
     agent_selection: AgentSelection | None = None
