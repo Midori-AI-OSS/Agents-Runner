@@ -4,32 +4,8 @@ import time
 
 from .errors import GhManagementError
 from .gh_cli import is_gh_available
-from .git_ops import is_git_repo
+from .git_ops import is_git_repo, normalize_github_repo_slug
 from .process import expand_dir, is_empty_dir, require_ok, run_gh
-
-
-def _normalize_repo_slug(value: str) -> str:
-    value = (value or "").strip()
-    if not value:
-        return ""
-
-    text = value
-    if text.startswith("git@github.com:"):
-        text = text.removeprefix("git@github.com:").strip()
-    elif "github.com/" in text:
-        text = text.split("github.com/", 1)[-1].strip()
-    elif "://" not in text and "/" in text and " " not in text:
-        text = text
-    else:
-        return ""
-
-    text = text.split("#", 1)[0].split("?", 1)[0].strip().strip("/")
-    if text.endswith(".git"):
-        text = text[: -len(".git")].strip().strip("/")
-    parts = [p for p in text.split("/") if p]
-    if len(parts) < 2:
-        return ""
-    return f"{parts[-2].lower()}/{parts[-1].lower()}"
 
 
 def _read_origin_url(dest_dir: str) -> str:
@@ -100,21 +76,24 @@ def ensure_github_clone(
     os.makedirs(parent, exist_ok=True)
     if os.path.exists(dest_dir):
         if is_git_repo(dest_dir):
-            desired = _normalize_repo_slug(repo)
-            existing = _normalize_repo_slug(_read_origin_url(dest_dir))
-            if desired and existing and desired != existing:
+            origin_url = _read_origin_url(dest_dir)
+            desired = normalize_github_repo_slug(repo)
+            existing = normalize_github_repo_slug(origin_url)
+            if desired != existing and (desired or existing):
+                desired_label = desired or repo
+                existing_label = existing or origin_url
                 if recreate_if_needed and os.path.isdir(dest_dir):
                     backup_dir = f"{dest_dir}.bak-{time.time_ns()}"
                     try:
                         os.replace(dest_dir, backup_dir)
                     except OSError as exc:
                         raise GhManagementError(
-                            f"destination contains a different repo ({existing}), expected {desired}: {dest_dir}\n"
+                            f"destination contains a different repo ({existing_label}), expected {desired_label}: {dest_dir}\n"
                             f"failed to move it aside to {backup_dir}: {exc}"
                         ) from exc
                 else:
                     raise GhManagementError(
-                        f"destination contains a different repo ({existing}), expected {desired}: {dest_dir}\n"
+                        f"destination contains a different repo ({existing_label}), expected {desired_label}: {dest_dir}\n"
                         "delete it (or pick a different workspace) and try again"
                     )
             return

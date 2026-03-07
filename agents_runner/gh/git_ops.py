@@ -1,6 +1,27 @@
 import os
+import re
+from urllib.parse import urlsplit
 
 from .process import expand_dir, run_gh
+
+_GITHUB_REPO_PART_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _parse_github_repo_path(path: str) -> tuple[str | None, str | None]:
+    candidate = str(path or "").strip().strip("/")
+    if not candidate:
+        return None, None
+    if candidate.endswith(".git"):
+        candidate = candidate[: -len(".git")].strip().strip("/")
+    parts = [part.strip() for part in candidate.split("/") if part.strip()]
+    if len(parts) != 2:
+        return None, None
+    owner, repo = parts
+    if not _GITHUB_REPO_PART_PATTERN.fullmatch(owner):
+        return None, None
+    if not _GITHUB_REPO_PART_PATTERN.fullmatch(repo):
+        return None, None
+    return owner, repo
 
 
 def is_git_repo(path: str, *, timeout_s: float = 8.0) -> bool:
@@ -99,13 +120,10 @@ def git_list_remote_heads(repo: str) -> list[str]:
     if not repo:
         return []
     url = repo
-    if (
-        "://" not in url
-        and not url.startswith("git@")
-        and "/" in url
-        and " " not in url
-    ):
-        url = f"https://github.com/{url}.git"
+    if "://" not in url and not url.startswith("git@"):
+        owner, repo_name = parse_github_url(url)
+        if owner and repo_name:
+            url = f"https://github.com/{owner}/{repo_name}.git"
     proc = run_gh(["git", "ls-remote", "--heads", url], timeout_s=20.0)
     if proc.returncode != 0:
         return []
@@ -159,40 +177,45 @@ def git_remote_url(
 
 
 def parse_github_url(url: str) -> tuple[str | None, str | None]:
-    """Parse owner and repo name from GitHub URL.
+    """Parse owner and repo name from GitHub references.
 
     Supports multiple URL formats:
+        - owner/repo
         - https://github.com/owner/repo
         - https://github.com/owner/repo.git
         - git@github.com:owner/repo.git
         - ssh://git@github.com/owner/repo
 
     Returns (owner, repo_name) tuple, or (None, None) if parsing fails.
+    Only exact GitHub hosts are accepted for URL forms, and paths must be
+    exactly two segments (`owner/repo`) after an optional terminal `.git`.
     """
-    import re
-
-    url = (url or "").strip()
-    if not url:
+    text = (url or "").strip()
+    if not text or " " in text:
         return None, None
 
-    # HTTPS pattern: https://github.com/owner/repo or https://github.com/owner/repo.git
-    https_match = re.search(r"github\.com[:/]([^/]+)/([^/\.]+)", url)
-    if https_match:
-        owner = https_match.group(1).strip()
-        repo = https_match.group(2).strip()
-        # Remove .git suffix if present
-        if repo.endswith(".git"):
-            repo = repo[:-4]
-        return owner if owner else None, repo if repo else None
+    if "://" not in text and not text.startswith("git@"):
+        return _parse_github_repo_path(text)
 
-    # SSH pattern: git@github.com:owner/repo.git
-    ssh_match = re.search(r"github\.com:([^/]+)/([^/\.]+)", url)
-    if ssh_match:
-        owner = ssh_match.group(1).strip()
-        repo = ssh_match.group(2).strip()
-        # Remove .git suffix if present
-        if repo.endswith(".git"):
-            repo = repo[:-4]
-        return owner if owner else None, repo if repo else None
+    if text.startswith("git@"):
+        prefix = "git@github.com:"
+        if not text.startswith(prefix):
+            return None, None
+        path = text[len(prefix) :].split("#", 1)[0].split("?", 1)[0]
+        return _parse_github_repo_path(path)
 
-    return None, None
+    parsed = urlsplit(text)
+    if parsed.scheme not in {"http", "https", "ssh"}:
+        return None, None
+    if (parsed.hostname or "").lower() != "github.com":
+        return None, None
+    if parsed.scheme == "ssh" and (parsed.username or "") != "git":
+        return None, None
+    return _parse_github_repo_path(parsed.path)
+
+
+def normalize_github_repo_slug(value: str) -> str:
+    owner, repo = parse_github_url(value)
+    if not owner or not repo:
+        return ""
+    return f"{owner.lower()}/{repo.lower()}"

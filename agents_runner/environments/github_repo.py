@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import re
 from dataclasses import dataclass
 
 from agents_runner.environments.git_operations import get_git_info
@@ -27,12 +25,6 @@ def _parse_cloned_target(target: str) -> tuple[str | None, str | None]:
     value = str(target or "").strip()
     if not value:
         return (None, None)
-
-    shorthand = re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value)
-    if shorthand:
-        owner, repo = value.split("/", 1)
-        return (owner.strip(), repo.strip())
-
     return parse_github_url(value)
 
 

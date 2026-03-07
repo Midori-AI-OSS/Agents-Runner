@@ -6,6 +6,7 @@ import os
 
 from cryptography.fernet import Fernet
 from cryptography.fernet import InvalidToken
+from agents_runner.gh.git_ops import normalize_github_repo_slug
 
 from .model import WORKSPACE_CLONED
 from .model import WORKSPACE_MOUNTED
@@ -32,17 +33,10 @@ def _normalize_repo_identity(target: str) -> str:
     text = str(target or "").strip()
     if not text:
         return ""
-    if text.startswith("git@github.com:"):
-        text = text.removeprefix("git@github.com:").strip()
-    elif "github.com/" in text:
-        text = text.split("github.com/", 1)[-1].strip()
-    text = text.split("#", 1)[0].split("?", 1)[0].strip().strip("/")
-    if text.endswith(".git"):
-        text = text[: -len(".git")].strip().strip("/")
-    parts = [part for part in text.split("/") if part]
-    if len(parts) >= 2:
-        return f"{parts[-2].lower()}/{parts[-1].lower()}"
-    return text.lower()
+    slug = normalize_github_repo_slug(text)
+    if slug:
+        return slug
+    return text.split("#", 1)[0].split("?", 1)[0].strip().rstrip("/").lower()
 
 
 def _workspace_identity_baseline(

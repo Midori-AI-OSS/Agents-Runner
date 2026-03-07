@@ -31,6 +31,7 @@ from agents_runner.environments import (
     WORKSPACE_CLONED,
     WORKSPACE_MOUNTED,
 )
+from agents_runner.gh.git_ops import parse_github_url
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 from agents_runner.ui.graphics import EnvironmentTintOverlay
@@ -321,12 +322,13 @@ class NewEnvironmentWizard(ThemedDialog):
     def _expand_repo_url(self, url: str) -> str:
         """Convert GitHub shorthand (owner/repo) to full URL."""
         url = url.strip()
-        # Check if it's already a full URL
+        if not url:
+            return ""
         if url.startswith(("https://", "http://", "git@", "ssh://")):
             return url
-        # Check if it matches GitHub shorthand pattern (owner/repo)
-        if re.match(r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$", url):
-            return f"https://github.com/{url}.git"
+        owner, repo = parse_github_url(url)
+        if owner and repo:
+            return f"https://github.com/{owner}/{repo}.git"
         return url
 
     def _validate_clone(self) -> None:
@@ -341,16 +343,12 @@ class NewEnvironmentWizard(ThemedDialog):
             self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
             self._update_next_button()
             return
-        # Accept GitHub shorthand (owner/repo) or full URLs
-        shorthand_pattern = r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$"
-        url_pattern = r"^(https?://|git@|ssh://)"
-        if re.match(shorthand_pattern, url) or re.match(url_pattern, url):
+        owner, repo = parse_github_url(url)
+        if owner and repo:
             self._clone_validation.setText("✓ Valid format")
             self._clone_validation.setStyleSheet("color: #4caf50; font-size: 11px;")
         else:
-            self._clone_validation.setText(
-                "✗ Use owner/repo or valid URL (https://, git@, ssh://)"
-            )
+            self._clone_validation.setText("✗ Use owner/repo or a valid GitHub URL")
             self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
         self._update_next_button()
 
@@ -385,10 +383,8 @@ class NewEnvironmentWizard(ThemedDialog):
             url = self._clone_input.text().strip()
             if not url or " " in url:
                 return False
-            # Accept GitHub shorthand (owner/repo) or full URLs
-            shorthand_pattern = r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$"
-            url_pattern = r"^(https?://|git@|ssh://)"
-            return bool(re.match(shorthand_pattern, url) or re.match(url_pattern, url))
+            owner, repo = parse_github_url(url)
+            return bool(owner and repo)
 
     def _on_next(self) -> None:
         if self._source_combo.currentIndex() == 1 and not self._clone_test_passed:
@@ -489,9 +485,9 @@ read
         else:
             gh_target = self._expand_repo_url(self._clone_input.text().strip())
             workspace_type = WORKSPACE_CLONED
-        color = str(
-            getattr(self, "_color_combo", None).currentData() or self._suggested_color
-        )
+        color_combo = getattr(self, "_color_combo", None)
+        color_value = color_combo.currentData() if color_combo is not None else None
+        color = str(color_value or self._suggested_color)
         env = Environment(
             env_id=env_id,
             name=name,
