@@ -390,6 +390,9 @@ class MainWindowTasksAgentMixin:
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
             cache_ide_preflight_enabled=cache_ide_preflight_enabled,
+            setup_agents_missing_prompt_enabled=bool(
+                env and getattr(env, "setup_agents_missing_prompt_enabled", False)
+            ),
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,
@@ -1142,6 +1145,9 @@ class MainWindowTasksAgentMixin:
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
             cache_ide_preflight_enabled=cache_ide_preflight_enabled,
+            setup_agents_missing_prompt_enabled=bool(
+                env and getattr(env, "setup_agents_missing_prompt_enabled", False)
+            ),
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,

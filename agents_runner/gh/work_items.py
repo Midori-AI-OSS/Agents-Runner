@@ -733,6 +733,43 @@ def get_issue_workroom(
     )
 
 
+def post_comment_with_id(
+    repo_owner: str,
+    repo_name: str,
+    *,
+    item_type: str,
+    number: int,
+    body: str,
+) -> int:
+    repo = _repo_full_name(repo_owner, repo_name)
+    text = _safe_text(body)
+    if not text:
+        raise GhManagementError("comment body is empty")
+
+    normalized = _safe_text(item_type).lower()
+    if normalized not in {"issue", "pr"}:
+        raise GhManagementError(f"unsupported item type: {item_type}")
+
+    data = run_gh_gh_json(
+        [
+            "api",
+            "--method",
+            "POST",
+            f"repos/{repo}/issues/{int(number)}/comments",
+            "-H",
+            "Accept: application/vnd.github+json",
+            "-f",
+            f"body={text}",
+        ],
+        timeout_s=45.0,
+    )
+    data_dict = _as_object_dict(data)
+    comment_id = _safe_int(data_dict.get("id") if data_dict is not None else 0)
+    if comment_id <= 0:
+        raise GhManagementError("comment create succeeded without returning an id")
+    return comment_id
+
+
 def post_comment(
     repo_owner: str,
     repo_name: str,
@@ -741,43 +778,13 @@ def post_comment(
     number: int,
     body: str,
 ) -> None:
-    repo = _repo_full_name(repo_owner, repo_name)
-    text = _safe_text(body)
-    if not text:
-        raise GhManagementError("comment body is empty")
-
-    normalized = _safe_text(item_type).lower()
-    if normalized == "pr":
-        run_gh_gh(
-            [
-                "pr",
-                "comment",
-                str(int(number)),
-                "--repo",
-                repo,
-                "--body",
-                text,
-            ],
-            timeout_s=45.0,
-        )
-        return
-
-    if normalized == "issue":
-        run_gh_gh(
-            [
-                "issue",
-                "comment",
-                str(int(number)),
-                "--repo",
-                repo,
-                "--body",
-                text,
-            ],
-            timeout_s=45.0,
-        )
-        return
-
-    raise GhManagementError(f"unsupported item type: {item_type}")
+    _ = post_comment_with_id(
+        repo_owner,
+        repo_name,
+        item_type=item_type,
+        number=number,
+        body=body,
+    )
 
 
 def delete_issue_comment(

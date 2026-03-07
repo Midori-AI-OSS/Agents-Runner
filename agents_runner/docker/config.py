@@ -21,6 +21,7 @@ class DockerRunnerConfig:
     cache_system_preflight_enabled: bool = False
     cache_settings_preflight_enabled: bool = False
     cache_ide_preflight_enabled: bool = False
+    setup_agents_missing_prompt_enabled: bool = False
     environment_id: str = ""
     workspace_type: str = "none"
     workspace_target: str = ""

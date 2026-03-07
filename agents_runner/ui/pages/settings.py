@@ -149,6 +149,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
             self._radio_channel,
             self._radio_quality,
             self._github_write_confirmation_mode,
+            self._agentsnova_auto_marker_comments_mode,
         ):
             combo.currentIndexChanged.connect(self._queue_debounced_autosave)
 
@@ -157,7 +158,6 @@ class SettingsPage(QWidget, SettingsFormMixin):
             self._append_pixelarch_context,
             self._github_workroom_prefer_browser,
             self._agentsnova_auto_review_enabled,
-            self._agentsnova_auto_marker_comments_enabled,
             self._agentsnova_auto_reactions_enabled,
             self._github_polling_enabled,
             self._headless_desktop_enabled,

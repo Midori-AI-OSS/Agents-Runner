@@ -455,6 +455,14 @@ class MainWindowTasksInteractiveMixin:
             cache_desktop_build=bool(
                 env and getattr(env, "cache_desktop_build", False)
             ),
+            setup_agents_missing_prompt_enabled=bool(
+                env and getattr(env, "setup_agents_missing_prompt_enabled", False)
+            ),
+            pull_before_run=bool(
+                True
+                if env is None
+                else getattr(env, "interactive_pull_before_run_enabled", True)
+            ),
             prep_id=prep_id,
         )
         prep_thread = QThread(self)

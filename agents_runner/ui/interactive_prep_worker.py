@@ -10,9 +10,12 @@ from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
 
 from agents_runner.docker.agent_worker_prompt import PromptAssembler
+from agents_runner.docker.process import has_image
+from agents_runner.docker.process import has_platform_image
 from agents_runner.docker.cache_resolver import resolve_runtime_cache
 from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
+from agents_runner.docker_platform import docker_platform_for_pixelarch
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
@@ -72,6 +75,8 @@ class InteractivePrepWorker(QObject):
         cache_system_preflight_enabled: bool,
         cache_settings_preflight_enabled: bool,
         cache_desktop_build: bool,
+        setup_agents_missing_prompt_enabled: bool,
+        pull_before_run: bool,
         prep_id: str = "",
     ) -> None:
         super().__init__()
@@ -101,6 +106,10 @@ class InteractivePrepWorker(QObject):
         self._cache_system_preflight_enabled = bool(cache_system_preflight_enabled)
         self._cache_settings_preflight_enabled = bool(cache_settings_preflight_enabled)
         self._cache_desktop_build = bool(cache_desktop_build)
+        self._setup_agents_missing_prompt_enabled = bool(
+            setup_agents_missing_prompt_enabled
+        )
+        self._pull_before_run = bool(pull_before_run)
         self._prep_id = str(prep_id or "").strip()
         self._stop_requested = False
 
@@ -164,6 +173,22 @@ class InteractivePrepWorker(QObject):
             raise RuntimeError(detail)
         pull_elapsed_ms = (time.monotonic() - pull_started_s) * 1000.0
         self._diag("INFO", f"docker pull done elapsed_ms={pull_elapsed_ms:.0f}")
+
+    def _ensure_local_image_available(self) -> None:
+        platform_value = docker_platform_for_pixelarch()
+        image_present = (
+            has_platform_image(self._image, platform_value)
+            if platform_value
+            else has_image(self._image)
+        )
+        if image_present:
+            return
+
+        platform_suffix = f" ({platform_value})" if platform_value else ""
+        raise RuntimeError(
+            f"Base image {self._image}{platform_suffix} is not available locally "
+            "and pull-before-run is disabled for this environment."
+        )
 
     def _prepare_pr_metadata_file(self) -> tuple[str, str, str]:
         pr_host_path = pr_metadata_host_path(self._data_dir, self._task_id)
@@ -420,12 +445,27 @@ class InteractivePrepWorker(QObject):
                     ),
                 )
                 setup_agents_script = ""
-                setup_agents_prompt_instruction = missing_setup_agents_instruction(
-                    launch_mode=self._launch_mode
-                )
+                if self._setup_agents_missing_prompt_enabled:
+                    setup_agents_prompt_instruction = missing_setup_agents_instruction(
+                        launch_mode=self._launch_mode
+                    )
             else:
                 setup_agents_script = str(setup_agents_result.setup_script or "")
                 setup_agents_prompt_instruction = setup_agents_result.prompt_instruction
+                if (
+                    not self._setup_agents_missing_prompt_enabled
+                    and not setup_agents_script.strip()
+                ):
+                    setup_agents_prompt_instruction = None
+                    self.log.emit(
+                        self._task_id,
+                        format_log(
+                            "setup",
+                            "agents",
+                            "INFO",
+                            "setup-agents prompt guidance suppressed by environment setting",
+                        ),
+                    )
 
             if setup_agents_prompt_instruction and self._has_typed_prompt:
                 prompt_for_agent = insert_prompt_sections_before_user_prompt(
@@ -464,9 +504,17 @@ class InteractivePrepWorker(QObject):
                 )
 
             self._check_stop()
-            self._emit_stage("pulling", f"Ensuring image is available: {self._image}")
+            image_status = (
+                f"Ensuring image is available: {self._image}"
+                if self._pull_before_run
+                else f"Checking local image availability: {self._image}"
+            )
+            self._emit_stage("pulling", image_status)
             self._diag("INFO", "phase=image_ready begin")
-            self._pull_image()
+            if self._pull_before_run:
+                self._pull_image()
+            else:
+                self._ensure_local_image_available()
             self._diag("INFO", "phase=image_ready done")
 
             self._check_stop()

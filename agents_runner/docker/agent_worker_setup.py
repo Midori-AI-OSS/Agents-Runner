@@ -110,6 +110,9 @@ class WorkerSetup:
         artifacts_staging_dir = self._create_artifacts_directory()
         setup_agents_script: str | None = None
         setup_agents_prompt_instruction: str | None = None
+        allow_missing_setup_agents_prompt = bool(
+            self._config.setup_agents_missing_prompt_enabled
+        )
         try:
             setup_agents = prepare_setup_agents_phase(
                 host_workdir=workspace_config.host_mount,
@@ -131,9 +134,10 @@ class WorkerSetup:
                     f"setup-agents preparation failed; continuing without setup phase: {exc}",
                 )
             )
-            setup_agents_prompt_instruction = missing_setup_agents_instruction(
-                launch_mode=self._config.launch_mode
-            )
+            if allow_missing_setup_agents_prompt:
+                setup_agents_prompt_instruction = missing_setup_agents_instruction(
+                    launch_mode=self._config.launch_mode
+                )
         preflight_config = self._prepare_preflight_scripts(
             preflight_tmp_paths,
             setup_agents_script=setup_agents_script,
@@ -153,6 +157,19 @@ class WorkerSetup:
             caching_config.desktop_enabled,
             caching_config.desktop_display,
         )
+        if (
+            not allow_missing_setup_agents_prompt
+            and not str(setup_agents_script or "").strip()
+        ):
+            setup_agents_prompt_instruction = None
+            self._on_log(
+                format_log(
+                    "setup",
+                    "agents",
+                    "INFO",
+                    "setup-agents prompt guidance suppressed by environment setting",
+                )
+            )
         if setup_agents_prompt_instruction:
             final_prompt = insert_prompt_sections_before_user_prompt(
                 final_prompt,
