@@ -13,7 +13,7 @@ from agents_runner.environments.preflight_snapshot import (
     decrypt_setup_agents_snapshot,
     encrypt_setup_agents_snapshot,
 )
-from agents_runner.gh.git_ops import git_repo_root
+from agents_runner.gh.git_ops import git_repo_root, normalize_github_repo_slug
 from agents_runner.log_format import format_log
 
 SETUP_AGENTS_PRIMARY_RELATIVE_PATH = ".agents/setup-agents.sh"
@@ -56,29 +56,8 @@ def _safe_segment(value: str, fallback: str = "default") -> str:
     return safe or fallback
 
 
-def _normalize_repo_slug(value: str) -> str:
-    text = str(value or "").strip()
-    if not text:
-        return ""
-    if text.startswith("git@github.com:"):
-        text = text.removeprefix("git@github.com:").strip()
-    elif "github.com/" in text:
-        text = text.split("github.com/", 1)[-1].strip()
-    elif "://" not in text and "/" in text and " " not in text:
-        text = text
-    else:
-        return ""
-    text = text.split("#", 1)[0].split("?", 1)[0].strip().strip("/")
-    if text.endswith(".git"):
-        text = text[: -len(".git")].strip().strip("/")
-    parts = [part for part in text.split("/") if part]
-    if len(parts) < 2:
-        return ""
-    return f"{parts[-2].lower()}/{parts[-1].lower()}"
-
-
 def _repo_key(*, repo_root: Path, gh_repo: str | None) -> str:
-    slug = _normalize_repo_slug(str(gh_repo or ""))
+    slug = normalize_github_repo_slug(str(gh_repo or ""))
     if slug:
         return slug.replace("/", "__")
     digest = hashlib.sha1(str(repo_root).encode("utf-8")).hexdigest()[:12]
