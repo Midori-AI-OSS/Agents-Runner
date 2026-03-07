@@ -12,6 +12,13 @@ from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import delete_environment
 from agents_runner.environments import load_environments
 from agents_runner.environments import save_environment
+from agents_runner.environments.model import (
+    normalize_agentsnova_auto_mode,
+    normalize_agentsnova_marker_comment_mode,
+    normalize_gh_branch_work_mode,
+    normalize_gh_task_branch_custom_template,
+    normalize_gh_task_branch_naming_style,
+)
 from agents_runner.gh_management import is_gh_available
 from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
@@ -91,6 +98,39 @@ class EnvironmentsPageActionsMixin:
             return
         delete_environment(env.env_id)
         self.updated.emit("")
+
+    def _issue_294_environment_values(self) -> dict[str, object]:
+        return {
+            "agentsnova_auto_review_mode": normalize_agentsnova_auto_mode(
+                self._agentsnova_auto_review_mode.currentData() or "inherit"
+            ),
+            "agentsnova_auto_reactions_mode": normalize_agentsnova_auto_mode(
+                self._agentsnova_auto_reactions_mode.currentData() or "inherit"
+            ),
+            "agentsnova_marker_comment_mode": normalize_agentsnova_marker_comment_mode(
+                self._agentsnova_marker_comment_mode.currentData() or "inherit"
+            ),
+            "interactive_pr_prompt_enabled": bool(
+                self._interactive_pr_prompt_enabled.isChecked()
+            ),
+            "setup_agents_missing_prompt_enabled": bool(
+                self._setup_agents_missing_prompt_enabled.isChecked()
+            ),
+            "interactive_pull_before_run_enabled": bool(
+                self._interactive_pull_before_run_enabled.isChecked()
+            ),
+            "gh_branch_work_mode": normalize_gh_branch_work_mode(
+                self._gh_branch_work_mode.currentData() or "task_branch"
+            ),
+            "gh_task_branch_naming_style": normalize_gh_task_branch_naming_style(
+                self._gh_task_branch_naming_style.currentData() or "standard"
+            ),
+            "gh_task_branch_custom_template": (
+                normalize_gh_task_branch_custom_template(
+                    self._gh_task_branch_custom_template.text()
+                )
+            ),
+        }
 
     def try_autosave(
         self,
@@ -216,6 +256,7 @@ class EnvironmentsPageActionsMixin:
         cache_ide_preflight_enabled = bool(
             self._cache_ide_preflight_enabled.isChecked()
         )
+        issue_294_values = self._issue_294_environment_values()
 
         if base_env is None:
             env = Environment(
@@ -257,6 +298,7 @@ class EnvironmentsPageActionsMixin:
                 agent_selection=agent_selection,
                 use_cross_agents=use_cross_agents,
                 cross_agent_allowlist=cross_agent_allowlist,
+                **issue_294_values,
             )
         else:
             env = replace(
@@ -297,6 +339,7 @@ class EnvironmentsPageActionsMixin:
                 agent_selection=agent_selection,
                 use_cross_agents=use_cross_agents,
                 cross_agent_allowlist=cross_agent_allowlist,
+                **issue_294_values,
             )
         save_environment(env)
         self.updated.emit(preferred_env_id if preferred_env_id is not None else env_id)
@@ -403,6 +446,7 @@ class EnvironmentsPageActionsMixin:
         cache_ide_preflight_enabled = bool(
             self._cache_ide_preflight_enabled.isChecked()
         )
+        issue_294_values = self._issue_294_environment_values()
 
         if existing is None:
             return Environment(
@@ -444,6 +488,7 @@ class EnvironmentsPageActionsMixin:
                 agent_selection=agent_selection,
                 use_cross_agents=use_cross_agents,
                 cross_agent_allowlist=cross_agent_allowlist,
+                **issue_294_values,
             )
 
         return replace(
@@ -480,6 +525,7 @@ class EnvironmentsPageActionsMixin:
             agent_selection=agent_selection,
             use_cross_agents=use_cross_agents,
             cross_agent_allowlist=cross_agent_allowlist,
+            **issue_294_values,
         )
 
     def _on_test_preflight(self) -> None:

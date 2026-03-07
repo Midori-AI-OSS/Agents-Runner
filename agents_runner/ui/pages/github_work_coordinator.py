@@ -28,6 +28,10 @@ from agents_runner.gh.work_items import list_open_issues
 from agents_runner.gh.work_items import list_open_pull_requests
 from agents_runner.gh.work_items import list_pull_request_review_comments
 from agents_runner.gh.work_items import list_pull_request_reviews
+from agents_runner.gh.automation_policy import (
+    resolve_effective_auto_reactions_enabled,
+    resolve_effective_auto_review_enabled,
+)
 from agents_runner.prompts import load_prompt
 from agents_runner.prompts.github_prompting import build_default_request_line
 from agents_runner.prompts.github_prompting import build_primary_request
@@ -326,7 +330,10 @@ class GitHubWorkCoordinator(QObject):
                     limit=30,
                 )
 
-            if bool(self._settings.get("agentsnova_auto_review_enabled", True)):
+            if resolve_effective_auto_review_enabled(
+                settings=self._settings,
+                env=env,
+            ):
                 auto_reviews = self._collect_auto_reviews(
                     env_id=env_id,
                     repo_owner=repo_context.repo_owner,
@@ -561,14 +568,20 @@ class GitHubWorkCoordinator(QObject):
         items: list[GitHubWorkItem],
     ) -> list[dict[str, object]]:
         env = self._environments.get(env_id)
+        if not resolve_effective_auto_review_enabled(
+            settings=self._settings,
+            env=env,
+        ):
+            return []
         trusted_users = effective_trusted_users(
             global_usernames=self._settings.get("agentsnova_trusted_users_global", []),
             env=env,
         )
         if not trusted_users:
             return []
-        auto_reactions_enabled = bool(
-            self._settings.get("agentsnova_auto_reactions_enabled", True)
+        auto_reactions_enabled = resolve_effective_auto_reactions_enabled(
+            settings=self._settings,
+            env=env,
         )
 
         with self._state_lock:

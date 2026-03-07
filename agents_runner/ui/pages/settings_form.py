@@ -48,6 +48,7 @@ from agents_runner.ui.constants import (
     GRID_VERTICAL_SPACING,
     BUTTON_ROW_SPACING,
 )
+from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 
 @dataclass(frozen=True)
@@ -259,12 +260,22 @@ class SettingsFormMixin:
         self._agentsnova_auto_review_enabled.setToolTip(
             "When enabled, PR/Issue mentions of @agentsnova can auto-queue tasks."
         )
-        self._agentsnova_auto_marker_comments_enabled = QCheckBox(
-            "Enable @agentsnova auto marker comments"
+        self._agentsnova_auto_marker_comments_mode = QComboBox()
+        self._agentsnova_auto_marker_comments_mode.addItem(
+            "Default marker comments: Keep",
+            "keep",
         )
-        self._agentsnova_auto_marker_comments_enabled.setToolTip(
-            "When enabled, queued @agentsnova tasks post a GitHub marker comment "
-            "with the task id for visibility and dedupe safety."
+        self._agentsnova_auto_marker_comments_mode.addItem(
+            "Default marker comments: Delete after 15s",
+            "delete_after_15s",
+        )
+        self._agentsnova_auto_marker_comments_mode.addItem(
+            "Default marker comments: Disabled",
+            "disabled",
+        )
+        self._agentsnova_auto_marker_comments_mode.setToolTip(
+            "Default mode for @agentsnova marker comments. Environments can inherit "
+            "this mode or override it."
         )
         self._agentsnova_auto_reactions_enabled = QCheckBox(
             "Enable @agentsnova auto reactions"
@@ -467,7 +478,7 @@ class SettingsFormMixin:
         )
         github_config_body.addWidget(self._github_workroom_prefer_browser)
         github_config_body.addWidget(self._agentsnova_auto_review_enabled)
-        github_config_body.addWidget(self._agentsnova_auto_marker_comments_enabled)
+        github_config_body.addWidget(self._agentsnova_auto_marker_comments_mode)
         github_config_body.addWidget(self._agentsnova_auto_reactions_enabled)
         github_config_body.addWidget(self._github_polling_enabled)
 
@@ -896,8 +907,15 @@ class SettingsFormMixin:
             self._agentsnova_auto_review_enabled.setChecked(
                 bool(settings.get("agentsnova_auto_review_enabled", True))
             )
-            self._agentsnova_auto_marker_comments_enabled.setChecked(
-                bool(settings.get("agentsnova_auto_marker_comments_enabled", True))
+            self._set_combo_value(
+                self._agentsnova_auto_marker_comments_mode,
+                normalize_default_marker_comment_mode(
+                    settings.get(
+                        "agentsnova_auto_marker_comments_mode",
+                        settings.get("agentsnova_auto_marker_comments_enabled", True),
+                    )
+                ),
+                fallback="keep",
             )
             self._agentsnova_auto_reactions_enabled.setChecked(
                 bool(settings.get("agentsnova_auto_reactions_enabled", True))
@@ -1129,8 +1147,10 @@ class SettingsFormMixin:
             "agentsnova_auto_review_enabled": bool(
                 self._agentsnova_auto_review_enabled.isChecked()
             ),
-            "agentsnova_auto_marker_comments_enabled": bool(
-                self._agentsnova_auto_marker_comments_enabled.isChecked()
+            "agentsnova_auto_marker_comments_mode": (
+                normalize_default_marker_comment_mode(
+                    self._agentsnova_auto_marker_comments_mode.currentData()
+                )
             ),
             "agentsnova_auto_reactions_enabled": bool(
                 self._agentsnova_auto_reactions_enabled.isChecked()

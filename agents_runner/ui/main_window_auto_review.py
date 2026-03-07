@@ -1,12 +1,25 @@
 from __future__ import annotations
 
+import threading
+import time
+
 from PySide6.QtWidgets import QDialog
 
 from agents_runner.agent_display import format_agent_markdown_link
 from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments.model import (
+    AGENTSNOVA_MARKER_COMMENT_MODE_DELETE_AFTER_15S,
+    AGENTSNOVA_MARKER_COMMENT_MODE_DISABLED,
+)
 from agents_runner.gh.git_ops import git_list_remote_heads
+from agents_runner.gh.automation_policy import (
+    resolve_effective_auto_review_enabled,
+    resolve_effective_marker_comment_mode,
+)
 from agents_runner.gh.work_items import AUTO_REVIEW_MARKER_TOKEN
+from agents_runner.gh.work_items import delete_issue_comment
 from agents_runner.gh.work_items import post_comment
+from agents_runner.gh.work_items import post_comment_with_id
 from agents_runner.ui.dialogs.auto_review_branch_dialog import AutoReviewBranchDialog
 from midori_ai_logger import MidoriAiLogger
 
@@ -44,6 +57,12 @@ class MainWindowAutoReviewMixin:
             pr_head_repo_owner and pr_head_repo_name and not same_repo
         )
 
+        env_for_task = self._environments.get(selected_env_id)
+        if not resolve_effective_auto_review_enabled(
+            settings=self._settings_data,
+            env=env_for_task,
+        ):
+            return
         resolved_base_branch = ""
         if is_pr and pr_base_ref:
             resolved_base_branch = pr_base_ref
@@ -53,8 +72,6 @@ class MainWindowAutoReviewMixin:
             )
             if resolved_base_branch is None:
                 return
-
-        env_for_task = self._environments.get(selected_env_id)
         _agent_cli, host_config_dir = self._effective_agent_and_config(env=env_for_task)
         pr_context: dict[str, object] | None = None
         if is_pr:
@@ -81,12 +98,28 @@ class MainWindowAutoReviewMixin:
         if is_pr and is_cross_repo:
             self._post_fork_notice_comment(payload=payload_dict)
 
-        if not bool(
-            self._settings_data.get("agentsnova_auto_marker_comments_enabled", True)
-        ):
+        marker_mode = resolve_effective_marker_comment_mode(
+            settings=self._settings_data,
+            env=env_for_task,
+        )
+        if marker_mode == AGENTSNOVA_MARKER_COMMENT_MODE_DISABLED:
             return
 
-        self._post_auto_review_marker_comment(payload=payload_dict, task_id=task_id)
+        comment_id = self._post_auto_review_marker_comment(
+            payload=payload_dict,
+            task_id=task_id,
+        )
+        if (
+            comment_id is not None
+            and marker_mode == AGENTSNOVA_MARKER_COMMENT_MODE_DELETE_AFTER_15S
+        ):
+            self._schedule_auto_review_marker_cleanup(
+                repo_owner=str(payload_dict.get("repo_owner") or "").strip(),
+                repo_name=str(payload_dict.get("repo_name") or "").strip(),
+                item_type=item_type,
+                number=payload_dict.get("number"),
+                comment_id=comment_id,
+            )
 
     def _post_fork_notice_comment(self, *, payload: dict[str, object]) -> None:
         repo_owner = str(payload.get("repo_owner") or "").strip()
@@ -134,7 +167,7 @@ class MainWindowAutoReviewMixin:
 
     def _post_auto_review_marker_comment(
         self, *, payload: dict[str, object], task_id: str
-    ) -> None:
+    ) -> int | None:
         repo_owner = str(payload.get("repo_owner") or "").strip()
         repo_name = str(payload.get("repo_name") or "").strip()
         item_type = str(payload.get("item_type") or "").strip().lower()
@@ -157,7 +190,7 @@ class MainWindowAutoReviewMixin:
         )
 
         try:
-            post_comment(
+            return post_comment_with_id(
                 repo_owner,
                 repo_name,
                 item_type=item_type,
@@ -173,6 +206,39 @@ class MainWindowAutoReviewMixin:
                 ),
                 mode="warn",
             )
+        return None
+
+    def _schedule_auto_review_marker_cleanup(
+        self,
+        *,
+        repo_owner: str,
+        repo_name: str,
+        item_type: str,
+        number: object,
+        comment_id: int,
+    ) -> None:
+        if not repo_owner or not repo_name or int(comment_id or 0) <= 0:
+            return
+
+        def _cleanup_worker() -> None:
+            time.sleep(15.0)
+            try:
+                delete_issue_comment(
+                    repo_owner,
+                    repo_name,
+                    comment_id=int(comment_id),
+                )
+            except Exception as exc:
+                logger.rprint(
+                    (
+                        "[github-auto-review] failed to delete marker comment for "
+                        f"{repo_owner}/{repo_name} {item_type} #{number} "
+                        f"(comment_id={comment_id}): {exc}"
+                    ),
+                    mode="warn",
+                )
+
+        threading.Thread(target=_cleanup_worker, daemon=True).start()
 
     def _resolve_auto_review_base_branch(self, *, env_id: str) -> str | None:
         env = self._environments.get(str(env_id or "").strip())
@@ -223,8 +289,8 @@ class MainWindowAutoReviewMixin:
                 return None
 
             selected = str(dialog.selected_branch() or "").strip()
-            if not selected:
-                return ""
-            return branch_lookup.get(selected.casefold(), "")
+            selected_branch = branch_lookup.get(selected.casefold(), "")
+            self._remember_environment_base_branch(env, selected_branch)
+            return selected_branch
 
         return ""

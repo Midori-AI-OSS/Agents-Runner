@@ -88,10 +88,16 @@ class MainWindowTasksInteractiveFinalizeMixin:
         # Interactive tasks handle PR creation immediately via user dialog, then mark finalization done
         # This is different from agent tasks which queue finalization work for background processing
         if (
-            task.workspace_type == WORKSPACE_CLONED
+            task.status == "done"
+            and task.workspace_type == WORKSPACE_CLONED
             and task.gh_repo_root
             and task.gh_branch
+            and str(task.gh_branch or "").strip()
+            != str(task.gh_base_branch or "").strip()
             and not task.gh_pr_url
+            and bool(
+                getattr(env, "interactive_pr_prompt_enabled", True) if env else True
+            )
         ):
             base = str(task.gh_base_branch or "").strip()
             base_display = base or "auto"

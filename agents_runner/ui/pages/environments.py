@@ -20,6 +20,14 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import managed_repo_checkout_path
+from agents_runner.environments.model import (
+    GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
+    normalize_agentsnova_auto_mode,
+    normalize_agentsnova_marker_comment_mode,
+    normalize_gh_branch_work_mode,
+    normalize_gh_task_branch_custom_template,
+    normalize_gh_task_branch_naming_style,
+)
 from agents_runner.gh_management import is_gh_available
 from agents_runner.persistence import default_state_path
 from agents_runner.setup_agents import resolve_setup_agents_preview
@@ -173,6 +181,7 @@ class EnvironmentsPage(
         self._build_pages()
         self._build_navigation(nav_layout)
         self._connect_autosave_signals()
+        self._sync_github_branch_naming_controls()
 
         if self._pane_specs:
             first_key = self._pane_specs[0].key
@@ -260,7 +269,17 @@ class EnvironmentsPage(
         app_wide_polling = bool(
             self._settings_data.get("github_polling_enabled") or False
         )
-        self._github_polling_enabled.setVisible(not app_wide_polling)
+        polling_visible = not app_wide_polling
+
+        polling_label = getattr(self, "_github_polling_enabled_label", None)
+        if isinstance(polling_label, QWidget):
+            polling_label.setVisible(polling_visible)
+
+        polling_row = getattr(self, "_github_polling_enabled_row", None)
+        if isinstance(polling_row, QWidget):
+            polling_row.setVisible(polling_visible)
+
+        self._github_polling_enabled.setVisible(polling_visible)
 
     def _sync_headless_desktop_override_visibility(self) -> None:
         force_headless = bool(
@@ -277,6 +296,34 @@ class EnvironmentsPage(
 
         self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
         self._cache_desktop_build.setEnabled(self._effective_desktop_enabled())
+
+    def _sync_github_branch_naming_controls(self) -> None:
+        workspace_type = str(self._workspace_type_combo.currentData() or "").strip()
+        branch_work_mode = normalize_gh_branch_work_mode(
+            self._gh_branch_work_mode.currentData() or "task_branch"
+        )
+        naming_style = normalize_gh_task_branch_naming_style(
+            self._gh_task_branch_naming_style.currentData() or "standard"
+        )
+        branch_controls_enabled = workspace_type == WORKSPACE_CLONED
+        naming_enabled = branch_controls_enabled and branch_work_mode != "direct_base"
+        show_custom_template = branch_controls_enabled and naming_style == "custom"
+        self._gh_branch_work_mode.setEnabled(branch_controls_enabled)
+        self._gh_task_branch_naming_style.setEnabled(naming_enabled)
+        custom_template_label = getattr(
+            self, "_gh_task_branch_custom_template_label", None
+        )
+        if isinstance(custom_template_label, QWidget):
+            custom_template_label.setVisible(show_custom_template)
+
+        custom_template_row = getattr(self, "_gh_task_branch_custom_template_row", None)
+        if isinstance(custom_template_row, QWidget):
+            custom_template_row.setVisible(show_custom_template)
+
+        self._gh_task_branch_custom_template.setVisible(show_custom_template)
+        self._gh_task_branch_custom_template_helper.setVisible(show_custom_template)
+        self._gh_task_branch_custom_template.setEnabled(naming_enabled)
+        self._gh_task_branch_custom_template_helper.setEnabled(naming_enabled)
 
     def _load_selected(self) -> None:
         if self._autosave_timer.isActive():
@@ -308,6 +355,47 @@ class EnvironmentsPage(
                     trusted_mode_idx = 0
                 if trusted_mode_idx >= 0:
                     self._agentsnova_trusted_mode.setCurrentIndex(trusted_mode_idx)
+                auto_review_idx = self._agentsnova_auto_review_mode.findData("inherit")
+                if auto_review_idx < 0:
+                    auto_review_idx = 0
+                if auto_review_idx >= 0:
+                    self._agentsnova_auto_review_mode.setCurrentIndex(auto_review_idx)
+                auto_reactions_idx = self._agentsnova_auto_reactions_mode.findData(
+                    "inherit"
+                )
+                if auto_reactions_idx < 0:
+                    auto_reactions_idx = 0
+                if auto_reactions_idx >= 0:
+                    self._agentsnova_auto_reactions_mode.setCurrentIndex(
+                        auto_reactions_idx
+                    )
+                marker_comment_idx = self._agentsnova_marker_comment_mode.findData(
+                    "inherit"
+                )
+                if marker_comment_idx < 0:
+                    marker_comment_idx = 0
+                if marker_comment_idx >= 0:
+                    self._agentsnova_marker_comment_mode.setCurrentIndex(
+                        marker_comment_idx
+                    )
+                self._interactive_pr_prompt_enabled.setChecked(True)
+                self._setup_agents_missing_prompt_enabled.setChecked(False)
+                self._interactive_pull_before_run_enabled.setChecked(True)
+                branch_work_idx = self._gh_branch_work_mode.findData("task_branch")
+                if branch_work_idx < 0:
+                    branch_work_idx = 0
+                if branch_work_idx >= 0:
+                    self._gh_branch_work_mode.setCurrentIndex(branch_work_idx)
+                naming_style_idx = self._gh_task_branch_naming_style.findData(
+                    "standard"
+                )
+                if naming_style_idx < 0:
+                    naming_style_idx = 0
+                if naming_style_idx >= 0:
+                    self._gh_task_branch_naming_style.setCurrentIndex(naming_style_idx)
+                self._gh_task_branch_custom_template.setText(
+                    GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
+                )
                 self._agentsnova_trusted_users_env.set_usernames([])
                 self._workspace_type_combo.setCurrentIndex(0)
                 self._workspace_target.setText("")
@@ -333,6 +421,7 @@ class EnvironmentsPage(
                 self._ports_tab.set_ports([], False, False)
                 self._prompts_tab.set_prompts([], False)
                 self._agents_tab.set_agent_selection(None)
+                self._sync_github_branch_naming_controls()
                 self._sync_workspace_controls()
                 self._sync_headless_desktop_override_visibility()
                 return
@@ -388,6 +477,60 @@ class EnvironmentsPage(
             trusted_mode_idx = self._agentsnova_trusted_mode.findData(trusted_mode)
             if trusted_mode_idx >= 0:
                 self._agentsnova_trusted_mode.setCurrentIndex(trusted_mode_idx)
+            auto_review_mode = normalize_agentsnova_auto_mode(
+                getattr(env, "agentsnova_auto_review_mode", "inherit")
+            )
+            auto_review_idx = self._agentsnova_auto_review_mode.findData(
+                auto_review_mode
+            )
+            if auto_review_idx >= 0:
+                self._agentsnova_auto_review_mode.setCurrentIndex(auto_review_idx)
+            auto_reactions_mode = normalize_agentsnova_auto_mode(
+                getattr(env, "agentsnova_auto_reactions_mode", "inherit")
+            )
+            auto_reactions_idx = self._agentsnova_auto_reactions_mode.findData(
+                auto_reactions_mode
+            )
+            if auto_reactions_idx >= 0:
+                self._agentsnova_auto_reactions_mode.setCurrentIndex(auto_reactions_idx)
+            marker_comment_mode = normalize_agentsnova_marker_comment_mode(
+                getattr(env, "agentsnova_marker_comment_mode", "inherit")
+            )
+            marker_comment_idx = self._agentsnova_marker_comment_mode.findData(
+                marker_comment_mode
+            )
+            if marker_comment_idx >= 0:
+                self._agentsnova_marker_comment_mode.setCurrentIndex(marker_comment_idx)
+            self._interactive_pr_prompt_enabled.setChecked(
+                bool(getattr(env, "interactive_pr_prompt_enabled", True))
+            )
+            self._setup_agents_missing_prompt_enabled.setChecked(
+                bool(getattr(env, "setup_agents_missing_prompt_enabled", False))
+            )
+            self._interactive_pull_before_run_enabled.setChecked(
+                bool(getattr(env, "interactive_pull_before_run_enabled", True))
+            )
+            branch_work_mode = normalize_gh_branch_work_mode(
+                getattr(env, "gh_branch_work_mode", "task_branch")
+            )
+            branch_work_idx = self._gh_branch_work_mode.findData(branch_work_mode)
+            if branch_work_idx >= 0:
+                self._gh_branch_work_mode.setCurrentIndex(branch_work_idx)
+            naming_style = normalize_gh_task_branch_naming_style(
+                getattr(env, "gh_task_branch_naming_style", "standard")
+            )
+            naming_style_idx = self._gh_task_branch_naming_style.findData(naming_style)
+            if naming_style_idx >= 0:
+                self._gh_task_branch_naming_style.setCurrentIndex(naming_style_idx)
+            self._gh_task_branch_custom_template.setText(
+                normalize_gh_task_branch_custom_template(
+                    getattr(
+                        env,
+                        "gh_task_branch_custom_template",
+                        GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
+                    )
+                )
+            )
             self._agentsnova_trusted_users_env.set_usernames(
                 list(getattr(env, "agentsnova_trusted_users_env", []) or [])
             )
@@ -444,6 +587,7 @@ class EnvironmentsPage(
             self._agents_tab.set_cross_agent_allowlist(cross_agent_allowlist)
             self._agents_tab.set_agent_selection(env.agent_selection)
             self._agents_tab.set_cross_agents_enabled(use_cross_agents)
+            self._sync_github_branch_naming_controls()
             self._sync_headless_desktop_override_visibility()
         finally:
             self._suppress_autosave = False

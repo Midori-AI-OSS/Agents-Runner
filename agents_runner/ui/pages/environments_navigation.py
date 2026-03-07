@@ -24,6 +24,11 @@ class EnvironmentsNavigationMixin:
             self._workspace_type_combo,
             self._ide_system_override,
             self._agentsnova_trusted_mode,
+            self._agentsnova_auto_review_mode,
+            self._agentsnova_auto_reactions_mode,
+            self._agentsnova_marker_comment_mode,
+            self._gh_branch_work_mode,
+            self._gh_task_branch_naming_style,
         ):
             combo.currentIndexChanged.connect(self._queue_debounced_autosave)
 
@@ -35,11 +40,17 @@ class EnvironmentsNavigationMixin:
             self._gh_context_enabled,
             self._github_polling_enabled,
             self._gh_use_host_cli,
+            self._interactive_pr_prompt_enabled,
+            self._setup_agents_missing_prompt_enabled,
+            self._interactive_pull_before_run_enabled,
             self._cache_system_preflight_enabled,
             self._cache_settings_preflight_enabled,
             self._cache_ide_preflight_enabled,
         ):
             checkbox.toggled.connect(self._queue_debounced_autosave)
+        self._gh_task_branch_custom_template.textChanged.connect(
+            self._queue_debounced_autosave
+        )
         self._agentsnova_trusted_users_env.usernames_changed.connect(
             self._queue_advanced_autosave
         )

@@ -15,6 +15,7 @@ from agents_runner.ui.task_model import Task
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import parse_docker_time
 from agents_runner.ui.utils import stain_color
+from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 
 class MainWindowPersistenceMixin:
@@ -188,7 +189,16 @@ class MainWindowPersistenceMixin:
         self._settings_data.setdefault("github_polling_enabled", False)
         self._settings_data.setdefault("github_poll_startup_delay_s", 35)
         self._settings_data.setdefault("agentsnova_auto_review_enabled", True)
-        self._settings_data.setdefault("agentsnova_auto_marker_comments_enabled", True)
+        legacy_marker_comment_setting = self._settings_data.pop(
+            "agentsnova_auto_marker_comments_enabled",
+            None,
+        )
+        self._settings_data.setdefault(
+            "agentsnova_auto_marker_comments_mode",
+            legacy_marker_comment_setting
+            if legacy_marker_comment_setting is not None
+            else "keep",
+        )
         self._settings_data.setdefault("agentsnova_auto_reactions_enabled", True)
         self._settings_data.setdefault("agentsnova_trusted_users_global", [])
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
@@ -253,8 +263,15 @@ class MainWindowPersistenceMixin:
                 self._settings_data.get("radio_loudness_boost_factor")
             )
         )
-        self._settings_data["agentsnova_auto_marker_comments_enabled"] = bool(
-            self._settings_data.get("agentsnova_auto_marker_comments_enabled", True)
+        self._settings_data["agentsnova_auto_marker_comments_mode"] = (
+            normalize_default_marker_comment_mode(
+                self._settings_data.get(
+                    "agentsnova_auto_marker_comments_mode",
+                    legacy_marker_comment_setting
+                    if legacy_marker_comment_setting is not None
+                    else "keep",
+                )
+            )
         )
         self._settings_data["agentsnova_auto_reactions_enabled"] = bool(
             self._settings_data.get("agentsnova_auto_reactions_enabled", True)

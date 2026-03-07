@@ -9,6 +9,7 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.gh_management import git_current_branch
 from agents_runner.log_format import format_log
 
 
@@ -86,9 +87,6 @@ class MainWindowTaskReviewMixin:
                         )
                 self._schedule_save()
 
-        if not branch:
-            branch = f"midoriaiagents/{task_id}"
-
         if not repo_root:
             QMessageBox.warning(
                 self,
@@ -102,6 +100,12 @@ class MainWindowTaskReviewMixin:
             )
             return
 
+        if not branch:
+            branch = str(git_current_branch(repo_root) or "").strip()
+            if branch:
+                task.gh_branch = branch
+                self._schedule_save()
+
         if task.is_active():
             QMessageBox.information(
                 self,
@@ -111,6 +115,20 @@ class MainWindowTaskReviewMixin:
             return
 
         base_branch = str(task.gh_base_branch or "").strip()
+        if not branch:
+            QMessageBox.information(
+                self,
+                "PR not available",
+                "This task does not have a usable branch for PR creation.",
+            )
+            return
+        if base_branch and branch == base_branch:
+            QMessageBox.information(
+                self,
+                "PR not available",
+                "This task worked directly on the base branch, so there is no separate PR branch to open.",
+            )
+            return
         base_display = base_branch or "auto"
         message = f"Create a PR from {branch} -> {base_display}?\n\nThis will commit and push any local changes."
         if (

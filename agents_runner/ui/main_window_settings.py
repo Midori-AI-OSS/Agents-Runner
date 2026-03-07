@@ -20,6 +20,7 @@ from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import looks_like_agent_help_command
 from agents_runner.environments import Environment
+from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 logger = logging.getLogger(__name__)
 
@@ -104,9 +105,15 @@ class MainWindowSettingsMixin:
         merged["agentsnova_auto_review_enabled"] = bool(
             merged.get("agentsnova_auto_review_enabled", True)
         )
-        merged["agentsnova_auto_marker_comments_enabled"] = bool(
-            merged.get("agentsnova_auto_marker_comments_enabled", True)
+        merged["agentsnova_auto_marker_comments_mode"] = (
+            normalize_default_marker_comment_mode(
+                merged.get(
+                    "agentsnova_auto_marker_comments_mode",
+                    merged.get("agentsnova_auto_marker_comments_enabled", True),
+                )
+            )
         )
+        merged.pop("agentsnova_auto_marker_comments_enabled", None)
         merged["agentsnova_auto_reactions_enabled"] = bool(
             merged.get("agentsnova_auto_reactions_enabled", True)
         )

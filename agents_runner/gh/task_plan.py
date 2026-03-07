@@ -1,8 +1,25 @@
 import re
+import secrets
+import hashlib
 
 from dataclasses import dataclass
+from datetime import UTC
+from datetime import datetime
 
 from ..agent_display import format_agent_markdown_link
+from ..environments.model import GH_BRANCH_WORK_MODE_DIRECT_BASE
+from ..environments.model import GH_BRANCH_WORK_MODE_TASK_BRANCH
+from ..environments.model import GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_ANIMALS
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_COLORS
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_CUSTOM
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_FOODS
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_SONGS
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_SPACE
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_STANDARD
+from ..environments.model import normalize_gh_branch_work_mode
+from ..environments.model import normalize_gh_task_branch_custom_template
+from ..environments.model import normalize_gh_task_branch_naming_style
 from ..prompts.loader import load_prompt
 from .auth import is_gh_authenticated
 from .errors import GhManagementError
@@ -23,6 +40,58 @@ _COMMON_BASE_BRANCHES: tuple[str, ...] = ("main", "master", "trunk", "develop")
 _MIDORI_AI_AGENTS_RUNNER_URL = "https://github.com/Midori-AI-OSS/Agents-Runner"
 _MIDORI_AI_URL = "https://github.com/Midori-AI-OSS/Midori-AI"
 _PR_ATTRIBUTION_MARKER = "<!-- midori-ai-agents-runner-pr-footer -->"
+_BRANCH_THEME_TOKENS: dict[str, tuple[str, ...]] = {
+    GH_TASK_BRANCH_NAMING_STYLE_SONGS: (
+        "anthem",
+        "ballad",
+        "chorus",
+        "crescendo",
+        "duet",
+        "encore",
+        "groove",
+        "harmony",
+    ),
+    GH_TASK_BRANCH_NAMING_STYLE_FOODS: (
+        "basil",
+        "biscuit",
+        "citrus",
+        "dumpling",
+        "ginger",
+        "noodle",
+        "olive",
+        "taco",
+    ),
+    GH_TASK_BRANCH_NAMING_STYLE_ANIMALS: (
+        "badger",
+        "falcon",
+        "lynx",
+        "otter",
+        "panther",
+        "quail",
+        "raven",
+        "stoat",
+    ),
+    GH_TASK_BRANCH_NAMING_STYLE_COLORS: (
+        "amber",
+        "cerulean",
+        "crimson",
+        "jade",
+        "ochre",
+        "saffron",
+        "teal",
+        "umber",
+    ),
+    GH_TASK_BRANCH_NAMING_STYLE_SPACE: (
+        "aurora",
+        "comet",
+        "cosmos",
+        "meteor",
+        "nebula",
+        "nova",
+        "orbit",
+        "solstice",
+    ),
+}
 
 
 def _append_pr_attribution_footer(
@@ -178,11 +247,66 @@ def prepare_branch_for_task(
 
 
 def _sanitize_branch(value: str) -> str:
-    value = (value or "").strip()
-    value = re.sub(r"[^a-zA-Z0-9/_-]+", "-", value)
-    value = value.strip("-")
+    value = _sanitize_branch_suffix(value)
+    value = re.sub(r"/{2,}", "/", value)
     value = re.sub(r"/{2,}", "/", value)
     return value or "midoriaiagents/task"
+
+
+def _sanitize_branch_suffix(value: str) -> str:
+    value = str(value or "").strip().lower()
+    value = re.sub(r"[^a-z0-9/_-]+", "-", value)
+    value = re.sub(r"/{2,}", "/", value)
+    value = re.sub(r"[-_]{2,}", "-", value)
+    return value.strip("/_-")
+
+
+def _stable_theme_token(task_id: str, naming_style: str) -> str:
+    tokens = _BRANCH_THEME_TOKENS.get(naming_style, ())
+    if not tokens:
+        return ""
+    seed = f"{naming_style}:{task_id}".encode("utf-8", errors="ignore")
+    index = int(hashlib.sha256(seed).hexdigest(), 16) % len(tokens)
+    return tokens[index]
+
+
+def _render_custom_branch_suffix(task_id: str, template: str) -> str:
+    safe_task_id = _sanitize_branch_suffix(task_id) or "task"
+    safe_slug = safe_task_id
+    rendered = normalize_gh_task_branch_custom_template(template)
+    for token, value in (
+        ("{task_id}", safe_task_id),
+        ("{slug}", safe_slug),
+        ("{date}", datetime.now(tz=UTC).strftime("%Y%m%d")),
+        ("{rand}", secrets.token_hex(2)),
+    ):
+        rendered = rendered.replace(token, value)
+    return _sanitize_branch_suffix(rendered)
+
+
+def _build_task_branch_name(
+    *,
+    task_id: str,
+    naming_style: str,
+    custom_template: str,
+) -> str:
+    safe_task_id = _sanitize_branch_suffix(task_id) or "task"
+    normalized_style = normalize_gh_task_branch_naming_style(naming_style)
+    suffix = safe_task_id
+
+    if normalized_style == GH_TASK_BRANCH_NAMING_STYLE_CUSTOM:
+        suffix = _render_custom_branch_suffix(safe_task_id, custom_template)
+    elif normalized_style != GH_TASK_BRANCH_NAMING_STYLE_STANDARD:
+        theme_token = _stable_theme_token(safe_task_id, normalized_style)
+        suffix = _sanitize_branch_suffix(f"{theme_token}-{safe_task_id}")
+
+    suffix = suffix or safe_task_id
+    for prefix in _TASK_BRANCH_PREFIXES:
+        if suffix.startswith(prefix):
+            suffix = suffix[len(prefix) :]
+            break
+    suffix = _sanitize_branch_suffix(suffix) or safe_task_id
+    return _sanitize_branch(f"midoriaiagents/{suffix}")
 
 
 def _find_next_available_branch(
@@ -244,15 +368,26 @@ def plan_repo_task(
     *,
     task_id: str,
     base_branch: str | None = None,
+    branch_work_mode: str = GH_BRANCH_WORK_MODE_TASK_BRANCH,
+    task_branch_naming_style: str = GH_TASK_BRANCH_NAMING_STYLE_STANDARD,
+    task_branch_custom_template: str = GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
 ) -> RepoPlan | None:
     workdir = expand_dir(workdir)
     repo_root = git_repo_root(workdir)
     if repo_root is None:
         return None
-    base_branch_name = _sanitize_branch(f"midoriaiagents/{task_id}")
-    branch = _find_next_available_branch(repo_root, base_branch_name)
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
+    work_mode = normalize_gh_branch_work_mode(branch_work_mode)
+    if work_mode == GH_BRANCH_WORK_MODE_DIRECT_BASE:
+        branch = base_branch
+    else:
+        base_branch_name = _build_task_branch_name(
+            task_id=task_id,
+            naming_style=task_branch_naming_style,
+            custom_template=task_branch_custom_template,
+        )
+        branch = _find_next_available_branch(repo_root, base_branch_name)
     return RepoPlan(
         workdir=workdir, repo_root=repo_root, base_branch=base_branch, branch=branch
     )
@@ -270,7 +405,14 @@ def commit_push_and_pr(
     agent_cli_args: str = "",
 ) -> str | None:
     repo_root = expand_dir(repo_root)
+    branch = str(branch or "").strip()
     base_branch = str(base_branch or "").strip() or _pick_auto_base_branch(repo_root)
+    if not branch:
+        raise GhManagementError("cannot create a pull request without a branch")
+    if branch == base_branch:
+        raise GhManagementError(
+            "current branch matches the base branch; PR creation is unavailable for direct-base tasks"
+        )
     body = _append_pr_attribution_footer(
         body, agent_cli=agent_cli, agent_cli_args=agent_cli_args
     )

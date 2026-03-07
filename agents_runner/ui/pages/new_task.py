@@ -65,6 +65,7 @@ class NewTaskPage(QWidget):
     requested_launch_ide = Signal(str, str, str, str, str, object)
     back_requested = Signal()
     environment_changed = Signal(str)
+    base_branch_changed = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -135,6 +136,7 @@ class NewTaskPage(QWidget):
             "Base branch for the per-task branch (only shown for repo environments)."
         )
         self.set_repo_branches([])
+        self._base_branch.currentIndexChanged.connect(self._on_base_branch_changed)
         self._base_branch_controls.setVisible(False)
         base_branch_layout.addWidget(self._base_branch_label)
         base_branch_layout.addWidget(self._base_branch)
@@ -821,6 +823,15 @@ class NewTaskPage(QWidget):
         self._refresh_ide_button_tooltip()
         if previous != self._active_env_id:
             self.environment_changed.emit(self._active_env_id)
+
+    def _on_base_branch_changed(self, _index: int) -> None:
+        env_id = str(self._active_env_id or "").strip()
+        if not env_id:
+            return
+        selected = str(self._base_branch.currentData() or "").strip()
+        if selected == self._BASE_BRANCH_LOADING_SENTINEL:
+            return
+        self.base_branch_changed.emit(env_id, selected)
 
     def set_ide_defaults(self, *, ide_system: str) -> None:
         self._ide_system_default = normalize_ide_system_name(

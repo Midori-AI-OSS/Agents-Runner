@@ -545,6 +545,9 @@ class TaskSupervisor:
             cache_system_preflight_enabled=self._config.cache_system_preflight_enabled,
             cache_settings_preflight_enabled=self._config.cache_settings_preflight_enabled,
             cache_ide_preflight_enabled=self._config.cache_ide_preflight_enabled,
+            setup_agents_missing_prompt_enabled=(
+                self._config.setup_agents_missing_prompt_enabled
+            ),
             environment_id=self._config.environment_id,
             workspace_type=self._config.workspace_type,
             workspace_target=self._config.workspace_target,
@@ -566,6 +569,9 @@ class TaskSupervisor:
             gh_prefer_gh_cli=self._config.gh_prefer_gh_cli,
             gh_recreate_if_needed=self._config.gh_recreate_if_needed,
             gh_base_branch=self._config.gh_base_branch,
+            gh_branch_work_mode=self._config.gh_branch_work_mode,
+            gh_task_branch_naming_style=self._config.gh_task_branch_naming_style,
+            gh_task_branch_custom_template=self._config.gh_task_branch_custom_template,
             gh_pr_head_ref=self._config.gh_pr_head_ref,
             gh_pr_base_ref=self._config.gh_pr_base_ref,
             artifact_collection_timeout_s=self._config.artifact_collection_timeout_s,

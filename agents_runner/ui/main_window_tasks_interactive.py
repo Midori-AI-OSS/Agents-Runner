@@ -154,12 +154,7 @@ class MainWindowTasksInteractiveMixin:
 
         desired_base = str(base_branch or "").strip()
 
-        # Save the selected branch for cloned environments
-        if env and env.workspace_type == WORKSPACE_CLONED and desired_base:
-            env.gh_last_base_branch = desired_base
-            save_environment(env)
-            # Update in-memory copy to persist across tab changes and reloads
-            self._environments[env.env_id] = env
+        self._remember_environment_base_branch(env, desired_base)
 
         launch_mode_normalized = str(launch_mode or "agent").strip().lower()
         run_ide = launch_mode_normalized == "ide"
@@ -455,6 +450,30 @@ class MainWindowTasksInteractiveMixin:
             cache_desktop_build=bool(
                 env and getattr(env, "cache_desktop_build", False)
             ),
+            setup_agents_missing_prompt_enabled=bool(
+                env and getattr(env, "setup_agents_missing_prompt_enabled", False)
+            ),
+            pull_before_run=bool(
+                True
+                if env is None
+                else getattr(env, "interactive_pull_before_run_enabled", True)
+            ),
+            branch_work_mode=str(
+                getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch"
+            )
+            if env
+            else "task_branch",
+            task_branch_naming_style=str(
+                getattr(env, "gh_task_branch_naming_style", "standard") or "standard"
+            )
+            if env
+            else "standard",
+            task_branch_custom_template=str(
+                getattr(env, "gh_task_branch_custom_template", "{task_id}")
+                or "{task_id}"
+            )
+            if env
+            else "{task_id}",
             prep_id=prep_id,
         )
         prep_thread = QThread(self)

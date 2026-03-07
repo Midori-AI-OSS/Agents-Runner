@@ -327,10 +327,19 @@ class TaskDetailsPage(QWidget):
     def _sync_review_menu(self, task: Task) -> None:
         # Task.requires_git_metadata() already checks workspace_type
         can_pr = task.requires_git_metadata()
+        branch_matches_base = bool(
+            str(task.gh_branch or "").strip()
+            and str(task.gh_branch or "").strip()
+            == str(task.gh_base_branch or "").strip()
+        )
 
         pr_url = str(task.gh_pr_url or "").strip()
         self._review_pr.setVisible(can_pr)
-        self._review_pr.setEnabled(can_pr and not task.is_active())
+        self._review_pr.setEnabled(
+            can_pr
+            and not task.is_active()
+            and (pr_url.startswith("http") or not branch_matches_base)
+        )
         self._review_pr.setText("Open PR" if pr_url.startswith("http") else "Create PR")
 
         self._review.setVisible(can_pr)

@@ -15,7 +15,6 @@ from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
-from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh_management import is_gh_available
@@ -238,10 +237,7 @@ class MainWindowTasksAgentMixin:
         self._settings_data["host_workdir"] = effective_workdir
 
         desired_base = str(base_branch or "").strip()
-        if env and env.workspace_type == WORKSPACE_CLONED and desired_base:
-            env.gh_last_base_branch = desired_base
-            save_environment(env)
-            self._environments[env.env_id] = env
+        self._remember_environment_base_branch(env, desired_base)
 
         host_config_dir = auto_config_dir
         if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
@@ -330,8 +326,21 @@ class MainWindowTasksAgentMixin:
         )
 
         gh_repo: str | None = None
+        gh_branch_work_mode = "task_branch"
+        gh_task_branch_naming_style = "standard"
+        gh_task_branch_custom_template = "{task_id}"
         if workspace_type == WORKSPACE_CLONED and env:
             gh_repo = str(env.workspace_target or "").strip() or None
+            gh_branch_work_mode = str(
+                getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch"
+            ).strip()
+            gh_task_branch_naming_style = str(
+                getattr(env, "gh_task_branch_naming_style", "standard") or "standard"
+            ).strip()
+            gh_task_branch_custom_template = str(
+                getattr(env, "gh_task_branch_custom_template", "{task_id}")
+                or "{task_id}"
+            ).strip()
 
         task_prompt = (
             str(getattr(ide_plugin, "display_name", "") or "").strip() or ide_system
@@ -390,6 +399,9 @@ class MainWindowTasksAgentMixin:
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
             cache_ide_preflight_enabled=cache_ide_preflight_enabled,
+            setup_agents_missing_prompt_enabled=bool(
+                env and getattr(env, "setup_agents_missing_prompt_enabled", False)
+            ),
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,
@@ -398,6 +410,9 @@ class MainWindowTasksAgentMixin:
             gh_prefer_gh_cli=use_host_gh,
             gh_recreate_if_needed=True,
             gh_base_branch=desired_base or None,
+            gh_branch_work_mode=gh_branch_work_mode,
+            gh_task_branch_naming_style=gh_task_branch_naming_style,
+            gh_task_branch_custom_template=gh_task_branch_custom_template,
             launch_mode="ide",
             ide_system=ide_system,
             ide_display_target=ide_display_target,
@@ -837,7 +852,8 @@ class MainWindowTasksAgentMixin:
         use_host_gh = bool(use_host_gh and is_gh_available())
         task.gh_use_host_cli = use_host_gh
 
-        desired_base = str(base_branch or "").strip()
+        selected_base_branch = str(base_branch or "").strip()
+        desired_base = selected_base_branch
         pr_head_ref = ""
         pr_base_ref = ""
         pr_head_repo_owner = ""
@@ -875,11 +891,7 @@ class MainWindowTasksAgentMixin:
             desired_base = pr_base_ref
 
         # Save the selected branch for cloned environments
-        if env and env.workspace_type == WORKSPACE_CLONED and desired_base:
-            env.gh_last_base_branch = desired_base
-            save_environment(env)
-            # Update in-memory copy to persist across tab changes and reloads
-            self._environments[env.env_id] = env
+        self._remember_environment_base_branch(env, selected_base_branch)
 
         prompt_sections: list[str] = []
         if bool(self._settings_data.get("append_pixelarch_context") or False):
@@ -1070,7 +1082,19 @@ class MainWindowTasksAgentMixin:
                             getattr(env, "workspace_target", "") or ""
                         ).strip()
                         base_branch = str(desired_base or "").strip() or "auto"
-                        task_branch = "(already created by runner)"
+                        if (
+                            env
+                            and str(
+                                getattr(env, "gh_branch_work_mode", "task_branch")
+                                or "task_branch"
+                            ).strip()
+                            == "direct_base"
+                        ):
+                            task_branch = (
+                                "(working directly on the selected base branch)"
+                            )
+                        else:
+                            task_branch = "(created by runner during clone)"
                         head_commit = "(set after clone)"
 
                     context_prompt = github_context_prompt_instructions(
@@ -1121,8 +1145,21 @@ class MainWindowTasksAgentMixin:
         # Get the host GitHub context path if it was created (regardless of mode)
         gh_context_file = getattr(task, "gh_context_path", None)
         gh_repo: str | None = None
+        gh_branch_work_mode = "task_branch"
+        gh_task_branch_naming_style = "standard"
+        gh_task_branch_custom_template = "{task_id}"
         if workspace_type == WORKSPACE_CLONED and env:
             gh_repo = str(env.workspace_target or "").strip() or None
+            gh_branch_work_mode = str(
+                getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch"
+            ).strip()
+            gh_task_branch_naming_style = str(
+                getattr(env, "gh_task_branch_naming_style", "standard") or "standard"
+            ).strip()
+            gh_task_branch_custom_template = str(
+                getattr(env, "gh_task_branch_custom_template", "{task_id}")
+                or "{task_id}"
+            ).strip()
 
         config = DockerRunnerConfig(
             task_id=task_id,
@@ -1142,6 +1179,9 @@ class MainWindowTasksAgentMixin:
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
             cache_ide_preflight_enabled=cache_ide_preflight_enabled,
+            setup_agents_missing_prompt_enabled=bool(
+                env and getattr(env, "setup_agents_missing_prompt_enabled", False)
+            ),
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,
@@ -1150,6 +1190,9 @@ class MainWindowTasksAgentMixin:
             gh_prefer_gh_cli=use_host_gh,
             gh_recreate_if_needed=True,
             gh_base_branch=desired_base or None,
+            gh_branch_work_mode=gh_branch_work_mode,
+            gh_task_branch_naming_style=gh_task_branch_naming_style,
+            gh_task_branch_custom_template=gh_task_branch_custom_template,
             gh_pr_head_ref=pr_head_ref or None,
             gh_pr_base_ref=pr_base_ref or None,
             gh_context_file_path=gh_context_file,

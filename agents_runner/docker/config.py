@@ -21,6 +21,7 @@ class DockerRunnerConfig:
     cache_system_preflight_enabled: bool = False
     cache_settings_preflight_enabled: bool = False
     cache_ide_preflight_enabled: bool = False
+    setup_agents_missing_prompt_enabled: bool = False
     environment_id: str = ""
     workspace_type: str = "none"
     workspace_target: str = ""
@@ -48,6 +49,9 @@ class DockerRunnerConfig:
     gh_prefer_gh_cli: bool = True
     gh_recreate_if_needed: bool = True
     gh_base_branch: str | None = None
+    gh_branch_work_mode: str = "task_branch"
+    gh_task_branch_naming_style: str = "standard"
+    gh_task_branch_custom_template: str = "{task_id}"
     gh_pr_head_ref: str | None = None
     gh_pr_base_ref: str | None = None
     gh_context_file_path: str | None = None  # Host path to GitHub context file
