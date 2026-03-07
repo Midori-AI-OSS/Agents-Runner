@@ -208,38 +208,30 @@ class EnvironmentsFormMixin:
             "Controls how this environment resolves trusted usernames for auto-review mention checks."
         )
         self._agentsnova_auto_review_mode = QComboBox()
-        self._agentsnova_auto_review_mode.addItem(
-            "Auto-review: Inherit global setting", "inherit"
-        )
-        self._agentsnova_auto_review_mode.addItem("Auto-review: Enabled", "enabled")
-        self._agentsnova_auto_review_mode.addItem("Auto-review: Disabled", "disabled")
+        self._agentsnova_auto_review_mode.addItem("Inherit global setting", "inherit")
+        self._agentsnova_auto_review_mode.addItem("Enabled", "enabled")
+        self._agentsnova_auto_review_mode.addItem("Disabled", "disabled")
         self._agentsnova_auto_review_mode.setToolTip(
             "Override whether @agentsnova mentions auto-queue review work for this environment."
         )
         self._agentsnova_auto_reactions_mode = QComboBox()
         self._agentsnova_auto_reactions_mode.addItem(
-            "Auto reactions: Inherit global setting", "inherit"
+            "Inherit global setting", "inherit"
         )
-        self._agentsnova_auto_reactions_mode.addItem(
-            "Auto reactions: Enabled", "enabled"
-        )
-        self._agentsnova_auto_reactions_mode.addItem(
-            "Auto reactions: Disabled", "disabled"
-        )
+        self._agentsnova_auto_reactions_mode.addItem("Enabled", "enabled")
+        self._agentsnova_auto_reactions_mode.addItem("Disabled", "disabled")
         self._agentsnova_auto_reactions_mode.setToolTip(
             "Override whether @agentsnova queue triggers add GitHub reactions for this environment."
         )
         self._agentsnova_marker_comment_mode = QComboBox()
         self._agentsnova_marker_comment_mode.addItem(
-            "Marker comments: Inherit global setting", "inherit"
+            "Inherit global setting", "inherit"
         )
-        self._agentsnova_marker_comment_mode.addItem("Marker comments: Keep", "keep")
+        self._agentsnova_marker_comment_mode.addItem("Keep", "keep")
         self._agentsnova_marker_comment_mode.addItem(
-            "Marker comments: Delete after 15s", "delete_after_15s"
+            "Delete after 15s", "delete_after_15s"
         )
-        self._agentsnova_marker_comment_mode.addItem(
-            "Marker comments: Disabled", "disabled"
-        )
+        self._agentsnova_marker_comment_mode.addItem("Disabled", "disabled")
         self._agentsnova_marker_comment_mode.setToolTip(
             "Override marker-comment behavior for @agentsnova auto-review activity in this environment."
         )
@@ -260,31 +252,19 @@ class EnvironmentsFormMixin:
             "When enabled, interactive runs can pull/update before starting for this environment."
         )
         self._gh_branch_work_mode = QComboBox()
-        self._gh_branch_work_mode.addItem(
-            "Branch work: Use task branches", "task_branch"
-        )
-        self._gh_branch_work_mode.addItem(
-            "Branch work: Work on direct base", "direct_base"
-        )
+        self._gh_branch_work_mode.addItem("Use task branches", "task_branch")
+        self._gh_branch_work_mode.addItem("Work on direct base", "direct_base")
         self._gh_branch_work_mode.setToolTip(
             "Controls whether GitHub work for this environment uses per-task branches or works directly on the selected base branch."
         )
         self._gh_task_branch_naming_style = QComboBox()
-        self._gh_task_branch_naming_style.addItem(
-            "Task branch naming: Standard", "standard"
-        )
-        self._gh_task_branch_naming_style.addItem("Task branch naming: Songs", "songs")
-        self._gh_task_branch_naming_style.addItem("Task branch naming: Foods", "foods")
-        self._gh_task_branch_naming_style.addItem(
-            "Task branch naming: Animals", "animals"
-        )
-        self._gh_task_branch_naming_style.addItem(
-            "Task branch naming: Colors", "colors"
-        )
-        self._gh_task_branch_naming_style.addItem("Task branch naming: Space", "space")
-        self._gh_task_branch_naming_style.addItem(
-            "Task branch naming: Custom", "custom"
-        )
+        self._gh_task_branch_naming_style.addItem("Standard", "standard")
+        self._gh_task_branch_naming_style.addItem("Songs", "songs")
+        self._gh_task_branch_naming_style.addItem("Foods", "foods")
+        self._gh_task_branch_naming_style.addItem("Animals", "animals")
+        self._gh_task_branch_naming_style.addItem("Colors", "colors")
+        self._gh_task_branch_naming_style.addItem("Space", "space")
+        self._gh_task_branch_naming_style.addItem("Custom", "custom")
         self._gh_task_branch_naming_style.setToolTip(
             "Controls how future task branches are named for this environment."
         )
