@@ -191,7 +191,8 @@ class MainWindowTasksAgentMixin:
 
         self._settings_data["active_environment_id"] = env_id
         env = self._environments.get(env_id)
-        agent_cli, auto_config_dir = self._effective_agent_and_config(env=env)
+        effective_agent_cli, auto_config_dir = self._effective_agent_and_config(env=env)
+        ide_agent_cli = "smoke_agent"
 
         ide_config_override = self._coerce_ide_override(ide_override)
         ide_system, ide_display_target = self._effective_ide_launch_config(
@@ -240,7 +241,7 @@ class MainWindowTasksAgentMixin:
         self._remember_environment_base_branch(env, desired_base)
 
         host_config_dir = auto_config_dir
-        if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
+        if not self._ensure_agent_config_dir(effective_agent_cli, host_config_dir):
             return None
 
         launch_argv = ide_plugin.build_launch_argv(
@@ -358,7 +359,7 @@ class MainWindowTasksAgentMixin:
             status="queued",
             gh_use_host_cli=use_host_gh,
             workspace_type=workspace_type,
-            agent_cli=agent_cli,
+            agent_cli=ide_agent_cli,
             launch_mode="ide",
             ide_system=ide_system,
             ide_display_target=ide_display_target,
@@ -385,7 +386,7 @@ class MainWindowTasksAgentMixin:
             image=PIXELARCH_EMERALD_IMAGE,
             host_config_dir=host_config_dir,
             host_workdir=effective_workdir,
-            agent_cli=agent_cli,
+            agent_cli=ide_agent_cli,
             environment_id=env_id,
             workspace_type=workspace_type,
             workspace_target=str(env.workspace_target or "") if env else "",
