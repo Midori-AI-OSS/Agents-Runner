@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindowSettingsMixin:
-    _AGENT_CONFIG_DIRS_KEY = "agent_config_dirs"
     _REMOVED_LEGACY_SETTINGS_KEYS = (
         "host_codex_dir",
         "host_claude_dir",
@@ -53,53 +52,6 @@ class MainWindowSettingsMixin:
         self._new_task.set_spellcheck_enabled(spellcheck_enabled)
         self._new_task.set_stt_mode("offline")
 
-    @staticmethod
-    def _coerce_agent_map(raw: object) -> dict[str, str]:
-        if not isinstance(raw, dict):
-            return {}
-        known = set(available_agents(include_internal=False))
-        normalized: dict[str, str] = {}
-        for key, value in raw.items():
-            agent_cli = str(key or "").strip().lower()
-            if not agent_cli or agent_cli not in known:
-                continue
-            normalized[agent_cli] = str(value or "").strip()
-        return normalized
-
-    def _normalized_agent_config_dirs_map(self, raw: object) -> dict[str, str]:
-        values = self._coerce_agent_map(raw)
-        normalized: dict[str, str] = {}
-        for agent_cli in available_agents(include_internal=False):
-            configured = os.path.expanduser(str(values.get(agent_cli) or "").strip())
-            if not configured:
-                configured = os.path.expanduser(default_host_config_dir(agent_cli))
-            normalized[agent_cli] = configured
-        return normalized
-
-    def _get_agent_config_dirs_map(
-        self, settings: dict[str, object] | None = None
-    ) -> dict[str, str]:
-        source = settings if settings is not None else self._settings_data
-        return self._normalized_agent_config_dirs_map(
-            source.get(self._AGENT_CONFIG_DIRS_KEY)
-        )
-
-    def _set_agent_config_dir_setting(
-        self,
-        *,
-        settings: dict[str, object],
-        agent_cli: str,
-        config_dir: str,
-    ) -> None:
-        agent_cli = str(agent_cli or "").strip().lower()
-        if not agent_cli or agent_cli not in set(
-            available_agents(include_internal=False)
-        ):
-            return
-        normalized = self._get_agent_config_dirs_map(settings)
-        normalized[agent_cli] = os.path.expanduser(str(config_dir or "").strip())
-        settings[self._AGENT_CONFIG_DIRS_KEY] = normalized
-
     def _apply_settings(self, settings: dict[str, Any]) -> None:
         previous_radio_enabled = bool(self._settings_data.get("radio_enabled") or False)
         merged = dict(self._settings_data)
@@ -114,10 +66,6 @@ class MainWindowSettingsMixin:
         if shell_value not in {"bash", "sh", "zsh", "fish", "tmux"}:
             shell_value = "bash"
         merged["shell"] = shell_value
-
-        merged[self._AGENT_CONFIG_DIRS_KEY] = self._normalized_agent_config_dirs_map(
-            merged.get(self._AGENT_CONFIG_DIRS_KEY)
-        )
 
         merged["preflight_enabled"] = bool(merged.get("preflight_enabled") or False)
         merged["preflight_script"] = str(merged.get("preflight_script") or "")
@@ -298,29 +246,12 @@ class MainWindowSettingsMixin:
         """Resolve a host config directory for an agent CLI.
 
         Precedence:
-        1. Environment agent_selection (first matching agent instance with config_dir)
-        2. Global per-agent settings (agent_config_dirs map)
-        3. Plugin default host config dir
+        1. Plugin default host config dir
         """
+        del env, settings
         agent_cli = str(agent_cli or "").strip().lower()
         if agent_cli not in set(available_agents(include_internal=False)):
             return ""
-
-        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
-            for inst in env.agent_selection.agents or []:
-                inst_cli = str(getattr(inst, "agent_cli", "") or "").strip().lower()
-                if inst_cli != agent_cli:
-                    continue
-                inst_dir = os.path.expanduser(
-                    str(getattr(inst, "config_dir", "") or "").strip()
-                )
-                if inst_dir:
-                    return inst_dir
-
-        config_dirs = self._get_agent_config_dirs_map(settings)
-        configured = os.path.expanduser(str(config_dirs.get(agent_cli) or "").strip())
-        if configured:
-            return configured
         return os.path.expanduser(default_host_config_dir(agent_cli))
 
     def _select_agent_instance_for_env(
@@ -491,16 +422,15 @@ class MainWindowSettingsMixin:
            * If ``env`` is provided and ``env.agent_selection.agents`` is non-empty,
              an agent instance is selected based on ``selection_mode``.
            * If the selected instance has an explicit ``config_dir``, that path is
-             used; otherwise it falls back to global settings.
+             used; otherwise it falls back to that plugin's default config dir.
 
         2. Global UI settings
 
            * If no environment-specific agent is found, the agent is taken from
             ``settings["use"]`` (defaulting to ``"codex"``) and normalized via
              :func:`normalize_agent`.
-           * The config directory is then derived from
-             ``settings["agent_config_dirs"][agent_cli]`` with plugin defaults as
-             fallback.
+           * The config directory is then derived from that plugin's default host
+             config directory.
 
         The returned ``config_dir`` is always a string with ``~`` expanded via
         :func:`os.path.expanduser`.
@@ -541,8 +471,7 @@ class MainWindowSettingsMixin:
         1. If an ``env`` is provided and it has an ``agent_selection`` entry with an
            agent instance matching this (normalized) ``agent_cli`` and a non-empty
            ``config_dir``, that directory is used.
-        2. Otherwise, per-agent settings are consulted from
-           ``agent_config_dirs``. If missing, plugin defaults are used.
+        2. Otherwise, the plugin default for that agent is used.
 
         The returned path is normalized with :func:`os.path.expanduser`.
 
@@ -703,7 +632,7 @@ class MainWindowSettingsMixin:
             QMessageBox.warning(
                 self,
                 "Missing config folder",
-                f"Set the {agent_label} Config folder in Settings (or override it per-environment).",
+                f"{agent_label} needs a valid config folder. Leave the environment override blank to use the plugin default, or set an explicit per-environment override.",
             )
             return False
         if os.path.exists(host_config_dir) and not os.path.isdir(host_config_dir):

@@ -427,7 +427,7 @@ class AgentsTabWidget(QWidget):
 
         line = QLineEdit()
         line.setText(inst.config_dir)
-        line.setPlaceholderText("Inherit Settings (leave blank)")
+        line.setPlaceholderText("Use plugin default (leave blank)")
         line.editingFinished.connect(
             lambda: self._commit_row_config_dir(row_index, line)
         )

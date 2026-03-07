@@ -55,7 +55,7 @@ class MainWindowTasksInteractiveMixin:
     def _start_ide_task_from_ui(
         self,
         prompt: str,
-        host_codex: str,
+        host_config_dir: str,
         env_id: str,
         terminal_id: str,
         base_branch: str,
@@ -64,7 +64,7 @@ class MainWindowTasksInteractiveMixin:
         self._start_interactive_task_from_ui(
             prompt=str(prompt or ""),
             command="",
-            host_codex=host_codex,
+            host_config_dir=host_config_dir,
             env_id=env_id,
             terminal_id=terminal_id,
             base_branch=base_branch,
@@ -78,7 +78,7 @@ class MainWindowTasksInteractiveMixin:
         self,
         prompt: str,
         command: str,
-        host_codex: str,
+        host_config_dir: str,
         env_id: str,
         terminal_id: str,
         base_branch: str,
@@ -88,6 +88,7 @@ class MainWindowTasksInteractiveMixin:
         launch_mode: str = "agent",
         ide_override: dict[str, str] | None = None,
     ) -> None:
+        del host_config_dir
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -96,8 +97,6 @@ class MainWindowTasksInteractiveMixin:
 
         prompt = sanitize_prompt((prompt or "").strip())
         has_typed_prompt = bool(str(prompt or "").strip())
-        host_codex = os.path.expanduser((host_codex or "").strip())
-
         options = {opt.terminal_id: opt for opt in detect_terminal_options()}
         opt = options.get(str(terminal_id or "").strip())
         if opt is None:
@@ -219,9 +218,8 @@ class MainWindowTasksInteractiveMixin:
                 env=env,
                 settings=self._settings_data,
             )
-            if not host_codex:
-                host_codex = auto_config_dir
-            if not self._ensure_agent_config_dir(agent_cli, host_codex):
+            host_config_dir = auto_config_dir
+            if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
                 return
 
             is_help_launch = False
@@ -288,7 +286,7 @@ class MainWindowTasksInteractiveMixin:
                 )
                 agent_instance_id = str(override.get("agent_id") or "").strip()
                 selected_cli_flags = str(override.get("cli_flags") or "").strip()
-                host_codex = auto_config_dir
+                host_config_dir = auto_config_dir
             elif (
                 env
                 and env.agent_selection
@@ -305,9 +303,8 @@ class MainWindowTasksInteractiveMixin:
                 agent_cli, auto_config_dir = self._effective_agent_and_config(
                     env=env, advance_round_robin=True
                 )
-            if not host_codex:
-                host_codex = auto_config_dir
-            if not self._ensure_agent_config_dir(agent_cli, host_codex):
+            host_config_dir = auto_config_dir
+            if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
                 return
             if override and not agent_instance_id:
                 agent_instance_id = str(agent_cli or "").strip()
@@ -378,13 +375,13 @@ class MainWindowTasksInteractiveMixin:
 
         container_name = f"agents-runner-tui-it-{task_id}"
         container_agent_dir = container_config_dir(agent_cli)
-        config_extra_mounts = additional_config_mounts(agent_cli, host_codex)
+        config_extra_mounts = additional_config_mounts(agent_cli, host_config_dir)
 
         # Add cross-agent config mounts if enabled
         cross_agent_mounts = self._compute_cross_agent_config_mounts(
             env=env,
             primary_agent_cli=agent_cli,
-            primary_config_dir=host_codex,
+            primary_config_dir=host_config_dir,
             settings=self._settings_data,
         )
         config_extra_mounts.extend(cross_agent_mounts)
@@ -396,7 +393,7 @@ class MainWindowTasksInteractiveMixin:
             prompt=prompt,
             image=image,
             host_workdir=host_workdir,
-            host_config_dir=host_codex,
+            host_config_dir=host_config_dir,
             environment_id=env_id,
             created_at_s=time.time(),
             status="starting",
@@ -471,7 +468,7 @@ class MainWindowTasksInteractiveMixin:
             "prompt": prompt,
             "command": command,
             "agent_cli": agent_cli,
-            "host_codex": host_codex,
+            "host_config_dir": host_config_dir,
             "host_workdir": host_workdir,
             "config_extra_mounts": list(config_extra_mounts),
             "image": image,
@@ -730,7 +727,7 @@ class MainWindowTasksInteractiveMixin:
                 prompt=context.get("prompt") or "",
                 command=context.get("command") or "",
                 agent_cli=context.get("agent_cli") or "",
-                host_codex=context.get("host_codex") or "",
+                host_config_dir=context.get("host_config_dir") or "",
                 host_workdir=context.get("host_workdir") or "",
                 config_extra_mounts=launch_mounts,
                 image=runtime_image,

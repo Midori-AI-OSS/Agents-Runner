@@ -167,7 +167,7 @@ class MainWindowTasksAgentMixin:
     def _start_ide_task_from_ui(
         self,
         prompt: str,
-        host_codex: str,
+        host_config_dir: str,
         env_id: str,
         terminal_id: str,
         base_branch: str,
@@ -175,6 +175,7 @@ class MainWindowTasksAgentMixin:
     ) -> str | None:
         del prompt
         del terminal_id
+        del host_config_dir
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -242,16 +243,9 @@ class MainWindowTasksAgentMixin:
             save_environment(env)
             self._environments[env.env_id] = env
 
-        host_config_dir = os.path.expanduser(str(host_codex or "").strip())
-        if not host_config_dir:
-            host_config_dir = auto_config_dir
+        host_config_dir = auto_config_dir
         if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
             return None
-        self._set_agent_config_dir_setting(
-            settings=self._settings_data,
-            agent_cli=agent_cli,
-            config_dir=host_config_dir,
-        )
 
         launch_argv = ide_plugin.build_launch_argv(
             workspace_dir="/home/midori-ai/workspace"
@@ -431,12 +425,13 @@ class MainWindowTasksAgentMixin:
     def _start_task_from_ui(
         self,
         prompt: str,
-        host_codex: str,
+        host_config_dir: str,
         env_id: str,
         base_branch: str,
         pr_context: dict[str, object] | None = None,
         agent_override: dict[str, str] | None = None,
     ) -> str | None:
+        del host_config_dir
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -759,18 +754,10 @@ class MainWindowTasksAgentMixin:
                 pinned_agent_id=pinned_agent_id,
             )
 
-        host_config_override = os.path.expanduser(str(host_codex or "").strip())
-        if override:
-            host_config_override = auto_config_dir
-        host_config_dir = host_config_override or auto_config_dir
+        host_config_dir = auto_config_dir
 
         if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
             return
-        self._set_agent_config_dir_setting(
-            settings=self._settings_data,
-            agent_cli=agent_cli,
-            config_dir=host_config_dir,
-        )
 
         image = PIXELARCH_EMERALD_IMAGE
 

@@ -93,7 +93,7 @@ def launch_docker_terminal_task(
     prompt: str,
     command: str,
     agent_cli: str,
-    host_codex: str,
+    host_config_dir: str,
     host_workdir: str,
     config_extra_mounts: list[str],
     image: str,
@@ -136,7 +136,7 @@ def launch_docker_terminal_task(
         prompt: User prompt
         command: Raw command string
         agent_cli: Agent CLI name
-        host_codex: Host config directory path
+        host_config_dir: Host config directory path
         host_workdir: Host workspace directory path
         config_extra_mounts: Additional config mounts
         image: Docker image name
@@ -421,7 +421,7 @@ def launch_docker_terminal_task(
         # Build Docker command
         docker_cmd = _build_docker_command(
             container_name=container_name,
-            host_codex=host_codex,
+            host_config_dir=host_config_dir,
             host_workdir=host_workdir,
             container_agent_dir=container_agent_dir,
             container_workdir=container_workdir,
@@ -436,7 +436,7 @@ def launch_docker_terminal_task(
 
         docker_cmd_for_log = _build_docker_command(
             container_name=container_name,
-            host_codex=host_codex,
+            host_config_dir=host_config_dir,
             host_workdir=host_workdir,
             container_agent_dir=container_agent_dir,
             container_workdir=container_workdir,
@@ -502,11 +502,6 @@ def launch_docker_terminal_task(
 
         # Update settings
         main_window._settings_data["host_workdir"] = host_workdir
-        main_window._set_agent_config_dir_setting(
-            settings=main_window._settings_data,
-            agent_cli=agent_cli,
-            config_dir=host_codex,
-        )
         main_window._settings_data["active_environment_id"] = env_id
         main_window._settings_data["interactive_terminal_id"] = str(
             getattr(terminal_opt, "terminal_id", "")
@@ -807,7 +802,7 @@ def _prepare_preflight_scripts(
 
 def _build_docker_command(
     container_name: str,
-    host_codex: str,
+    host_config_dir: str,
     host_workdir: str,
     container_agent_dir: str,
     container_workdir: str,
@@ -823,7 +818,7 @@ def _build_docker_command(
 
     Args:
         container_name: Container name
-        host_codex: Host config directory path
+        host_config_dir: Host config directory path
         host_workdir: Host workspace directory path
         container_agent_dir: Container config directory path
         container_workdir: Container workspace directory path
@@ -847,7 +842,7 @@ def _build_docker_command(
         "--name",
         container_name,
         "-v",
-        f"{host_codex}:{container_agent_dir}",
+        f"{host_config_dir}:{container_agent_dir}",
         "-v",
         f"{host_workdir}:{container_workdir}",
         *extra_mount_args,

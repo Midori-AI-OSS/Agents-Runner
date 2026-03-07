@@ -32,9 +32,10 @@ class MainWindowPreflightMixin:
         env: Environment,
         agent_cli: str | None,
         host_workdir: str,
-        host_codex: str,
+        host_config_dir: str,
         settings_preflight_script: str | None,
     ) -> None:
+        del host_config_dir
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -49,10 +50,8 @@ class MainWindowPreflightMixin:
         agent_cli = normalize_agent(
             str(agent_cli or self._settings_data.get("use") or "codex")
         )
-        host_codex = os.path.expanduser(str(host_codex or "").strip())
-        if not host_codex:
-            host_codex = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
-        if not self._ensure_agent_config_dir(smoke_agent_cli, host_codex):
+        host_config_dir = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
+        if not self._ensure_agent_config_dir(smoke_agent_cli, host_config_dir):
             return
 
         task_id = uuid4().hex[:10]
@@ -83,7 +82,7 @@ class MainWindowPreflightMixin:
             prompt=label,
             image=image,
             host_workdir=host_workdir,
-            host_config_dir=host_codex,
+            host_config_dir=host_config_dir,
             environment_id=env.env_id,
             created_at_s=time.time(),
             status="pulling",
@@ -109,7 +108,7 @@ class MainWindowPreflightMixin:
         config = DockerRunnerConfig(
             task_id=task_id,
             image=image,
-            host_config_dir=host_codex,
+            host_config_dir=host_config_dir,
             host_workdir=host_workdir,
             agent_cli=smoke_agent_cli,
             environment_id=env.env_id if env else "",
@@ -228,7 +227,7 @@ class MainWindowPreflightMixin:
         started = 0
         for env in self._environment_list():
             # Get effective agent and config for each environment
-            agent_cli, host_codex = self._effective_agent_and_config(
+            agent_cli, host_config_dir = self._effective_agent_and_config(
                 env=env, settings=settings
             )
             host_workdir = self._environment_effective_workdir(
@@ -242,7 +241,7 @@ class MainWindowPreflightMixin:
                 env=env,
                 agent_cli=agent_cli,
                 host_workdir=host_workdir,
-                host_codex=host_codex,
+                host_config_dir=host_config_dir,
                 settings_preflight_script=settings_script,
             )
             started += 1
@@ -273,7 +272,7 @@ class MainWindowPreflightMixin:
 
         host_workdir_base = str(self._settings_data.get("host_workdir") or os.getcwd())
         # Get effective agent and config for this environment
-        agent_cli, host_codex = self._effective_agent_and_config(env=env)
+        agent_cli, host_config_dir = self._effective_agent_and_config(env=env)
         host_workdir = self._environment_effective_workdir(
             env, fallback=host_workdir_base
         )
@@ -283,7 +282,7 @@ class MainWindowPreflightMixin:
             env=env,
             agent_cli=agent_cli,
             host_workdir=host_workdir,
-            host_codex=host_codex,
+            host_config_dir=host_config_dir,
             settings_preflight_script=settings_preflight_script,
         )
 

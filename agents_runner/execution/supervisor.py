@@ -575,12 +575,10 @@ class TaskSupervisor:
 
     def _resolve_host_config_dir(self, agent: AgentInstance) -> str:
         configured = os.path.expanduser(str(agent.config_dir or "").strip())
-        codex_default: str | None = None
-        if str(self._config.agent_cli or "").strip().lower() == "codex":
-            codex_default = self._config.host_config_dir
-        host_config_dir = configured or default_host_config_dir(
-            agent.agent_cli, codex_default=codex_default
-        )
+        if configured:
+            host_config_dir = configured
+        else:
+            host_config_dir = default_host_config_dir(agent.agent_cli)
         host_config_dir = str(host_config_dir or "").strip()
         if host_config_dir:
             host_config_dir = os.path.abspath(host_config_dir)
