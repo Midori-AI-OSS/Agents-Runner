@@ -175,7 +175,7 @@ def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
 
 def encrypt_artifact(
     task_dict: dict[str, Any],
-    env_name: str,
+    env_name: str | None,
     source_path: str | Path,
     original_filename: str,
 ) -> str | None:
@@ -252,7 +252,7 @@ def encrypt_artifact(
 
 def decrypt_artifact(
     task_dict: dict[str, Any],
-    env_name: str,
+    env_name: str | None,
     artifact_uuid: str,
     dest_path: str | Path,
 ) -> bool:

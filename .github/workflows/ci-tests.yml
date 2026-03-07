@@ -31,4 +31,4 @@ jobs:
         run: uv sync --group ci
 
       - name: Tests
-        run: uv run pytest -q --maxfail=1
+        run: PYTHONOPTIMIZE= uv run pytest -q --maxfail=1
