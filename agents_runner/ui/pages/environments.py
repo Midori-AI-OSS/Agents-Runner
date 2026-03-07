@@ -269,7 +269,17 @@ class EnvironmentsPage(
         app_wide_polling = bool(
             self._settings_data.get("github_polling_enabled") or False
         )
-        self._github_polling_enabled.setVisible(not app_wide_polling)
+        polling_visible = not app_wide_polling
+
+        polling_label = getattr(self, "_github_polling_enabled_label", None)
+        if isinstance(polling_label, QWidget):
+            polling_label.setVisible(polling_visible)
+
+        polling_row = getattr(self, "_github_polling_enabled_row", None)
+        if isinstance(polling_row, QWidget):
+            polling_row.setVisible(polling_visible)
+
+        self._github_polling_enabled.setVisible(polling_visible)
 
     def _sync_headless_desktop_override_visibility(self) -> None:
         force_headless = bool(
@@ -300,6 +310,16 @@ class EnvironmentsPage(
         show_custom_template = branch_controls_enabled and naming_style == "custom"
         self._gh_branch_work_mode.setEnabled(branch_controls_enabled)
         self._gh_task_branch_naming_style.setEnabled(naming_enabled)
+        custom_template_label = getattr(
+            self, "_gh_task_branch_custom_template_label", None
+        )
+        if isinstance(custom_template_label, QWidget):
+            custom_template_label.setVisible(show_custom_template)
+
+        custom_template_row = getattr(self, "_gh_task_branch_custom_template_row", None)
+        if isinstance(custom_template_row, QWidget):
+            custom_template_row.setVisible(show_custom_template)
+
         self._gh_task_branch_custom_template.setVisible(show_custom_template)
         self._gh_task_branch_custom_template_helper.setVisible(show_custom_template)
         self._gh_task_branch_custom_template.setEnabled(naming_enabled)

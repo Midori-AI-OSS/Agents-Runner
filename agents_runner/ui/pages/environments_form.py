@@ -193,8 +193,8 @@ class EnvironmentsFormMixin:
             "Enable background GitHub polling for this environment"
         )
         self._github_polling_enabled.setToolTip(
-            "Used only when app-wide GitHub polling is disabled. "
-            "This control is hidden while app-wide polling is enabled."
+            "Used only when global GitHub polling is disabled. "
+            "This control is hidden while global GitHub polling is enabled."
         )
         self._agentsnova_trusted_mode = QComboBox()
         self._agentsnova_trusted_mode.addItem("Inherit global trusted users", "inherit")
@@ -209,7 +209,7 @@ class EnvironmentsFormMixin:
         )
         self._agentsnova_auto_review_mode = QComboBox()
         self._agentsnova_auto_review_mode.addItem(
-            "Auto-review: Inherit app setting", "inherit"
+            "Auto-review: Inherit global setting", "inherit"
         )
         self._agentsnova_auto_review_mode.addItem("Auto-review: Enabled", "enabled")
         self._agentsnova_auto_review_mode.addItem("Auto-review: Disabled", "disabled")
@@ -218,7 +218,7 @@ class EnvironmentsFormMixin:
         )
         self._agentsnova_auto_reactions_mode = QComboBox()
         self._agentsnova_auto_reactions_mode.addItem(
-            "Auto reactions: Inherit app setting", "inherit"
+            "Auto reactions: Inherit global setting", "inherit"
         )
         self._agentsnova_auto_reactions_mode.addItem(
             "Auto reactions: Enabled", "enabled"
@@ -231,7 +231,7 @@ class EnvironmentsFormMixin:
         )
         self._agentsnova_marker_comment_mode = QComboBox()
         self._agentsnova_marker_comment_mode.addItem(
-            "Marker comments: Inherit app setting", "inherit"
+            "Marker comments: Inherit global setting", "inherit"
         )
         self._agentsnova_marker_comment_mode.addItem("Marker comments: Keep", "keep")
         self._agentsnova_marker_comment_mode.addItem(
@@ -460,19 +460,71 @@ class EnvironmentsFormMixin:
         github_config_page, github_config_body = self._create_page(
             specs_by_key["github_config"]
         )
-        github_config_body.addWidget(self._gh_context_enabled)
-        github_config_body.addWidget(self._github_polling_enabled)
-        github_config_body.addWidget(self._agentsnova_trusted_mode)
-        github_config_body.addWidget(self._agentsnova_auto_review_mode)
-        github_config_body.addWidget(self._agentsnova_auto_reactions_mode)
-        github_config_body.addWidget(self._agentsnova_marker_comment_mode)
-        github_config_body.addWidget(self._interactive_pr_prompt_enabled)
-        github_config_body.addWidget(self._setup_agents_missing_prompt_enabled)
-        github_config_body.addWidget(self._interactive_pull_before_run_enabled)
-        github_config_body.addWidget(self._gh_branch_work_mode)
-        github_config_body.addWidget(self._gh_task_branch_naming_style)
-        github_config_body.addWidget(self._gh_task_branch_custom_template)
-        github_config_body.addWidget(self._gh_task_branch_custom_template_helper)
+        github_grid = QGridLayout()
+        github_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        github_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
+        github_grid.setContentsMargins(0, 0, 0, 0)
+
+        gh_context_row = self._create_stretch_row(
+            github_config_page, self._gh_context_enabled
+        )
+        self._github_polling_enabled_label = QLabel("GitHub polling")
+        self._github_polling_enabled_row = self._create_stretch_row(
+            github_config_page, self._github_polling_enabled
+        )
+        trusted_mode_row = self._agentsnova_trusted_mode
+        auto_review_row = self._agentsnova_auto_review_mode
+        auto_reactions_row = self._agentsnova_auto_reactions_mode
+        marker_comment_row = self._agentsnova_marker_comment_mode
+        interactive_pr_prompt_row = self._create_stretch_row(
+            github_config_page, self._interactive_pr_prompt_enabled
+        )
+        setup_agents_missing_prompt_row = self._create_stretch_row(
+            github_config_page, self._setup_agents_missing_prompt_enabled
+        )
+        interactive_pull_before_run_row = self._create_stretch_row(
+            github_config_page, self._interactive_pull_before_run_enabled
+        )
+        branch_work_mode_row = self._gh_branch_work_mode
+        task_branch_naming_row = self._gh_task_branch_naming_style
+        self._gh_task_branch_custom_template_label = QLabel("Custom branch template")
+        self._gh_task_branch_custom_template_row = QWidget(github_config_page)
+        gh_custom_template_layout = QVBoxLayout(
+            self._gh_task_branch_custom_template_row
+        )
+        gh_custom_template_layout.setContentsMargins(0, 0, 0, 0)
+        gh_custom_template_layout.setSpacing(GRID_VERTICAL_SPACING)
+        gh_custom_template_layout.addWidget(self._gh_task_branch_custom_template)
+        gh_custom_template_layout.addWidget(self._gh_task_branch_custom_template_helper)
+
+        github_grid.addWidget(QLabel("GitHub context"), 0, 0)
+        github_grid.addWidget(gh_context_row, 0, 1, 1, 2)
+        github_grid.addWidget(self._github_polling_enabled_label, 1, 0)
+        github_grid.addWidget(self._github_polling_enabled_row, 1, 1, 1, 2)
+        github_grid.addWidget(QLabel("Interactive PR prompt"), 2, 0)
+        github_grid.addWidget(interactive_pr_prompt_row, 2, 1, 1, 2)
+        github_grid.addWidget(QLabel("Missing setup-agents prompt injection"), 3, 0)
+        github_grid.addWidget(setup_agents_missing_prompt_row, 3, 1, 1, 2)
+        github_grid.addWidget(QLabel("Interactive pull before run"), 4, 0)
+        github_grid.addWidget(interactive_pull_before_run_row, 4, 1, 1, 2)
+        github_grid.addWidget(QLabel("Trusted mode"), 5, 0)
+        github_grid.addWidget(trusted_mode_row, 5, 1, 1, 2)
+        github_grid.addWidget(QLabel("Auto review"), 6, 0)
+        github_grid.addWidget(auto_review_row, 6, 1, 1, 2)
+        github_grid.addWidget(QLabel("Auto reactions"), 7, 0)
+        github_grid.addWidget(auto_reactions_row, 7, 1, 1, 2)
+        github_grid.addWidget(QLabel("Marker comments"), 8, 0)
+        github_grid.addWidget(marker_comment_row, 8, 1, 1, 2)
+        github_grid.addWidget(QLabel("Branch workflow"), 9, 0)
+        github_grid.addWidget(branch_work_mode_row, 9, 1, 1, 2)
+        github_grid.addWidget(QLabel("Task branch naming"), 10, 0)
+        github_grid.addWidget(task_branch_naming_row, 10, 1, 1, 2)
+        github_grid.addWidget(self._gh_task_branch_custom_template_label, 11, 0)
+        github_grid.addWidget(self._gh_task_branch_custom_template_row, 11, 1, 1, 2)
+        self._gh_task_branch_custom_template_label.setVisible(False)
+        self._gh_task_branch_custom_template_row.setVisible(False)
+
+        github_config_body.addLayout(github_grid)
         github_config_body.addStretch(1)
         self._register_page("github_config", github_config_page)
 
@@ -506,11 +558,39 @@ class EnvironmentsFormMixin:
         self._register_page("preflight", preflight_page)
 
         caching_page, caching_body = self._create_page(specs_by_key["caching"])
-        caching_body.addWidget(self._container_caching_enabled)
-        caching_body.addWidget(self._cache_desktop_build)
-        caching_body.addWidget(self._cache_system_preflight_enabled)
-        caching_body.addWidget(self._cache_settings_preflight_enabled)
-        caching_body.addWidget(self._cache_ide_preflight_enabled)
+        caching_grid = QGridLayout()
+        caching_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+        caching_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
+        caching_grid.setContentsMargins(0, 0, 0, 0)
+
+        container_caching_row = self._create_stretch_row(
+            caching_page, self._container_caching_enabled
+        )
+        desktop_build_cache_row = self._create_stretch_row(
+            caching_page, self._cache_desktop_build
+        )
+        system_phase_cache_row = self._create_stretch_row(
+            caching_page, self._cache_system_preflight_enabled
+        )
+        settings_phase_cache_row = self._create_stretch_row(
+            caching_page, self._cache_settings_preflight_enabled
+        )
+        ide_setup_phase_cache_row = self._create_stretch_row(
+            caching_page, self._cache_ide_preflight_enabled
+        )
+
+        caching_grid.addWidget(QLabel("Container caching"), 0, 0)
+        caching_grid.addWidget(container_caching_row, 0, 1, 1, 2)
+        caching_grid.addWidget(QLabel("Desktop build cache"), 1, 0)
+        caching_grid.addWidget(desktop_build_cache_row, 1, 1, 1, 2)
+        caching_grid.addWidget(QLabel("System phase cache"), 2, 0)
+        caching_grid.addWidget(system_phase_cache_row, 2, 1, 1, 2)
+        caching_grid.addWidget(QLabel("Settings phase cache"), 3, 0)
+        caching_grid.addWidget(settings_phase_cache_row, 3, 1, 1, 2)
+        caching_grid.addWidget(QLabel("IDE setup phase cache"), 4, 0)
+        caching_grid.addWidget(ide_setup_phase_cache_row, 4, 1, 1, 2)
+
+        caching_body.addLayout(caching_grid)
         caching_body.addStretch(1)
         self._register_page("caching", caching_page)
 
@@ -578,6 +658,16 @@ class EnvironmentsFormMixin:
     def _register_page(self, key: str, widget: QWidget) -> None:
         index = self._page_stack.addWidget(widget)
         self._pane_index_by_key[key] = index
+
+    @staticmethod
+    def _create_stretch_row(parent: QWidget, widget: QWidget) -> QWidget:
+        row = QWidget(parent)
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(BUTTON_ROW_SPACING)
+        layout.addWidget(widget)
+        layout.addStretch(1)
+        return row
 
     @staticmethod
     def _pane_button_label(key: str, title: str) -> str:
