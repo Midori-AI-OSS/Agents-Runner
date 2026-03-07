@@ -88,6 +88,7 @@ class MainWindowTasksInteractiveMixin:
         launch_mode: str = "agent",
         ide_override: dict[str, str] | None = None,
     ) -> None:
+        del host_config_dir
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -96,8 +97,6 @@ class MainWindowTasksInteractiveMixin:
 
         prompt = sanitize_prompt((prompt or "").strip())
         has_typed_prompt = bool(str(prompt or "").strip())
-        host_config_dir = os.path.expanduser((host_config_dir or "").strip())
-
         options = {opt.terminal_id: opt for opt in detect_terminal_options()}
         opt = options.get(str(terminal_id or "").strip())
         if opt is None:
@@ -219,8 +218,7 @@ class MainWindowTasksInteractiveMixin:
                 env=env,
                 settings=self._settings_data,
             )
-            if not host_config_dir:
-                host_config_dir = auto_config_dir
+            host_config_dir = auto_config_dir
             if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
                 return
 
@@ -305,8 +303,7 @@ class MainWindowTasksInteractiveMixin:
                 agent_cli, auto_config_dir = self._effective_agent_and_config(
                     env=env, advance_round_robin=True
                 )
-            if not host_config_dir:
-                host_config_dir = auto_config_dir
+            host_config_dir = auto_config_dir
             if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
                 return
             if override and not agent_instance_id:

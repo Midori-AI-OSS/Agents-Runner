@@ -246,23 +246,12 @@ class MainWindowSettingsMixin:
         """Resolve a host config directory for an agent CLI.
 
         Precedence:
-        1. Environment agent_selection (first matching agent instance with config_dir)
-        2. Plugin default host config dir
+        1. Plugin default host config dir
         """
+        del env, settings
         agent_cli = str(agent_cli or "").strip().lower()
         if agent_cli not in set(available_agents(include_internal=False)):
             return ""
-
-        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
-            for inst in env.agent_selection.agents or []:
-                inst_cli = str(getattr(inst, "agent_cli", "") or "").strip().lower()
-                if inst_cli != agent_cli:
-                    continue
-                inst_dir = os.path.expanduser(
-                    str(getattr(inst, "config_dir", "") or "").strip()
-                )
-                if inst_dir:
-                    return inst_dir
         return os.path.expanduser(default_host_config_dir(agent_cli))
 
     def _select_agent_instance_for_env(

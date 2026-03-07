@@ -490,11 +490,6 @@ def launch_docker_terminal_task(
 
         # Update settings
         main_window._settings_data["host_workdir"] = host_workdir
-        main_window._set_agent_config_dir_setting(
-            settings=main_window._settings_data,
-            agent_cli=agent_cli,
-            config_dir=host_config_dir,
-        )
         main_window._settings_data["active_environment_id"] = env_id
         main_window._settings_data["interactive_terminal_id"] = str(
             getattr(terminal_opt, "terminal_id", "")

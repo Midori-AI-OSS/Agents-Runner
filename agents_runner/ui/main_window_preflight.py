@@ -35,6 +35,7 @@ class MainWindowPreflightMixin:
         host_config_dir: str,
         settings_preflight_script: str | None,
     ) -> None:
+        del host_config_dir
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -49,11 +50,7 @@ class MainWindowPreflightMixin:
         agent_cli = normalize_agent(
             str(agent_cli or self._settings_data.get("use") or "codex")
         )
-        host_config_dir = os.path.expanduser(str(host_config_dir or "").strip())
-        if not host_config_dir:
-            host_config_dir = self._effective_host_config_dir(
-                agent_cli=agent_cli, env=env
-            )
+        host_config_dir = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
         if not self._ensure_agent_config_dir(smoke_agent_cli, host_config_dir):
             return
 
