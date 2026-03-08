@@ -14,6 +14,7 @@ from agents_runner.environments import load_environments
 from agents_runner.environments import save_environment
 from agents_runner.environments.model import (
     normalize_agentsnova_auto_mode,
+    normalize_interactive_pr_no_prompt_mode,
     normalize_agentsnova_marker_comment_mode,
     normalize_gh_branch_work_mode,
     normalize_gh_task_branch_custom_template,
@@ -112,6 +113,9 @@ class EnvironmentsPageActionsMixin:
             ),
             "interactive_pr_prompt_enabled": bool(
                 self._interactive_pr_prompt_enabled.isChecked()
+            ),
+            "interactive_pr_no_prompt_mode": normalize_interactive_pr_no_prompt_mode(
+                self._interactive_pr_no_prompt_mode.currentData() or "auto_create_pr"
             ),
             "setup_agents_missing_prompt_enabled": bool(
                 self._setup_agents_missing_prompt_enabled.isChecked()

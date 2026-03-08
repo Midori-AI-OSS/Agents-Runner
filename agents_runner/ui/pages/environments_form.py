@@ -26,6 +26,8 @@ from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments.model import (
     GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
+    INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE,
+    INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW,
 )
 from agents_runner.ide_systems import available_ide_system_names
 from agents_runner.ide_systems import get_ide_system
@@ -238,6 +240,23 @@ class EnvironmentsFormMixin:
         self._interactive_pr_prompt_enabled = QCheckBox("Show interactive PR prompt")
         self._interactive_pr_prompt_enabled.setToolTip(
             "When enabled, interactive GitHub work can keep showing the PR prompt for this environment."
+        )
+        self._interactive_pr_no_prompt_mode = QComboBox()
+        self._interactive_pr_no_prompt_mode.addItem(
+            "Auto-create PR after interactive run",
+            INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE,
+        )
+        self._interactive_pr_no_prompt_mode.addItem(
+            "Manual only (Review -> Create PR)",
+            INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW,
+        )
+        self._interactive_pr_no_prompt_mode.setToolTip(
+            "Used when 'Show interactive PR prompt' is disabled.\n"
+            "Manual mode means you can enter the task, then click Review -> Create PR yourself."
+        )
+        self._interactive_pr_no_prompt_mode.setVisible(False)
+        self._interactive_pr_prompt_enabled.toggled.connect(
+            self._sync_interactive_pr_controls
         )
         self._setup_agents_missing_prompt_enabled = QCheckBox(
             "Inject missing setup-agents prompt"
@@ -459,6 +478,10 @@ class EnvironmentsFormMixin:
         interactive_pr_prompt_row = self._create_stretch_row(
             github_config_page, self._interactive_pr_prompt_enabled
         )
+        self._interactive_pr_no_prompt_mode_label = QLabel("When prompt is disabled")
+        self._interactive_pr_no_prompt_mode_row = self._create_stretch_row(
+            github_config_page, self._interactive_pr_no_prompt_mode
+        )
         setup_agents_missing_prompt_row = self._create_stretch_row(
             github_config_page, self._setup_agents_missing_prompt_enabled
         )
@@ -483,24 +506,28 @@ class EnvironmentsFormMixin:
         github_grid.addWidget(self._github_polling_enabled_row, 1, 1, 1, 2)
         github_grid.addWidget(QLabel("Interactive PR prompt"), 2, 0)
         github_grid.addWidget(interactive_pr_prompt_row, 2, 1, 1, 2)
-        github_grid.addWidget(QLabel("Missing setup-agents prompt injection"), 3, 0)
-        github_grid.addWidget(setup_agents_missing_prompt_row, 3, 1, 1, 2)
-        github_grid.addWidget(QLabel("Interactive pull before run"), 4, 0)
-        github_grid.addWidget(interactive_pull_before_run_row, 4, 1, 1, 2)
-        github_grid.addWidget(QLabel("Trusted mode"), 5, 0)
-        github_grid.addWidget(trusted_mode_row, 5, 1, 1, 2)
-        github_grid.addWidget(QLabel("Auto review"), 6, 0)
-        github_grid.addWidget(auto_review_row, 6, 1, 1, 2)
-        github_grid.addWidget(QLabel("Auto reactions"), 7, 0)
-        github_grid.addWidget(auto_reactions_row, 7, 1, 1, 2)
-        github_grid.addWidget(QLabel("Marker comments"), 8, 0)
-        github_grid.addWidget(marker_comment_row, 8, 1, 1, 2)
-        github_grid.addWidget(QLabel("Branch workflow"), 9, 0)
-        github_grid.addWidget(branch_work_mode_row, 9, 1, 1, 2)
-        github_grid.addWidget(QLabel("Task branch naming"), 10, 0)
-        github_grid.addWidget(task_branch_naming_row, 10, 1, 1, 2)
-        github_grid.addWidget(self._gh_task_branch_custom_template_label, 11, 0)
-        github_grid.addWidget(self._gh_task_branch_custom_template_row, 11, 1, 1, 2)
+        github_grid.addWidget(self._interactive_pr_no_prompt_mode_label, 3, 0)
+        github_grid.addWidget(self._interactive_pr_no_prompt_mode_row, 3, 1, 1, 2)
+        github_grid.addWidget(QLabel("Missing setup-agents prompt injection"), 4, 0)
+        github_grid.addWidget(setup_agents_missing_prompt_row, 4, 1, 1, 2)
+        github_grid.addWidget(QLabel("Interactive pull before run"), 5, 0)
+        github_grid.addWidget(interactive_pull_before_run_row, 5, 1, 1, 2)
+        github_grid.addWidget(QLabel("Trusted mode"), 6, 0)
+        github_grid.addWidget(trusted_mode_row, 6, 1, 1, 2)
+        github_grid.addWidget(QLabel("Auto review"), 7, 0)
+        github_grid.addWidget(auto_review_row, 7, 1, 1, 2)
+        github_grid.addWidget(QLabel("Auto reactions"), 8, 0)
+        github_grid.addWidget(auto_reactions_row, 8, 1, 1, 2)
+        github_grid.addWidget(QLabel("Marker comments"), 9, 0)
+        github_grid.addWidget(marker_comment_row, 9, 1, 1, 2)
+        github_grid.addWidget(QLabel("Branch workflow"), 10, 0)
+        github_grid.addWidget(branch_work_mode_row, 10, 1, 1, 2)
+        github_grid.addWidget(QLabel("Task branch naming"), 11, 0)
+        github_grid.addWidget(task_branch_naming_row, 11, 1, 1, 2)
+        github_grid.addWidget(self._gh_task_branch_custom_template_label, 12, 0)
+        github_grid.addWidget(self._gh_task_branch_custom_template_row, 12, 1, 1, 2)
+        self._interactive_pr_no_prompt_mode_label.setVisible(False)
+        self._interactive_pr_no_prompt_mode_row.setVisible(False)
         self._gh_task_branch_custom_template_label.setVisible(False)
         self._gh_task_branch_custom_template_row.setVisible(False)
 

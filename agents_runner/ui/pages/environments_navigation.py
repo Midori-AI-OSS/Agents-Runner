@@ -27,6 +27,7 @@ class EnvironmentsNavigationMixin:
             self._agentsnova_auto_review_mode,
             self._agentsnova_auto_reactions_mode,
             self._agentsnova_marker_comment_mode,
+            self._interactive_pr_no_prompt_mode,
             self._gh_branch_work_mode,
             self._gh_task_branch_naming_style,
         ):
