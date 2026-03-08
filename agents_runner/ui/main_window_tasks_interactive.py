@@ -614,6 +614,7 @@ class MainWindowTasksInteractiveMixin:
 
         cache_override_keys = {
             "runtime_image",
+            "install_preflight_cached",
             "system_preflight_cached",
             "desktop_preflight_cached",
             "settings_preflight_cached",
@@ -628,6 +629,10 @@ class MainWindowTasksInteractiveMixin:
             or context.get("extra_preflight_script")
             or ""
         )
+        resolved_install_preflight_script = str(
+            payload.get("install_preflight_script") or ""
+        )
+        resolved_install_phase_name = str(payload.get("install_phase_name") or "")
 
         try:
             launch_docker_terminal_task(
@@ -652,6 +657,8 @@ class MainWindowTasksInteractiveMixin:
                 settings_preflight_script=context.get("settings_preflight_script"),
                 setup_agents_script=str(payload.get("setup_agents_script") or ""),
                 ide_preflight_script=context.get("ide_preflight_script"),
+                install_preflight_script=resolved_install_preflight_script,
+                install_phase_name=resolved_install_phase_name,
                 extra_preflight_script=resolved_extra_preflight_script,
                 ide_display_target=str(context.get("ide_display_target") or ""),
                 stain=context.get("stain"),
@@ -673,6 +680,11 @@ class MainWindowTasksInteractiveMixin:
                 else None,
                 settings_preflight_cached_override=bool(
                     payload.get("settings_preflight_cached")
+                )
+                if has_runtime_cache_overrides
+                else None,
+                install_preflight_cached_override=bool(
+                    payload.get("install_preflight_cached")
                 )
                 if has_runtime_cache_overrides
                 else None,
