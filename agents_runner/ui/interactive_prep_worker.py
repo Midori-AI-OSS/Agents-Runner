@@ -9,6 +9,7 @@ from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
 
+from agents_runner.agent_install import probe_agent_executable_in_image
 from agents_runner.agent_install import resolve_agent_install_plan
 from agents_runner.docker.agent_worker_prompt import PromptAssembler
 from agents_runner.docker.process import has_image
@@ -217,8 +218,29 @@ class InteractivePrepWorker(QObject):
     def _resolve_runtime_image_for_launch(
         self, *, cmd_parts: list[str]
     ) -> dict[str, object]:
-        install_plan = None
+        agent_probe_available: bool | None = None
         if cmd_parts:
+            agent_probe_available = probe_agent_executable_in_image(
+                image=self._image,
+                agent_cli=str(cmd_parts[0]),
+                platform_args=docker_platform_args_for_pixelarch(),
+                task_token=self._task_id or "task",
+            )
+            self.log.emit(
+                self._task_id,
+                format_log(
+                    "install",
+                    "probe",
+                    "INFO",
+                    (
+                        f"image probe ({self._image}) agent={str(cmd_parts[0])}: "
+                        f"{'available' if agent_probe_available else 'missing'}"
+                    ),
+                ),
+            )
+
+        install_plan = None
+        if cmd_parts and agent_probe_available is not True:
             install_plan = resolve_agent_install_plan(
                 agent_cli=str(cmd_parts[0]),
                 include_internal=False,
@@ -240,6 +262,17 @@ class InteractivePrepWorker(QObject):
         desktop_cache_enabled = bool(
             self._cache_desktop_build and self._desktop_enabled
         )
+        if agent_probe_available is True and cache_system_enabled:
+            cache_system_enabled = False
+            self.log.emit(
+                self._task_id,
+                format_log(
+                    "phase",
+                    "cache",
+                    "INFO",
+                    "system preflight cache skipped: agent executable is already available in pulled image",
+                ),
+            )
 
         def on_phase_log(line: str) -> None:
             self.log.emit(self._task_id, str(line or ""))
@@ -268,6 +301,8 @@ class InteractivePrepWorker(QObject):
             "resolved_extra_preflight_script": result.desktop_preflight_script,
             "install_preflight_script": install_preflight_script,
             "install_phase_name": install_phase_name,
+            "agent_probe_available": agent_probe_available,
+            "skip_system_preflight": agent_probe_available is True,
         }
 
     def _append_full_prompt_github_context(
@@ -617,6 +652,12 @@ class InteractivePrepWorker(QObject):
                     ),
                     "install_phase_name": cache_resolution.get(
                         "install_phase_name", ""
+                    ),
+                    "agent_probe_available": cache_resolution.get(
+                        "agent_probe_available"
+                    ),
+                    "skip_system_preflight": bool(
+                        cache_resolution.get("skip_system_preflight", False)
                     ),
                     "setup_agents_script": setup_agents_script,
                 },

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QMessageBox
 
+from agents_runner.agent_install import probe_agent_executable_in_image
 from agents_runner.agent_install import resolve_agent_install_plan
 from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.agent_cli import available_agents
@@ -117,6 +118,8 @@ def launch_docker_terminal_task(
     desktop_preflight_cached_override: bool | None = None,
     settings_preflight_cached_override: bool | None = None,
     install_preflight_cached_override: bool | None = None,
+    agent_probe_available_override: bool | None = None,
+    skip_system_preflight_override: bool = False,
     desktop_preflight_script_override: str | None = None,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
@@ -163,6 +166,8 @@ def launch_docker_terminal_task(
         desktop_preflight_cached_override: Optional precomputed desktop cache status
         settings_preflight_cached_override: Optional precomputed settings cache status
         install_preflight_cached_override: Optional precomputed install cache status
+        agent_probe_available_override: Optional precomputed image probe status
+        skip_system_preflight_override: Optional precomputed system-preflight skip
         desktop_preflight_script_override: Optional precomputed desktop script
     """
     # Apply desktop preflight script override if provided, before desktop detection
@@ -222,6 +227,7 @@ def launch_docker_terminal_task(
     def on_phase_log(line: str) -> None:
         main_window._on_task_log(task_id, line)
 
+    resolved_probe_available = agent_probe_available_override
     if use_precomputed_cache:
         runtime_image = str(runtime_image_override or image)
         install_preflight_cached = bool(install_preflight_cached_override)
@@ -229,7 +235,40 @@ def launch_docker_terminal_task(
         desktop_preflight_cached = bool(desktop_preflight_cached_override)
         settings_preflight_cached = bool(settings_preflight_cached_override)
     else:
-        if not resolved_install_preflight_script and cmd_parts:
+        if resolved_probe_available is None and cmd_parts and skip_image_pull:
+            resolved_probe_available = probe_agent_executable_in_image(
+                image=runtime_image,
+                agent_cli=str(cmd_parts[0]),
+                platform_args=docker_platform_args_for_pixelarch(),
+                task_token=task_token or task_id or "task",
+            )
+            on_phase_log(
+                format_log(
+                    "install",
+                    "probe",
+                    "INFO",
+                    (
+                        f"image probe ({runtime_image}) agent={str(cmd_parts[0])}: "
+                        f"{'available' if resolved_probe_available else 'missing'}"
+                    ),
+                )
+            )
+        if resolved_probe_available is True and cache_system_enabled:
+            cache_system_enabled = False
+            on_phase_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "INFO",
+                    "system preflight cache skipped: agent executable is already available in pulled image",
+                )
+            )
+
+        if (
+            not resolved_install_preflight_script
+            and cmd_parts
+            and resolved_probe_available is not True
+        ):
             install_plan = resolve_agent_install_plan(
                 agent_cli=str(cmd_parts[0]),
                 include_internal=False,
@@ -318,13 +357,28 @@ def launch_docker_terminal_task(
 
     run_interactive_mode = task.is_interactive_run()
     skip_system_preflight = bool(system_preflight_cached and not run_interactive_mode)
-    if run_interactive_mode and system_preflight_cached:
+    if skip_system_preflight_override or resolved_probe_available is True:
+        skip_system_preflight = True
+    if (
+        run_interactive_mode
+        and system_preflight_cached
+        and not (skip_system_preflight_override or resolved_probe_available is True)
+    ):
         on_phase_log(
             format_log(
                 "phase",
                 "cache",
                 "INFO",
                 "interactive run requires runtime system preflight; skipping cache-only shortcut",
+            )
+        )
+    if skip_system_preflight and resolved_probe_available is True:
+        on_phase_log(
+            format_log(
+                "phase",
+                "cache",
+                "INFO",
+                "system preflight skipped: probe confirmed agent executable in pulled image",
             )
         )
 

@@ -633,6 +633,15 @@ class MainWindowTasksInteractiveMixin:
             payload.get("install_preflight_script") or ""
         )
         resolved_install_phase_name = str(payload.get("install_phase_name") or "")
+        agent_probe_available_override: bool | None = None
+        if (
+            "agent_probe_available" in payload
+            and payload.get("agent_probe_available") is not None
+        ):
+            agent_probe_available_override = bool(payload.get("agent_probe_available"))
+        skip_system_preflight_override = bool(
+            payload.get("skip_system_preflight", False)
+        )
 
         try:
             launch_docker_terminal_task(
@@ -688,6 +697,8 @@ class MainWindowTasksInteractiveMixin:
                 )
                 if has_runtime_cache_overrides
                 else None,
+                agent_probe_available_override=agent_probe_available_override,
+                skip_system_preflight_override=skip_system_preflight_override,
                 desktop_preflight_script_override=resolved_extra_preflight_script
                 if has_runtime_cache_overrides
                 else None,

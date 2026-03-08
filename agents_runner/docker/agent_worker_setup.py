@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Callable, Any
 
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.agent_install import probe_agent_executable_in_image
 from agents_runner.agent_install import resolve_agent_install_plan
 from agents_runner.agent_cli import (
     additional_config_mounts,
@@ -147,12 +148,35 @@ class WorkerSetup:
                 setup_agents_prompt_instruction = missing_setup_agents_instruction(
                     launch_mode=self._config.launch_mode
                 )
+        self.pull_image_if_needed(
+            platform_config.forced_platform, platform_config.platform_args
+        )
+
+        agent_probe_available: bool | None = None
         install_plan = None
         if not self._config.custom_command_argv:
-            install_plan = resolve_agent_install_plan(
+            agent_probe_available = probe_agent_executable_in_image(
+                image=self._config.image,
                 agent_cli=platform_config.agent_cli,
-                include_internal=False,
+                platform_args=platform_config.platform_args,
+                task_token=self._config.task_id or "task",
             )
+            self._on_log(
+                format_log(
+                    "install",
+                    "probe",
+                    "INFO",
+                    (
+                        f"image probe ({self._config.image}) agent={platform_config.agent_cli}: "
+                        f"{'available' if agent_probe_available else 'missing'}"
+                    ),
+                )
+            )
+            if not agent_probe_available:
+                install_plan = resolve_agent_install_plan(
+                    agent_cli=platform_config.agent_cli,
+                    include_internal=False,
+                )
         install_script = (
             str(install_plan.script_content or "").strip() if install_plan else ""
         )
@@ -164,12 +188,10 @@ class WorkerSetup:
             install_script=install_script,
             setup_agents_script=setup_agents_script,
         )
-        self.pull_image_if_needed(
-            platform_config.forced_platform, platform_config.platform_args
-        )
         caching_config = self._setup_caching(
             install_script=install_script,
             install_phase_name=install_phase_name,
+            skip_system_preflight=agent_probe_available is True,
         )
 
         # Assemble final prompt
@@ -531,6 +553,7 @@ class WorkerSetup:
         *,
         install_script: str = "",
         install_phase_name: str = "",
+        skip_system_preflight: bool = False,
     ) -> _CachingConfig:
         """Setup desktop and environment caching."""
         runtime_image = self._config.image
@@ -549,6 +572,16 @@ class WorkerSetup:
                 system_preflight_script = ""
 
         system_preflight_enabled = bool(system_preflight_script.strip())
+        if skip_system_preflight and system_preflight_enabled:
+            system_preflight_enabled = False
+            self._on_log(
+                format_log(
+                    "phase",
+                    "cache",
+                    "INFO",
+                    "system preflight skipped: agent executable is already available in pulled image",
+                )
+            )
         install_preflight_cached = False
         system_preflight_cached = False
         settings_preflight_cached = False
