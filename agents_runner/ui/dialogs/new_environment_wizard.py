@@ -32,6 +32,7 @@ from agents_runner.environments import (
     WORKSPACE_MOUNTED,
 )
 from agents_runner.environments.model import GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
+from agents_runner.environments.model import INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE
 from agents_runner.gh.git_ops import parse_github_url
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
@@ -503,6 +504,7 @@ read
             agentsnova_auto_reactions_mode="inherit",
             agentsnova_marker_comment_mode="inherit",
             interactive_pr_prompt_enabled=True,
+            interactive_pr_no_prompt_mode=INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE,
             setup_agents_missing_prompt_enabled=False,
             interactive_pull_before_run_enabled=True,
             gh_branch_work_mode="task_branch",

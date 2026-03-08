@@ -22,7 +22,9 @@ from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import managed_repo_checkout_path
 from agents_runner.environments.model import (
     GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
+    INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE,
     normalize_agentsnova_auto_mode,
+    normalize_interactive_pr_no_prompt_mode,
     normalize_agentsnova_marker_comment_mode,
     normalize_gh_branch_work_mode,
     normalize_gh_task_branch_custom_template,
@@ -182,6 +184,7 @@ class EnvironmentsPage(
         self._build_navigation(nav_layout)
         self._connect_autosave_signals()
         self._sync_github_branch_naming_controls()
+        self._sync_interactive_pr_controls()
 
         if self._pane_specs:
             first_key = self._pane_specs[0].key
@@ -297,6 +300,19 @@ class EnvironmentsPage(
         self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
         self._cache_desktop_build.setEnabled(self._effective_desktop_enabled())
 
+    def _sync_interactive_pr_controls(self) -> None:
+        show_no_prompt_mode = not bool(self._interactive_pr_prompt_enabled.isChecked())
+        no_prompt_mode_label = getattr(
+            self, "_interactive_pr_no_prompt_mode_label", None
+        )
+        if isinstance(no_prompt_mode_label, QWidget):
+            no_prompt_mode_label.setVisible(show_no_prompt_mode)
+        no_prompt_mode_row = getattr(self, "_interactive_pr_no_prompt_mode_row", None)
+        if isinstance(no_prompt_mode_row, QWidget):
+            no_prompt_mode_row.setVisible(show_no_prompt_mode)
+        self._interactive_pr_no_prompt_mode.setVisible(show_no_prompt_mode)
+        self._interactive_pr_no_prompt_mode.setEnabled(show_no_prompt_mode)
+
     def _sync_github_branch_naming_controls(self) -> None:
         workspace_type = str(self._workspace_type_combo.currentData() or "").strip()
         branch_work_mode = normalize_gh_branch_work_mode(
@@ -379,6 +395,15 @@ class EnvironmentsPage(
                         marker_comment_idx
                     )
                 self._interactive_pr_prompt_enabled.setChecked(True)
+                no_prompt_mode_idx = self._interactive_pr_no_prompt_mode.findData(
+                    INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE
+                )
+                if no_prompt_mode_idx < 0:
+                    no_prompt_mode_idx = 0
+                if no_prompt_mode_idx >= 0:
+                    self._interactive_pr_no_prompt_mode.setCurrentIndex(
+                        no_prompt_mode_idx
+                    )
                 self._setup_agents_missing_prompt_enabled.setChecked(False)
                 self._interactive_pull_before_run_enabled.setChecked(True)
                 branch_work_idx = self._gh_branch_work_mode.findData("task_branch")
@@ -424,6 +449,7 @@ class EnvironmentsPage(
                 self._sync_github_branch_naming_controls()
                 self._sync_workspace_controls()
                 self._sync_headless_desktop_override_visibility()
+                self._sync_interactive_pr_controls()
                 return
 
             self._name.setText(env.name)
@@ -504,6 +530,18 @@ class EnvironmentsPage(
             self._interactive_pr_prompt_enabled.setChecked(
                 bool(getattr(env, "interactive_pr_prompt_enabled", True))
             )
+            interactive_pr_no_prompt_mode = normalize_interactive_pr_no_prompt_mode(
+                getattr(env, "interactive_pr_no_prompt_mode", "auto_create_pr")
+            )
+            interactive_pr_no_prompt_idx = self._interactive_pr_no_prompt_mode.findData(
+                interactive_pr_no_prompt_mode
+            )
+            if interactive_pr_no_prompt_idx < 0:
+                interactive_pr_no_prompt_idx = 0
+            if interactive_pr_no_prompt_idx >= 0:
+                self._interactive_pr_no_prompt_mode.setCurrentIndex(
+                    interactive_pr_no_prompt_idx
+                )
             self._setup_agents_missing_prompt_enabled.setChecked(
                 bool(getattr(env, "setup_agents_missing_prompt_enabled", False))
             )
@@ -589,6 +627,7 @@ class EnvironmentsPage(
             self._agents_tab.set_cross_agents_enabled(use_cross_agents)
             self._sync_github_branch_naming_controls()
             self._sync_headless_desktop_override_visibility()
+            self._sync_interactive_pr_controls()
         finally:
             self._suppress_autosave = False
 

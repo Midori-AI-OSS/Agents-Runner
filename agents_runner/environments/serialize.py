@@ -11,6 +11,7 @@ from .model import Environment
 from .model import GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
 from .model import normalize_workspace_type
 from .model import normalize_agentsnova_auto_mode
+from .model import normalize_interactive_pr_no_prompt_mode
 from .model import normalize_agentsnova_marker_comment_mode
 from .model import normalize_gh_branch_work_mode
 from .model import normalize_gh_task_branch_custom_template
@@ -297,6 +298,9 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     interactive_pr_prompt_enabled = bool(
         payload.get("interactive_pr_prompt_enabled", True)
     )
+    interactive_pr_no_prompt_mode = normalize_interactive_pr_no_prompt_mode(
+        payload.get("interactive_pr_no_prompt_mode", "auto_create_pr")
+    )
     setup_agents_missing_prompt_enabled = bool(
         payload.get("setup_agents_missing_prompt_enabled", False)
     )
@@ -514,6 +518,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         agentsnova_auto_reactions_mode=agentsnova_auto_reactions_mode,
         agentsnova_marker_comment_mode=agentsnova_marker_comment_mode,
         interactive_pr_prompt_enabled=interactive_pr_prompt_enabled,
+        interactive_pr_no_prompt_mode=interactive_pr_no_prompt_mode,
         setup_agents_missing_prompt_enabled=setup_agents_missing_prompt_enabled,
         interactive_pull_before_run_enabled=interactive_pull_before_run_enabled,
         gh_branch_work_mode=gh_branch_work_mode,
@@ -638,6 +643,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         ),
         "interactive_pr_prompt_enabled": bool(
             getattr(env, "interactive_pr_prompt_enabled", True)
+        ),
+        "interactive_pr_no_prompt_mode": normalize_interactive_pr_no_prompt_mode(
+            getattr(env, "interactive_pr_no_prompt_mode", "auto_create_pr")
         ),
         "setup_agents_missing_prompt_enabled": bool(
             getattr(env, "setup_agents_missing_prompt_enabled", False)

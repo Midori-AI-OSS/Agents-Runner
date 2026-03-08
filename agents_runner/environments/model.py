@@ -74,6 +74,13 @@ GH_TASK_BRANCH_NAMING_STYLES = (
 )
 GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT = "{task_id}"
 
+INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE = "auto_create_pr"
+INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW = "manual_via_review_menu"
+INTERACTIVE_PR_NO_PROMPT_MODES = (
+    INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE,
+    INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW,
+)
+
 
 def normalize_workspace_type(value: str) -> str:
     """Normalize workspace type to canonical values."""
@@ -122,6 +129,14 @@ def normalize_gh_task_branch_custom_template(value: str) -> str:
     """Normalize custom task-branch template text."""
     normalized = str(value or "").strip()
     return normalized or GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
+
+
+def normalize_interactive_pr_no_prompt_mode(value: str) -> str:
+    """Normalize interactive PR behavior when the prompt is disabled."""
+    normalized = str(value or "").strip().lower()
+    if normalized in INTERACTIVE_PR_NO_PROMPT_MODES:
+        return normalized
+    return INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE
 
 
 @dataclass
@@ -191,6 +206,7 @@ class Environment:
     agentsnova_auto_reactions_mode: str = AGENTSNOVA_AUTO_MODE_INHERIT
     agentsnova_marker_comment_mode: str = AGENTSNOVA_MARKER_COMMENT_MODE_INHERIT
     interactive_pr_prompt_enabled: bool = True
+    interactive_pr_no_prompt_mode: str = INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE
     setup_agents_missing_prompt_enabled: bool = False
     interactive_pull_before_run_enabled: bool = True
     gh_branch_work_mode: str = GH_BRANCH_WORK_MODE_TASK_BRANCH
