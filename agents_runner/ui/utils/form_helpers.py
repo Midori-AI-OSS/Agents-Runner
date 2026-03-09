@@ -1,13 +1,20 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from PySide6.QtWidgets import QCheckBox, QGridLayout, QHBoxLayout, QLabel, QWidget
 
-if TYPE_CHECKING:
-    from PySide6.QtWidgets import QGridLayout, QLabel, QWidget
+from agents_runner.ui.constants import (
+    BUTTON_ROW_SPACING,
+    GRID_HORIZONTAL_SPACING,
+    GRID_VERTICAL_SPACING,
+)
 
-from PySide6.QtWidgets import QHBoxLayout
 
-from agents_runner.ui.constants import BUTTON_ROW_SPACING
+def configure_form_grid(grid: QGridLayout) -> None:
+    """Apply the shared grid configuration used by form pages."""
+
+    grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
+    grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
+    grid.setContentsMargins(0, 0, 0, 0)
 
 
 def create_stretch_row(
@@ -57,24 +64,36 @@ def add_grid_row(
 ) -> None:
     """Add a label-control row to a grid layout.
 
-    Creates a stretch row container for the control widgets to ensure
-    proper right-alignment, matching the Envs menu layout pattern.
+    Single checkbox controls are wrapped in a stretch row to keep the
+    checkbox compact and left-aligned. Other single controls are placed
+    directly in the grid cell. Multi-control rows are wrapped in a stretch
+    row so controls remain left-aligned with trailing space on the right.
 
     Args:
         grid: The grid layout to add the row to.
         row: The row index (0-based).
         label: The label widget or text string for the left column.
-        *controls: Control widgets to place in the right column (inside stretch row).
+        *controls: Control widgets to place in the right column.
         colspan: Number of columns the controls should span (default 2).
 
     Example:
         >>> add_grid_row(grid, 0, "Interactive terminal", combo, button)
         >>> add_grid_row(grid, 1, "Theme", theme_combo, colspan=1)
     """
-    from PySide6.QtWidgets import QLabel
-
     label_widget = QLabel(label) if isinstance(label, str) else label
-    control_row = create_stretch_row(*controls)
+    if not controls:
+        msg = "add_grid_row requires at least one control widget"
+        raise ValueError(msg)
+
+    if len(controls) == 1:
+        single_control = controls[0]
+        control_widget = (
+            create_stretch_row(single_control, stretch_index=1)
+            if isinstance(single_control, QCheckBox)
+            else single_control
+        )
+    else:
+        control_widget = create_stretch_row(*controls, stretch_index=len(controls))
 
     grid.addWidget(label_widget, row, 0)
-    grid.addWidget(control_row, row, 1, 1, colspan)
+    grid.addWidget(control_widget, row, 1, 1, colspan)

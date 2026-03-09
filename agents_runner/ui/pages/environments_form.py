@@ -33,11 +33,14 @@ from agents_runner.ide_systems import available_ide_system_names
 from agents_runner.ide_systems import get_ide_system
 from agents_runner.ui.constants import (
     BUTTON_ROW_SPACING,
-    GRID_HORIZONTAL_SPACING,
     GRID_VERTICAL_SPACING,
     STANDARD_BUTTON_WIDTH,
 )
-from agents_runner.ui.utils.form_helpers import create_stretch_row
+from agents_runner.ui.utils.form_helpers import (
+    add_grid_row,
+    configure_form_grid,
+    create_stretch_row,
+)
 from agents_runner.ui.pages.github_trust import collect_seed_usernames_for_environment
 from agents_runner.ui.pages.github_username_list import GitHubUsernameListWidget
 from agents_runner.ui.pages.environments_agents import AgentsTabWidget
@@ -404,46 +407,22 @@ class EnvironmentsFormMixin:
 
         general_page, general_body = self._create_page(specs_by_key["general"])
         grid = QGridLayout()
-        grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        grid.setContentsMargins(0, 0, 0, 0)
+        configure_form_grid(grid)
 
-        max_agents_row = QWidget(general_page)
-        max_agents_row_layout = QHBoxLayout(max_agents_row)
-        max_agents_row_layout.setContentsMargins(0, 0, 0, 0)
-        max_agents_row_layout.setSpacing(BUTTON_ROW_SPACING)
-        max_agents_row_layout.addWidget(self._max_agents_running)
-        max_agents_row_layout.addStretch(1)
-
-        headless_desktop_row = QWidget(general_page)
-        headless_desktop_layout = QHBoxLayout(headless_desktop_row)
-        headless_desktop_layout.setContentsMargins(0, 0, 0, 0)
-        headless_desktop_layout.setSpacing(BUTTON_ROW_SPACING)
-        headless_desktop_layout.addWidget(self._headless_desktop_enabled)
-        headless_desktop_layout.addStretch(1)
-
-        cross_agents_row = QWidget(general_page)
-        cross_agents_layout = QHBoxLayout(cross_agents_row)
-        cross_agents_layout.setContentsMargins(0, 0, 0, 0)
-        cross_agents_layout.setSpacing(BUTTON_ROW_SPACING)
-        cross_agents_layout.addWidget(self._use_cross_agents)
-        cross_agents_layout.addStretch(1)
-
-        grid.addWidget(QLabel("Name"), 0, 0)
-        grid.addWidget(self._name, 0, 1, 1, 2)
-        grid.addWidget(QLabel("Color"), 1, 0)
-        grid.addWidget(self._color, 1, 1, 1, 2)
-        grid.addWidget(QLabel("Max agents running"), 3, 0)
-        grid.addWidget(max_agents_row, 3, 1, 1, 2)
+        max_agents_row = create_stretch_row(self._max_agents_running, stretch_index=1)
         self._headless_desktop_label = QLabel("Headless desktop")
-        self._headless_desktop_row = headless_desktop_row
-        grid.addWidget(self._headless_desktop_label, 4, 0)
-        grid.addWidget(self._headless_desktop_row, 4, 1, 1, 2)
-        grid.addWidget(QLabel("IDE override"), 5, 0)
-        grid.addWidget(self._ide_system_override, 5, 1, 1, 2)
-        cross_agents_row_index = 6
-        grid.addWidget(QLabel("Cross agents"), cross_agents_row_index, 0)
-        grid.addWidget(cross_agents_row, cross_agents_row_index, 1, 1, 2)
+        self._headless_desktop_row = create_stretch_row(
+            self._headless_desktop_enabled,
+            stretch_index=1,
+        )
+        cross_agents_row = create_stretch_row(self._use_cross_agents, stretch_index=1)
+
+        add_grid_row(grid, 0, QLabel("Name"), self._name)
+        add_grid_row(grid, 1, QLabel("Color"), self._color)
+        add_grid_row(grid, 3, QLabel("Max agents running"), max_agents_row)
+        add_grid_row(grid, 4, self._headless_desktop_label, self._headless_desktop_row)
+        add_grid_row(grid, 5, QLabel("IDE override"), self._ide_system_override)
+        add_grid_row(grid, 6, QLabel("Cross agents"), cross_agents_row)
 
         general_body.addLayout(grid)
         general_body.addStretch(1)
@@ -461,33 +440,34 @@ class EnvironmentsFormMixin:
             specs_by_key["github_config"]
         )
         github_grid = QGridLayout()
-        github_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        github_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        github_grid.setContentsMargins(0, 0, 0, 0)
+        configure_form_grid(github_grid)
 
-        gh_context_row = self._create_stretch_row(
-            github_config_page, self._gh_context_enabled
-        )
+        gh_context_row = create_stretch_row(self._gh_context_enabled, stretch_index=1)
         self._github_polling_enabled_label = QLabel("GitHub polling")
-        self._github_polling_enabled_row = self._create_stretch_row(
-            github_config_page, self._github_polling_enabled
+        self._github_polling_enabled_row = create_stretch_row(
+            self._github_polling_enabled,
+            stretch_index=1,
         )
         trusted_mode_row = self._agentsnova_trusted_mode
         auto_review_row = self._agentsnova_auto_review_mode
         auto_reactions_row = self._agentsnova_auto_reactions_mode
         marker_comment_row = self._agentsnova_marker_comment_mode
-        interactive_pr_prompt_row = self._create_stretch_row(
-            github_config_page, self._interactive_pr_prompt_enabled
+        interactive_pr_prompt_row = create_stretch_row(
+            self._interactive_pr_prompt_enabled,
+            stretch_index=1,
         )
         self._interactive_pr_no_prompt_mode_label = QLabel("When prompt is disabled")
-        self._interactive_pr_no_prompt_mode_row = self._create_stretch_row(
-            github_config_page, self._interactive_pr_no_prompt_mode
+        self._interactive_pr_no_prompt_mode_row = create_stretch_row(
+            self._interactive_pr_no_prompt_mode,
+            stretch_index=1,
         )
-        setup_agents_missing_prompt_row = self._create_stretch_row(
-            github_config_page, self._setup_agents_missing_prompt_enabled
+        setup_agents_missing_prompt_row = create_stretch_row(
+            self._setup_agents_missing_prompt_enabled,
+            stretch_index=1,
         )
-        interactive_pull_before_run_row = self._create_stretch_row(
-            github_config_page, self._interactive_pull_before_run_enabled
+        interactive_pull_before_run_row = create_stretch_row(
+            self._interactive_pull_before_run_enabled,
+            stretch_index=1,
         )
         branch_work_mode_row = self._gh_branch_work_mode
         task_branch_naming_row = self._gh_task_branch_naming_style
@@ -501,32 +481,51 @@ class EnvironmentsFormMixin:
         gh_custom_template_layout.addWidget(self._gh_task_branch_custom_template)
         gh_custom_template_layout.addWidget(self._gh_task_branch_custom_template_helper)
 
-        github_grid.addWidget(QLabel("GitHub context"), 0, 0)
-        github_grid.addWidget(gh_context_row, 0, 1, 1, 2)
-        github_grid.addWidget(self._github_polling_enabled_label, 1, 0)
-        github_grid.addWidget(self._github_polling_enabled_row, 1, 1, 1, 2)
-        github_grid.addWidget(QLabel("Interactive PR prompt"), 2, 0)
-        github_grid.addWidget(interactive_pr_prompt_row, 2, 1, 1, 2)
-        github_grid.addWidget(self._interactive_pr_no_prompt_mode_label, 3, 0)
-        github_grid.addWidget(self._interactive_pr_no_prompt_mode_row, 3, 1, 1, 2)
-        github_grid.addWidget(QLabel("Missing setup-agents prompt injection"), 4, 0)
-        github_grid.addWidget(setup_agents_missing_prompt_row, 4, 1, 1, 2)
-        github_grid.addWidget(QLabel("Interactive pull before run"), 5, 0)
-        github_grid.addWidget(interactive_pull_before_run_row, 5, 1, 1, 2)
-        github_grid.addWidget(QLabel("Trusted mode"), 6, 0)
-        github_grid.addWidget(trusted_mode_row, 6, 1, 1, 2)
-        github_grid.addWidget(QLabel("Auto review"), 7, 0)
-        github_grid.addWidget(auto_review_row, 7, 1, 1, 2)
-        github_grid.addWidget(QLabel("Auto reactions"), 8, 0)
-        github_grid.addWidget(auto_reactions_row, 8, 1, 1, 2)
-        github_grid.addWidget(QLabel("Marker comments"), 9, 0)
-        github_grid.addWidget(marker_comment_row, 9, 1, 1, 2)
-        github_grid.addWidget(QLabel("Branch workflow"), 10, 0)
-        github_grid.addWidget(branch_work_mode_row, 10, 1, 1, 2)
-        github_grid.addWidget(QLabel("Task branch naming"), 11, 0)
-        github_grid.addWidget(task_branch_naming_row, 11, 1, 1, 2)
-        github_grid.addWidget(self._gh_task_branch_custom_template_label, 12, 0)
-        github_grid.addWidget(self._gh_task_branch_custom_template_row, 12, 1, 1, 2)
+        add_grid_row(github_grid, 0, QLabel("GitHub context"), gh_context_row)
+        add_grid_row(
+            github_grid,
+            1,
+            self._github_polling_enabled_label,
+            self._github_polling_enabled_row,
+        )
+        add_grid_row(
+            github_grid,
+            2,
+            QLabel("Interactive PR prompt"),
+            interactive_pr_prompt_row,
+        )
+        add_grid_row(
+            github_grid,
+            3,
+            self._interactive_pr_no_prompt_mode_label,
+            self._interactive_pr_no_prompt_mode_row,
+        )
+        add_grid_row(
+            github_grid,
+            4,
+            QLabel("Missing setup-agents prompt injection"),
+            setup_agents_missing_prompt_row,
+        )
+        add_grid_row(
+            github_grid,
+            5,
+            QLabel("Interactive pull before run"),
+            interactive_pull_before_run_row,
+        )
+        add_grid_row(github_grid, 6, QLabel("Trusted mode"), trusted_mode_row)
+        add_grid_row(github_grid, 7, QLabel("Auto review"), auto_review_row)
+        add_grid_row(github_grid, 8, QLabel("Auto reactions"), auto_reactions_row)
+        add_grid_row(github_grid, 9, QLabel("Marker comments"), marker_comment_row)
+        add_grid_row(github_grid, 10, QLabel("Branch workflow"), branch_work_mode_row)
+        add_grid_row(
+            github_grid, 11, QLabel("Task branch naming"), task_branch_naming_row
+        )
+        add_grid_row(
+            github_grid,
+            12,
+            self._gh_task_branch_custom_template_label,
+            self._gh_task_branch_custom_template_row,
+        )
         self._interactive_pr_no_prompt_mode_label.setVisible(False)
         self._interactive_pr_no_prompt_mode_row.setVisible(False)
         self._gh_task_branch_custom_template_label.setVisible(False)
@@ -567,36 +566,50 @@ class EnvironmentsFormMixin:
 
         caching_page, caching_body = self._create_page(specs_by_key["caching"])
         caching_grid = QGridLayout()
-        caching_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        caching_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        caching_grid.setContentsMargins(0, 0, 0, 0)
+        configure_form_grid(caching_grid)
 
-        container_caching_row = self._create_stretch_row(
-            caching_page, self._container_caching_enabled
+        container_caching_row = create_stretch_row(
+            self._container_caching_enabled,
+            stretch_index=1,
         )
-        desktop_build_cache_row = self._create_stretch_row(
-            caching_page, self._cache_desktop_build
+        desktop_build_cache_row = create_stretch_row(
+            self._cache_desktop_build,
+            stretch_index=1,
         )
-        system_phase_cache_row = self._create_stretch_row(
-            caching_page, self._cache_system_preflight_enabled
+        system_phase_cache_row = create_stretch_row(
+            self._cache_system_preflight_enabled,
+            stretch_index=1,
         )
-        settings_phase_cache_row = self._create_stretch_row(
-            caching_page, self._cache_settings_preflight_enabled
+        settings_phase_cache_row = create_stretch_row(
+            self._cache_settings_preflight_enabled,
+            stretch_index=1,
         )
-        ide_setup_phase_cache_row = self._create_stretch_row(
-            caching_page, self._cache_ide_preflight_enabled
+        ide_setup_phase_cache_row = create_stretch_row(
+            self._cache_ide_preflight_enabled,
+            stretch_index=1,
         )
 
-        caching_grid.addWidget(QLabel("Container caching"), 0, 0)
-        caching_grid.addWidget(container_caching_row, 0, 1, 1, 2)
-        caching_grid.addWidget(QLabel("Desktop build cache"), 1, 0)
-        caching_grid.addWidget(desktop_build_cache_row, 1, 1, 1, 2)
-        caching_grid.addWidget(QLabel("System phase cache"), 2, 0)
-        caching_grid.addWidget(system_phase_cache_row, 2, 1, 1, 2)
-        caching_grid.addWidget(QLabel("Settings phase cache"), 3, 0)
-        caching_grid.addWidget(settings_phase_cache_row, 3, 1, 1, 2)
-        caching_grid.addWidget(QLabel("IDE setup phase cache"), 4, 0)
-        caching_grid.addWidget(ide_setup_phase_cache_row, 4, 1, 1, 2)
+        add_grid_row(
+            caching_grid, 0, QLabel("Container caching"), container_caching_row
+        )
+        add_grid_row(
+            caching_grid, 1, QLabel("Desktop build cache"), desktop_build_cache_row
+        )
+        add_grid_row(
+            caching_grid, 2, QLabel("System phase cache"), system_phase_cache_row
+        )
+        add_grid_row(
+            caching_grid,
+            3,
+            QLabel("Settings phase cache"),
+            settings_phase_cache_row,
+        )
+        add_grid_row(
+            caching_grid,
+            4,
+            QLabel("IDE setup phase cache"),
+            ide_setup_phase_cache_row,
+        )
 
         caching_body.addLayout(caching_grid)
         caching_body.addStretch(1)
@@ -666,11 +679,6 @@ class EnvironmentsFormMixin:
     def _register_page(self, key: str, widget: QWidget) -> None:
         index = self._page_stack.addWidget(widget)
         self._pane_index_by_key[key] = index
-
-    def _create_stretch_row(self, parent: QWidget, widget: QWidget) -> QWidget:
-        row = create_stretch_row(widget, stretch_index=1)
-        row.setParent(parent)
-        return row
 
     @staticmethod
     def _pane_button_label(key: str, title: str) -> str:
