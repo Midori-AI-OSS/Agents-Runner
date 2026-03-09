@@ -48,6 +48,11 @@ from agents_runner.ui.constants import (
     GRID_VERTICAL_SPACING,
     BUTTON_ROW_SPACING,
 )
+from agents_runner.ui.utils.form_helpers import (
+    add_grid_row,
+    configure_form_grid,
+    create_stretch_row,
+)
 from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 
@@ -160,7 +165,7 @@ class SettingsFormMixin:
             "Auto syncs background theme to the active agent.\n"
             "Select a specific theme to force an override."
         )
-        self._popup_theme_animation_enabled = QCheckBox("Animate popup backgrounds")
+        self._popup_theme_animation_enabled = QCheckBox("Enabled")
         self._popup_theme_animation_enabled.setToolTip(
             "When enabled, themed popup backgrounds stay animated. "
             "Disable to render popups as static backgrounds."
@@ -181,50 +186,40 @@ class SettingsFormMixin:
         )
         self._preflight_enabled.toggled.connect(self._on_preflight_enabled_toggled)
 
-        self._append_pixelarch_context = QCheckBox("Append PixelArch context")
+        self._append_pixelarch_context = QCheckBox("Enabled")
         self._append_pixelarch_context.setToolTip(
             "When enabled, appends a short note to prompts passed to Run Agent.\n"
             "This does not affect Run Interactive."
         )
 
-        self._headless_desktop_enabled = QCheckBox(
-            "Force headless desktop for all environments"
-        )
+        self._headless_desktop_enabled = QCheckBox("Enabled")
         self._headless_desktop_enabled.setToolTip(
             "When enabled, this overrides per-environment headless desktop settings."
         )
-        self._auto_navigate_on_run_agent_start = QCheckBox(
-            "Auto-navigate to Home when Run Agent starts"
-        )
+        self._auto_navigate_on_run_agent_start = QCheckBox("Enabled")
         self._auto_navigate_on_run_agent_start.setToolTip(
             "When enabled, starting a Run Agent task switches to the Home dashboard."
         )
-        self._auto_navigate_on_run_interactive_start = QCheckBox(
-            "Auto-navigate to Home when Run Interactive starts"
-        )
+        self._auto_navigate_on_run_interactive_start = QCheckBox("Enabled")
         self._auto_navigate_on_run_interactive_start.setToolTip(
             "When enabled, starting a Run Interactive task switches to the Home dashboard."
         )
 
-        self._gh_context_default = QCheckBox(
-            "Enable GitHub context by default for new environments"
-        )
+        self._gh_context_default = QCheckBox("Enabled")
         self._gh_context_default.setToolTip(
             "Only affects newly created environments. Existing environments keep their settings."
         )
 
-        self._spellcheck_enabled = QCheckBox("Enable spellcheck in prompt editor")
+        self._spellcheck_enabled = QCheckBox("Enabled")
         self._spellcheck_enabled.setToolTip(
             "Underlines misspelled words in the prompt editor and provides suggestions."
         )
 
-        self._mount_host_cache = QCheckBox("Mount host cache into containers")
+        self._mount_host_cache = QCheckBox("Enabled")
         self._mount_host_cache.setToolTip(
             "Mounts ~/.cache to speed up package manager installs across environments."
         )
-        self._ide_novnc_auto_open_enabled = QCheckBox(
-            "Auto-open noVNC viewer for Run IDE"
-        )
+        self._ide_novnc_auto_open_enabled = QCheckBox("Enabled")
         self._ide_novnc_auto_open_enabled.setToolTip(
             "When enabled, Run IDE opens the desktop viewer automatically after noVNC is ready."
         )
@@ -235,9 +230,7 @@ class SettingsFormMixin:
             "Choose whether auto-open waits until the task details page is open."
         )
 
-        self._github_workroom_prefer_browser = QCheckBox(
-            "Prefer browser for GitHub workroom"
-        )
+        self._github_workroom_prefer_browser = QCheckBox("Enabled")
         self._github_workroom_prefer_browser.setToolTip(
             "When enabled, opening an issue or pull request goes directly to the system browser."
         )
@@ -254,36 +247,32 @@ class SettingsFormMixin:
             "(open/close, comments, reaction markers)."
         )
 
-        self._agentsnova_auto_review_enabled = QCheckBox(
-            "Enable @agentsnova auto-review queueing"
-        )
+        self._agentsnova_auto_review_enabled = QCheckBox("Enabled")
         self._agentsnova_auto_review_enabled.setToolTip(
             "When enabled, PR/Issue mentions of @agentsnova can auto-queue tasks."
         )
         self._agentsnova_auto_marker_comments_mode = QComboBox()
         self._agentsnova_auto_marker_comments_mode.addItem(
-            "Default marker comments: Keep",
+            "Keep",
             "keep",
         )
         self._agentsnova_auto_marker_comments_mode.addItem(
-            "Default marker comments: Delete after 15s",
+            "Delete after 15s",
             "delete_after_15s",
         )
         self._agentsnova_auto_marker_comments_mode.addItem(
-            "Default marker comments: Disabled",
+            "Disabled",
             "disabled",
         )
         self._agentsnova_auto_marker_comments_mode.setToolTip(
             "Default mode for @agentsnova marker comments. Environments can inherit "
             "this mode or override it."
         )
-        self._agentsnova_auto_reactions_enabled = QCheckBox(
-            "Enable @agentsnova auto reactions"
-        )
+        self._agentsnova_auto_reactions_enabled = QCheckBox("Enabled")
         self._agentsnova_auto_reactions_enabled.setToolTip(
             "When enabled, @agentsnova queue triggers apply GitHub `eyes` reactions."
         )
-        self._github_polling_enabled = QCheckBox("Enable app-wide GitHub polling")
+        self._github_polling_enabled = QCheckBox("Enabled")
         self._github_polling_enabled.setToolTip(
             "When enabled, GitHub Issues/PRs poll in the background across enabled environments."
         )
@@ -350,11 +339,11 @@ class SettingsFormMixin:
         )
         self._test_preflights.clicked.connect(self._on_test_preflight)
 
-        self._radio_enabled = QCheckBox("Enable Midori AI Radio")
+        self._radio_enabled = QCheckBox("Enabled")
         self._radio_enabled.setToolTip(
             "Controls whether the navbar radio system is enabled."
         )
-        self._radio_autostart = QCheckBox("Auto-start radio on app launch")
+        self._radio_autostart = QCheckBox("Enabled")
         self._radio_autostart.setToolTip(
             "Starts playback automatically at launch when radio is enabled."
         )
@@ -382,7 +371,7 @@ class SettingsFormMixin:
         self._radio_volume_value.setObjectName("SettingsPaneSubtitle")
         self._radio_volume.valueChanged.connect(self._on_radio_volume_value_changed)
 
-        self._radio_loudness_boost_enabled = QCheckBox("Loudness Boost")
+        self._radio_loudness_boost_enabled = QCheckBox("Enabled")
         self._radio_loudness_boost_enabled.setToolTip(
             "Applies a gain multiplier to radio volume mapping."
         )
@@ -421,30 +410,43 @@ class SettingsFormMixin:
         general_page, general_body = self._create_page(
             specs_by_key["general_preferences"]
         )
-        general_body.addWidget(self._spellcheck_enabled)
-        general_body.addWidget(self._gh_context_default)
-        general_body.addWidget(self._append_pixelarch_context)
-
         terminal_layout = QGridLayout()
-        terminal_layout.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        terminal_layout.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        terminal_layout.setColumnStretch(1, 1)
-        terminal_layout.addWidget(QLabel("Interactive terminal"), 0, 0)
-        terminal_layout.addWidget(self._interactive_terminal, 0, 1)
-        terminal_layout.addWidget(self._refresh_interactive_terminal, 0, 2)
+        configure_form_grid(terminal_layout)
+        add_grid_row(terminal_layout, 0, QLabel("Spellcheck"), self._spellcheck_enabled)
+        add_grid_row(
+            terminal_layout,
+            1,
+            QLabel("GitHub context default"),
+            self._gh_context_default,
+        )
+        add_grid_row(
+            terminal_layout,
+            2,
+            QLabel("Append PixelArch context"),
+            self._append_pixelarch_context,
+        )
+        add_grid_row(
+            terminal_layout,
+            3,
+            QLabel("Interactive terminal"),
+            self._interactive_terminal,
+            self._refresh_interactive_terminal,
+        )
         general_body.addLayout(terminal_layout)
         general_body.addStretch(1)
         self._register_page("general_preferences", general_page)
 
         themes_page, themes_body = self._create_page(specs_by_key["themes"])
         themes_grid = QGridLayout()
-        themes_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        themes_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        themes_grid.setColumnStretch(1, 1)
-        themes_grid.addWidget(QLabel("Theme"), 0, 0)
-        themes_grid.addWidget(self._ui_theme, 0, 1)
+        configure_form_grid(themes_grid)
+        add_grid_row(
+            themes_grid,
+            0,
+            QLabel("Animate popup backgrounds"),
+            self._popup_theme_animation_enabled,
+        )
+        add_grid_row(themes_grid, 1, QLabel("Theme"), self._ui_theme)
         themes_body.addLayout(themes_grid)
-        themes_body.addWidget(self._popup_theme_animation_enabled)
         previews_heading = QLabel("Theme previews")
         previews_heading.setObjectName("SettingsPaneSubtitle")
         themes_body.addWidget(previews_heading)
@@ -462,13 +464,9 @@ class SettingsFormMixin:
 
         agent_page, agent_body = self._create_page(specs_by_key["agent_defaults"])
         agent_grid = QGridLayout()
-        agent_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        agent_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        agent_grid.setColumnStretch(1, 1)
-        agent_grid.addWidget(QLabel("Agent CLI"), 0, 0)
-        agent_grid.addWidget(self._use, 0, 1)
-        agent_grid.addWidget(QLabel("Agent Shell"), 1, 0)
-        agent_grid.addWidget(self._shell, 1, 1)
+        configure_form_grid(agent_grid)
+        add_grid_row(agent_grid, 0, QLabel("Agent CLI"), self._use)
+        add_grid_row(agent_grid, 1, QLabel("Agent Shell"), self._shell)
         agent_body.addLayout(agent_grid)
         agent_body.addStretch(1)
         self._register_page("agent_defaults", agent_page)
@@ -476,20 +474,50 @@ class SettingsFormMixin:
         github_config_page, github_config_body = self._create_page(
             specs_by_key["github_config"]
         )
-        github_config_body.addWidget(self._github_workroom_prefer_browser)
-        github_config_body.addWidget(self._agentsnova_auto_review_enabled)
-        github_config_body.addWidget(self._agentsnova_auto_marker_comments_mode)
-        github_config_body.addWidget(self._agentsnova_auto_reactions_enabled)
-        github_config_body.addWidget(self._github_polling_enabled)
-
         github_grid = QGridLayout()
-        github_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        github_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        github_grid.setColumnStretch(1, 1)
-        github_grid.addWidget(QLabel("GitHub write confirmations"), 0, 0)
-        github_grid.addWidget(self._github_write_confirmation_mode, 0, 1)
-        github_grid.addWidget(QLabel("Polling startup delay (s)"), 1, 0)
-        github_grid.addWidget(self._github_poll_startup_delay_s, 1, 1)
+        configure_form_grid(github_grid)
+        add_grid_row(
+            github_grid,
+            0,
+            QLabel("Workroom browser"),
+            self._github_workroom_prefer_browser,
+        )
+        add_grid_row(
+            github_grid,
+            1,
+            QLabel("Auto-review queueing"),
+            self._agentsnova_auto_review_enabled,
+        )
+        add_grid_row(
+            github_grid,
+            2,
+            QLabel("Auto reactions"),
+            self._agentsnova_auto_reactions_enabled,
+        )
+        add_grid_row(
+            github_grid,
+            3,
+            QLabel("GitHub polling"),
+            self._github_polling_enabled,
+        )
+        add_grid_row(
+            github_grid,
+            4,
+            QLabel("Default marker comments"),
+            self._agentsnova_auto_marker_comments_mode,
+        )
+        add_grid_row(
+            github_grid,
+            5,
+            QLabel("GitHub write confirmations"),
+            self._github_write_confirmation_mode,
+        )
+        add_grid_row(
+            github_grid,
+            6,
+            QLabel("Polling startup delay (s)"),
+            self._github_poll_startup_delay_s,
+        )
         github_config_body.addLayout(github_grid)
         github_config_body.addStretch(1)
         self._register_page("github_config", github_config_page)
@@ -509,19 +537,45 @@ class SettingsFormMixin:
 
         runtime_page, runtime_body = self._create_page(specs_by_key["runtime_behavior"])
         ide_grid = QGridLayout()
-        ide_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        ide_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        ide_grid.setColumnStretch(1, 1)
-        ide_grid.addWidget(QLabel("Default IDE"), 0, 0)
-        ide_grid.addWidget(self._ide_system_default, 0, 1)
-        ide_grid.addWidget(QLabel("Run IDE auto-open mode"), 1, 0)
-        ide_grid.addWidget(self._ide_novnc_auto_open_mode, 1, 1)
+        configure_form_grid(ide_grid)
+        add_grid_row(
+            ide_grid,
+            0,
+            QLabel("Auto-open noVNC viewer"),
+            self._ide_novnc_auto_open_enabled,
+        )
+        add_grid_row(
+            ide_grid,
+            1,
+            QLabel("Force headless desktop"),
+            self._headless_desktop_enabled,
+        )
+        add_grid_row(
+            ide_grid,
+            2,
+            QLabel("Navigate Home on Run Agent start"),
+            self._auto_navigate_on_run_agent_start,
+        )
+        add_grid_row(
+            ide_grid,
+            3,
+            QLabel("Navigate Home on Run Interactive start"),
+            self._auto_navigate_on_run_interactive_start,
+        )
+        add_grid_row(
+            ide_grid,
+            4,
+            QLabel("Mount host cache"),
+            self._mount_host_cache,
+        )
+        add_grid_row(ide_grid, 5, QLabel("Default IDE"), self._ide_system_default)
+        add_grid_row(
+            ide_grid,
+            6,
+            QLabel("Run IDE auto-open mode"),
+            self._ide_novnc_auto_open_mode,
+        )
         runtime_body.addLayout(ide_grid)
-        runtime_body.addWidget(self._ide_novnc_auto_open_enabled)
-        runtime_body.addWidget(self._headless_desktop_enabled)
-        runtime_body.addWidget(self._auto_navigate_on_run_agent_start)
-        runtime_body.addWidget(self._auto_navigate_on_run_interactive_start)
-        runtime_body.addWidget(self._mount_host_cache)
         runtime_body.addStretch(1)
         self._register_page("runtime_behavior", runtime_page)
 
@@ -544,31 +598,29 @@ class SettingsFormMixin:
         radio_spec = specs_by_key.get("radio")
         if radio_spec is not None:
             radio_page, radio_body = self._create_page(radio_spec)
-            radio_body.addWidget(self._radio_enabled)
-            radio_body.addWidget(self._radio_autostart)
-
             radio_grid = QGridLayout()
-            radio_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-            radio_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-            radio_grid.setColumnStretch(1, 1)
-            radio_grid.addWidget(QLabel("Channel"), 0, 0)
-            radio_grid.addWidget(self._radio_channel, 0, 1)
-            radio_grid.addWidget(QLabel("Stream quality"), 1, 0)
-            radio_grid.addWidget(self._radio_quality, 1, 1)
-            radio_grid.addWidget(QLabel("Volume"), 2, 0)
-            volume_row = QHBoxLayout()
-            volume_row.setSpacing(8)
-            volume_row.addWidget(self._radio_volume, 1)
-            volume_row.addWidget(self._radio_volume_value, 0, Qt.AlignRight)
-            radio_grid.addLayout(volume_row, 2, 1)
-            radio_grid.addWidget(QLabel("Loudness"), 3, 0)
+            configure_form_grid(radio_grid)
+            add_grid_row(radio_grid, 0, QLabel("Midori AI Radio"), self._radio_enabled)
+            add_grid_row(
+                radio_grid, 1, QLabel("Radio auto-start"), self._radio_autostart
+            )
+            add_grid_row(radio_grid, 2, QLabel("Channel"), self._radio_channel)
+            add_grid_row(radio_grid, 3, QLabel("Stream quality"), self._radio_quality)
 
-            boost_row = QHBoxLayout()
-            boost_row.setSpacing(8)
-            boost_row.addWidget(self._radio_loudness_boost_enabled)
-            boost_row.addWidget(self._radio_loudness_boost_factor)
-            boost_row.addStretch(1)
-            radio_grid.addLayout(boost_row, 3, 1)
+            volume_row = QWidget(radio_page)
+            volume_layout = QHBoxLayout(volume_row)
+            volume_layout.setContentsMargins(0, 0, 0, 0)
+            volume_layout.setSpacing(BUTTON_ROW_SPACING)
+            volume_layout.addWidget(self._radio_volume, 1)
+            volume_layout.addWidget(self._radio_volume_value)
+            add_grid_row(radio_grid, 4, QLabel("Volume"), volume_row)
+
+            boost_row = create_stretch_row(
+                self._radio_loudness_boost_enabled,
+                self._radio_loudness_boost_factor,
+                stretch_index=2,
+            )
+            add_grid_row(radio_grid, 5, QLabel("Loudness"), boost_row)
 
             radio_body.addLayout(radio_grid)
             radio_body.addStretch(1)
