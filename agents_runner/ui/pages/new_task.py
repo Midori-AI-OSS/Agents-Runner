@@ -281,6 +281,10 @@ class NewTaskPage(QWidget):
         self._run_interactive_no_desktop.triggered.connect(
             self._on_launch_without_desktop
         )
+        self._run_interactive_to_shell = self._run_interactive_menu.addAction(
+            "To Shell"
+        )
+        self._run_interactive_to_shell.triggered.connect(self._on_launch_to_shell)
         self._run_interactive.set_menu(None)
 
         self._run_agent = StainedGlassButton("Run Agent")
@@ -582,6 +586,41 @@ class NewTaskPage(QWidget):
         )
         self._clear_agent_override()
 
+    def _emit_interactive_launch_shell(self, agent_override: dict[str, str]) -> None:
+        """Emit interactive launch with shell mode override."""
+        prompt = sanitize_prompt((self._prompt.toPlainText() or "").strip())
+        command = (self._command.text() or "").strip()
+
+        if not self._workspace_ready:
+            QMessageBox.warning(
+                self,
+                "Workspace not configured",
+                self._workspace_error
+                or "Pick an environment with a local folder or GitHub repo configured.",
+            )
+            return
+
+        terminal_id = self._resolve_terminal_for_launch()
+        if not terminal_id:
+            return
+
+        env_id = self._active_env_id
+        base_branch = str(self._base_branch.currentData() or "")
+
+        if not self._confirm_auto_base_branch(env_id, base_branch):
+            return
+
+        self.requested_launch.emit(
+            prompt,
+            command,
+            "",
+            env_id,
+            terminal_id,
+            base_branch,
+            agent_override,
+            "",
+        )
+
     def _effective_ide_selection(self) -> str:
         ide_system = normalize_ide_system_name(self._ide_system_default)
 
@@ -654,6 +693,21 @@ class NewTaskPage(QWidget):
             )
             return
         self._emit_interactive_launch(extra_preflight_script=desktop_script)
+
+    def _get_shell_from_settings(self) -> str:
+        """Get the preferred shell from settings (key: 'shell', default: 'bash')."""
+        settings = getattr(self.parent(), "_settings_data", None) or {}
+        shell = str(settings.get("shell") or "bash").strip().lower()
+        valid_shells = {"bash", "sh", "zsh", "fish", "tmux"}
+        if shell not in valid_shells:
+            return "bash"
+        return shell
+
+    def _on_launch_to_shell(self) -> None:
+        """Launch interactive container with shell instead of agent."""
+        shell = self._get_shell_from_settings()
+        agent_override = {"mode": "shell", "shell": shell}
+        self._emit_interactive_launch_shell(agent_override)
 
     @staticmethod
     def _override_tint_color() -> QColor:

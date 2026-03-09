@@ -507,9 +507,7 @@ class MainWindowSettingsMixin:
             return None
         agent_cli = str(override.get("agent_cli") or "").strip().lower()
         if agent_cli not in set(available_agents(include_internal=False)):
-            return None
-        if not agent_cli:
-            return None
+            agent_cli = ""
         return {
             "source": str(override.get("source") or ""),
             "env_id": str(override.get("env_id") or ""),
@@ -517,6 +515,8 @@ class MainWindowSettingsMixin:
             "agent_id": str(override.get("agent_id") or ""),
             "config_dir": str(override.get("config_dir") or ""),
             "cli_flags": str(override.get("cli_flags") or ""),
+            "mode": str(override.get("mode") or ""),
+            "shell": str(override.get("shell") or ""),
         }
 
     def _coerce_ide_override(self, override: object) -> dict[str, str] | None:

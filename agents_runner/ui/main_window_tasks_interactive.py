@@ -143,6 +143,10 @@ class MainWindowTasksInteractiveMixin:
         )
 
         override = self._coerce_agent_override(agent_override)
+        shell_mode = bool(
+            override and str(override.get("mode") or "").strip().lower() == "shell"
+        )
+        shell = str(override.get("shell") or "bash").strip() if shell_mode else "bash"
         uses_environment_agent_selection = bool(
             not override
             and env
@@ -213,7 +217,9 @@ class MainWindowTasksInteractiveMixin:
                 env=env, advance_round_robin=True
             )
         host_config_dir = auto_config_dir
-        if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
+        if not shell_mode and not self._ensure_agent_config_dir(
+            agent_cli, host_config_dir
+        ):
             return
         if override and not agent_instance_id:
             agent_instance_id = str(agent_cli or "").strip()
@@ -414,6 +420,8 @@ class MainWindowTasksInteractiveMixin:
             "spinner": spinner,
             "desired_base": desired_base,
             "prep_id": prep_id,
+            "shell_mode": shell_mode,
+            "shell": shell,
         }
         prep_bridge = InteractivePrepBridge(
             on_stage=self._on_interactive_prep_stage,
@@ -702,6 +710,8 @@ class MainWindowTasksInteractiveMixin:
                 desktop_preflight_script_override=resolved_extra_preflight_script
                 if has_runtime_cache_overrides
                 else None,
+                shell_mode=bool(context.get("shell_mode")),
+                shell=str(context.get("shell") or "bash"),
             )
         except Exception as exc:
             self._on_interactive_prep_failed(task_id, str(exc))

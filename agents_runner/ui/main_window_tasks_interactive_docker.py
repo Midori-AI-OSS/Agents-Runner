@@ -121,6 +121,8 @@ def launch_docker_terminal_task(
     agent_probe_available_override: bool | None = None,
     skip_system_preflight_override: bool = False,
     desktop_preflight_script_override: str | None = None,
+    shell_mode: bool = False,
+    shell: str = "bash",
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
 
@@ -169,6 +171,8 @@ def launch_docker_terminal_task(
         agent_probe_available_override: Optional precomputed image probe status
         skip_system_preflight_override: Optional precomputed system-preflight skip
         desktop_preflight_script_override: Optional precomputed desktop script
+        shell_mode: If True, run shell instead of agent command
+        shell: Shell to use when shell_mode is True (bash, sh, zsh, fish, tmux)
     """
     # Apply desktop preflight script override if provided, before desktop detection
     desktop_preflight_script = str(extra_preflight_script or "")
@@ -493,10 +497,19 @@ def launch_docker_terminal_task(
             extra_mount_args.extend(["-v", mount])
 
         # Build container script with preflight and command
-        target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
-        verify_clause = ""
-        if cmd_parts and cmd_parts[0] in set(available_agents()):
-            verify_clause = verify_cli_clause(cmd_parts[0])
+        if shell_mode:
+            # Override to just run the shell (for "To Shell" feature)
+            shell = str(shell or "bash").strip()
+            if shell == "tmux":
+                target_cmd = "tmux new-session"
+            else:
+                target_cmd = f"/bin/{shell}"
+            verify_clause = ""
+        else:
+            target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
+            verify_clause = ""
+            if cmd_parts and cmd_parts[0] in set(available_agents()):
+                verify_clause = verify_cli_clause(cmd_parts[0])
 
         container_script = (
             "set -euo pipefail; "
@@ -522,6 +535,7 @@ def launch_docker_terminal_task(
             docker_env_passthrough=[],
             image=runtime_image,
             container_script=container_script,
+            shell_mode=shell_mode,
         )
 
         docker_cmd_for_log = _build_docker_command(
@@ -537,6 +551,7 @@ def launch_docker_terminal_task(
             docker_env_passthrough=[],
             image=runtime_image,
             container_script=container_script,
+            shell_mode=shell_mode,
         )
         main_window._on_task_log(
             task_id,
@@ -920,6 +935,7 @@ def _build_docker_command(
     docker_env_passthrough: list[str],
     image: str,
     container_script: str,
+    shell_mode: bool = False,
 ) -> str:
     """Build complete Docker run command string.
 
@@ -936,34 +952,44 @@ def _build_docker_command(
         docker_env_passthrough: Environment passthrough arguments
         image: Docker image name
         container_script: Container script to execute
+        shell_mode: If True, skip agent config dir mount (for "To Shell" feature)
 
     Returns:
         Complete Docker command string
     """
     docker_platform_args = docker_platform_args_for_pixelarch()
-    docker_args = [
+    docker_args: list[str] = [
         "docker",
         "run",
         *docker_platform_args,
         "-it",
         "--name",
         container_name,
-        "-v",
-        f"{host_config_dir}:{container_agent_dir}",
-        "-v",
-        f"{host_workdir}:{container_workdir}",
-        *extra_mount_args,
-        *preflight_mounts,
-        *env_args,
-        *port_args,
-        *docker_env_passthrough,
-        "-w",
-        container_workdir,
-        image,
-        "/bin/bash",
-        "-lc",
-        container_script,
     ]
+    if not shell_mode:
+        docker_args.extend(
+            [
+                "-v",
+                f"{host_config_dir}:{container_agent_dir}",
+            ]
+        )
+    docker_args.extend(
+        [
+            "-v",
+            f"{host_workdir}:{container_workdir}",
+            *extra_mount_args,
+            *preflight_mounts,
+            *env_args,
+            *port_args,
+            *docker_env_passthrough,
+            "-w",
+            container_workdir,
+            image,
+            "/bin/bash",
+            "-lc",
+            container_script,
+        ]
+    )
     return " ".join(shlex.quote(part) for part in docker_args)
 
 
