@@ -37,6 +37,7 @@ from agents_runner.ui.constants import (
     GRID_VERTICAL_SPACING,
     STANDARD_BUTTON_WIDTH,
 )
+from agents_runner.ui.utils.form_helpers import create_stretch_row
 from agents_runner.ui.pages.github_trust import collect_seed_usernames_for_environment
 from agents_runner.ui.pages.github_username_list import GitHubUsernameListWidget
 from agents_runner.ui.pages.environments_agents import AgentsTabWidget
@@ -666,14 +667,9 @@ class EnvironmentsFormMixin:
         index = self._page_stack.addWidget(widget)
         self._pane_index_by_key[key] = index
 
-    @staticmethod
-    def _create_stretch_row(parent: QWidget, widget: QWidget) -> QWidget:
-        row = QWidget(parent)
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(BUTTON_ROW_SPACING)
-        layout.addWidget(widget)
-        layout.addStretch(1)
+    def _create_stretch_row(self, parent: QWidget, widget: QWidget) -> QWidget:
+        row = create_stretch_row(widget, stretch_index=1)
+        row.setParent(parent)
         return row
 
     @staticmethod

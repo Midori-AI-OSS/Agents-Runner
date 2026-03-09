@@ -48,6 +48,7 @@ from agents_runner.ui.constants import (
     GRID_VERTICAL_SPACING,
     BUTTON_ROW_SPACING,
 )
+from agents_runner.ui.utils.form_helpers import create_stretch_row, add_grid_row
 from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 
@@ -429,9 +430,13 @@ class SettingsFormMixin:
         terminal_layout.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
         terminal_layout.setVerticalSpacing(GRID_VERTICAL_SPACING)
         terminal_layout.setColumnStretch(1, 1)
-        terminal_layout.addWidget(QLabel("Interactive terminal"), 0, 0)
-        terminal_layout.addWidget(self._interactive_terminal, 0, 1)
-        terminal_layout.addWidget(self._refresh_interactive_terminal, 0, 2)
+        add_grid_row(
+            terminal_layout,
+            0,
+            QLabel("Interactive terminal"),
+            self._interactive_terminal,
+            self._refresh_interactive_terminal,
+        )
         general_body.addLayout(terminal_layout)
         general_body.addStretch(1)
         self._register_page("general_preferences", general_page)
@@ -441,8 +446,7 @@ class SettingsFormMixin:
         themes_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
         themes_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
         themes_grid.setColumnStretch(1, 1)
-        themes_grid.addWidget(QLabel("Theme"), 0, 0)
-        themes_grid.addWidget(self._ui_theme, 0, 1)
+        add_grid_row(themes_grid, 0, QLabel("Theme"), self._ui_theme)
         themes_body.addLayout(themes_grid)
         themes_body.addWidget(self._popup_theme_animation_enabled)
         previews_heading = QLabel("Theme previews")
@@ -465,10 +469,8 @@ class SettingsFormMixin:
         agent_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
         agent_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
         agent_grid.setColumnStretch(1, 1)
-        agent_grid.addWidget(QLabel("Agent CLI"), 0, 0)
-        agent_grid.addWidget(self._use, 0, 1)
-        agent_grid.addWidget(QLabel("Agent Shell"), 1, 0)
-        agent_grid.addWidget(self._shell, 1, 1)
+        add_grid_row(agent_grid, 0, QLabel("Agent CLI"), self._use)
+        add_grid_row(agent_grid, 1, QLabel("Agent Shell"), self._shell)
         agent_body.addLayout(agent_grid)
         agent_body.addStretch(1)
         self._register_page("agent_defaults", agent_page)
@@ -486,10 +488,18 @@ class SettingsFormMixin:
         github_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
         github_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
         github_grid.setColumnStretch(1, 1)
-        github_grid.addWidget(QLabel("GitHub write confirmations"), 0, 0)
-        github_grid.addWidget(self._github_write_confirmation_mode, 0, 1)
-        github_grid.addWidget(QLabel("Polling startup delay (s)"), 1, 0)
-        github_grid.addWidget(self._github_poll_startup_delay_s, 1, 1)
+        add_grid_row(
+            github_grid,
+            0,
+            QLabel("GitHub write confirmations"),
+            self._github_write_confirmation_mode,
+        )
+        add_grid_row(
+            github_grid,
+            1,
+            QLabel("Polling startup delay (s)"),
+            self._github_poll_startup_delay_s,
+        )
         github_config_body.addLayout(github_grid)
         github_config_body.addStretch(1)
         self._register_page("github_config", github_config_page)
@@ -512,10 +522,13 @@ class SettingsFormMixin:
         ide_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
         ide_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
         ide_grid.setColumnStretch(1, 1)
-        ide_grid.addWidget(QLabel("Default IDE"), 0, 0)
-        ide_grid.addWidget(self._ide_system_default, 0, 1)
-        ide_grid.addWidget(QLabel("Run IDE auto-open mode"), 1, 0)
-        ide_grid.addWidget(self._ide_novnc_auto_open_mode, 1, 1)
+        add_grid_row(ide_grid, 0, QLabel("Default IDE"), self._ide_system_default)
+        add_grid_row(
+            ide_grid,
+            1,
+            QLabel("Run IDE auto-open mode"),
+            self._ide_novnc_auto_open_mode,
+        )
         runtime_body.addLayout(ide_grid)
         runtime_body.addWidget(self._ide_novnc_auto_open_enabled)
         runtime_body.addWidget(self._headless_desktop_enabled)
@@ -551,24 +564,22 @@ class SettingsFormMixin:
             radio_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
             radio_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
             radio_grid.setColumnStretch(1, 1)
-            radio_grid.addWidget(QLabel("Channel"), 0, 0)
-            radio_grid.addWidget(self._radio_channel, 0, 1)
-            radio_grid.addWidget(QLabel("Stream quality"), 1, 0)
-            radio_grid.addWidget(self._radio_quality, 1, 1)
-            radio_grid.addWidget(QLabel("Volume"), 2, 0)
-            volume_row = QHBoxLayout()
-            volume_row.setSpacing(8)
-            volume_row.addWidget(self._radio_volume, 1)
-            volume_row.addWidget(self._radio_volume_value, 0, Qt.AlignRight)
-            radio_grid.addLayout(volume_row, 2, 1)
-            radio_grid.addWidget(QLabel("Loudness"), 3, 0)
+            add_grid_row(radio_grid, 0, QLabel("Channel"), self._radio_channel)
+            add_grid_row(radio_grid, 1, QLabel("Stream quality"), self._radio_quality)
 
-            boost_row = QHBoxLayout()
-            boost_row.setSpacing(8)
-            boost_row.addWidget(self._radio_loudness_boost_enabled)
-            boost_row.addWidget(self._radio_loudness_boost_factor)
-            boost_row.addStretch(1)
-            radio_grid.addLayout(boost_row, 3, 1)
+            volume_row = create_stretch_row(
+                self._radio_volume,
+                self._radio_volume_value,
+                stretch_index=1,
+            )
+            add_grid_row(radio_grid, 2, QLabel("Volume"), volume_row)
+
+            boost_row = create_stretch_row(
+                self._radio_loudness_boost_enabled,
+                self._radio_loudness_boost_factor,
+                stretch_index=2,
+            )
+            add_grid_row(radio_grid, 3, QLabel("Loudness"), boost_row)
 
             radio_body.addLayout(radio_grid)
             radio_body.addStretch(1)
