@@ -586,41 +586,6 @@ class NewTaskPage(QWidget):
         )
         self._clear_agent_override()
 
-    def _emit_interactive_launch_shell(self, agent_override: dict[str, str]) -> None:
-        """Emit interactive launch with shell mode override."""
-        prompt = sanitize_prompt((self._prompt.toPlainText() or "").strip())
-        command = (self._command.text() or "").strip()
-
-        if not self._workspace_ready:
-            QMessageBox.warning(
-                self,
-                "Workspace not configured",
-                self._workspace_error
-                or "Pick an environment with a local folder or GitHub repo configured.",
-            )
-            return
-
-        terminal_id = self._resolve_terminal_for_launch()
-        if not terminal_id:
-            return
-
-        env_id = self._active_env_id
-        base_branch = str(self._base_branch.currentData() or "")
-
-        if not self._confirm_auto_base_branch(env_id, base_branch):
-            return
-
-        self.requested_launch.emit(
-            prompt,
-            command,
-            "",
-            env_id,
-            terminal_id,
-            base_branch,
-            agent_override,
-            "",
-        )
-
     def _effective_ide_selection(self) -> str:
         ide_system = normalize_ide_system_name(self._ide_system_default)
 
@@ -704,10 +669,30 @@ class NewTaskPage(QWidget):
         return shell
 
     def _on_launch_to_shell(self) -> None:
-        """Launch interactive container with shell instead of agent."""
         shell = self._get_shell_from_settings()
-        agent_override = {"mode": "shell", "shell": shell}
-        self._emit_interactive_launch_shell(agent_override)
+        self._agent_override = {"mode": "shell", "shell": shell}
+
+        env_id = self._active_env_id
+        if env_id and self._env_desktop_enabled.get(env_id, False):
+            desktop_path = (
+                Path(__file__).resolve().parent.parent.parent
+                / "preflights"
+                / "headless_desktop_novnc.sh"
+            )
+            try:
+                desktop_script = desktop_path.read_text(encoding="utf-8")
+                if desktop_script.strip():
+                    self._emit_interactive_launch(extra_preflight_script=desktop_script)
+                    return
+            except Exception:
+                pass
+            QMessageBox.warning(
+                self,
+                "Desktop Unavailable",
+                "Could not load desktop preflight. Launching shell only.",
+            )
+
+        self._emit_interactive_launch()
 
     @staticmethod
     def _override_tint_color() -> QColor:
