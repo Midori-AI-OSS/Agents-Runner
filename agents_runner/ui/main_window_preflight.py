@@ -101,6 +101,7 @@ class MainWindowPreflightMixin:
         )
         env_headless_desktop = bool(getattr(env, "headless_desktop_enabled", False))
         headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
+        gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
         desktop_cache_enabled = bool(getattr(env, "cache_desktop_build", False))
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
         smoke_command = f'echo "preflight smoke: {env.name or env.env_id}"; sleep 10'
@@ -131,6 +132,7 @@ class MainWindowPreflightMixin:
             cache_ide_preflight_enabled=bool(
                 getattr(env, "cache_ide_preflight_enabled", False)
             ),
+            gpu_enabled=gpu_enabled,
             env_vars=dict(env.env_vars) if env else {},
             extra_mounts=self._get_extra_mounts_with_cache(env),
             custom_command_argv=["sh", "-c", smoke_command],

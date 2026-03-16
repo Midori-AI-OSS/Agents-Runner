@@ -123,6 +123,7 @@ def launch_docker_terminal_task(
     desktop_preflight_script_override: str | None = None,
     shell_mode: bool = False,
     shell: str = "bash",
+    gpu_enabled: bool = False,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
 
@@ -173,6 +174,7 @@ def launch_docker_terminal_task(
         desktop_preflight_script_override: Optional precomputed desktop script
         shell_mode: If True, run shell instead of agent command
         shell: Shell to use when shell_mode is True (bash, sh, zsh, fish, tmux)
+        gpu_enabled: If True, request Docker GPU runtime (`--gpus all`)
     """
     # Apply desktop preflight script override if provided, before desktop detection
     desktop_preflight_script = str(extra_preflight_script or "")
@@ -536,6 +538,7 @@ def launch_docker_terminal_task(
             image=runtime_image,
             container_script=container_script,
             shell_mode=shell_mode,
+            gpu_enabled=gpu_enabled,
         )
 
         docker_cmd_for_log = _build_docker_command(
@@ -552,6 +555,7 @@ def launch_docker_terminal_task(
             image=runtime_image,
             container_script=container_script,
             shell_mode=shell_mode,
+            gpu_enabled=gpu_enabled,
         )
         main_window._on_task_log(
             task_id,
@@ -562,11 +566,14 @@ def launch_docker_terminal_task(
         finish_dir = os.path.dirname(main_window._state_path)
         os.makedirs(finish_dir, exist_ok=True)
         finish_path = os.path.join(finish_dir, f"interactive-finish-{task_id}.txt")
+        error_log_path = os.path.join(finish_dir, f"interactive-error-{task_id}.log")
         try:
             if os.path.exists(finish_path):
                 os.unlink(finish_path)
+            if os.path.exists(error_log_path):
+                os.unlink(error_log_path)
         except Exception:
-            # Best-effort cleanup: ignore errors while removing stale finish file.
+            # Best-effort cleanup: ignore errors while removing stale local files.
             pass
 
         # Build Rosetta warning snippet
@@ -592,6 +599,7 @@ def launch_docker_terminal_task(
             task_token=task_token,
             tmp_paths=tmp_paths,
             finish_path=finish_path,
+            error_log_path=error_log_path,
             gh_token_snippet="",
             rosetta_snippet=rosetta_snippet,
             docker_pull_cmd=docker_pull_cmd,
@@ -622,7 +630,9 @@ def launch_docker_terminal_task(
         main_window._schedule_save()
 
         # Start finish file watcher
-        main_window._start_interactive_finish_watch(task_id, finish_path)
+        main_window._start_interactive_finish_watch(
+            task_id, finish_path, error_log_path
+        )
 
         # Log launch
         main_window._on_task_log(
@@ -936,6 +946,7 @@ def _build_docker_command(
     image: str,
     container_script: str,
     shell_mode: bool = False,
+    gpu_enabled: bool = False,
 ) -> str:
     """Build complete Docker run command string.
 
@@ -953,15 +964,18 @@ def _build_docker_command(
         image: Docker image name
         container_script: Container script to execute
         shell_mode: If True, skip agent config dir mount (for "To Shell" feature)
+        gpu_enabled: If True, add `--gpus all` to docker run
 
     Returns:
         Complete Docker command string
     """
     docker_platform_args = docker_platform_args_for_pixelarch()
+    gpu_args = ["--gpus", "all"] if bool(gpu_enabled) else []
     docker_args: list[str] = [
         "docker",
         "run",
         *docker_platform_args,
+        *gpu_args,
         "-it",
         "--name",
         container_name,
@@ -998,6 +1012,7 @@ def _build_host_shell_script(
     task_token: str,
     tmp_paths: dict[str, str],
     finish_path: str,
+    error_log_path: str,
     gh_token_snippet: str,
     rosetta_snippet: str,
     docker_pull_cmd: str,
@@ -1010,6 +1025,7 @@ def _build_host_shell_script(
         task_token: Unique task token
         tmp_paths: Dict of temp file paths for cleanup
         finish_path: Path to finish file
+        error_log_path: Path to captured docker stderr text
         gh_token_snippet: GH token setup snippet
         rosetta_snippet: Rosetta warning snippet
         docker_pull_cmd: Docker pull command
@@ -1027,6 +1043,7 @@ def _build_host_shell_script(
         f"TMP_SETTINGS={shlex.quote(tmp_paths.get('settings', ''))}",
         f"TMP_SETUP_AGENTS={shlex.quote(tmp_paths.get('setup_agents', ''))}",
         f"FINISH_FILE={shlex.quote(finish_path)}",
+        f"ERROR_FILE={shlex.quote(error_log_path)}",
         'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
         'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
         + 'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
@@ -1046,7 +1063,8 @@ def _build_host_shell_script(
     host_script_parts.extend(
         [
             f'{docker_pull_cmd} || {{ STATUS=$?; echo "[host/docker][ERROR] docker pull failed (exit $STATUS)"; write_finish "$STATUS"; read -r -p "Press Enter to close..."; exit $STATUS; }}',
-            f'{docker_cmd}; STATUS=$?; if [ $STATUS -ne 0 ]; then echo "[host/docker][ERROR] container command failed (exit $STATUS)"; fi; write_finish "$STATUS"; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS',
+            ': > "$ERROR_FILE" 2>/dev/null || true',
+            f'{docker_cmd} 2> >(tee "$ERROR_FILE" >&2); STATUS=$?; if [ $STATUS -ne 0 ] && [ ! -s "$ERROR_FILE" ]; then echo "[host/docker][ERROR] container command failed (exit $STATUS)" | tee -a "$ERROR_FILE"; elif [ $STATUS -ne 0 ]; then echo "[host/docker][ERROR] container command failed (exit $STATUS)"; fi; write_finish "$STATUS"; if [ $STATUS -ne 0 ]; then read -r -p "Press Enter to close..."; fi; exit $STATUS',
         ]
     )
 

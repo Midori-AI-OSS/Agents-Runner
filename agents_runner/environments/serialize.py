@@ -11,6 +11,7 @@ from .model import Environment
 from .model import GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
 from .model import normalize_workspace_type
 from .model import normalize_agentsnova_auto_mode
+from .model import normalize_gpu_override_mode
 from .model import normalize_interactive_pr_no_prompt_mode
 from .model import normalize_agentsnova_marker_comment_mode
 from .model import normalize_gh_branch_work_mode
@@ -224,6 +225,9 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         max_agents_running = -1
 
     headless_desktop_enabled = bool(payload.get("headless_desktop_enabled", False))
+    gpu_override_mode = normalize_gpu_override_mode(
+        payload.get("gpu_override_mode", "inherit")
+    )
     ide_system_override_raw = str(payload.get("ide_system_override") or "").strip()
     ide_system_override = (
         normalize_ide_system_name(ide_system_override_raw)
@@ -489,6 +493,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         agent_cli_args=agent_cli_args,
         max_agents_running=max_agents_running,
         headless_desktop_enabled=headless_desktop_enabled,
+        gpu_override_mode=gpu_override_mode,
         ide_system_override=ide_system_override,
         cache_desktop_build=cache_desktop_build,
         container_caching_enabled=container_caching_enabled,
@@ -578,6 +583,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "max_agents_running": int(env.max_agents_running),
         "headless_desktop_enabled": bool(
             getattr(env, "headless_desktop_enabled", False)
+        ),
+        "gpu_override_mode": normalize_gpu_override_mode(
+            str(getattr(env, "gpu_override_mode", "inherit") or "inherit")
         ),
         "ide_system_override": (
             normalize_ide_system_name(

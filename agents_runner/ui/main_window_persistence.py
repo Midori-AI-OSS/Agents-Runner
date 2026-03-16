@@ -171,6 +171,7 @@ class MainWindowPersistenceMixin:
         self._settings_data.setdefault("ide_novnc_auto_open_enabled", True)
         self._settings_data.setdefault("ide_novnc_auto_open_mode", "viewing_only")
         self._settings_data.setdefault("headless_desktop_enabled", False)
+        self._settings_data.setdefault("gpu_enabled", False)
         self._settings_data.setdefault("auto_navigate_on_run_agent_start", False)
         self._settings_data.setdefault("auto_navigate_on_run_interactive_start", False)
         self._settings_data.setdefault("spellcheck_enabled", True)
@@ -227,6 +228,9 @@ class MainWindowPersistenceMixin:
             .lower()
             == "always"
             else "viewing_only"
+        )
+        self._settings_data["gpu_enabled"] = bool(
+            self._settings_data.get("gpu_enabled") or False
         )
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name

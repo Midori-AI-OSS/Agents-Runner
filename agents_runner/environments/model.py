@@ -81,6 +81,15 @@ INTERACTIVE_PR_NO_PROMPT_MODES = (
     INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW,
 )
 
+GPU_OVERRIDE_MODE_INHERIT = "inherit"
+GPU_OVERRIDE_MODE_ENABLED = "enabled"
+GPU_OVERRIDE_MODE_DISABLED = "disabled"
+GPU_OVERRIDE_MODES = (
+    GPU_OVERRIDE_MODE_INHERIT,
+    GPU_OVERRIDE_MODE_ENABLED,
+    GPU_OVERRIDE_MODE_DISABLED,
+)
+
 
 def normalize_workspace_type(value: str) -> str:
     """Normalize workspace type to canonical values."""
@@ -139,6 +148,14 @@ def normalize_interactive_pr_no_prompt_mode(value: str) -> str:
     return INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE
 
 
+def normalize_gpu_override_mode(value: str) -> str:
+    """Normalize environment-level GPU override mode values."""
+    normalized = str(value or "").strip().lower()
+    if normalized in GPU_OVERRIDE_MODES:
+        return normalized
+    return GPU_OVERRIDE_MODE_INHERIT
+
+
 @dataclass
 class PromptConfig:
     enabled: bool = False
@@ -177,6 +194,7 @@ class Environment:
     agent_cli_args: str = ""
     max_agents_running: int = -1
     headless_desktop_enabled: bool = False
+    gpu_override_mode: str = GPU_OVERRIDE_MODE_INHERIT
     ide_system_override: str = ""
     cache_desktop_build: bool = False
     container_caching_enabled: bool = False

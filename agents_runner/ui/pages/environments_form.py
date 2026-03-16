@@ -148,6 +148,13 @@ class EnvironmentsFormMixin:
         self._headless_desktop_enabled.stateChanged.connect(
             self._on_headless_desktop_toggled
         )
+        self._gpu_override_mode = QComboBox()
+        self._gpu_override_mode.addItem("Inherit global setting", "inherit")
+        self._gpu_override_mode.addItem("Enabled", "enabled")
+        self._gpu_override_mode.addItem("Disabled", "disabled")
+        self._gpu_override_mode.setToolTip(
+            "Override the global GPU runtime setting for this environment."
+        )
         self._ide_system_override = QComboBox()
         self._ide_system_override.addItem("Inherit setting default", "")
         for ide_name in available_ide_system_names():
@@ -421,8 +428,9 @@ class EnvironmentsFormMixin:
         add_grid_row(grid, 1, QLabel("Color"), self._color)
         add_grid_row(grid, 3, QLabel("Max agents running"), max_agents_row)
         add_grid_row(grid, 4, self._headless_desktop_label, self._headless_desktop_row)
-        add_grid_row(grid, 5, QLabel("IDE override"), self._ide_system_override)
-        add_grid_row(grid, 6, QLabel("Cross agents"), cross_agents_row)
+        add_grid_row(grid, 5, QLabel("GPU runtime"), self._gpu_override_mode)
+        add_grid_row(grid, 6, QLabel("IDE override"), self._ide_system_override)
+        add_grid_row(grid, 7, QLabel("Cross agents"), cross_agents_row)
 
         general_body.addLayout(grid)
         general_body.addStretch(1)

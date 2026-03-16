@@ -20,6 +20,7 @@ from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import looks_like_agent_help_command
 from agents_runner.environments import Environment
+from agents_runner.environments.model import normalize_gpu_override_mode
 from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 logger = logging.getLogger(__name__)
@@ -152,6 +153,7 @@ class MainWindowSettingsMixin:
         merged["headless_desktop_enabled"] = bool(
             merged.get("headless_desktop_enabled") or False
         )
+        merged["gpu_enabled"] = bool(merged.get("gpu_enabled") or False)
         merged["popup_theme_animation_enabled"] = bool(
             merged.get("popup_theme_animation_enabled", True)
         )
@@ -588,6 +590,25 @@ class MainWindowSettingsMixin:
             == "always"
             else "viewing_only"
         )
+
+    def _effective_gpu_enabled(
+        self,
+        *,
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+    ) -> bool:
+        settings_data = settings or self._settings_data
+        global_enabled = bool(settings_data.get("gpu_enabled") or False)
+        if env is None:
+            return global_enabled
+        mode = normalize_gpu_override_mode(
+            str(getattr(env, "gpu_override_mode", "inherit") or "inherit")
+        )
+        if mode == "enabled":
+            return True
+        if mode == "disabled":
+            return False
+        return global_enabled
 
     def _resolve_override_config_dir(
         self,

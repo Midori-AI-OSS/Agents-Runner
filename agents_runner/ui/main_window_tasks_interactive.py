@@ -86,6 +86,7 @@ class MainWindowTasksInteractiveMixin:
             )
             return
         env = self._environments.get(env_id)
+        gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
 
         task_id = uuid4().hex[:10]
         task_token = f"interactive-{task_id}"
@@ -422,6 +423,7 @@ class MainWindowTasksInteractiveMixin:
             "prep_id": prep_id,
             "shell_mode": shell_mode,
             "shell": shell,
+            "gpu_enabled": gpu_enabled,
         }
         prep_bridge = InteractivePrepBridge(
             on_stage=self._on_interactive_prep_stage,
@@ -712,6 +714,7 @@ class MainWindowTasksInteractiveMixin:
                 else None,
                 shell_mode=bool(context.get("shell_mode")),
                 shell=str(context.get("shell") or "bash"),
+                gpu_enabled=bool(context.get("gpu_enabled") or False),
             )
         except Exception as exc:
             self._on_interactive_prep_failed(task_id, str(exc))
@@ -719,10 +722,18 @@ class MainWindowTasksInteractiveMixin:
 
         self._clear_interactive_prep_refs(task_id)
 
-    def _start_interactive_finish_watch(self, task_id: str, finish_path: str) -> None:
+    def _start_interactive_finish_watch(
+        self, task_id: str, finish_path: str, error_log_path: str | None = None
+    ) -> None:
         task_id = str(task_id or "").strip()
         finish_path = os.path.abspath(
             os.path.expanduser(str(finish_path or "").strip())
+        )
+        error_candidate = str(error_log_path or "").strip()
+        resolved_error_log_path = (
+            os.path.abspath(os.path.expanduser(error_candidate))
+            if error_candidate
+            else ""
         )
         if not task_id or not finish_path:
             return
@@ -751,6 +762,25 @@ class MainWindowTasksInteractiveMixin:
                     break
                 except Exception:
                     time.sleep(0.2)
+
+            if exit_code != 0 and resolved_error_log_path:
+                try:
+                    with open(resolved_error_log_path, "r", encoding="utf-8") as f:
+                        lines = [str(line or "").rstrip("\n") for line in f.readlines()]
+                    lines = [line for line in lines if line.strip()]
+                    if lines:
+                        tail = "\n".join(lines[-20:])
+                        self._on_task_log(
+                            task_id,
+                            format_log(
+                                "docker",
+                                "run",
+                                "ERROR",
+                                f"interactive launch error details:\n{tail}",
+                            ),
+                        )
+                except Exception:
+                    pass
 
             # Encrypt finish file as artifact before deleting
             try:
@@ -793,6 +823,13 @@ class MainWindowTasksInteractiveMixin:
                 logger.rprint(
                     f"[finish] Failed to delete finish file: {exc!r}", mode="warn"
                 )
+
+            if resolved_error_log_path:
+                try:
+                    if os.path.exists(resolved_error_log_path):
+                        os.unlink(resolved_error_log_path)
+                except Exception:
+                    pass
 
             self.interactive_finished.emit(task_id, int(exit_code))
 

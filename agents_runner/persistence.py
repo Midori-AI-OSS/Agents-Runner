@@ -527,6 +527,7 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             cache_ide_preflight_enabled=bool(
                 payload.get("cache_ide_preflight_enabled") or False
             ),
+            gpu_enabled=bool(payload.get("gpu_enabled") or False),
             setup_agents_missing_prompt_enabled=bool(
                 payload.get("setup_agents_missing_prompt_enabled") or False
             ),

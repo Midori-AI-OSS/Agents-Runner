@@ -24,6 +24,7 @@ from agents_runner.environments.model import (
     GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
     INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE,
     normalize_agentsnova_auto_mode,
+    normalize_gpu_override_mode,
     normalize_interactive_pr_no_prompt_mode,
     normalize_agentsnova_marker_comment_mode,
     normalize_gh_branch_work_mode,
@@ -358,6 +359,11 @@ class EnvironmentsPage(
                 self._name.setText("")
                 self._max_agents_running.setText("-1")
                 self._headless_desktop_enabled.setChecked(False)
+                gpu_mode_idx = self._gpu_override_mode.findData("inherit")
+                if gpu_mode_idx < 0:
+                    gpu_mode_idx = 0
+                if gpu_mode_idx >= 0:
+                    self._gpu_override_mode.setCurrentIndex(gpu_mode_idx)
                 self._ide_system_override.setCurrentIndex(0)
                 self._cache_desktop_build.setChecked(False)
                 self._cache_desktop_build.setEnabled(False)
@@ -462,6 +468,16 @@ class EnvironmentsPage(
             self._headless_desktop_enabled.setChecked(
                 bool(getattr(env, "headless_desktop_enabled", False))
             )
+            gpu_mode = normalize_gpu_override_mode(
+                getattr(env, "gpu_override_mode", "inherit")
+            )
+            gpu_mode_idx = self._gpu_override_mode.findData(gpu_mode)
+            if gpu_mode_idx < 0:
+                gpu_mode_idx = self._gpu_override_mode.findData("inherit")
+            if gpu_mode_idx < 0:
+                gpu_mode_idx = 0
+            if gpu_mode_idx >= 0:
+                self._gpu_override_mode.setCurrentIndex(gpu_mode_idx)
             ide_system_override = str(getattr(env, "ide_system_override", "") or "")
             ide_system_idx = self._ide_system_override.findData(ide_system_override)
             if ide_system_idx < 0:

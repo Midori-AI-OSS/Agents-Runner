@@ -14,6 +14,7 @@ from agents_runner.environments import load_environments
 from agents_runner.environments import save_environment
 from agents_runner.environments.model import (
     normalize_agentsnova_auto_mode,
+    normalize_gpu_override_mode,
     normalize_interactive_pr_no_prompt_mode,
     normalize_agentsnova_marker_comment_mode,
     normalize_gh_branch_work_mode,
@@ -133,6 +134,9 @@ class EnvironmentsPageActionsMixin:
                 normalize_gh_task_branch_custom_template(
                     self._gh_task_branch_custom_template.text()
                 )
+            ),
+            "gpu_override_mode": normalize_gpu_override_mode(
+                str(self._gpu_override_mode.currentData() or "inherit")
             ),
         }
 
