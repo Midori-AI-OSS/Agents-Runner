@@ -286,6 +286,7 @@ class MainWindowTasksAgentMixin:
             )
 
         headless_desktop_enabled = ide_display_target == IDE_DISPLAY_CONTAINER_DESKTOP
+        gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
         desktop_cache_enabled = (
             bool(getattr(env, "cache_desktop_build", False)) if env else False
         )
@@ -400,6 +401,7 @@ class MainWindowTasksAgentMixin:
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
             cache_ide_preflight_enabled=cache_ide_preflight_enabled,
+            gpu_enabled=gpu_enabled,
             setup_agents_missing_prompt_enabled=bool(
                 env and getattr(env, "setup_agents_missing_prompt_enabled", False)
             ),
@@ -806,6 +808,7 @@ class MainWindowTasksAgentMixin:
             bool(getattr(env, "headless_desktop_enabled", False)) if env else False
         )
         headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
+        gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
         desktop_cache_enabled = (
             bool(getattr(env, "cache_desktop_build", False)) if env else False
         )
@@ -1180,6 +1183,7 @@ class MainWindowTasksAgentMixin:
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
             cache_ide_preflight_enabled=cache_ide_preflight_enabled,
+            gpu_enabled=gpu_enabled,
             setup_agents_missing_prompt_enabled=bool(
                 env and getattr(env, "setup_agents_missing_prompt_enabled", False)
             ),

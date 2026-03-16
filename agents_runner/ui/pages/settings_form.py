@@ -196,6 +196,11 @@ class SettingsFormMixin:
         self._headless_desktop_enabled.setToolTip(
             "When enabled, this overrides per-environment headless desktop settings."
         )
+        self._gpu_enabled = QCheckBox("Enabled")
+        self._gpu_enabled.setToolTip(
+            "When enabled, task containers request GPU runtime access (`--gpus all`) "
+            "for Agent, Interactive, and IDE runs."
+        )
         self._auto_navigate_on_run_agent_start = QCheckBox("Enabled")
         self._auto_navigate_on_run_agent_start.setToolTip(
             "When enabled, starting a Run Agent task switches to the Home dashboard."
@@ -553,25 +558,31 @@ class SettingsFormMixin:
         add_grid_row(
             ide_grid,
             2,
+            QLabel("Enable GPU"),
+            self._gpu_enabled,
+        )
+        add_grid_row(
+            ide_grid,
+            3,
             QLabel("Navigate Home on Run Agent start"),
             self._auto_navigate_on_run_agent_start,
         )
         add_grid_row(
             ide_grid,
-            3,
+            4,
             QLabel("Navigate Home on Run Interactive start"),
             self._auto_navigate_on_run_interactive_start,
         )
         add_grid_row(
             ide_grid,
-            4,
+            5,
             QLabel("Mount host cache"),
             self._mount_host_cache,
         )
-        add_grid_row(ide_grid, 5, QLabel("Default IDE"), self._ide_system_default)
+        add_grid_row(ide_grid, 6, QLabel("Default IDE"), self._ide_system_default)
         add_grid_row(
             ide_grid,
-            6,
+            7,
             QLabel("Run IDE auto-open mode"),
             self._ide_novnc_auto_open_mode,
         )
@@ -990,6 +1001,7 @@ class SettingsFormMixin:
             self._headless_desktop_enabled.setChecked(
                 bool(settings.get("headless_desktop_enabled") or False)
             )
+            self._gpu_enabled.setChecked(bool(settings.get("gpu_enabled") or False))
             self._auto_navigate_on_run_agent_start.setChecked(
                 bool(settings.get("auto_navigate_on_run_agent_start") or False)
             )
@@ -1213,6 +1225,7 @@ class SettingsFormMixin:
             "headless_desktop_enabled": bool(
                 self._headless_desktop_enabled.isChecked()
             ),
+            "gpu_enabled": bool(self._gpu_enabled.isChecked()),
             "auto_navigate_on_run_agent_start": bool(
                 self._auto_navigate_on_run_agent_start.isChecked()
             ),

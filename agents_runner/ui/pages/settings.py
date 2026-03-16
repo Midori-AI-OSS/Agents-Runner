@@ -161,6 +161,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
             self._agentsnova_auto_reactions_enabled,
             self._github_polling_enabled,
             self._headless_desktop_enabled,
+            self._gpu_enabled,
             self._popup_theme_animation_enabled,
             self._auto_navigate_on_run_agent_start,
             self._auto_navigate_on_run_interactive_start,

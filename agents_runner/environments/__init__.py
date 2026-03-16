@@ -6,10 +6,14 @@ from agents_runner.environments.model import SYSTEM_ENV_NAME
 from agents_runner.environments.model import WORKSPACE_CLONED
 from agents_runner.environments.model import WORKSPACE_MOUNTED
 from agents_runner.environments.model import WORKSPACE_NONE
+from agents_runner.environments.model import GPU_OVERRIDE_MODE_DISABLED
+from agents_runner.environments.model import GPU_OVERRIDE_MODE_ENABLED
+from agents_runner.environments.model import GPU_OVERRIDE_MODE_INHERIT
 from agents_runner.environments.model import Environment
 from agents_runner.environments.github_repo import GitHubRepoContext
 from agents_runner.environments.github_repo import resolve_environment_github_repo
 from agents_runner.environments.model import PromptConfig
+from agents_runner.environments.model import normalize_gpu_override_mode
 from agents_runner.environments.model import normalize_workspace_type
 from agents_runner.environments.parse import parse_env_vars_text
 from agents_runner.environments.parse import parse_mounts_text
@@ -30,6 +34,9 @@ __all__ = [
     "WORKSPACE_CLONED",
     "WORKSPACE_MOUNTED",
     "WORKSPACE_NONE",
+    "GPU_OVERRIDE_MODE_DISABLED",
+    "GPU_OVERRIDE_MODE_ENABLED",
+    "GPU_OVERRIDE_MODE_INHERIT",
     "Environment",
     "GitHubRepoContext",
     "PromptConfig",
@@ -39,6 +46,7 @@ __all__ = [
     "load_environments",
     "managed_repo_checkout_path",
     "managed_repos_dir",
+    "normalize_gpu_override_mode",
     "normalize_workspace_type",
     "parse_env_vars_text",
     "parse_mounts_text",

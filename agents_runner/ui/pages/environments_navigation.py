@@ -22,6 +22,7 @@ class EnvironmentsNavigationMixin:
         for combo in (
             self._color,
             self._workspace_type_combo,
+            self._gpu_override_mode,
             self._ide_system_override,
             self._agentsnova_trusted_mode,
             self._agentsnova_auto_review_mode,

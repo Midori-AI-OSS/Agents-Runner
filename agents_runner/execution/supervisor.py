@@ -545,6 +545,7 @@ class TaskSupervisor:
             cache_system_preflight_enabled=self._config.cache_system_preflight_enabled,
             cache_settings_preflight_enabled=self._config.cache_settings_preflight_enabled,
             cache_ide_preflight_enabled=self._config.cache_ide_preflight_enabled,
+            gpu_enabled=self._config.gpu_enabled,
             setup_agents_missing_prompt_enabled=(
                 self._config.setup_agents_missing_prompt_enabled
             ),

@@ -844,9 +844,11 @@ class ContainerExecutor:
         command_clause: str,
     ) -> list[str]:
         """Build complete Docker run command arguments."""
+        gpu_args = ["--gpus", "all"] if bool(self._config.gpu_enabled) else []
         return [
             "run",
             *platform_args,
+            *gpu_args,
             "-d",
             "-t",
             "--name",
