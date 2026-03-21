@@ -37,6 +37,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 - Run locally (GUI): `uv run main.py`
 - Follow existing code style: Python 3.13+, type hints throughout, and minimal modifications (avoid drive-by refactors).
+- Naming is strict: always use "Midori AI" or "midoriai"; never use shorthand "Midori" or "midori" in names, keys, comments, docs, prompts, or UI text.
 - Verification-first: confirm current behavior in the codebase before changing code; reproduce/confirm the issue (or missing behavior); verify the fix with clear checks.
 - No broad fallbacks: do not add “fallback behavior everywhere”; only add a narrow fallback when the task explicitly requires it, and justify it.
 - No backward compatibility shims by default: do not preserve old code paths “just in case”; only add compatibility layers when the task explicitly requires it.
