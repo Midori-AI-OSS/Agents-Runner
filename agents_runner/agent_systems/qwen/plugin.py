@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+import subprocess
 
 from pathlib import Path
 
+from agents_runner.agent_systems.interactive_command import move_flag_value_to_end
 from agents_runner.agent_systems.models import (
     AgentSystemPlan,
     AgentSystemRequest,
@@ -13,41 +15,53 @@ from agents_runner.agent_systems.models import (
     PromptDeliverySpec,
     UiThemeSpec,
 )
-from agents_runner.agent_systems.interactive_command import move_flag_value_to_end
 from agents_runner.agent_systems.status import AgentStatus
 from agents_runner.agent_systems.status import command_in_path
-from agents_runner.agent_systems.status import installed_status
 from agents_runner.agent_systems.status import not_installed_status
+from agents_runner.agent_systems.status import unknown_installed_status
 
 
 CONTAINER_HOME = Path("/home/midori-ai")
+WORKSPACE_DIR = "/home/midori-ai/workspace"
+_QWEN_SUBCOMMANDS = {"mcp", "extensions", "hooks", "hook"}
 
 
-class GeminiAgentSystemPlugin:
-    name = "gemini"
-    display_name = "Gemini"
+def _ensure_include_directory(parts: list[str], directory: str) -> None:
+    directory = str(directory or "").strip()
+    if not directory:
+        return
+
+    for idx, part in enumerate(parts[:-1]):
+        if part != "--include-directories":
+            continue
+        if parts[idx + 1] == directory:
+            return
+
+    parts.extend(["--include-directories", directory])
+
+
+class QwenAgentSystemPlugin:
+    name = "qwen"
+    display_name = "Qwen"
     capabilities = CapabilitySpec(
         supports_noninteractive=True,
         supports_interactive=True,
-        supports_cross_agents=True,
-        supports_sub_agents=True,
+        supports_cross_agents=False,
+        supports_sub_agents=False,
         requires_github_token=False,
     )
-    ui_theme = UiThemeSpec(theme_name="gemini")
+    ui_theme = UiThemeSpec(theme_name="qwen")
 
     def plan(self, req: AgentSystemRequest) -> AgentSystemPlan:
         context = req.context
         prompt = str(req.prompt or "").strip()
 
         argv = [
-            "gemini",
-            "--no-sandbox",
+            "qwen",
             "--approval-mode",
             "yolo",
             "--include-directories",
             str(context.workspace_container),
-            "--include-directories",
-            "/tmp",
             *list(context.extra_cli_args),
         ]
         if prompt:
@@ -72,77 +86,66 @@ class GeminiAgentSystemPlugin:
         )
 
     def container_config_dir(self) -> Path:
-        return CONTAINER_HOME / ".gemini"
+        return CONTAINER_HOME / ".qwen"
 
     def default_host_config_dir(self) -> str:
-        return os.path.expanduser("~/.gemini")
+        return os.path.expanduser("~/.qwen")
 
     def additional_config_mounts(self, *, host_config_dir: Path) -> list[MountSpec]:
         return []
 
     def setup_command(self) -> str | None:
-        return None
+        return "qwen; read -p 'Press Enter to close...'"
 
     def config_command(self) -> str | None:
-        return None
+        return "qwen --help; read -p 'Press Enter to close...'"
 
     def verify_command(self) -> list[str]:
-        return ["gemini", "--version"]
+        return ["sh", "-lc", "qwen --version && qwen --help >/dev/null"]
 
     def install_command(self) -> str:
-        return "yay -S --noconfirm --needed gemini-cli"
+        return "yay -S --noconfirm --needed qwen-code"
 
     def detect_status(self) -> AgentStatus:
-        if not command_in_path("gemini"):
+        if not command_in_path("qwen"):
             return not_installed_status(agent=self.name)
 
-        if os.environ.get("GEMINI_API_KEY"):
-            return installed_status(
-                agent=self.name,
-                logged_in=True,
-                status_text="Logged in (GEMINI_API_KEY)",
+        try:
+            version_result = subprocess.run(
+                ["qwen", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
-        if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI"):
-            return installed_status(
-                agent=self.name,
-                logged_in=True,
-                status_text="Logged in (VERTEXAI)",
+            help_result = subprocess.run(
+                ["qwen", "--help"],
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
-        if os.environ.get("GOOGLE_GENAI_USE_GCA"):
-            return installed_status(
+        except subprocess.TimeoutExpired:
+            return unknown_installed_status(
                 agent=self.name,
-                logged_in=True,
-                status_text="Logged in (GCA)",
+                message="Unknown (qwen runtime check timed out)",
             )
-
-        gemini_config_dir = Path.home() / ".gemini"
-        google_accounts = gemini_config_dir / "google_accounts.json"
-        oauth_creds = gemini_config_dir / "oauth_creds.json"
-
-        if google_accounts.exists() and google_accounts.is_file():
-            return installed_status(
+        except (FileNotFoundError, OSError):
+            return unknown_installed_status(
                 agent=self.name,
-                logged_in=True,
-                status_text="Logged in (google_accounts.json)",
-            )
-        if oauth_creds.exists() and oauth_creds.is_file():
-            return installed_status(
-                agent=self.name,
-                logged_in=True,
-                status_text="Logged in (oauth_creds.json)",
+                message="Unknown (qwen runtime check failed)",
             )
 
-        return installed_status(
+        if version_result.returncode == 0 and help_result.returncode == 0:
+            return unknown_installed_status(
+                agent=self.name,
+                message="Installed; login status unknown",
+            )
+        return unknown_installed_status(
             agent=self.name,
-            logged_in=False,
-            status_text="Not logged in (no auth method found)",
+            message="Unknown (qwen runtime check failed)",
         )
 
     def default_interactive_command(self) -> str:
-        return (
-            "--no-sandbox --approval-mode yolo --include-directories "
-            "/home/midori-ai/workspace"
-        )
+        return "--approval-mode yolo --include-directories /home/midori-ai/workspace"
 
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         return list(cmd_parts)
@@ -158,36 +161,24 @@ class GeminiAgentSystemPlugin:
     ) -> list[str]:
         parts = list(cmd_parts)
 
+        subcommand = ""
+        if len(parts) >= 2:
+            candidate = str(parts[1] or "").strip().lower()
+            if candidate in _QWEN_SUBCOMMANDS:
+                subcommand = candidate
+
         if agent_cli_args:
             parts.extend(agent_cli_args)
 
-        if "--include-directories" not in parts:
-            parts[1:1] = ["--include-directories", "/home/midori-ai/workspace"]
-
-        if is_help_launch:
-            if help_repos_dir not in parts:
-                parts[1:1] = ["--include-directories", help_repos_dir]
-
-            if "--sandbox" in parts:
-                idx = parts.index("--sandbox")
-                parts.pop(idx)
-                if idx < len(parts) and not parts[idx].startswith("-"):
-                    parts.pop(idx)
-            if "-s" in parts:
-                parts.remove("-s")
-
-            if "--no-sandbox" not in parts:
-                parts[1:1] = ["--no-sandbox"]
-
-        if (
-            "--sandbox" not in parts
-            and "--no-sandbox" not in parts
-            and "-s" not in parts
-        ):
-            parts[1:1] = ["--no-sandbox"]
+        if subcommand:
+            return parts
 
         if "--approval-mode" not in parts:
             parts[1:1] = ["--approval-mode", "yolo"]
+
+        _ensure_include_directory(parts, WORKSPACE_DIR)
+        if is_help_launch:
+            _ensure_include_directory(parts, help_repos_dir)
 
         if prompt:
             has_interactive_prompt = "-i" in parts or "--prompt-interactive" in parts
@@ -202,4 +193,4 @@ class GeminiAgentSystemPlugin:
         return parts
 
 
-PLUGIN = GeminiAgentSystemPlugin()
+PLUGIN = QwenAgentSystemPlugin()

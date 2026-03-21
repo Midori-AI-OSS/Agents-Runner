@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import available_agents
+from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.constants import (
@@ -127,7 +128,7 @@ class AgentsTabWidget(QWidget):
         controls_row.addWidget(QLabel("Add agent"))
         self._add_agent_cli = QComboBox()
         for agent in available_agents(include_internal=False):
-            self._add_agent_cli.addItem(agent.title(), agent)
+            self._add_agent_cli.addItem(format_agent_ui_label(agent), agent)
         controls_row.addWidget(self._add_agent_cli)
 
         add_btn = QToolButton()
@@ -354,7 +355,8 @@ class AgentsTabWidget(QWidget):
         self.agents_changed.emit()
 
     def _agent_cli_widget(self, row_index: int, inst: AgentInstance) -> QWidget:
-        label = QLabel(normalize_agent(inst.agent_cli).title())
+        del row_index
+        label = QLabel(format_agent_ui_label(normalize_agent(inst.agent_cli)))
         label.setAlignment(Qt.AlignCenter)
         label.setStyleSheet("color: rgba(237, 239, 245, 200);")
         return label
@@ -568,7 +570,7 @@ class AgentsTabWidget(QWidget):
             self._pinned_agent.clear()
             for inst in self._rows:
                 self._pinned_agent.addItem(
-                    f"{inst.agent_id} ({normalize_agent(inst.agent_cli)})",
+                    f"{inst.agent_id} ({format_agent_ui_label(normalize_agent(inst.agent_cli))})",
                     inst.agent_id,
                 )
             if (
@@ -608,7 +610,7 @@ class AgentsTabWidget(QWidget):
                 if other.agent_id == inst.agent_id:
                     continue
                 combo.addItem(
-                    f"{other.agent_id} ({normalize_agent(other.agent_cli)})",
+                    f"{other.agent_id} ({format_agent_ui_label(normalize_agent(other.agent_cli))})",
                     other.agent_id,
                 )
             if current_value and current_value in ids:

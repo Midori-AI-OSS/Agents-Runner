@@ -13,13 +13,13 @@ from PySide6.QtWidgets import QDialogButtonBox
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QWidget
 
-from agents_runner.setup.agent_status import AgentStatus
+from agents_runner.agent_systems.status import AgentStatus
 from agents_runner.setup.agent_status import detect_all_agents
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 from agents_runner.ui.widgets import AgentChainStatusWidget
 
 if TYPE_CHECKING:
-    from agents_runner.cooldown import CooldownManager
+    from agents_runner.core.agent.cooldown_manager import CooldownManager
 
 
 class AgentStatusCheckThread(QThread):
@@ -89,7 +89,7 @@ class TestChainDialog(ThemedDialog):
         layout.addStretch(1)
 
         # Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
@@ -117,7 +117,7 @@ class TestChainDialog(ThemedDialog):
         self._loading.setVisible(False)
 
         # Get cooldown status
-        cooldowns = {}
+        cooldowns: dict[str, bool] = {}
         if self._cooldown_manager:
             for agent in self._agents:
                 cooldowns[agent] = self._cooldown_manager.is_on_cooldown(agent)
