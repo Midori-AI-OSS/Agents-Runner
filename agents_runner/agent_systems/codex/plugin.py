@@ -14,6 +14,11 @@ from agents_runner.agent_systems.models import (
     PromptDeliverySpec,
     UiThemeSpec,
 )
+from agents_runner.agent_systems.status import AgentStatus
+from agents_runner.agent_systems.status import StatusType
+from agents_runner.agent_systems.status import command_in_path
+from agents_runner.agent_systems.status import installed_status
+from agents_runner.agent_systems.status import not_installed_status
 from agents_runner.agent_systems.interactive_command import move_positional_to_end
 
 
@@ -99,6 +104,44 @@ class CodexAgentSystemPlugin:
 
     def install_command(self) -> str:
         return "yay -S --noconfirm --needed openai-codex"
+
+    def detect_status(self) -> AgentStatus:
+        if not command_in_path("codex"):
+            return not_installed_status(agent=self.name)
+
+        try:
+            result = subprocess.run(
+                ["codex", "login", "status"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except subprocess.TimeoutExpired:
+            return installed_status(
+                agent=self.name,
+                logged_in=False,
+                status_text="Unknown (timeout)",
+                status_type=StatusType.UNKNOWN,
+            )
+        except (FileNotFoundError, OSError):
+            return installed_status(
+                agent=self.name,
+                logged_in=False,
+                status_text="Unknown (command failed)",
+                status_type=StatusType.UNKNOWN,
+            )
+
+        if result.returncode == 0:
+            return installed_status(
+                agent=self.name,
+                logged_in=True,
+                status_text="Logged in",
+            )
+        return installed_status(
+            agent=self.name,
+            logged_in=False,
+            status_text="Not logged in",
+        )
 
     def default_interactive_command(self) -> str:
         return "--sandbox danger-full-access"

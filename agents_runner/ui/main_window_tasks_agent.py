@@ -13,6 +13,7 @@ from PySide6.QtCore import QThread
 
 from PySide6.QtWidgets import QMessageBox
 
+from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments.cleanup import cleanup_task_workspace
@@ -618,12 +619,14 @@ class MainWindowTasksAgentMixin:
                             None,
                         )
                         if fallback_agent:
-                            fallback_name = fallback_agent.agent_cli.capitalize()
+                            fallback_name = format_agent_ui_label(
+                                fallback_agent.agent_cli
+                            )
 
             # Show cooldown modal
             modal = CooldownModal(
                 self,
-                agent_name=agent_cli.capitalize(),
+                agent_name=format_agent_ui_label(agent_cli),
                 watch_state=watch_state,
                 fallback_agent_name=fallback_name,
             )

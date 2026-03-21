@@ -23,8 +23,8 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
+from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.agent_systems import available_agent_system_names
-from agents_runner.agent_systems import get_agent_system
 from agents_runner.agent_systems import get_default_agent_system_name
 from agents_runner.ide_systems import available_ide_system_names
 from agents_runner.ide_systems import get_default_ide_system_name
@@ -711,21 +711,12 @@ class SettingsFormMixin:
         with QSignalBlocker(self._use):
             self._use.clear()
             for agent_name in available_agent_system_names(include_internal=False):
-                label = self._format_key_label(agent_name)
-                try:
-                    plugin = get_agent_system(agent_name)
-                    display_name = str(
-                        getattr(plugin, "display_name", "") or ""
-                    ).strip()
-                    if display_name:
-                        label = display_name
-                except Exception:
-                    pass
+                label = format_agent_ui_label(agent_name)
                 self._use.addItem(label, agent_name)
 
             if self._use.count() == 0:
                 default_name = get_default_agent_system_name()
-                self._use.addItem(self._format_key_label(default_name), default_name)
+                self._use.addItem(format_agent_ui_label(default_name), default_name)
 
         preferred = normalize_agent(selected or str(self._use.itemData(0) or ""))
         self._set_combo_value(self._use, preferred, fallback=preferred)
@@ -856,6 +847,10 @@ class SettingsFormMixin:
             return "Midori AI (Dark Theme)"
         if normalized == "midoriai_light":
             return "Midori AI (Light Theme)"
+        try:
+            return format_agent_ui_label(normalized)
+        except Exception:
+            pass
         return SettingsFormMixin._format_key_label(normalized)
 
     @staticmethod

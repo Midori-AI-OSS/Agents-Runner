@@ -13,6 +13,10 @@ from agents_runner.agent_systems.models import (
     MountSpec,
     PromptDeliverySpec,
 )
+from agents_runner.agent_systems.status import AgentStatus
+from agents_runner.agent_systems.status import command_in_path
+from agents_runner.agent_systems.status import installed_status
+from agents_runner.agent_systems.status import not_installed_status
 
 
 CONTAINER_HOME = Path("/home/midori-ai")
@@ -88,6 +92,15 @@ class SmokeAgentSystemPlugin:
 
     def install_command(self) -> str:
         return 'echo "smoke agent installing"'
+
+    def detect_status(self) -> AgentStatus:
+        if not command_in_path("sh"):
+            return not_installed_status(agent=self.name)
+        return installed_status(
+            agent=self.name,
+            logged_in=True,
+            status_text="Ready",
+        )
 
     def default_interactive_command(self) -> str:
         return ""

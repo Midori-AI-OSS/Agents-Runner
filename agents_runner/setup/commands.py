@@ -16,7 +16,7 @@ def get_setup_command(agent_name: str) -> str | None:
     the target in a terminal window.
 
     Args:
-        agent_name: Agent system name (codex, claude, copilot, gemini) or "github"
+        agent_name: Agent system name or "github"
 
     Returns:
         Shell command string, or None if agent doesn't support setup
@@ -36,7 +36,7 @@ def get_login_command(agent_name: str) -> str | None:
     Same as get_setup_command, provided for clarity in per-agent management.
 
     Args:
-        agent_name: Agent system name (codex, claude, copilot, gemini) or "github"
+        agent_name: Agent system name or "github"
 
     Returns:
         Shell command string, or None if agent doesn't support login
@@ -51,7 +51,7 @@ def get_config_command(agent_name: str) -> str | None:
     configuration information.
 
     Args:
-        agent_name: Agent system name (codex, claude, copilot, gemini) or "github"
+        agent_name: Agent system name or "github"
 
     Returns:
         Shell command string, or None if agent doesn't have a config command
@@ -71,7 +71,7 @@ def get_verify_command(agent_name: str) -> str:
     This command tests that the agent CLI is working.
 
     Args:
-        agent_name: Agent system name (codex, claude, copilot, gemini) or "github"
+        agent_name: Agent system name or "github"
 
     Returns:
         Shell command string

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 
 from pathlib import Path
 
@@ -14,6 +15,11 @@ from agents_runner.agent_systems.models import (
     UiThemeSpec,
 )
 from agents_runner.agent_systems.interactive_command import move_flag_value_to_end
+from agents_runner.agent_systems.status import AgentStatus
+from agents_runner.agent_systems.status import StatusType
+from agents_runner.agent_systems.status import command_in_path
+from agents_runner.agent_systems.status import installed_status
+from agents_runner.agent_systems.status import not_installed_status
 
 
 CONTAINER_HOME = Path("/home/midori-ai")
@@ -93,6 +99,60 @@ class CopilotAgentSystemPlugin:
 
     def install_command(self) -> str:
         return "yay -S --noconfirm --needed github-copilot-cli"
+
+    def detect_status(self) -> AgentStatus:
+        if not command_in_path("copilot"):
+            return not_installed_status(agent=self.name)
+
+        try:
+            result = subprocess.run(
+                ["gh", "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except subprocess.TimeoutExpired:
+            return installed_status(
+                agent=self.name,
+                logged_in=False,
+                status_text="Unknown (timeout)",
+                status_type=StatusType.UNKNOWN,
+            )
+        except (FileNotFoundError, OSError):
+            return installed_status(
+                agent=self.name,
+                logged_in=False,
+                status_text="Unknown (gh CLI not found)",
+                status_type=StatusType.UNKNOWN,
+            )
+
+        if result.returncode == 0 and "Logged in" in result.stdout:
+            username = None
+            for line in result.stdout.split("\n"):
+                if "Logged in to github.com account" not in line:
+                    continue
+                parts = line.split("account")
+                if len(parts) > 1:
+                    username = parts[1].split("(")[0].strip() or None
+                    break
+            if username:
+                return installed_status(
+                    agent=self.name,
+                    logged_in=True,
+                    status_text=f"Logged in as {username}",
+                    username=username,
+                )
+            return installed_status(
+                agent=self.name,
+                logged_in=True,
+                status_text="Logged in",
+            )
+
+        return installed_status(
+            agent=self.name,
+            logged_in=False,
+            status_text="Not logged in to GitHub",
+        )
 
     def default_interactive_command(self) -> str:
         return f"--yolo --add-dir {WORKSPACE_DIR}"

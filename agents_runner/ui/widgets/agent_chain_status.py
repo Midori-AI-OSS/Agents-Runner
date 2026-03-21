@@ -13,7 +13,9 @@ from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
-from agents_runner.setup.agent_status import AgentStatus
+from agents_runner.agent_labels import format_agent_ui_label
+from agents_runner.agent_systems.status import AgentStatus
+from agents_runner.agent_systems.status import StatusType
 
 
 class AgentStatusIndicator(QWidget):
@@ -45,7 +47,7 @@ class AgentStatusIndicator(QWidget):
         layout.addWidget(position_label)
 
         # Agent name
-        self._name_label = QLabel(agent_name.title())
+        self._name_label = QLabel(format_agent_ui_label(agent_name))
         self._name_label.setStyleSheet("font-weight: 500;")
         layout.addWidget(self._name_label)
 
@@ -92,7 +94,11 @@ class AgentStatusIndicator(QWidget):
 
         # Logged in indicator
         if self._status.installed:
-            if self._status.logged_in:
+            if self._status.status_type == StatusType.UNKNOWN:
+                self._add_indicator(
+                    "?", self._status.status_text, "rgba(160, 160, 160, 255)"
+                )
+            elif self._status.logged_in:
                 self._add_indicator("✓", "Logged in", "rgba(95, 205, 143, 255)")
             else:
                 self._add_indicator("⚠", "Not logged in", "rgba(249, 226, 175, 255)")
@@ -225,7 +231,7 @@ class AgentChainStatusWidget(QWidget):
         unavailable = []
 
         for indicator in self._agent_indicators:
-            name = indicator.get_agent_name().title()
+            name = format_agent_ui_label(indicator.get_agent_name())
             if indicator.is_available():
                 available.append(name)
             else:

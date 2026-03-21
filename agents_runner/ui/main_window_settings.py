@@ -12,6 +12,7 @@ from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import available_agents
 from agents_runner.agent_cli import default_host_config_dir
+from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.agent_systems import get_agent_system
 from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
 from agents_runner.ide_systems import get_default_ide_system_name
@@ -791,9 +792,10 @@ class MainWindowSettingsMixin:
             return ""
         agent_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or "codex"))
         agent_id = str(getattr(inst, "agent_id", "") or "").strip()
+        display_name = format_agent_ui_label(agent_cli)
         if agent_id and agent_id != agent_cli:
-            return f"{agent_cli} ({agent_id})"
-        return agent_cli
+            return f"{display_name} ({agent_id})"
+        return display_name
 
     def _compute_cross_agent_config_mounts(
         self,
