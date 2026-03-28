@@ -30,7 +30,7 @@ import pytest
 
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.workers import DockerAgentWorker
-from agents_runner.docker.process import _run_docker, _inspect_state
+from agents_runner.docker.process import run_docker, inspect_state
 from agents_runner.persistence import (
     save_task_payload,
     load_task_payload,
@@ -73,7 +73,7 @@ def cleanup_test_containers():
     def cleanup():
         try:
             # List all containers with agents-runner prefix
-            result = _run_docker(
+            result = run_docker(
                 ["ps", "-a", "--filter", "name=agents-runner-", "--format", "{{.ID}}"],
                 timeout_s=10.0,
             )
@@ -83,7 +83,7 @@ def cleanup_test_containers():
             # Remove each container
             for container_id in container_ids:
                 try:
-                    _run_docker(["rm", "-f", container_id], timeout_s=10.0)
+                    run_docker(["rm", "-f", container_id], timeout_s=10.0)
                 except Exception:
                     # Best-effort - continue even if removal fails
                     pass
@@ -157,7 +157,7 @@ def test_config(temp_state_dir, request):
         if container_id:
             for _ in range(10):
                 try:
-                    _inspect_state(container_id)
+                    inspect_state(container_id)
                     # Container still exists, wait
                     time.sleep(1)
                 except subprocess.CalledProcessError:
@@ -185,10 +185,10 @@ def test_config(temp_state_dir, request):
 def ensure_test_image():
     """Ensure the test Docker image is available."""
     try:
-        _run_docker(["image", "inspect", TEST_IMAGE], timeout_s=10.0)
+        run_docker(["image", "inspect", TEST_IMAGE], timeout_s=10.0)
     except Exception:
         # Pull the image if not available
-        _run_docker(["pull", TEST_IMAGE], timeout_s=120.0)
+        run_docker(["pull", TEST_IMAGE], timeout_s=120.0)
 
 
 def test_task_lifecycle_completes_successfully(test_config):

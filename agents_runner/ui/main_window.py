@@ -4,10 +4,14 @@ import os
 import re
 import threading
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
+from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QMainWindow
 from PySide6.QtWidgets import QToolButton
@@ -15,6 +19,8 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import Environment
+from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
+from agents_runner.ide_systems import get_default_ide_system_name
 from agents_runner.persistence import default_state_path
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import APP_TITLE
@@ -25,45 +31,51 @@ from agents_runner.ui.pages import DashboardPage
 from agents_runner.ui.pages import EnvironmentsPage
 from agents_runner.ui.pages import NewTaskPage
 from agents_runner.ui.pages import SettingsPage
+from agents_runner.ui.pages import TasksPage
 from agents_runner.ui.pages import TaskDetailsPage
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.widgets.radio_control import RadioControlWidget
 
-from agents_runner.ui.main_window_capacity import _MainWindowCapacityMixin
-from agents_runner.ui.main_window_dashboard import _MainWindowDashboardMixin
-from agents_runner.ui.main_window_environment import _MainWindowEnvironmentMixin
-from agents_runner.ui.main_window_navigation import _MainWindowNavigationMixin
-from agents_runner.ui.main_window_persistence import _MainWindowPersistenceMixin
-from agents_runner.ui.main_window_preflight import _MainWindowPreflightMixin
-from agents_runner.ui.main_window_settings import _MainWindowSettingsMixin
-from agents_runner.ui.main_window_task_events import _MainWindowTaskEventsMixin
-from agents_runner.ui.main_window_task_recovery import _MainWindowTaskRecoveryMixin
-from agents_runner.ui.main_window_task_review import _MainWindowTaskReviewMixin
-from agents_runner.ui.main_window_tasks_agent import _MainWindowTasksAgentMixin
+from agents_runner.ui.main_window_capacity import MainWindowCapacityMixin
+from agents_runner.ui.main_window_dashboard import MainWindowDashboardMixin
+from agents_runner.ui.main_window_auto_review import MainWindowAutoReviewMixin
+from agents_runner.ui.main_window_environment import MainWindowEnvironmentMixin
+from agents_runner.ui.main_window_navigation import MainWindowNavigationMixin
+from agents_runner.ui.main_window_persistence import MainWindowPersistenceMixin
+from agents_runner.ui.main_window_preflight import MainWindowPreflightMixin
+from agents_runner.ui.main_window_settings import MainWindowSettingsMixin
+from agents_runner.ui.main_window_task_events import MainWindowTaskEventsMixin
+from agents_runner.ui.main_window_task_recovery import MainWindowTaskRecoveryMixin
+from agents_runner.ui.main_window_task_review import MainWindowTaskReviewMixin
+from agents_runner.ui.main_window_tasks_agent import MainWindowTasksAgentMixin
 from agents_runner.ui.main_window_tasks_interactive import (
-    _MainWindowTasksInteractiveMixin,
+    MainWindowTasksInteractiveMixin,
 )
 from agents_runner.ui.main_window_tasks_interactive_finalize import (
-    _MainWindowTasksInteractiveFinalizeMixin,
+    MainWindowTasksInteractiveFinalizeMixin,
 )
+
+if TYPE_CHECKING:
+    from agents_runner.ui.task_event_proxy import TaskEventProxy
 
 
 class MainWindow(
     QMainWindow,
-    _MainWindowCapacityMixin,
-    _MainWindowNavigationMixin,
-    _MainWindowSettingsMixin,
-    _MainWindowEnvironmentMixin,
-    _MainWindowDashboardMixin,
-    _MainWindowTasksAgentMixin,
-    _MainWindowTasksInteractiveMixin,
-    _MainWindowTasksInteractiveFinalizeMixin,
-    _MainWindowPreflightMixin,
-    _MainWindowTaskReviewMixin,
-    _MainWindowTaskRecoveryMixin,
-    _MainWindowTaskEventsMixin,
-    _MainWindowPersistenceMixin,
+    MainWindowCapacityMixin,
+    MainWindowNavigationMixin,
+    MainWindowSettingsMixin,
+    MainWindowEnvironmentMixin,
+    MainWindowDashboardMixin,
+    MainWindowAutoReviewMixin,
+    MainWindowTasksAgentMixin,
+    MainWindowTasksInteractiveMixin,
+    MainWindowTasksInteractiveFinalizeMixin,
+    MainWindowPreflightMixin,
+    MainWindowTaskReviewMixin,
+    MainWindowTaskRecoveryMixin,
+    MainWindowTaskEventsMixin,
+    MainWindowPersistenceMixin,
 ):
     host_log = Signal(str, str)
     host_pr_url = Signal(str, str)
@@ -83,24 +95,22 @@ class MainWindow(
             "preflight_enabled": False,
             "preflight_script": "",
             "host_workdir": os.environ.get("CODEX_HOST_WORKDIR", os.getcwd()),
-            "host_codex_dir": os.environ.get(
-                "CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")
-            ),
-            "host_claude_dir": os.path.expanduser("~/.claude"),
-            "host_copilot_dir": os.path.expanduser("~/.copilot"),
-            "host_gemini_dir": os.path.expanduser("~/.gemini"),
             "active_environment_id": "default",
             "interactive_terminal_id": "",
-            "interactive_command": "--sandbox danger-full-access",
-            "interactive_command_claude": "--add-dir /home/midori-ai/workspace",
-            "interactive_command_copilot": "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace",
-            "interactive_command_gemini": "--include-directories /home/midori-ai/workspace",
+            "ide_system_default": get_default_ide_system_name(),
+            "ide_display_target_default": IDE_DISPLAY_CONTAINER_DESKTOP,
+            "ide_novnc_auto_open_enabled": True,
+            "ide_novnc_auto_open_mode": "viewing_only",
             "window_w": 1280,
             "window_h": 720,
             "max_agents_running": -1,
             "append_pixelarch_context": False,
             "headless_desktop_enabled": False,
+            "gpu_enabled": False,
+            "auto_navigate_on_run_agent_start": False,
+            "auto_navigate_on_run_interactive_start": False,
             "ui_theme": "auto",
+            "popup_theme_animation_enabled": True,
             "radio_enabled": False,
             "radio_channel": "",
             "radio_quality": "medium",
@@ -108,12 +118,23 @@ class MainWindow(
             "radio_autostart": False,
             "radio_loudness_boost_enabled": False,
             "radio_loudness_boost_factor": 2.2,
+            "github_workroom_prefer_browser": False,
+            "github_write_confirmation_mode": "always",
+            "github_poll_interval_s": 30,
+            "github_polling_enabled": False,
+            "github_poll_startup_delay_s": 35,
+            "agentsnova_auto_review_enabled": True,
+            "agentsnova_auto_marker_comments_mode": "keep",
+            "agentsnova_auto_reactions_enabled": True,
+            "agentsnova_trusted_users_global": [],
+            "agentsnova_review_guard_mode": "reaction",
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False
         self._tasks: dict[str, Task] = {}
         self._threads: dict[str, QThread] = {}
         self._bridges: dict[str, TaskRunnerBridge] = {}
+        self._task_event_proxies: dict[str, TaskEventProxy] = {}
         self._interactive_prep_threads: dict[str, QThread] = {}
         self._interactive_prep_workers: dict[str, object] = {}
         self._interactive_prep_bridges: dict[str, object] = {}
@@ -121,12 +142,22 @@ class MainWindow(
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}
+        self._ide_novnc_auto_open_timers: dict[str, QTimer] = {}
+        self._ide_novnc_auto_open_urls: dict[str, str] = {}
+        self._ide_novnc_auto_open_ready_s: dict[str, float] = {}
+        self._ide_novnc_auto_open_deferred: set[str] = set()
+        self._ide_novnc_auto_opened_tasks: set[str] = set()
         self._repo_branches_request_id: int = 0
+        self._repo_branches_request_meta: dict[int, dict[str, object]] = {}
+        self._repo_branches_cache: dict[str, list[str]] = {}
         self._state_path = default_state_path()
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(450)
         self._save_timer.timeout.connect(self._save_state)
+        self._task_event_drain_timer = QTimer(self)
+        self._task_event_drain_timer.setInterval(50)
+        self._task_event_drain_timer.timeout.connect(self._drain_task_event_proxies)
 
         # Agent watch states for cooldown tracking
         from agents_runner.core.agent.watch_state import AgentWatchState
@@ -182,10 +213,10 @@ class MainWindow(
         self._btn_home.clicked.connect(self._show_dashboard)
 
         self._btn_new = QToolButton()
-        self._btn_new.setText("New task")
+        self._btn_new.setText("Tasks")
         self._btn_new.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self._btn_new.setIcon(lucide_icon("folder-plus"))
-        self._btn_new.clicked.connect(self._show_new_task)
+        self._btn_new.clicked.connect(self._show_tasks)
 
         self._btn_envs = QToolButton()
         self._btn_envs.setText("Environments")
@@ -229,8 +260,14 @@ class MainWindow(
         self._new_task = NewTaskPage()
         self._new_task.requested_run.connect(self._start_task_from_ui)
         self._new_task.requested_launch.connect(self._start_interactive_task_from_ui)
+        self._new_task.requested_launch_ide.connect(self._start_ide_task_from_ui)
         self._new_task.environment_changed.connect(self._on_new_task_env_changed)
+        self._new_task.base_branch_changed.connect(
+            self._on_new_task_base_branch_changed
+        )
         self._new_task.back_requested.connect(self._show_dashboard)
+        self._tasks_page = TasksPage(new_task_page=self._new_task)
+        self._tasks_page.auto_review_requested.connect(self._on_auto_review_requested)
         self._details = TaskDetailsPage()
         self._details.set_environments(self._environments)
         self._details.back_requested.connect(self._show_dashboard)
@@ -256,12 +293,12 @@ class MainWindow(
         self._stack_layout.setContentsMargins(0, 0, 0, 0)
         self._stack_layout.setSpacing(0)
         self._stack_layout.addWidget(self._dashboard)
-        self._stack_layout.addWidget(self._new_task)
+        self._stack_layout.addWidget(self._tasks_page)
         self._stack_layout.addWidget(self._details)
         self._stack_layout.addWidget(self._envs_page)
         self._stack_layout.addWidget(self._settings)
         self._dashboard.show()
-        self._new_task.hide()
+        self._tasks_page.hide()
         self._details.hide()
         self._envs_page.hide()
         self._settings.hide()
@@ -276,23 +313,38 @@ class MainWindow(
         self._on_radio_state_changed(self._radio_controller.state_snapshot())
         self._try_start_queued_tasks()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._settings_data["window_w"] = int(self.width())
         self._settings_data["window_h"] = int(self.height())
         if hasattr(self, "_save_timer"):
             self._schedule_save()
 
-    def closeEvent(self, event) -> None:
-        if hasattr(self, "_radio_controller"):
-            self._radio_controller.shutdown()
+    def closeEvent(self, event: QCloseEvent) -> None:
+        try:
+            self._settings.try_autosave()
+        except Exception:
+            pass
+        try:
+            self._envs_page.try_autosave(show_validation_errors=False)
+        except Exception:
+            pass
         try:
             self._save_state()
         except Exception:
             pass
+        if hasattr(self, "_radio_controller"):
+            self._radio_controller.shutdown()
         # Clean up external viewer process
         if hasattr(self, "_details"):
             self._details.cleanup()
+        for timer in list(getattr(self, "_ide_novnc_auto_open_timers", {}).values()):
+            try:
+                timer.stop()
+                timer.deleteLater()
+            except Exception:
+                pass
+        self._ide_novnc_auto_open_timers.clear()
         super().closeEvent(event)
 
     def _sync_radio_controller_from_settings(
@@ -358,12 +410,27 @@ class MainWindow(
         if not self._radio_controller.qt_available:
             return
 
+        snapshot = self._radio_controller.state_snapshot()
+        connection_state = str(snapshot.get("connection_state") or "").strip().lower()
+        is_active = bool(snapshot.get("is_playing")) or bool(
+            snapshot.get("desired_playing")
+        )
+        if connection_state == "reconnecting":
+            is_active = True
+
+        if is_active:
+            self._settings_data["radio_enabled"] = False
+            self._radio_controller.set_enabled(False, start_when_enabled=False)
+            self._settings.set_settings(self._settings_data)
+            self._schedule_save()
+            return
+
         if not bool(self._settings_data.get("radio_enabled") or False):
             self._settings_data["radio_enabled"] = True
             self._radio_controller.set_enabled(True, start_when_enabled=False)
             self._settings.set_settings(self._settings_data)
 
-        self._radio_controller.toggle_playback()
+        self._radio_controller.start_playback()
         self._schedule_save()
 
     def _on_radio_control_volume_changed(self, value: int) -> None:
@@ -405,6 +472,10 @@ class MainWindow(
             self.setWindowTitle(APP_TITLE)
             return
 
+        if (not bool(state.get("enabled"))) and (not bool(state.get("is_playing"))):
+            self.setWindowTitle(self._active_environment_window_title())
+            return
+
         channel_label = str(state.get("channel_label") or "all").strip() or "all"
         current_track = self._normalize_radio_window_track_title(
             state.get("current_track")
@@ -422,6 +493,19 @@ class MainWindow(
             return
 
         self.setWindowTitle(f"{APP_TITLE} [{channel_label}]")
+
+    def _active_environment_window_title(self) -> str:
+        active_env_id = str(
+            self._settings_data.get("active_environment_id") or ""
+        ).strip()
+        if not active_env_id:
+            active_env_id = "default"
+        env = self._environments.get(active_env_id)
+        if env is not None:
+            env_name = str(getattr(env, "name", "") or "").strip()
+            if env_name:
+                return env_name
+        return active_env_id
 
     def _refresh_radio_channel_options(self, *, disable_on_failure: bool) -> None:
         selected_channel = RadioController.normalize_channel(

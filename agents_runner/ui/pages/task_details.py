@@ -27,10 +27,10 @@ from agents_runner.artifacts import get_artifact_info
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.task_model import _task_display_status
-from agents_runner.ui.utils import _format_duration
-from agents_runner.ui.utils import _rgba
-from agents_runner.ui.utils import _status_color
+from agents_runner.ui.task_model import task_display_status
+from agents_runner.ui.utils import format_duration
+from agents_runner.ui.utils import rgba
+from agents_runner.ui.utils import status_color
 from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.widgets import LogHighlighter
 from agents_runner.ui.widgets import StatusGlyph
@@ -69,11 +69,6 @@ class TaskDetailsPage(QWidget):
         self._subtitle = QLabel("—")
         self._subtitle.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
-        back = QToolButton()
-        back.setText("Back")
-        back.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        back.clicked.connect(self.back_requested.emit)
-
         self._review_menu = QMenu(self)
         self._review_pr = self._review_menu.addAction("Create PR")
         self._review_pr.triggered.connect(self._on_pr_triggered)
@@ -94,7 +89,6 @@ class TaskDetailsPage(QWidget):
         header_layout.addWidget(self._subtitle, 1)
         header_layout.addWidget(self._review, 0, Qt.AlignRight)
         header_layout.addWidget(self._desktop_btn, 0, Qt.AlignRight)
-        header_layout.addWidget(back, 0, Qt.AlignRight)
         layout.addWidget(header)
 
         self._tabs = QTabWidget()
@@ -333,10 +327,19 @@ class TaskDetailsPage(QWidget):
     def _sync_review_menu(self, task: Task) -> None:
         # Task.requires_git_metadata() already checks workspace_type
         can_pr = task.requires_git_metadata()
+        branch_matches_base = bool(
+            str(task.gh_branch or "").strip()
+            and str(task.gh_branch or "").strip()
+            == str(task.gh_base_branch or "").strip()
+        )
 
         pr_url = str(task.gh_pr_url or "").strip()
         self._review_pr.setVisible(can_pr)
-        self._review_pr.setEnabled(can_pr and not task.is_active())
+        self._review_pr.setEnabled(
+            can_pr
+            and not task.is_active()
+            and (pr_url.startswith("http") or not branch_matches_base)
+        )
         self._review_pr.setText("Open PR" if pr_url.startswith("http") else "Create PR")
 
         self._review.setVisible(can_pr)
@@ -375,9 +378,15 @@ class TaskDetailsPage(QWidget):
             return
 
         url = str(self._last_task.novnc_url or "").strip()
+        task_id = str(self._last_task.task_id or self._current_task_id or "")
+        self.launch_desktop_viewer_for_task(task_id=task_id, url=url)
+
+    def launch_desktop_viewer_for_task(self, *, task_id: str, url: str) -> bool:
+        """Launch viewer for a specific task noVNC URL."""
+        url = str(url or "").strip()
         if not url:
             logger.warning("Cannot launch desktop viewer: no noVNC URL available")
-            return
+            return False
 
         try:
             from PySide6 import QtWebEngineWidgets as _  # noqa: F401
@@ -386,7 +395,7 @@ class TaskDetailsPage(QWidget):
                 "QtWebEngine not available; opening noVNC URL in system browser instead"
             )
             QDesktopServices.openUrl(QUrl(url))
-            return
+            return True
 
         # If viewer is already running for this URL, don't launch another
         if (
@@ -395,7 +404,7 @@ class TaskDetailsPage(QWidget):
             and self._desktop_viewer_url == url
         ):
             logger.info("Desktop viewer already running")
-            return
+            return True
 
         # Clean up old process if it exists
         if self._desktop_viewer_process is not None:
@@ -404,7 +413,6 @@ class TaskDetailsPage(QWidget):
             self._desktop_viewer_process = None
 
         # Launch new viewer process
-        task_id = str(self._current_task_id or "")
         title = f"Task {task_id}" if task_id else "Desktop"
 
         self._desktop_viewer_process = QProcess(self)
@@ -459,8 +467,10 @@ class TaskDetailsPage(QWidget):
             logger.error("Failed to start desktop viewer process")
             self._desktop_viewer_process = None
             self._desktop_viewer_url = ""
+            return False
         else:
             logger.info(f"Desktop viewer launched: {title}")
+            return True
 
     def _on_viewer_output(self) -> None:
         """Capture desktop viewer output for crash diagnostics."""
@@ -638,11 +648,11 @@ class TaskDetailsPage(QWidget):
             self._artifacts_tab.set_task(self._last_task)
 
     def _apply_status(self, task: Task) -> None:
-        status = _task_display_status(task)
-        color = _status_color(task.status)
+        status = task_display_status(task)
+        color = status_color(task.status)
         self._status.setText(status)
         self._status.setStyleSheet(
-            f"font-size: 16px; font-weight: 750; color: {_rgba(color, 235)};"
+            f"font-size: 16px; font-weight: 750; color: {rgba(color, 235)};"
         )
         if task.is_active():
             self._glyph.set_mode("spinner", color)
@@ -664,7 +674,7 @@ class TaskDetailsPage(QWidget):
         if not task:
             self._uptime.setText("—")
             return
-        self._uptime.setText(_format_duration(task.elapsed_seconds()))
+        self._uptime.setText(format_duration(task.elapsed_seconds()))
 
     def cleanup(self) -> None:
         """Clean up resources, including external viewer process."""

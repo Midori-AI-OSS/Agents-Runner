@@ -8,7 +8,7 @@ from agents_runner.persistence import default_state_path
 
 from .model import Environment
 from .paths import default_data_dir
-from .serialize import _environment_from_payload
+from .serialize import environment_from_payload
 from .serialize import serialize_environment
 from .prompt_storage import delete_prompt_file
 
@@ -56,7 +56,8 @@ def _load_environments_items(path: str) -> list[dict[str, Any]]:
 
     raw: object
     if isinstance(payload, dict):
-        raw = payload.get("environments")
+        payload_dict: dict[str, Any] = payload
+        raw = payload_dict.get("environments")
     elif isinstance(payload, list):
         raw = payload
     else:
@@ -65,8 +66,9 @@ def _load_environments_items(path: str) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         return []
 
+    raw_list: list[Any] = raw
     items: list[dict[str, Any]] = []
-    for item in raw:
+    for item in raw_list:
         if isinstance(item, dict):
             items.append(item)
     return items
@@ -78,7 +80,7 @@ def load_environments(data_dir: str | None = None) -> dict[str, Environment]:
     raw = _load_environments_items(envs_path)
     envs: dict[str, Environment] = {}
     for item in raw:
-        env = _environment_from_payload(item)
+        env = environment_from_payload(item)
         if env is None:
             continue
         envs[env.env_id] = env
@@ -134,7 +136,7 @@ def delete_environment(env_id: str, data_dir: str | None = None) -> None:
         keep.append(item)
 
     if removed is not None:
-        env = _environment_from_payload(removed)
+        env = environment_from_payload(removed)
         if env:
             for prompt in env.prompts or []:
                 if prompt.prompt_path:

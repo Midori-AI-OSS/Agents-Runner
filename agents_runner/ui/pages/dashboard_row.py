@@ -28,9 +28,9 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.task_model import _task_display_status
-from agents_runner.ui.utils import _rgba
-from agents_runner.ui.utils import _status_color
+from agents_runner.ui.task_model import task_display_status
+from agents_runner.ui.utils import rgba
+from agents_runner.ui.utils import status_color
 from agents_runner.ui.widgets import BouncingLoadingBar
 from agents_runner.ui.widgets import StatusGlyph
 
@@ -287,16 +287,16 @@ class TaskRow(QWidget):
         self.set_task(task.prompt_one_line())
         self.set_info(task.info_one_line())
 
-        display = _task_display_status(task)
+        display = task_display_status(task)
         status_key = (task.status or "").lower()
         if task.is_done():
-            color = _status_color("done")
+            color = status_color("done")
         elif task.is_failed() or (task.exit_code is not None and task.exit_code != 0):
-            color = _status_color("failed")
+            color = status_color("failed")
         else:
-            color = _status_color(status_key)
+            color = status_color(status_key)
         self._status.setText(display)
-        self._status.setStyleSheet(f"color: {_rgba(color, 235)}; font-weight: 700;")
+        self._status.setStyleSheet(f"color: {rgba(color, 235)}; font-weight: 700;")
 
         if task.is_active():
             self._glyph.hide()

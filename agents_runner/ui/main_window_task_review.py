@@ -9,10 +9,11 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.gh_management import git_current_branch
 from agents_runner.log_format import format_log
 
 
-class _MainWindowTaskReviewMixin:
+class MainWindowTaskReviewMixin:
     def _on_task_pr_requested(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         task = self._tasks.get(task_id)
@@ -68,7 +69,7 @@ class _MainWindowTaskReviewMixin:
         if not repo_root and task.requires_git_metadata():
             from agents_runner.ui.task_repair import repair_task_git_metadata
 
-            success, msg = repair_task_git_metadata(
+            success, _msg = repair_task_git_metadata(
                 task,
                 state_path=self._state_path,
                 environments=self._environments,
@@ -86,9 +87,6 @@ class _MainWindowTaskReviewMixin:
                         )
                 self._schedule_save()
 
-        if not branch:
-            branch = f"midoriaiagents/{task_id}"
-
         if not repo_root:
             QMessageBox.warning(
                 self,
@@ -102,6 +100,12 @@ class _MainWindowTaskReviewMixin:
             )
             return
 
+        if not branch:
+            branch = str(git_current_branch(repo_root) or "").strip()
+            if branch:
+                task.gh_branch = branch
+                self._schedule_save()
+
         if task.is_active():
             QMessageBox.information(
                 self,
@@ -111,6 +115,20 @@ class _MainWindowTaskReviewMixin:
             return
 
         base_branch = str(task.gh_base_branch or "").strip()
+        if not branch:
+            QMessageBox.information(
+                self,
+                "PR not available",
+                "This task does not have a usable branch for PR creation.",
+            )
+            return
+        if base_branch and branch == base_branch:
+            QMessageBox.information(
+                self,
+                "PR not available",
+                "This task worked directly on the base branch, so there is no separate PR branch to open.",
+            )
+            return
         base_display = base_branch or "auto"
         message = f"Create a PR from {branch} -> {base_display}?\n\nThis will commit and push any local changes."
         if (

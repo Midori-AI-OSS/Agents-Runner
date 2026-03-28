@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import os
-
 from agents_runner.agent_cli import normalize_agent
+from agents_runner.ide_systems import get_default_ide_system_name
+from agents_runner.ide_systems import normalize_ide_display_target
+from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_active_task_payloads
@@ -12,11 +13,12 @@ from agents_runner.persistence import save_state
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.radio import RadioController
-from agents_runner.ui.utils import _parse_docker_time
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import parse_docker_time
+from agents_runner.ui.utils import stain_color
+from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 
-class _MainWindowPersistenceMixin:
+class MainWindowPersistenceMixin:
     @staticmethod
     def _is_missing_container_error(exc: Exception) -> bool:
         text = str(exc or "").lower()
@@ -41,13 +43,13 @@ class _MainWindowPersistenceMixin:
         if not container_id:
             return False
         try:
-            from agents_runner.docker.process import _inspect_state
+            from agents_runner.docker.process import inspect_state
         except Exception:
             return False
         try:
-            state = _inspect_state(container_id)
+            state = inspect_state(container_id)
         except Exception as exc:
-            if _MainWindowPersistenceMixin._is_missing_container_error(exc):
+            if MainWindowPersistenceMixin._is_missing_container_error(exc):
                 status = (task.status or "").lower()
                 # Interactive tasks can briefly lack a container during launch; avoid
                 # marking them failed while they are still starting/running.
@@ -81,8 +83,8 @@ class _MainWindowPersistenceMixin:
         if incoming and (task.status or "").lower() not in {"cancelled", "killed"}:
             task.status = incoming
 
-        started_at = _parse_docker_time(state.get("StartedAt"))
-        finished_at = _parse_docker_time(state.get("FinishedAt"))
+        started_at = parse_docker_time(state.get("StartedAt"))
+        finished_at = parse_docker_time(state.get("FinishedAt"))
         if started_at:
             task.started_at = started_at
         if finished_at:
@@ -145,6 +147,7 @@ class _MainWindowPersistenceMixin:
         if isinstance(settings, dict):
             self._settings_data.update(settings)
         self._settings_data.pop("stt_mode", None)
+        self._settings_data.pop("ide_auto_mounts_enabled", None)
         self._settings_data["use"] = normalize_agent(
             str(self._settings_data.get("use") or "codex")
         )
@@ -154,29 +157,26 @@ class _MainWindowPersistenceMixin:
             )
         except Exception:
             self._settings_data["max_agents_running"] = -1
+        for key in self._REMOVED_LEGACY_SETTINGS_KEYS:
+            self._settings_data.pop(key, None)
         self._settings_data.setdefault(
-            "host_claude_dir", os.path.expanduser("~/.claude")
+            "ide_system_default", get_default_ide_system_name()
         )
         self._settings_data.setdefault(
-            "host_copilot_dir", os.path.expanduser("~/.copilot")
+            "ide_display_target_default",
+            normalize_ide_display_target(
+                str(self._settings_data.get("ide_display_target") or "")
+            ),
         )
-        self._settings_data.setdefault(
-            "host_gemini_dir", os.path.expanduser("~/.gemini")
-        )
-        self._settings_data.setdefault(
-            "interactive_command_claude", "--add-dir /home/midori-ai/workspace"
-        )
-        self._settings_data.setdefault(
-            "interactive_command_copilot",
-            "--allow-all-tools --allow-all-paths --add-dir /home/midori-ai/workspace",
-        )
-        self._settings_data.setdefault(
-            "interactive_command_gemini",
-            "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace",
-        )
+        self._settings_data.setdefault("ide_novnc_auto_open_enabled", True)
+        self._settings_data.setdefault("ide_novnc_auto_open_mode", "viewing_only")
         self._settings_data.setdefault("headless_desktop_enabled", False)
+        self._settings_data.setdefault("gpu_enabled", False)
+        self._settings_data.setdefault("auto_navigate_on_run_agent_start", False)
+        self._settings_data.setdefault("auto_navigate_on_run_interactive_start", False)
         self._settings_data.setdefault("spellcheck_enabled", True)
         self._settings_data.setdefault("ui_theme", "auto")
+        self._settings_data.setdefault("popup_theme_animation_enabled", True)
         self._settings_data.setdefault("radio_enabled", False)
         self._settings_data.setdefault("radio_channel", "")
         self._settings_data.setdefault("radio_quality", "medium")
@@ -184,35 +184,54 @@ class _MainWindowPersistenceMixin:
         self._settings_data.setdefault("radio_autostart", False)
         self._settings_data.setdefault("radio_loudness_boost_enabled", False)
         self._settings_data.setdefault("radio_loudness_boost_factor", 2.2)
-        host_codex_dir = os.path.normpath(
-            os.path.expanduser(
-                str(self._settings_data.get("host_codex_dir") or "").strip()
+        self._settings_data.setdefault("github_workroom_prefer_browser", False)
+        self._settings_data.setdefault("github_write_confirmation_mode", "always")
+        self._settings_data.setdefault("github_poll_interval_s", 30)
+        self._settings_data.setdefault("github_polling_enabled", False)
+        self._settings_data.setdefault("github_poll_startup_delay_s", 35)
+        self._settings_data.setdefault("agentsnova_auto_review_enabled", True)
+        legacy_marker_comment_setting = self._settings_data.pop(
+            "agentsnova_auto_marker_comments_enabled",
+            None,
+        )
+        self._settings_data.setdefault(
+            "agentsnova_auto_marker_comments_mode",
+            legacy_marker_comment_setting
+            if legacy_marker_comment_setting is not None
+            else "keep",
+        )
+        self._settings_data.setdefault("agentsnova_auto_reactions_enabled", True)
+        self._settings_data.setdefault("agentsnova_trusted_users_global", [])
+        self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
+        self._settings_data["ide_system_default"] = normalize_ide_system_name(
+            str(
+                self._settings_data.get("ide_system_default")
+                or get_default_ide_system_name()
             )
         )
-        if host_codex_dir == os.path.expanduser("~/.midoriai"):
-            self._settings_data["host_codex_dir"] = os.path.expanduser("~/.codex")
-        if not str(self._settings_data.get("host_codex_dir") or "").strip():
-            self._settings_data["host_codex_dir"] = os.environ.get(
-                "CODEX_HOST_CODEX_DIR", os.path.expanduser("~/.codex")
+        self._settings_data["ide_display_target_default"] = (
+            normalize_ide_display_target(
+                str(
+                    self._settings_data.get("ide_display_target_default")
+                    or self._settings_data.get("ide_display_target")
+                    or ""
+                )
             )
-        if not str(self._settings_data.get("host_claude_dir") or "").strip():
-            self._settings_data["host_claude_dir"] = os.path.expanduser("~/.claude")
-        if not str(self._settings_data.get("host_copilot_dir") or "").strip():
-            self._settings_data["host_copilot_dir"] = os.path.expanduser("~/.copilot")
-        if not str(self._settings_data.get("host_gemini_dir") or "").strip():
-            self._settings_data["host_gemini_dir"] = os.path.expanduser("~/.gemini")
-        for key in (
-            "interactive_command",
-            "interactive_command_claude",
-            "interactive_command_copilot",
-            "interactive_command_gemini",
-        ):
-            raw = str(self._settings_data.get(key) or "").strip()
-            if not raw:
-                continue
-            self._settings_data[key] = self._sanitize_interactive_command_value(
-                key, raw
-            )
+        )
+        self._settings_data["ide_novnc_auto_open_enabled"] = bool(
+            self._settings_data.get("ide_novnc_auto_open_enabled", True)
+        )
+        self._settings_data["ide_novnc_auto_open_mode"] = (
+            "always"
+            if str(self._settings_data.get("ide_novnc_auto_open_mode") or "")
+            .strip()
+            .lower()
+            == "always"
+            else "viewing_only"
+        )
+        self._settings_data["gpu_enabled"] = bool(
+            self._settings_data.get("gpu_enabled") or False
+        )
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
 
@@ -224,6 +243,9 @@ class _MainWindowPersistenceMixin:
 
         self._settings_data["radio_enabled"] = bool(
             self._settings_data.get("radio_enabled") or False
+        )
+        self._settings_data["popup_theme_animation_enabled"] = bool(
+            self._settings_data.get("popup_theme_animation_enabled", True)
         )
         self._settings_data["radio_autostart"] = bool(
             self._settings_data.get("radio_autostart") or False
@@ -244,6 +266,47 @@ class _MainWindowPersistenceMixin:
             RadioController.normalize_loudness_boost_factor(
                 self._settings_data.get("radio_loudness_boost_factor")
             )
+        )
+        self._settings_data["agentsnova_auto_marker_comments_mode"] = (
+            normalize_default_marker_comment_mode(
+                self._settings_data.get(
+                    "agentsnova_auto_marker_comments_mode",
+                    legacy_marker_comment_setting
+                    if legacy_marker_comment_setting is not None
+                    else "keep",
+                )
+            )
+        )
+        self._settings_data["agentsnova_auto_reactions_enabled"] = bool(
+            self._settings_data.get("agentsnova_auto_reactions_enabled", True)
+        )
+        self._settings_data["github_polling_enabled"] = bool(
+            self._settings_data.get("github_polling_enabled") or False
+        )
+        try:
+            self._settings_data["github_poll_startup_delay_s"] = max(
+                0, int(self._settings_data.get("github_poll_startup_delay_s", 35))
+            )
+        except Exception:
+            self._settings_data["github_poll_startup_delay_s"] = 35
+        trusted_users_raw = self._settings_data.get("agentsnova_trusted_users_global")
+        trusted_users_rows = (
+            trusted_users_raw if isinstance(trusted_users_raw, list) else []
+        )
+        trusted_users: list[str] = []
+        seen_users: set[str] = set()
+        for row in trusted_users_rows:
+            username = str(row or "").strip().lstrip("@").lower()
+            if not username or username in seen_users:
+                continue
+            trusted_users.append(username)
+            seen_users.add(username)
+        self._settings_data["agentsnova_trusted_users_global"] = trusted_users
+        self._settings_data["auto_navigate_on_run_agent_start"] = bool(
+            self._settings_data.get("auto_navigate_on_run_agent_start") or False
+        )
+        self._settings_data["auto_navigate_on_run_interactive_start"] = bool(
+            self._settings_data.get("auto_navigate_on_run_interactive_start") or False
         )
 
         items = load_active_task_payloads(self._state_path)
@@ -279,7 +342,7 @@ class _MainWindowPersistenceMixin:
             if task.requires_git_metadata() and not task.git:
                 from agents_runner.ui.task_repair import repair_task_git_metadata
 
-                success, msg = repair_task_git_metadata(
+                success, _msg = repair_task_git_metadata(
                     task,
                     state_path=self._state_path,
                     environments=self._environments,
@@ -303,8 +366,9 @@ class _MainWindowPersistenceMixin:
             self._tasks[task.task_id] = task
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
-            spinner = _stain_color(env.color) if env else None
+            spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+            self._maybe_schedule_ide_novnc_auto_open(task)
 
         # Run startup reconciliation once
         # Guard prevents accidental re-runs if _load_state() is called multiple times

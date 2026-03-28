@@ -14,29 +14,47 @@ class DockerRunnerConfig:
     auto_remove: bool = True
     pull_before_run: bool = True
     settings_preflight_script: str | None = None
-    environment_preflight_script: str | None = None
+    ide_preflight_script: str | None = None
     headless_desktop_enabled: bool = False
     desktop_cache_enabled: bool = False
     container_caching_enabled: bool = False
-    cached_preflight_script: str | None = None
+    cache_system_preflight_enabled: bool = False
+    cache_settings_preflight_enabled: bool = False
+    cache_ide_preflight_enabled: bool = False
+    gpu_enabled: bool = False
+    setup_agents_missing_prompt_enabled: bool = False
     environment_id: str = ""
+    workspace_type: str = "none"
+    workspace_target: str = ""
     # Use a task-specific filename by default to avoid collisions when multiple
     # runs share a container or temp directory.
     container_settings_preflight_path: str = (
         "/tmp/agents-runner-preflight-settings-{task_id}.sh"
     )
-    container_environment_preflight_path: str = (
-        "/tmp/agents-runner-preflight-environment-{task_id}.sh"
+    container_setup_agents_preflight_path: str = (
+        "/tmp/agents-runner-preflight-setup-agents-{task_id}.sh"
     )
+    container_ide_preflight_path: str = "/tmp/agents-runner-preflight-ide-{task_id}.sh"
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
     ports: list[str] = field(default_factory=list)
     agent_cli_args: list[str] = field(default_factory=list)
+    launch_mode: str = "agent"
+    ide_system: str = ""
+    ide_display_target: str = ""
+    ide_auto_mounts_enabled: bool = False
+    custom_command_argv: list[str] = field(default_factory=list)
+    custom_verify_executable: str = ""
     # GitHub repo preparation
     gh_repo: str | None = None
     gh_prefer_gh_cli: bool = True
     gh_recreate_if_needed: bool = True
     gh_base_branch: str | None = None
+    gh_branch_work_mode: str = "task_branch"
+    gh_task_branch_naming_style: str = "standard"
+    gh_task_branch_custom_template: str = "{task_id}"
+    gh_pr_head_ref: str | None = None
+    gh_pr_base_ref: str | None = None
     gh_context_file_path: str | None = None  # Host path to GitHub context file
     # Hard timeout for post-run artifact collection/finalization (best-effort).
     artifact_collection_timeout_s: float = 30.0

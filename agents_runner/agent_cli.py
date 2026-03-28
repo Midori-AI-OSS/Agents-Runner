@@ -14,10 +14,10 @@ def normalize_agent(value: str | None) -> str:
     return normalize_agent_system_name(value)
 
 
-def available_agents() -> list[str]:
+def available_agents(*, include_internal: bool = True) -> list[str]:
     from agents_runner.agent_systems import available_agent_system_names
 
-    return available_agent_system_names()
+    return available_agent_system_names(include_internal=include_internal)
 
 
 def _safe_agent_token(value: str) -> str:
@@ -43,20 +43,13 @@ def container_config_dir(agent: str) -> str:
         return f"{CONTAINER_HOME}/.midoriai"
 
 
-def default_host_config_dir(agent: str, *, codex_default: str | None = None) -> str:
+def default_host_config_dir(agent: str) -> str:
     raw = str(agent or "").strip().lower()
     if not raw:
         from agents_runner.agent_systems import get_default_agent_system_name
 
         raw = get_default_agent_system_name()
 
-    if raw == "codex":
-        fallback = (
-            str(codex_default or "").strip()
-            or os.environ.get("CODEX_HOST_CODEX_DIR", "").strip()
-            or "~/.codex"
-        )
-        return os.path.expanduser(fallback)
     from agents_runner.agent_systems import get_agent_system
 
     try:

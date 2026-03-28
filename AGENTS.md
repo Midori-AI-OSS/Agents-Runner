@@ -12,7 +12,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
 - **Docs:** Do not update `README.md`; prefer code and docstrings as the source of truth and keep notes minimal and task-scoped
 - **Commits:** Commit early and often — prefer many small, focused commits with clear `[TYPE]` messages and concise descriptions.
-- **Test:** Do not add/build tests unless explicitly requested. When requested, run via `uv run pytest`.
+- **Test:** Do not add/build tests unless explicitly requested. When requested, run via `uv sync --group ci && uv run pytest`.
 
 ---
 
@@ -37,6 +37,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 
 - Run locally (GUI): `uv run main.py`
 - Follow existing code style: Python 3.13+, type hints throughout, and minimal modifications (avoid drive-by refactors).
+- Naming is strict: always use "Midori AI" or "midoriai"; never use shorthand "Midori" or "midori" in names, keys, comments, docs, prompts, or UI text.
 - Verification-first: confirm current behavior in the codebase before changing code; reproduce/confirm the issue (or missing behavior); verify the fix with clear checks.
 - No broad fallbacks: do not add “fallback behavior everywhere”; only add a narrow fallback when the task explicitly requires it, and justify it.
 - No backward compatibility shims by default: do not preserve old code paths “just in case”; only add compatibility layers when the task explicitly requires it.
@@ -69,6 +70,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - Logging:
   - Use the standardized logger package `midori_ai_logger` for application logging; do not add new ad-hoc logging wrappers/utilities.
   - Avoid `print()` for non-CLI output (exceptions: fatal startup/diagnostics paths); use structured logging instead.
+  - Task-system failures and exceptions must be emitted into task logs with structured scopes (for example `setup/agents`, `host/finalize`, `docker/container`); do not rely only on task metadata/error fields.
 - Keep boundaries explicit:
   - Put core logic in pure functions/classes.
   - Keep side effects (filesystem, subprocess, network, Docker) in narrow adapter modules so they are easy to test.
@@ -76,14 +78,16 @@ This project uses the Codex contributor coordination system. Follow these guidel
   - Keep reusable logic separate from wiring; compute data first, then apply it in UI/widgets/themes.
   - For new features, add or reuse at least one shared helper instead of duplicating logic.
 
+- Sync CI toolchain (before lint/test/type): `uv sync --group ci`
 - Format with Ruff (before every commit): `uv run ruff format .`
 - Lint with Ruff (treat failures as blockers): `uv run ruff check .`
+- Type-check with basedpyright (strict): `uv run basedpyright`
 - Tests:
   - Do not add/build tests unless explicitly requested.
   - If you believe a test is really needed to prevent regressions, ask first (keep it minimal).
   - When tests are requested/approved, prefer package-scoped tests in that package’s `tests/` folder (for example `agents_runner/<subsystem>/tests/`).
   - `agents_runner/tests/` is reserved for full package or full-program/integration tests, and should only be used when explicitly requested.
-  - Run via `uv run pytest`.
+  - Run via `uv sync --group ci && uv run pytest`.
 
 ---
 

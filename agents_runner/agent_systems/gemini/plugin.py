@@ -14,6 +14,10 @@ from agents_runner.agent_systems.models import (
     UiThemeSpec,
 )
 from agents_runner.agent_systems.interactive_command import move_flag_value_to_end
+from agents_runner.agent_systems.status import AgentStatus
+from agents_runner.agent_systems.status import command_in_path
+from agents_runner.agent_systems.status import installed_status
+from agents_runner.agent_systems.status import not_installed_status
 
 
 CONTAINER_HOME = Path("/home/midori-ai")
@@ -84,6 +88,61 @@ class GeminiAgentSystemPlugin:
 
     def verify_command(self) -> list[str]:
         return ["gemini", "--version"]
+
+    def install_command(self) -> str:
+        return "yay -S --noconfirm --needed gemini-cli"
+
+    def detect_status(self) -> AgentStatus:
+        if not command_in_path("gemini"):
+            return not_installed_status(agent=self.name)
+
+        if os.environ.get("GEMINI_API_KEY"):
+            return installed_status(
+                agent=self.name,
+                logged_in=True,
+                status_text="Logged in (GEMINI_API_KEY)",
+            )
+        if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI"):
+            return installed_status(
+                agent=self.name,
+                logged_in=True,
+                status_text="Logged in (VERTEXAI)",
+            )
+        if os.environ.get("GOOGLE_GENAI_USE_GCA"):
+            return installed_status(
+                agent=self.name,
+                logged_in=True,
+                status_text="Logged in (GCA)",
+            )
+
+        gemini_config_dir = Path.home() / ".gemini"
+        google_accounts = gemini_config_dir / "google_accounts.json"
+        oauth_creds = gemini_config_dir / "oauth_creds.json"
+
+        if google_accounts.exists() and google_accounts.is_file():
+            return installed_status(
+                agent=self.name,
+                logged_in=True,
+                status_text="Logged in (google_accounts.json)",
+            )
+        if oauth_creds.exists() and oauth_creds.is_file():
+            return installed_status(
+                agent=self.name,
+                logged_in=True,
+                status_text="Logged in (oauth_creds.json)",
+            )
+
+        return installed_status(
+            agent=self.name,
+            logged_in=False,
+            status_text="Not logged in (no auth method found)",
+        )
+
+    def default_interactive_command(self) -> str:
+        return (
+            "--no-sandbox --approval-mode yolo --include-directories "
+            "/home/midori-ai/workspace"
+        )
 
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         return list(cmd_parts)

@@ -5,16 +5,21 @@ Dialog for testing agent chain availability without leaking secrets.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import QThread
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QDialogButtonBox
 from PySide6.QtWidgets import QLabel
-from PySide6.QtWidgets import QVBoxLayout
+from PySide6.QtWidgets import QWidget
 
-from agents_runner.setup.agent_status import AgentStatus
+from agents_runner.agent_systems.status import AgentStatus
 from agents_runner.setup.agent_status import detect_all_agents
+from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 from agents_runner.ui.widgets import AgentChainStatusWidget
+
+if TYPE_CHECKING:
+    from agents_runner.core.agent.cooldown_manager import CooldownManager
 
 
 class AgentStatusCheckThread(QThread):
@@ -22,7 +27,7 @@ class AgentStatusCheckThread(QThread):
 
     status_ready = Signal(dict)
 
-    def __init__(self, agents: list[str], parent=None) -> None:
+    def __init__(self, agents: list[str], parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._agents = agents
 
@@ -33,14 +38,14 @@ class AgentStatusCheckThread(QThread):
         self.status_ready.emit(status_map)
 
 
-class TestChainDialog(QDialog):
+class TestChainDialog(ThemedDialog):
     """Dialog for testing agent chain availability."""
 
     def __init__(
         self,
         agents: list[str],
-        cooldown_manager=None,
-        parent=None,
+        cooldown_manager: CooldownManager | None = None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._agents = agents
@@ -51,7 +56,7 @@ class TestChainDialog(QDialog):
         self.setMinimumWidth(500)
         self.setMinimumHeight(300)
 
-        layout = QVBoxLayout(self)
+        layout = self.content_layout()
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(12)
 
@@ -84,7 +89,7 @@ class TestChainDialog(QDialog):
         layout.addStretch(1)
 
         # Buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
@@ -112,7 +117,7 @@ class TestChainDialog(QDialog):
         self._loading.setVisible(False)
 
         # Get cooldown status
-        cooldowns = {}
+        cooldowns: dict[str, bool] = {}
         if self._cooldown_manager:
             for agent in self._agents:
                 cooldowns[agent] = self._cooldown_manager.is_on_cooldown(agent)

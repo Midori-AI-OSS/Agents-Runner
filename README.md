@@ -8,6 +8,16 @@ A GUI for running AI agents in Docker containers with workspace and GitHub manag
 uv run main.py
 ```
 
+Or run without cloning:
+
+```bash
+# Nightly (bleeding edge, recommended)
+uvx --from "git+https://github.com/Midori-AI-OSS/Agents-Runner.git@nightly" python -m agents_runner
+
+# Main (not recommended / fallback)
+uvx --from "git+https://github.com/Midori-AI-OSS/Agents-Runner.git@main" python -m agents_runner
+```
+
 Requires `docker` and `ffmpeg` installed on the host.
 
 ## Supported Agents
@@ -16,6 +26,8 @@ Requires `docker` and `ffmpeg` installed on the host.
 - **Claude Code** - [Install](https://code.claude.com/docs/en/overview) # May not be fully supported, open a issue if you run into bugs
 - **GitHub Copilot** - [Install](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli)
 - **Google Gemini** - [Install](https://github.com/google-gemini/gemini-cli)
+- **OpenCode** - [Install](https://github.com/anomalyco/opencode)
+- **Qwen** - [Install](https://github.com/QwenLM/qwen-code) # May not be fully supported, open a issue if you run into bugs
 
 ## Features
 

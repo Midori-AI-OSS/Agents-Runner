@@ -1,0 +1,24 @@
+name: CI Format
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  format:
+    name: CI Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6.6.0
+
+      - name: Sync
+        run: uv sync --group ci
+
+      - name: Format Check
+        run: uv run ruff format --check .

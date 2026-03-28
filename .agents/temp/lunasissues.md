@@ -1,0 +1,4 @@
+- The remove text on the mounts and environments variables need to be a trash icon, same thing with the x on ports
+- Trying to set a env setting is failing right now... IE clicking on the check box to turn on preflight caching in the prefight menu is just resetting itself, and switching to adv mode on all container pages is also just resetting back to normal mode
+- The PR / Issues loading in the task menu is WRONG, it should be slowlly pluseing the full card from left to right, not the bounsing loading bar... its also not remembering / replaying the loading when switching pages or when we do a fresh poll it should only run the 1st time the loading is requested...
+- Base Branch just poofs in, should slide in nicely and slide out nicely

@@ -4,6 +4,7 @@ import os
 import shutil
 import time
 
+from typing import Any
 from uuid import uuid4
 
 from PySide6.QtCore import Qt
@@ -20,10 +21,10 @@ from agents_runner.gh_management import is_gh_available
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 
 
-class _MainWindowPreflightMixin:
+class MainWindowPreflightMixin:
     def _start_preflight_task(
         self,
         *,
@@ -31,10 +32,10 @@ class _MainWindowPreflightMixin:
         env: Environment,
         agent_cli: str | None,
         host_workdir: str,
-        host_codex: str,
+        host_config_dir: str,
         settings_preflight_script: str | None,
-        environment_preflight_script: str | None,
     ) -> None:
+        del host_config_dir
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -45,22 +46,12 @@ class _MainWindowPreflightMixin:
             QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
             return
 
-        if (
-            not (settings_preflight_script or "").strip()
-            and not (environment_preflight_script or "").strip()
-        ):
-            QMessageBox.information(
-                self, "Nothing to test", "No preflight scripts are enabled."
-            )
-            return
-
+        smoke_agent_cli = "smoke_agent"
         agent_cli = normalize_agent(
             str(agent_cli or self._settings_data.get("use") or "codex")
         )
-        host_codex = os.path.expanduser(str(host_codex or "").strip())
-        if not host_codex:
-            host_codex = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
-        if not self._ensure_agent_config_dir(agent_cli, host_codex):
+        host_config_dir = self._effective_host_config_dir(agent_cli=agent_cli, env=env)
+        if not self._ensure_agent_config_dir(smoke_agent_cli, host_config_dir):
             return
 
         task_id = uuid4().hex[:10]
@@ -91,34 +82,61 @@ class _MainWindowPreflightMixin:
             prompt=label,
             image=image,
             host_workdir=host_workdir,
-            host_config_dir=host_codex,
+            host_config_dir=host_config_dir,
             environment_id=env.env_id,
             created_at_s=time.time(),
             status="pulling",
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
         if env:
             task.workspace_type = env.workspace_type
 
+        force_headless_desktop = bool(
+            self._settings_data.get("headless_desktop_enabled") or False
+        )
+        env_headless_desktop = bool(getattr(env, "headless_desktop_enabled", False))
+        headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
+        gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
+        desktop_cache_enabled = bool(getattr(env, "cache_desktop_build", False))
+        desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
+        smoke_command = f'echo "preflight smoke: {env.name or env.env_id}"; sleep 10'
+
         config = DockerRunnerConfig(
             task_id=task_id,
             image=image,
-            host_config_dir=host_codex,
+            host_config_dir=host_config_dir,
             host_workdir=host_workdir,
-            agent_cli=agent_cli,
+            agent_cli=smoke_agent_cli,
             environment_id=env.env_id if env else "",
+            workspace_type=str(getattr(env, "workspace_type", "none") or "none"),
+            workspace_target=str(getattr(env, "workspace_target", "") or ""),
             auto_remove=True,
             pull_before_run=True,
             settings_preflight_script=settings_preflight_script,
-            environment_preflight_script=environment_preflight_script,
+            headless_desktop_enabled=headless_desktop_enabled,
+            desktop_cache_enabled=desktop_cache_enabled,
+            container_caching_enabled=bool(
+                getattr(env, "container_caching_enabled", False)
+            ),
+            cache_system_preflight_enabled=bool(
+                getattr(env, "cache_system_preflight_enabled", False)
+            ),
+            cache_settings_preflight_enabled=bool(
+                getattr(env, "cache_settings_preflight_enabled", False)
+            ),
+            cache_ide_preflight_enabled=bool(
+                getattr(env, "cache_ide_preflight_enabled", False)
+            ),
+            gpu_enabled=gpu_enabled,
             env_vars=dict(env.env_vars) if env else {},
             extra_mounts=self._get_extra_mounts_with_cache(env),
-            agent_cli_args=[],
+            custom_command_argv=["sh", "-c", smoke_command],
+            custom_verify_executable="sh",
             gh_repo=gh_repo or None,
             gh_prefer_gh_cli=gh_prefer_gh_cli,
             gh_recreate_if_needed=gh_recreate_if_needed,
@@ -128,6 +146,9 @@ class _MainWindowPreflightMixin:
         # Clean up any existing bridge/thread for this task to prevent duplicate log emissions
         old_bridge = self._bridges.pop(task_id, None)
         old_thread = self._threads.pop(task_id, None)
+        remove_proxy = getattr(self, "_remove_task_event_proxy", None)
+        if callable(remove_proxy):
+            remove_proxy(task_id)
         if old_bridge is not None:
             try:
                 # Disconnect all signal connections to prevent duplicate log emissions
@@ -159,14 +180,28 @@ class _MainWindowPreflightMixin:
             except Exception:
                 pass
 
-        bridge = TaskRunnerBridge(task_id=task_id, config=config, mode="preflight")
+        bridge = TaskRunnerBridge(
+            task_id=task_id,
+            config=config,
+            prompt="this is a preflight test",
+            mode=smoke_agent_cli,
+            use_supervisor=False,
+        )
         thread = QThread(self)
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
 
-        bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
-        bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
-        bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
+        connect_events = getattr(self, "_connect_task_bridge_events", None)
+        if callable(connect_events):
+            connect_events(
+                task_id=task_id,
+                bridge=bridge,
+                include_supervisor_events=False,
+            )
+        else:
+            bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
+            bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
+            bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
 
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
@@ -177,10 +212,10 @@ class _MainWindowPreflightMixin:
         self._run_started_s[task_id] = time.time()
 
         thread.start()
-        self._show_dashboard()
+        self._maybe_auto_navigate_on_task_start(interactive=False)
         self._schedule_save()
 
-    def _on_settings_test_preflight(self, settings: dict) -> None:
+    def _on_settings_test_preflight(self, settings: dict[str, Any]) -> None:
         settings_enabled = bool(settings.get("preflight_enabled") or False)
         settings_script: str | None = None
         if settings_enabled:
@@ -190,32 +225,11 @@ class _MainWindowPreflightMixin:
 
         host_workdir_base = str(self._settings_data.get("host_workdir") or os.getcwd())
 
-        if settings_script is None:
-            has_env_preflights = any(
-                e.preflight_enabled and (e.preflight_script or "").strip()
-                for e in self._environment_list()
-            )
-            if not has_env_preflights:
-                if not settings_enabled:
-                    return
-                QMessageBox.information(
-                    self, "Nothing to test", "No preflight scripts are enabled."
-                )
-                return
-
         skipped: list[str] = []
         started = 0
         for env in self._environment_list():
-            env_script: str | None = None
-            candidate = str(env.preflight_script or "")
-            if env.preflight_enabled and candidate.strip():
-                env_script = candidate
-
-            if settings_script is None and env_script is None:
-                continue
-
             # Get effective agent and config for each environment
-            agent_cli, host_codex = self._effective_agent_and_config(
+            agent_cli, host_config_dir = self._effective_agent_and_config(
                 env=env, settings=settings
             )
             host_workdir = self._environment_effective_workdir(
@@ -229,18 +243,12 @@ class _MainWindowPreflightMixin:
                 env=env,
                 agent_cli=agent_cli,
                 host_workdir=host_workdir,
-                host_codex=host_codex,
+                host_config_dir=host_config_dir,
                 settings_preflight_script=settings_script,
-                environment_preflight_script=env_script,
             )
             started += 1
 
         if started == 0 and not skipped:
-            if not settings_enabled:
-                return
-            QMessageBox.information(
-                self, "Nothing to test", "No preflight scripts are enabled."
-            )
             return
 
         if skipped:
@@ -264,13 +272,9 @@ class _MainWindowPreflightMixin:
                 self._settings_data.get("preflight_script") or ""
             )
 
-        environment_preflight_script: str | None = None
-        if env.preflight_enabled and (env.preflight_script or "").strip():
-            environment_preflight_script = env.preflight_script
-
         host_workdir_base = str(self._settings_data.get("host_workdir") or os.getcwd())
         # Get effective agent and config for this environment
-        agent_cli, host_codex = self._effective_agent_and_config(env=env)
+        agent_cli, host_config_dir = self._effective_agent_and_config(env=env)
         host_workdir = self._environment_effective_workdir(
             env, fallback=host_workdir_base
         )
@@ -280,9 +284,8 @@ class _MainWindowPreflightMixin:
             env=env,
             agent_cli=agent_cli,
             host_workdir=host_workdir,
-            host_codex=host_codex,
+            host_config_dir=host_config_dir,
             settings_preflight_script=settings_preflight_script,
-            environment_preflight_script=environment_preflight_script,
         )
 
     def _get_extra_mounts_with_cache(self, env: Environment | None) -> list[str]:

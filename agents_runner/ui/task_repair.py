@@ -119,9 +119,9 @@ def _repair_from_github_context(task: Any, state_path: str) -> tuple[bool, str]:
         pr_url = str(getattr(task, "gh_pr_url", "") or "").strip()
         if pr_url:
             task.git["pull_request_url"] = pr_url
-            from agents_runner.ui.task_git_metadata import _parse_pull_request_number
+            from agents_runner.ui.task_git_metadata import parse_pull_request_number
 
-            pr_number = _parse_pull_request_number(pr_url)
+            pr_number = parse_pull_request_number(pr_url)
             if pr_number is not None:
                 task.git["pull_request_number"] = pr_number
 
@@ -206,9 +206,9 @@ def _repair_from_environment(
         pr_url = str(getattr(task, "gh_pr_url", "") or "").strip()
         if pr_url:
             task.git["pull_request_url"] = pr_url
-            from agents_runner.ui.task_git_metadata import _parse_pull_request_number
+            from agents_runner.ui.task_git_metadata import parse_pull_request_number
 
-            pr_number = _parse_pull_request_number(pr_url)
+            pr_number = parse_pull_request_number(pr_url)
             if pr_number is not None:
                 task.git["pull_request_number"] = pr_number
 
@@ -244,9 +244,9 @@ def _repair_partial_metadata(task: Any) -> tuple[bool, str]:
         pr_url = str(getattr(task, "gh_pr_url", "") or "").strip()
         if pr_url:
             task.git["pull_request_url"] = pr_url
-            from agents_runner.ui.task_git_metadata import _parse_pull_request_number
+            from agents_runner.ui.task_git_metadata import parse_pull_request_number
 
-            pr_number = _parse_pull_request_number(pr_url)
+            pr_number = parse_pull_request_number(pr_url)
             if pr_number is not None:
                 task.git["pull_request_number"] = pr_number
 

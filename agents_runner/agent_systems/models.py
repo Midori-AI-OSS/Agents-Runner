@@ -5,6 +5,8 @@ from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agents_runner.agent_systems.status import AgentStatus
+
 
 class PromptDeliverySpec(BaseModel):
     """How an agent CLI accepts the initial prompt."""
@@ -125,6 +127,12 @@ class AgentSystemPlugin(Protocol):
     def config_command(self) -> str | None: ...
 
     def verify_command(self) -> list[str]: ...
+
+    def install_command(self) -> str: ...
+
+    def default_interactive_command(self) -> str: ...
+
+    def detect_status(self) -> AgentStatus: ...
 
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         """Normalize interactive command parts for storage in settings.

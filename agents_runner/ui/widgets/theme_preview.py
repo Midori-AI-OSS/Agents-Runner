@@ -6,8 +6,8 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPaintEvent, QPainter
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
-from agents_runner.ui.graphics import _load_background
-from agents_runner.ui.graphics import _resolve_theme_name
+from agents_runner.ui.graphics import load_background
+from agents_runner.ui.graphics import resolve_theme_name
 from agents_runner.ui.themes.types import ThemeBackground
 
 
@@ -36,12 +36,12 @@ class ThemePreviewWidget(QWidget):
         return self._theme_name
 
     def set_theme_name(self, theme_name: str) -> None:
-        resolved = _resolve_theme_name(theme_name)
+        resolved = resolve_theme_name(theme_name)
         if resolved == self._theme_name and self._background is not None:
             return
 
         self._theme_name = resolved
-        self._background = _load_background(resolved)
+        self._background = load_background(resolved)
         self._runtime = None
 
         if self._background is not None:
@@ -54,7 +54,7 @@ class ThemePreviewWidget(QWidget):
         self._notify_resize()
         self.update()
 
-    def resizeEvent(self, event) -> None:
+    def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._notify_resize()
 
@@ -168,9 +168,8 @@ class ThemePreviewTile(QFrame):
             return
         self.setProperty("selected", target)
         style = self.style()
-        if style is not None:
-            style.unpolish(self)
-            style.polish(self)
+        style.unpolish(self)
+        style.polish(self)
         self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:

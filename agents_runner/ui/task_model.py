@@ -7,7 +7,7 @@ from datetime import datetime
 
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import WORKSPACE_CLONED
-from agents_runner.ui.utils import _format_duration
+from agents_runner.ui.utils import format_duration
 
 
 @dataclass
@@ -38,6 +38,9 @@ class Task:
     agent_cli: str = ""
     agent_instance_id: str = ""
     agent_cli_args: str = ""
+    launch_mode: str = "agent"
+    ide_system: str = ""
+    ide_display_target: str = ""
     headless_desktop_enabled: bool = False
     novnc_url: str = ""
     vnc_password: str = ""
@@ -77,13 +80,22 @@ class Task:
         return max(0.0, end_s - created_s)
 
     def is_interactive_run(self) -> bool:
+        launch_mode = str(self.launch_mode or "").strip().lower()
+        if launch_mode in {"interactive_agent", "interactive"}:
+            return True
         container_id = str(self.container_id or "")
-        return container_id.startswith("agents-runner-tui-it-")
+        if container_id.startswith("agents-runner-tui-it-"):
+            return True
+        if launch_mode == "ide":
+            return False
+        return False
 
     def prompt_one_line(self) -> str:
         line = (self.prompt or "").strip().splitlines()[0] if self.prompt else ""
         if line:
             return line
+        if str(self.launch_mode or "").strip().lower() == "ide":
+            return "Run IDE"
         if self.is_interactive_run():
             return "Interactive"
         return "(empty prompt)"
@@ -97,17 +109,17 @@ class Task:
                 last_line = self.last_nonblank_log_line()
                 if last_line:
                     return last_line
-                return f"elapsed {_format_duration(duration)}"
+                return f"elapsed {format_duration(duration)}"
             return ""
         if self.exit_code == 0:
             last_line = self.last_nonblank_log_line()
-            dur = _format_duration(duration)
+            dur = format_duration(duration)
             if last_line and dur != "—":
                 return f"{last_line} • {dur}"
             if last_line:
                 return last_line
             return f"ok • {dur}"
-        return f"exit {self.exit_code} • {_format_duration(duration)}"
+        return f"exit {self.exit_code} • {format_duration(duration)}"
 
     def is_active(self) -> bool:
         return (self.status or "").lower() in {
@@ -142,7 +154,7 @@ class Task:
         return self.workspace_type == WORKSPACE_CLONED
 
 
-def _task_display_status(task: Task) -> str:
+def task_display_status(task: Task) -> str:
     status = (task.status or "").lower()
     if status == "done":
         return "Done"

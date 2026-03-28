@@ -7,13 +7,17 @@ AGENT_DISPLAY_NAMES = {
     "claude": "Claude Code",
     "copilot": "Github Copilot",
     "gemini": "Google Gemini",
+    "opencode": "OpenCode",
+    "qwen": "Qwen",
 }
 
 AGENT_GITHUB_URLS = {
-    "codex": "https://github.com/openai/codex",
     "claude": "https://github.com/anthropics/claude-code",
+    "codex": "https://github.com/openai/codex",
     "copilot": "https://github.com/github/copilot-cli",
     "gemini": "https://github.com/google-gemini/gemini-cli",
+    "opencode": "https://github.com/anomalyco/opencode",
+    "qwen": "https://github.com/QwenLM/qwen-code",
 }
 
 

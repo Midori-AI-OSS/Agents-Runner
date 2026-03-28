@@ -21,20 +21,20 @@ logger = logging.getLogger(__name__)
 _handler_installed = False
 
 # Log file path
-_QT_DIAGNOSTICS_LOG: Path | None = None
+_qt_diagnostics_log: Path | None = None
 
 
 def _get_log_path() -> Path:
     """Get the path to the Qt diagnostics log file."""
-    global _QT_DIAGNOSTICS_LOG
-    if _QT_DIAGNOSTICS_LOG is None:
+    global _qt_diagnostics_log
+    if _qt_diagnostics_log is None:
         log_dir = Path.home() / ".midoriai" / "agents-runner"
         log_dir.mkdir(parents=True, exist_ok=True)
-        _QT_DIAGNOSTICS_LOG = log_dir / "qt-diagnostics.log"
-    return _QT_DIAGNOSTICS_LOG
+        _qt_diagnostics_log = log_dir / "qt-diagnostics.log"
+    return _qt_diagnostics_log
 
 
-def _qt_message_handler(msg_type: QtMsgType, context, message: str) -> None:
+def _qt_message_handler(msg_type: QtMsgType, context: object, message: str) -> None:
     """
     Custom Qt message handler that captures warnings with stack traces.
 

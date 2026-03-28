@@ -23,8 +23,8 @@ If the agent switched modes during the work, briefly explain below.
 ## Quick checklist
 
 - [ ] PR title uses `[TYPE] Title`.
-- [ ] Lint/format ran (command + result):
-- [ ] Tests ran (command + PASS/FAIL summary):
+- [ ] Lint/format ran (for example `uv sync --group ci && uv run ruff format --check . && uv run ruff check .`) (command + result):
+- [ ] Tests ran (for example `uv sync --group ci && uv run pytest -q`) (command + PASS/FAIL summary):
 - [ ] Docs updated (files, if any):
 - [ ] Task file moved (if applicable):
 

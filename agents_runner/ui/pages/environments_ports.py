@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import parse_ports_text
+from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.constants import (
     TAB_CONTENT_MARGINS,
     TAB_CONTENT_SPACING,
@@ -387,8 +388,9 @@ class PortsTabWidget(QWidget):
 
             remove_btn = QToolButton()
             remove_btn.setObjectName("RowTrash")
-            remove_btn.setText("✕")
-            remove_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            remove_btn.setIcon(lucide_icon("trash-2"))
+            remove_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            remove_btn.setToolTip("Remove row")
             remove_btn.clicked.connect(lambda r=row_index: self._remove_row(r))
             self._table.setCellWidget(row_index, self._COL_REMOVE, remove_btn)
 

@@ -14,6 +14,11 @@ from agents_runner.agent_systems.models import (
     UiThemeSpec,
 )
 from agents_runner.agent_systems.interactive_command import move_positional_to_end
+from agents_runner.agent_systems.status import AgentStatus
+from agents_runner.agent_systems.status import StatusType
+from agents_runner.agent_systems.status import command_in_path
+from agents_runner.agent_systems.status import installed_status
+from agents_runner.agent_systems.status import not_installed_status
 
 
 CONTAINER_HOME = Path("/home/midori-ai")
@@ -94,6 +99,41 @@ class ClaudeAgentSystemPlugin:
 
     def verify_command(self) -> list[str]:
         return ["claude", "--version"]
+
+    def install_command(self) -> str:
+        return "yay -S --noconfirm --needed claude-code"
+
+    def detect_status(self) -> AgentStatus:
+        if not command_in_path("claude"):
+            return not_installed_status(agent=self.name)
+
+        config_dir = Path.home() / ".claude"
+        if not config_dir.exists():
+            return installed_status(
+                agent=self.name,
+                logged_in=False,
+                status_text="Not logged in (no config)",
+            )
+
+        try:
+            if any(config_dir.iterdir()):
+                return installed_status(
+                    agent=self.name,
+                    logged_in=True,
+                    status_text="Possibly logged in (config exists)",
+                    status_type=StatusType.UNKNOWN,
+                )
+        except OSError:
+            pass
+
+        return installed_status(
+            agent=self.name,
+            logged_in=False,
+            status_text="Not logged in",
+        )
+
+    def default_interactive_command(self) -> str:
+        return "--add-dir /home/midori-ai/workspace"
 
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         return list(cmd_parts)

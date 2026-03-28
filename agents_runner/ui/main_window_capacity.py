@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-class _MainWindowCapacityMixin:
+class MainWindowCapacityMixin:
     def _count_running_agents(self, env_id: str | None = None) -> int:
         count = 0
         env_id = str(env_id or "").strip() or None
