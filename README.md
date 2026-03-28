@@ -29,6 +29,8 @@ Requires `docker` and `ffmpeg` installed on the host.
 - **OpenCode** - [Install](https://github.com/anomalyco/opencode)
 - **Qwen** - [Install](https://github.com/QwenLM/qwen-code) # May not be fully supported, open a issue if you run into bugs
 
+See [.agents/docs/setup-agents.md](.agents/docs/setup-agents.md) for container setup instructions.
+
 ## Features
 
 - **Docker Integration**: Runs agents in `lunamidori5/pixelarch:emerald` container
