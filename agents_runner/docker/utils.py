@@ -31,9 +31,11 @@ def deduplicate_mounts(mounts: list[str]) -> list[str]:
     """
     Deduplicate mount specifications while preserving order.
 
-    Compares mount points by their container path (the part before the first or
-    second colon). If multiple mounts target the same container path, keeps only
-    the first occurrence.
+    Deduplicates by both host path and container path:
+    - If multiple mounts share the same host path, keeps the first occurrence
+    - If multiple mounts share the same container path, keeps the first occurrence
+
+    Host paths are normalized (expanduser + abspath) for comparison.
 
     Args:
         mounts: List of mount strings in format "host:container[:mode]"
@@ -41,6 +43,7 @@ def deduplicate_mounts(mounts: list[str]) -> list[str]:
     Returns:
         Deduplicated list of mounts preserving original order
     """
+    seen_host_paths: set[str] = set()
     seen_container_paths: set[str] = set()
     result: list[str] = []
 
@@ -49,17 +52,23 @@ def deduplicate_mounts(mounts: list[str]) -> list[str]:
         if not mount_str:
             continue
 
-        # Extract container path (second part of host:container[:mode])
         parts = mount_str.split(":")
         if len(parts) < 2:
-            # Malformed mount, skip
             continue
 
+        host_path_raw = parts[0]
         container_path = parts[1]
 
-        if container_path not in seen_container_paths:
-            seen_container_paths.add(container_path)
-            result.append(mount_str)
+        # Normalize host path for comparison (handles ~, relative paths)
+        host_path = os.path.abspath(os.path.expanduser(host_path_raw))
+
+        # Skip if host path or container path already seen
+        if host_path in seen_host_paths or container_path in seen_container_paths:
+            continue
+
+        seen_host_paths.add(host_path)
+        seen_container_paths.add(container_path)
+        result.append(mount_str)
 
     return result
 
