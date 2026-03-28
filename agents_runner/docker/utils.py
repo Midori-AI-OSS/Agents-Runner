@@ -1,5 +1,41 @@
 import os
+import posixpath
 import tempfile
+
+
+def split_mount_spec(mount: str) -> tuple[str, str, str]:
+    """Split a Docker ``-v`` mount string into host/container/mode parts."""
+    mount_str = str(mount or "").strip()
+    if not mount_str:
+        return "", "", ""
+
+    parts = mount_str.split(":", 2)
+    if len(parts) < 2:
+        return "", "", ""
+
+    host_path = str(parts[0] or "").strip()
+    container_path = str(parts[1] or "").strip()
+    mode = str(parts[2] or "").strip() if len(parts) > 2 else ""
+    return host_path, container_path, mode
+
+
+def normalize_host_mount_path(path: str) -> str:
+    """Normalize a host bind-mount path for comparisons."""
+    raw = str(path or "").strip()
+    if not raw:
+        return ""
+    return os.path.normpath(
+        os.path.abspath(os.path.expanduser(os.path.expandvars(raw)))
+    )
+
+
+def normalize_container_mount_path(path: str) -> str:
+    """Normalize a container bind-mount path for comparisons."""
+    raw = str(path or "").strip()
+    if not raw:
+        return ""
+    normalized = posixpath.normpath(raw)
+    return raw if normalized == "." else normalized
 
 
 def write_preflight_script(
@@ -31,9 +67,12 @@ def deduplicate_mounts(mounts: list[str]) -> list[str]:
     """
     Deduplicate mount specifications while preserving order.
 
-    Compares mount points by their container path (the part before the first or
-    second colon). If multiple mounts target the same container path, keeps only
-    the first occurrence.
+    Deduplicates by both host path and container path:
+    - If multiple mounts share the same host path, keeps the first occurrence
+    - If multiple mounts share the same container path, keeps the first occurrence
+
+    Host paths are normalized (expandvars + expanduser + abspath + normpath)
+    and container paths are normalized as POSIX paths for comparison.
 
     Args:
         mounts: List of mount strings in format "host:container[:mode]"
@@ -41,6 +80,7 @@ def deduplicate_mounts(mounts: list[str]) -> list[str]:
     Returns:
         Deduplicated list of mounts preserving original order
     """
+    seen_host_paths: set[str] = set()
     seen_container_paths: set[str] = set()
     result: list[str] = []
 
@@ -49,18 +89,43 @@ def deduplicate_mounts(mounts: list[str]) -> list[str]:
         if not mount_str:
             continue
 
-        # Extract container path (second part of host:container[:mode])
-        parts = mount_str.split(":")
-        if len(parts) < 2:
-            # Malformed mount, skip
+        host_path_raw, container_path_raw, _mode = split_mount_spec(mount_str)
+        if not host_path_raw or not container_path_raw:
             continue
 
-        container_path = parts[1]
+        host_path = normalize_host_mount_path(host_path_raw)
+        container_path = normalize_container_mount_path(container_path_raw)
 
-        if container_path not in seen_container_paths:
-            seen_container_paths.add(container_path)
-            result.append(mount_str)
+        # Skip if host path or container path already seen
+        if host_path in seen_host_paths or container_path in seen_container_paths:
+            continue
 
+        seen_host_paths.add(host_path)
+        seen_container_paths.add(container_path)
+        result.append(mount_str)
+
+    return result
+
+
+def deduplicate_mount_args(mount_args: list[str]) -> list[str]:
+    """Deduplicate flattened Docker ``-v`` mount arguments."""
+    mount_specs: list[str] = []
+    i = 0
+    while i < len(mount_args):
+        flag = str(mount_args[i] or "").strip()
+        if flag != "-v":
+            i += 1
+            continue
+        if i + 1 >= len(mount_args):
+            break
+        spec = str(mount_args[i + 1] or "").strip()
+        if spec:
+            mount_specs.append(spec)
+        i += 2
+
+    result: list[str] = []
+    for mount in deduplicate_mounts(mount_specs):
+        result.extend(["-v", mount])
     return result
 
 

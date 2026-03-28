@@ -22,7 +22,7 @@ from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.agent_cli import available_agents
 from agents_runner.agent_cli import verify_cli_clause
 from agents_runner.artifacts import get_staging_dir
-from agents_runner.docker.utils import deduplicate_mounts
+from agents_runner.docker.utils import deduplicate_mount_args, deduplicate_mounts
 from agents_runner.docker_platform import ROSETTA_INSTALL_COMMAND
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
 from agents_runner.docker_platform import has_rosetta
@@ -980,18 +980,19 @@ def _build_docker_command(
         "--name",
         container_name,
     ]
+    mount_args: list[str] = []
     if not shell_mode:
-        docker_args.extend(
+        mount_args.extend(
             [
                 "-v",
                 f"{host_config_dir}:{container_agent_dir}",
             ]
         )
+    mount_args.extend(["-v", f"{host_workdir}:{container_workdir}"])
+    mount_args.extend(extra_mount_args)
     docker_args.extend(
         [
-            "-v",
-            f"{host_workdir}:{container_workdir}",
-            *extra_mount_args,
+            *deduplicate_mount_args(mount_args),
             *preflight_mounts,
             *env_args,
             *port_args,
