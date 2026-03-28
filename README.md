@@ -26,6 +26,8 @@ Requires `docker` and `ffmpeg` installed on the host.
 - **Claude Code** - [Install](https://code.claude.com/docs/en/overview) # May not be fully supported, open a issue if you run into bugs
 - **GitHub Copilot** - [Install](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli)
 - **Google Gemini** - [Install](https://github.com/google-gemini/gemini-cli)
+- **OpenCode** - [Install](https://github.com/anomalyco/opencode)
+- **Qwen** - [Install](https://github.com/QwenLM/qwen-code) # May not be fully supported, open a issue if you run into bugs
 
 ## Features
 
