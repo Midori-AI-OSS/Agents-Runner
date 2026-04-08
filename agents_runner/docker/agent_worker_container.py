@@ -222,8 +222,10 @@ class ContainerExecutor:
     def _build_main_command_clause(self, agent_cmd: str) -> str:
         """Build the command execution clause."""
         if not self._runtime_env.custom_command_argv:
-            if self._runtime_env.agent_cli == "opencode" and agent_cmd.startswith(
-                "opencode run"
+            if (
+                self._runtime_env.agent_cli == "opencode"
+                and agent_cmd.startswith("opencode ")
+                and not agent_cmd.startswith("opencode run")
             ):
                 return f"exec {agent_cmd} >/dev/null"
             return f"exec {agent_cmd}"
