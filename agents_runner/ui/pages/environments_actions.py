@@ -216,6 +216,11 @@ class EnvironmentsPageActionsMixin:
             self._agentsnova_trusted_users_env.get_usernames()
         )
 
+        self._env_vars_tab.flush_widget_state()
+        self._mounts_tab.flush_widget_state()
+        self._ports_tab.flush_widget_state()
+        self._agents_tab.flush_widget_state()
+
         env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
             if show_validation_errors:
