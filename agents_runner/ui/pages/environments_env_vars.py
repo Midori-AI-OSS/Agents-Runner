@@ -169,6 +169,17 @@ class EnvVarsTabWidget(QWidget):
             parsed[key] = value
         return parsed, errors
 
+    def flush_widget_state(self) -> None:
+        if self._advanced_mode:
+            return
+        for row_index in range(len(self._rows)):
+            key_widget = self._table.cellWidget(row_index, self._COL_KEY)
+            value_widget = self._table.cellWidget(row_index, self._COL_VALUE)
+            if isinstance(key_widget, QLineEdit):
+                self._rows[row_index].key = str(key_widget.text() or "").strip()
+            if isinstance(value_widget, QLineEdit):
+                self._rows[row_index].value = str(value_widget.text() or "")
+
     def is_advanced_mode(self) -> bool:
         return bool(self._advanced_mode)
 
