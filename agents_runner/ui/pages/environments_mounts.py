@@ -219,6 +219,25 @@ class MountsTabWidget(QWidget):
             mounts.append(f"{host_path}:{container_path}:{mode}")
         return mounts, errors
 
+    def flush_widget_state(self) -> None:
+        if self._advanced_mode:
+            return
+        for row_index in range(len(self._rows)):
+            host_widget = self._table.cellWidget(row_index, self._COL_HOST_PATH)
+            container_widget = self._table.cellWidget(
+                row_index, self._COL_CONTAINER_PATH
+            )
+            mode_widget = self._table.cellWidget(row_index, self._COL_MODE)
+            if isinstance(host_widget, QLineEdit):
+                self._rows[row_index].host_path = str(host_widget.text() or "")
+            if isinstance(container_widget, QLineEdit):
+                self._rows[row_index].container_path = str(
+                    container_widget.text() or ""
+                )
+            if isinstance(mode_widget, QComboBox):
+                mode = str(mode_widget.currentData() or "rw").strip().lower() or "rw"
+                self._rows[row_index].mode = mode
+
     def is_advanced_mode(self) -> bool:
         return bool(self._advanced_mode)
 

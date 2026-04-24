@@ -127,10 +127,10 @@ def _missing_instruction() -> str:
     return (
         "Repository bootstrap is missing. Create `.agents/setup-agents.sh`, "
         "make it executable, and commit it. `setup-agents.sh` is always executed "
-        "from the repository root. The script must only prepare/setup the agent "
-        "container so it is ready for use; do not perform repository setup. "
-        "Environment is PixelArch: package installs must use `yay -Syu` only; "
-        "never `pacman`; never plain `yay -S`."
+        "from the repository root (do NOT add cd commands). The script must only "
+        "prepare/setup the agent container so it is ready for use; do not perform "
+        "repository setup. Environment is PixelArch: package installs must use "
+        "`yay -Syu` only; never `pacman`; never plain `yay -S`."
     )
 
 
