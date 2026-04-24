@@ -18,6 +18,7 @@ from PySide6.QtWidgets import QWidget
 from agents_runner.ui.themes.types import ThemeBackground
 
 _BACKGROUND_CACHE: dict[str, ThemeBackground | None] = {}
+_THEME_TRANSITION_DURATION_MS = 4000
 
 
 def load_background(theme_name: str) -> ThemeBackground | None:
@@ -245,6 +246,9 @@ class GlassRoot(QWidget):
         theme_name = resolve_theme_name(theme_name)
         if theme_name == self._theme_name:
             return
+        # Keep in-flight blend progress when the same target is requested repeatedly.
+        if theme_name == self._theme_to_name:
+            return
 
         self._ensure_theme_runtime(theme_name)
         background = load_background(theme_name)
@@ -264,7 +268,7 @@ class GlassRoot(QWidget):
             self._theme_anim.stop()
 
         anim = QPropertyAnimation(self, b"themeBlend", self)
-        anim.setDuration(7000)
+        anim.setDuration(_THEME_TRANSITION_DURATION_MS)
         anim.setStartValue(0.0)
         anim.setEndValue(1.0)
         anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
