@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 
 from pathlib import Path
 
@@ -14,9 +15,24 @@ from agents_runner.agent_systems.models import (
     UiThemeSpec,
 )
 from agents_runner.agent_systems.interactive_command import move_flag_value_to_end
+from agents_runner.agent_systems.status import AgentStatus
+from agents_runner.agent_systems.status import StatusType
+from agents_runner.agent_systems.status import command_in_path
+from agents_runner.agent_systems.status import installed_status
+from agents_runner.agent_systems.status import not_installed_status
 
 
 CONTAINER_HOME = Path("/home/midori-ai")
+WORKSPACE_DIR = "/home/midori-ai/workspace"
+
+
+def _has_yolo_permissions(parts: list[str]) -> bool:
+    if "--yolo" in parts or "--allow-all" in parts:
+        return True
+    return all(
+        flag in parts
+        for flag in ("--allow-all-tools", "--allow-all-paths", "--allow-all-urls")
+    )
 
 
 class CopilotAgentSystemPlugin:
@@ -37,8 +53,7 @@ class CopilotAgentSystemPlugin:
 
         argv = [
             "copilot",
-            "--allow-all-tools",
-            "--allow-all-paths",
+            "--yolo",
             "--add-dir",
             str(context.workspace_container),
             *list(context.extra_cli_args),
@@ -82,6 +97,66 @@ class CopilotAgentSystemPlugin:
     def verify_command(self) -> list[str]:
         return ["copilot", "--version"]
 
+    def install_command(self) -> str:
+        return "yay -S --noconfirm --needed github-copilot-cli"
+
+    def detect_status(self) -> AgentStatus:
+        if not command_in_path("copilot"):
+            return not_installed_status(agent=self.name)
+
+        try:
+            result = subprocess.run(
+                ["gh", "auth", "status"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except subprocess.TimeoutExpired:
+            return installed_status(
+                agent=self.name,
+                logged_in=False,
+                status_text="Unknown (timeout)",
+                status_type=StatusType.UNKNOWN,
+            )
+        except (FileNotFoundError, OSError):
+            return installed_status(
+                agent=self.name,
+                logged_in=False,
+                status_text="Unknown (gh CLI not found)",
+                status_type=StatusType.UNKNOWN,
+            )
+
+        if result.returncode == 0 and "Logged in" in result.stdout:
+            username = None
+            for line in result.stdout.split("\n"):
+                if "Logged in to github.com account" not in line:
+                    continue
+                parts = line.split("account")
+                if len(parts) > 1:
+                    username = parts[1].split("(")[0].strip() or None
+                    break
+            if username:
+                return installed_status(
+                    agent=self.name,
+                    logged_in=True,
+                    status_text=f"Logged in as {username}",
+                    username=username,
+                )
+            return installed_status(
+                agent=self.name,
+                logged_in=True,
+                status_text="Logged in",
+            )
+
+        return installed_status(
+            agent=self.name,
+            logged_in=False,
+            status_text="Not logged in to GitHub",
+        )
+
+    def default_interactive_command(self) -> str:
+        return f"--yolo --add-dir {WORKSPACE_DIR}"
+
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         return list(cmd_parts)
 
@@ -100,13 +175,11 @@ class CopilotAgentSystemPlugin:
             parts.extend(agent_cli_args)
 
         if "--add-dir" not in parts:
-            parts[1:1] = ["--add-dir", "/home/midori-ai/workspace"]
+            parts[1:1] = ["--add-dir", WORKSPACE_DIR]
 
         if is_help_launch:
-            if "--allow-all-tools" not in parts:
-                parts[1:1] = ["--allow-all-tools"]
-            if "--allow-all-paths" not in parts:
-                parts[1:1] = ["--allow-all-paths"]
+            if not _has_yolo_permissions(parts):
+                parts[1:1] = ["--yolo"]
             if help_repos_dir not in parts:
                 parts[1:1] = ["--add-dir", help_repos_dir]
 

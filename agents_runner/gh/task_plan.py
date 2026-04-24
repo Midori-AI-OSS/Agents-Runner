@@ -1,9 +1,27 @@
 import re
+import secrets
+import hashlib
 
 from dataclasses import dataclass
+from datetime import UTC
+from datetime import datetime
 
 from ..agent_display import format_agent_markdown_link
+from ..environments.model import GH_BRANCH_WORK_MODE_DIRECT_BASE
+from ..environments.model import GH_BRANCH_WORK_MODE_TASK_BRANCH
+from ..environments.model import GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_ANIMALS
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_COLORS
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_CUSTOM
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_FOODS
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_SONGS
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_SPACE
+from ..environments.model import GH_TASK_BRANCH_NAMING_STYLE_STANDARD
+from ..environments.model import normalize_gh_branch_work_mode
+from ..environments.model import normalize_gh_task_branch_custom_template
+from ..environments.model import normalize_gh_task_branch_naming_style
 from ..prompts.loader import load_prompt
+from .auth import is_gh_authenticated
 from .errors import GhManagementError
 from .gh_cli import is_gh_available
 from .git_ops import (
@@ -14,7 +32,7 @@ from .git_ops import (
     git_repo_root,
 )
 from .pr_retry import with_retry
-from .process import _expand_dir, _require_ok, _run
+from .process import expand_dir, require_ok, run_gh
 
 _TASK_BRANCH_PREFIXES: tuple[str, ...] = ("midoriaiagents/",)
 _COMMON_BASE_BRANCHES: tuple[str, ...] = ("main", "master", "trunk", "develop")
@@ -22,6 +40,58 @@ _COMMON_BASE_BRANCHES: tuple[str, ...] = ("main", "master", "trunk", "develop")
 _MIDORI_AI_AGENTS_RUNNER_URL = "https://github.com/Midori-AI-OSS/Agents-Runner"
 _MIDORI_AI_URL = "https://github.com/Midori-AI-OSS/Midori-AI"
 _PR_ATTRIBUTION_MARKER = "<!-- midori-ai-agents-runner-pr-footer -->"
+_BRANCH_THEME_TOKENS: dict[str, tuple[str, ...]] = {
+    GH_TASK_BRANCH_NAMING_STYLE_SONGS: (
+        "anthem",
+        "ballad",
+        "chorus",
+        "crescendo",
+        "duet",
+        "encore",
+        "groove",
+        "harmony",
+    ),
+    GH_TASK_BRANCH_NAMING_STYLE_FOODS: (
+        "basil",
+        "biscuit",
+        "citrus",
+        "dumpling",
+        "ginger",
+        "noodle",
+        "olive",
+        "taco",
+    ),
+    GH_TASK_BRANCH_NAMING_STYLE_ANIMALS: (
+        "badger",
+        "falcon",
+        "lynx",
+        "otter",
+        "panther",
+        "quail",
+        "raven",
+        "stoat",
+    ),
+    GH_TASK_BRANCH_NAMING_STYLE_COLORS: (
+        "amber",
+        "cerulean",
+        "crimson",
+        "jade",
+        "ochre",
+        "saffron",
+        "teal",
+        "umber",
+    ),
+    GH_TASK_BRANCH_NAMING_STYLE_SPACE: (
+        "aurora",
+        "comet",
+        "cosmos",
+        "meteor",
+        "nebula",
+        "nova",
+        "orbit",
+        "solstice",
+    ),
+}
 
 
 def _append_pr_attribution_footer(
@@ -71,7 +141,7 @@ def _is_task_branch(branch: str) -> bool:
 
 
 def _pick_auto_base_branch(repo_root: str) -> str:
-    repo_root = _expand_dir(repo_root)
+    repo_root = expand_dir(repo_root)
     default = git_default_base_branch(repo_root)
     if default:
         return default
@@ -88,11 +158,11 @@ def _pick_auto_base_branch(repo_root: str) -> str:
 
 
 def _has_origin_branch(repo_root: str, branch: str) -> bool:
-    repo_root = _expand_dir(repo_root)
+    repo_root = expand_dir(repo_root)
     branch = (branch or "").strip()
     if not branch:
         return False
-    proc = _run(
+    proc = run_gh(
         [
             "git",
             "-C",
@@ -108,14 +178,14 @@ def _has_origin_branch(repo_root: str, branch: str) -> bool:
 
 
 def _update_base_branch_from_origin(repo_root: str, base_branch: str) -> None:
-    repo_root = _expand_dir(repo_root)
+    repo_root = expand_dir(repo_root)
     base_branch = (base_branch or "").strip()
     if not base_branch:
         return
     if not _has_origin_branch(repo_root, base_branch):
         return
-    _require_ok(
-        _run(
+    require_ok(
+        run_gh(
             ["git", "-C", repo_root, "merge", "--ff-only", f"origin/{base_branch}"],
             timeout_s=120.0,
         ),
@@ -129,12 +199,12 @@ def prepare_branch_for_task(
     branch: str,
     base_branch: str | None = None,
 ) -> tuple[str, str]:
-    repo_root = _expand_dir(repo_root)
+    repo_root = expand_dir(repo_root)
 
     # Fetch with retry for transient network issues
     def _fetch_with_retry() -> None:
-        proc = _run(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0)
-        _require_ok(proc, args=["git", "fetch"])
+        proc = run_gh(["git", "-C", repo_root, "fetch", "--prune"], timeout_s=120.0)
+        require_ok(proc, args=["git", "fetch"])
 
     with_retry(
         _fetch_with_retry,
@@ -143,12 +213,12 @@ def prepare_branch_for_task(
     )
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
-    checkout_proc = _run(
+    checkout_proc = run_gh(
         ["git", "-C", repo_root, "checkout", "-f", base_branch], timeout_s=20.0
     )
     if checkout_proc.returncode != 0:
-        _require_ok(
-            _run(
+        require_ok(
+            run_gh(
                 [
                     "git",
                     "-C",
@@ -169,19 +239,74 @@ def prepare_branch_for_task(
             "repo has uncommitted changes; commit/stash before running"
         )
 
-    _require_ok(
-        _run(["git", "-C", repo_root, "checkout", "-B", branch], timeout_s=20.0),
+    require_ok(
+        run_gh(["git", "-C", repo_root, "checkout", "-B", branch], timeout_s=20.0),
         args=["git", "checkout", "-B"],
     )
     return base_branch, branch
 
 
 def _sanitize_branch(value: str) -> str:
-    value = (value or "").strip()
-    value = re.sub(r"[^a-zA-Z0-9/_-]+", "-", value)
-    value = value.strip("-")
+    value = _sanitize_branch_suffix(value)
+    value = re.sub(r"/{2,}", "/", value)
     value = re.sub(r"/{2,}", "/", value)
     return value or "midoriaiagents/task"
+
+
+def _sanitize_branch_suffix(value: str) -> str:
+    value = str(value or "").strip().lower()
+    value = re.sub(r"[^a-z0-9/_-]+", "-", value)
+    value = re.sub(r"/{2,}", "/", value)
+    value = re.sub(r"[-_]{2,}", "-", value)
+    return value.strip("/_-")
+
+
+def _stable_theme_token(task_id: str, naming_style: str) -> str:
+    tokens = _BRANCH_THEME_TOKENS.get(naming_style, ())
+    if not tokens:
+        return ""
+    seed = f"{naming_style}:{task_id}".encode("utf-8", errors="ignore")
+    index = int(hashlib.sha256(seed).hexdigest(), 16) % len(tokens)
+    return tokens[index]
+
+
+def _render_custom_branch_suffix(task_id: str, template: str) -> str:
+    safe_task_id = _sanitize_branch_suffix(task_id) or "task"
+    safe_slug = safe_task_id
+    rendered = normalize_gh_task_branch_custom_template(template)
+    for token, value in (
+        ("{task_id}", safe_task_id),
+        ("{slug}", safe_slug),
+        ("{date}", datetime.now(tz=UTC).strftime("%Y%m%d")),
+        ("{rand}", secrets.token_hex(2)),
+    ):
+        rendered = rendered.replace(token, value)
+    return _sanitize_branch_suffix(rendered)
+
+
+def _build_task_branch_name(
+    *,
+    task_id: str,
+    naming_style: str,
+    custom_template: str,
+) -> str:
+    safe_task_id = _sanitize_branch_suffix(task_id) or "task"
+    normalized_style = normalize_gh_task_branch_naming_style(naming_style)
+    suffix = safe_task_id
+
+    if normalized_style == GH_TASK_BRANCH_NAMING_STYLE_CUSTOM:
+        suffix = _render_custom_branch_suffix(safe_task_id, custom_template)
+    elif normalized_style != GH_TASK_BRANCH_NAMING_STYLE_STANDARD:
+        theme_token = _stable_theme_token(safe_task_id, normalized_style)
+        suffix = _sanitize_branch_suffix(f"{theme_token}-{safe_task_id}")
+
+    suffix = suffix or safe_task_id
+    for prefix in _TASK_BRANCH_PREFIXES:
+        if suffix.startswith(prefix):
+            suffix = suffix[len(prefix) :]
+            break
+    suffix = _sanitize_branch_suffix(suffix) or safe_task_id
+    return _sanitize_branch(f"midoriaiagents/{suffix}")
 
 
 def _find_next_available_branch(
@@ -243,15 +368,26 @@ def plan_repo_task(
     *,
     task_id: str,
     base_branch: str | None = None,
+    branch_work_mode: str = GH_BRANCH_WORK_MODE_TASK_BRANCH,
+    task_branch_naming_style: str = GH_TASK_BRANCH_NAMING_STYLE_STANDARD,
+    task_branch_custom_template: str = GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
 ) -> RepoPlan | None:
-    workdir = _expand_dir(workdir)
+    workdir = expand_dir(workdir)
     repo_root = git_repo_root(workdir)
     if repo_root is None:
         return None
-    base_branch_name = _sanitize_branch(f"midoriaiagents/{task_id}")
-    branch = _find_next_available_branch(repo_root, base_branch_name)
     desired_base = str(base_branch or "").strip()
     base_branch = desired_base or _pick_auto_base_branch(repo_root)
+    work_mode = normalize_gh_branch_work_mode(branch_work_mode)
+    if work_mode == GH_BRANCH_WORK_MODE_DIRECT_BASE:
+        branch = base_branch
+    else:
+        base_branch_name = _build_task_branch_name(
+            task_id=task_id,
+            naming_style=task_branch_naming_style,
+            custom_template=task_branch_custom_template,
+        )
+        branch = _find_next_available_branch(repo_root, base_branch_name)
     return RepoPlan(
         workdir=workdir, repo_root=repo_root, base_branch=base_branch, branch=branch
     )
@@ -268,34 +404,41 @@ def commit_push_and_pr(
     agent_cli: str = "",
     agent_cli_args: str = "",
 ) -> str | None:
-    repo_root = _expand_dir(repo_root)
+    repo_root = expand_dir(repo_root)
+    branch = str(branch or "").strip()
     base_branch = str(base_branch or "").strip() or _pick_auto_base_branch(repo_root)
+    if not branch:
+        raise GhManagementError("cannot create a pull request without a branch")
+    if branch == base_branch:
+        raise GhManagementError(
+            "current branch matches the base branch; PR creation is unavailable for direct-base tasks"
+        )
     body = _append_pr_attribution_footer(
         body, agent_cli=agent_cli, agent_cli_args=agent_cli_args
     )
 
     def _porcelain_status() -> str:
-        proc = _run(["git", "-C", repo_root, "status", "--porcelain"], timeout_s=15.0)
-        _require_ok(proc, args=["git", "status"])
+        proc = run_gh(["git", "-C", repo_root, "status", "--porcelain"], timeout_s=15.0)
+        require_ok(proc, args=["git", "status"])
         return str(proc.stdout or "")
 
     def _ensure_local_branch() -> None:
         branch_ref = f"refs/heads/{branch}"
-        exists_proc = _run(
+        exists_proc = run_gh(
             ["git", "-C", repo_root, "show-ref", "--verify", "--quiet", branch_ref],
             timeout_s=8.0,
         )
         if exists_proc.returncode == 0:
             return
-        create_proc = _run(
+        create_proc = run_gh(
             ["git", "-C", repo_root, "branch", branch, base_branch], timeout_s=20.0
         )
         if create_proc.returncode != 0:
-            create_proc = _run(
+            create_proc = run_gh(
                 ["git", "-C", repo_root, "branch", branch, f"origin/{base_branch}"],
                 timeout_s=20.0,
             )
-        _require_ok(create_proc, args=["git", "branch"])
+        require_ok(create_proc, args=["git", "branch"])
 
     def _checkout_branch_for_commit() -> None:
         current = git_current_branch(repo_root)
@@ -304,8 +447,8 @@ def commit_push_and_pr(
 
         _ensure_local_branch()
         if not _porcelain_status().strip():
-            _require_ok(
-                _run(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
+            require_ok(
+                run_gh(["git", "-C", repo_root, "checkout", branch], timeout_s=20.0),
                 args=["git", "checkout"],
             )
             return
@@ -314,7 +457,7 @@ def commit_push_and_pr(
         # has no unique commits yet, reset it to the current HEAD so we can
         # switch branches without overwriting local changes.
         if current == base_branch:
-            ahead_proc = _run(
+            ahead_proc = run_gh(
                 [
                     "git",
                     "-C",
@@ -332,8 +475,8 @@ def commit_push_and_pr(
                 except ValueError:
                     ahead = None
             if ahead == 0:
-                _require_ok(
-                    _run(
+                require_ok(
+                    run_gh(
                         ["git", "-C", repo_root, "checkout", "-B", branch, "HEAD"],
                         timeout_s=20.0,
                     ),
@@ -341,7 +484,7 @@ def commit_push_and_pr(
                 )
                 return
 
-        merge_proc = _run(
+        merge_proc = run_gh(
             ["git", "-C", repo_root, "checkout", "--merge", branch], timeout_s=20.0
         )
         if merge_proc.returncode != 0:
@@ -353,8 +496,10 @@ def commit_push_and_pr(
                 "commit/stash your work (or switch back to the base branch) and rerun PR creation.\n"
                 f"{combined}".rstrip()
             )
-        unmerged_proc = _run(["git", "-C", repo_root, "ls-files", "-u"], timeout_s=8.0)
-        _require_ok(unmerged_proc, args=["git", "ls-files", "-u"])
+        unmerged_proc = run_gh(
+            ["git", "-C", repo_root, "ls-files", "-u"], timeout_s=8.0
+        )
+        require_ok(unmerged_proc, args=["git", "ls-files", "-u"])
         if (unmerged_proc.stdout or "").strip():
             raise GhManagementError(
                 "switching branches resulted in merge conflicts; resolve them and rerun PR creation."
@@ -365,21 +510,21 @@ def commit_push_and_pr(
     has_worktree_changes = bool(_porcelain_status().strip())
 
     if has_worktree_changes:
-        _require_ok(
-            _run(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0),
+        require_ok(
+            run_gh(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0),
             args=["git", "add"],
         )
-        commit_proc = _run(
+        commit_proc = run_gh(
             ["git", "-C", repo_root, "commit", "-m", title], timeout_s=60.0
         )
         if commit_proc.returncode != 0:
             combined = (commit_proc.stdout or "") + "\n" + (commit_proc.stderr or "")
             if "nothing to commit" not in combined.lower():
-                _require_ok(commit_proc, args=["git", "commit"])
+                require_ok(commit_proc, args=["git", "commit"])
 
     ahead_count = None
     for base_ref in (base_branch, f"origin/{base_branch}"):
-        count_proc = _run(
+        count_proc = run_gh(
             ["git", "-C", repo_root, "rev-list", "--count", f"{base_ref}..HEAD"],
             timeout_s=15.0,
         )
@@ -395,10 +540,10 @@ def commit_push_and_pr(
 
     # Push with retry for transient network issues
     def _push_with_retry() -> None:
-        proc = _run(
+        proc = run_gh(
             ["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0
         )
-        _require_ok(proc, args=["git", "push"])
+        require_ok(proc, args=["git", "push"])
 
     with_retry(
         _push_with_retry,
@@ -409,8 +554,7 @@ def commit_push_and_pr(
     if not use_gh or not is_gh_available():
         return ""
 
-    auth_proc = _run(["gh", "auth", "status"], timeout_s=10.0)
-    if auth_proc.returncode != 0:
+    if not is_gh_authenticated(timeout_s=10.0, use_cache=True):
         raise GhManagementError("`gh` is not authenticated; run `gh auth login`")
 
     # Create PR with retry for transient network issues
@@ -418,7 +562,7 @@ def commit_push_and_pr(
 
     def _create_pr_with_retry() -> None:
         nonlocal pr_url
-        proc = _run(
+        proc = run_gh(
             [
                 "gh",
                 "pr",
@@ -442,7 +586,7 @@ def commit_push_and_pr(
                 if line.startswith("http"):
                     pr_url = line
                     return
-            _require_ok(proc, args=["gh", "pr", "create"])
+            require_ok(proc, args=["gh", "pr", "create"])
         else:
             out = (proc.stdout or "").strip()
             if out.startswith("http"):

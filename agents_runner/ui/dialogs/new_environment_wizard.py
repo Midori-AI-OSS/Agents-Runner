@@ -12,7 +12,6 @@ from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
-    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -32,13 +31,17 @@ from agents_runner.environments import (
     WORKSPACE_CLONED,
     WORKSPACE_MOUNTED,
 )
+from agents_runner.environments.model import GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
+from agents_runner.environments.model import INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE
+from agents_runner.gh.git_ops import parse_github_url
 from agents_runner.terminal_apps import detect_terminal_options, launch_in_terminal
-from agents_runner.ui.graphics import _EnvironmentTintOverlay
-from agents_runner.ui.utils import _apply_environment_combo_tint, _stain_color
+from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
+from agents_runner.ui.graphics import EnvironmentTintOverlay
+from agents_runner.ui.utils import apply_environment_combo_tint, stain_color
 from agents_runner.ui.widgets import GlassCard
 
 
-class NewEnvironmentWizard(QDialog):
+class NewEnvironmentWizard(ThemedDialog):
     environment_created = Signal(object)
 
     TEST_DIR_BASE = "/tmp/agent-runner-env-test"
@@ -46,15 +49,6 @@ class NewEnvironmentWizard(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("NewEnvironmentWizard")
-        self.setStyleSheet(
-            "\n".join(
-                [
-                    "#NewEnvironmentWizard {",
-                    "  background-color: rgba(10, 12, 18, 255);",
-                    "}",
-                ]
-            )
-        )
         self._clone_test_passed = False
         self._test_folder = ""
         self._advanced_modified = False
@@ -63,7 +57,8 @@ class NewEnvironmentWizard(QDialog):
         self.setWindowTitle("New Environment Wizard")
         self.setMinimumWidth(600)
         self.setMinimumHeight(500)
-        layout = QVBoxLayout(self)
+        layout = self.content_layout()
+        layout.setContentsMargins(10, 10, 10, 10)
         self._stack = QStackedWidget()
         layout.addWidget(self._stack)
         self._step1_widget = self._setup_step1()
@@ -71,7 +66,7 @@ class NewEnvironmentWizard(QDialog):
         self._stack.addWidget(self._step1_widget)
         self._stack.addWidget(self._step2_widget)
         self._stack.setCurrentIndex(0)
-        self._tint_overlay = _EnvironmentTintOverlay(self, alpha=22)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=22)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
         self._apply_environment_tint()
@@ -281,9 +276,9 @@ class NewEnvironmentWizard(QDialog):
         if not stain:
             self._tint_overlay.set_tint_color(None)
             return
-        self._tint_overlay.set_tint_color(_stain_color(stain))
+        self._tint_overlay.set_tint_color(stain_color(stain))
         if hasattr(self, "_color_combo"):
-            _apply_environment_combo_tint(self._color_combo, stain)
+            apply_environment_combo_tint(self._color_combo, stain)
 
     def _on_source_changed(self, index: int) -> None:
         is_folder = index == 0
@@ -329,12 +324,13 @@ class NewEnvironmentWizard(QDialog):
     def _expand_repo_url(self, url: str) -> str:
         """Convert GitHub shorthand (owner/repo) to full URL."""
         url = url.strip()
-        # Check if it's already a full URL
+        if not url:
+            return ""
         if url.startswith(("https://", "http://", "git@", "ssh://")):
             return url
-        # Check if it matches GitHub shorthand pattern (owner/repo)
-        if re.match(r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$", url):
-            return f"https://github.com/{url}.git"
+        owner, repo = parse_github_url(url)
+        if owner and repo:
+            return f"https://github.com/{owner}/{repo}.git"
         return url
 
     def _validate_clone(self) -> None:
@@ -349,16 +345,12 @@ class NewEnvironmentWizard(QDialog):
             self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
             self._update_next_button()
             return
-        # Accept GitHub shorthand (owner/repo) or full URLs
-        shorthand_pattern = r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$"
-        url_pattern = r"^(https?://|git@|ssh://)"
-        if re.match(shorthand_pattern, url) or re.match(url_pattern, url):
+        owner, repo = parse_github_url(url)
+        if owner and repo:
             self._clone_validation.setText("✓ Valid format")
             self._clone_validation.setStyleSheet("color: #4caf50; font-size: 11px;")
         else:
-            self._clone_validation.setText(
-                "✗ Use owner/repo or valid URL (https://, git@, ssh://)"
-            )
+            self._clone_validation.setText("✗ Use owner/repo or a valid GitHub URL")
             self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
         self._update_next_button()
 
@@ -393,10 +385,8 @@ class NewEnvironmentWizard(QDialog):
             url = self._clone_input.text().strip()
             if not url or " " in url:
                 return False
-            # Accept GitHub shorthand (owner/repo) or full URLs
-            shorthand_pattern = r"^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$"
-            url_pattern = r"^(https?://|git@|ssh://)"
-            return bool(re.match(shorthand_pattern, url) or re.match(url_pattern, url))
+            owner, repo = parse_github_url(url)
+            return bool(owner and repo)
 
     def _on_next(self) -> None:
         if self._source_combo.currentIndex() == 1 and not self._clone_test_passed:
@@ -497,9 +487,9 @@ read
         else:
             gh_target = self._expand_repo_url(self._clone_input.text().strip())
             workspace_type = WORKSPACE_CLONED
-        color = str(
-            getattr(self, "_color_combo", None).currentData() or self._suggested_color
-        )
+        color_combo = getattr(self, "_color_combo", None)
+        color_value = color_combo.currentData() if color_combo is not None else None
+        color = str(color_value or self._suggested_color)
         env = Environment(
             env_id=env_id,
             name=name,
@@ -510,6 +500,16 @@ read
             headless_desktop_enabled=self._headless_check.isChecked(),
             container_caching_enabled=self._caching_check.isChecked(),
             gh_context_enabled=self._gh_context_check.isChecked(),
+            agentsnova_auto_review_mode="inherit",
+            agentsnova_auto_reactions_mode="inherit",
+            agentsnova_marker_comment_mode="inherit",
+            interactive_pr_prompt_enabled=True,
+            interactive_pr_no_prompt_mode=INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE,
+            setup_agents_missing_prompt_enabled=False,
+            interactive_pull_before_run_enabled=True,
+            gh_branch_work_mode="task_branch",
+            gh_task_branch_naming_style="standard",
+            gh_task_branch_custom_template=GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
         )
         return env
 

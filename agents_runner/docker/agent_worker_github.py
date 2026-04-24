@@ -38,6 +38,11 @@ class GitHubOperations:
                 config.host_workdir,
                 task_id=config.task_id,
                 base_branch=config.gh_base_branch or None,
+                branch_work_mode=config.gh_branch_work_mode,
+                task_branch_naming_style=config.gh_task_branch_naming_style,
+                task_branch_custom_template=config.gh_task_branch_custom_template,
+                pr_head_ref=config.gh_pr_head_ref or None,
+                pr_base_ref=config.gh_pr_base_ref or None,
                 prefer_gh=config.gh_prefer_gh_cli,
                 recreate_if_needed=config.gh_recreate_if_needed,
                 on_log=on_log,
@@ -90,6 +95,7 @@ class GitHubOperations:
         on_log: Callable[[str], None],
     ) -> None:
         """Update GitHub context file after repository clone."""
+        assert config.gh_context_file_path is not None
         try:
             from agents_runner.environments.git_operations import get_git_info
             from agents_runner.pr_metadata import GitHubContext

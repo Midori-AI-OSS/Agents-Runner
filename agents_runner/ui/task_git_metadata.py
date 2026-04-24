@@ -9,7 +9,7 @@ from agents_runner.pr_metadata import load_github_metadata
 logger = logging.getLogger(__name__)
 
 
-def _parse_pull_request_number(pull_request_url: str) -> int | None:
+def parse_pull_request_number(pull_request_url: str) -> int | None:
     url = str(pull_request_url or "").strip()
     if not url:
         return None
@@ -64,7 +64,7 @@ def derive_task_git_metadata(task: Any) -> dict[str, object] | None:
     pr_url = str(getattr(task, "gh_pr_url", "") or "").strip()
     if pr_url:
         metadata["pull_request_url"] = pr_url
-        pr_number = _parse_pull_request_number(pr_url)
+        pr_number = parse_pull_request_number(pr_url)
         if pr_number is not None:
             metadata["pull_request_number"] = pr_number
 

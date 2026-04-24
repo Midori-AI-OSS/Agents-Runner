@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import available_agents
+from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.constants import (
@@ -126,8 +127,8 @@ class AgentsTabWidget(QWidget):
         # Add agent controls
         controls_row.addWidget(QLabel("Add agent"))
         self._add_agent_cli = QComboBox()
-        for agent in available_agents():
-            self._add_agent_cli.addItem(agent.title(), agent)
+        for agent in available_agents(include_internal=False):
+            self._add_agent_cli.addItem(format_agent_ui_label(agent), agent)
         controls_row.addWidget(self._add_agent_cli)
 
         add_btn = QToolButton()
@@ -354,7 +355,8 @@ class AgentsTabWidget(QWidget):
         self.agents_changed.emit()
 
     def _agent_cli_widget(self, row_index: int, inst: AgentInstance) -> QWidget:
-        label = QLabel(normalize_agent(inst.agent_cli).title())
+        del row_index
+        label = QLabel(format_agent_ui_label(normalize_agent(inst.agent_cli)))
         label.setAlignment(Qt.AlignCenter)
         label.setStyleSheet("color: rgba(237, 239, 245, 200);")
         return label
@@ -427,7 +429,7 @@ class AgentsTabWidget(QWidget):
 
         line = QLineEdit()
         line.setText(inst.config_dir)
-        line.setPlaceholderText("Inherit Settings (leave blank)")
+        line.setPlaceholderText("Use plugin default (leave blank)")
         line.editingFinished.connect(
             lambda: self._commit_row_config_dir(row_index, line)
         )
@@ -568,7 +570,7 @@ class AgentsTabWidget(QWidget):
             self._pinned_agent.clear()
             for inst in self._rows:
                 self._pinned_agent.addItem(
-                    f"{inst.agent_id} ({normalize_agent(inst.agent_cli)})",
+                    f"{inst.agent_id} ({format_agent_ui_label(normalize_agent(inst.agent_cli))})",
                     inst.agent_id,
                 )
             if (
@@ -608,7 +610,7 @@ class AgentsTabWidget(QWidget):
                 if other.agent_id == inst.agent_id:
                     continue
                 combo.addItem(
-                    f"{other.agent_id} ({normalize_agent(other.agent_cli)})",
+                    f"{other.agent_id} ({format_agent_ui_label(normalize_agent(other.agent_cli))})",
                     other.agent_id,
                 )
             if current_value and current_value in ids:
@@ -616,6 +618,45 @@ class AgentsTabWidget(QWidget):
                 if idx >= 0:
                     combo.setCurrentIndex(idx)
             combo.blockSignals(False)
+
+    def flush_widget_state(self) -> None:
+        for row_index in range(len(self._rows)):
+            inst = self._rows[row_index]
+
+            id_widget = self._agent_table.cellWidget(row_index, self._COL_ID)
+            if isinstance(id_widget, QLineEdit):
+                sanitized = self._sanitize_agent_id(id_widget.text())
+                if sanitized and _ID_RE.match(sanitized):
+                    inst = AgentInstance(
+                        agent_id=sanitized,
+                        agent_cli=inst.agent_cli,
+                        config_dir=inst.config_dir,
+                        cli_flags=inst.cli_flags,
+                    )
+
+            config_widget = self._agent_table.cellWidget(row_index, self._COL_CONFIG)
+            if isinstance(config_widget, QWidget):
+                line_edit = config_widget.findChild(QLineEdit)
+                if isinstance(line_edit, QLineEdit):
+                    inst = AgentInstance(
+                        agent_id=inst.agent_id,
+                        agent_cli=inst.agent_cli,
+                        config_dir=os.path.expanduser(
+                            str(line_edit.text() or "").strip()
+                        ),
+                        cli_flags=inst.cli_flags,
+                    )
+
+            flags_widget = self._agent_table.cellWidget(row_index, self._COL_CLI_FLAGS)
+            if isinstance(flags_widget, QLineEdit):
+                inst = AgentInstance(
+                    agent_id=inst.agent_id,
+                    agent_cli=inst.agent_cli,
+                    config_dir=inst.config_dir,
+                    cli_flags=str(flags_widget.text() or "").strip(),
+                )
+
+            self._rows[row_index] = inst
 
     def set_agent_selection(self, agent_selection: AgentSelection | None) -> None:
         self._selection_mode.blockSignals(True)

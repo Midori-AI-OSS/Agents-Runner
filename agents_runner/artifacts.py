@@ -10,9 +10,12 @@ import json
 import logging
 import mimetypes
 import multiprocessing
+import os
 import queue
 import shutil
+import threading
 import time
+import errno
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +26,10 @@ from uuid import uuid4
 from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)
+_ARTIFACT_KEY_VERSION = "task-id-env-v1"
+_TRANSIENT_STAGING_ERRNOS = {errno.ENOENT, errno.ENOTDIR}
+_ARTIFACT_MIGRATION_LOCKS: dict[str, threading.Lock] = {}
+_ARTIFACT_MIGRATION_LOCKS_GUARD = threading.Lock()
 
 
 @dataclass
@@ -81,9 +88,94 @@ def _get_artifacts_dir(task_id: str) -> Path:
     return artifacts_dir
 
 
+def _is_transient_staging_error(exc: OSError) -> bool:
+    return int(getattr(exc, "errno", -1)) in _TRANSIENT_STAGING_ERRNOS
+
+
+def _canonical_env_name(env_name: object) -> str:
+    raw = "" if env_name is None else str(env_name)
+    marker = raw.strip().lower()
+    if marker in {"default", "unknown"}:
+        return ""
+    return raw
+
+
+def _build_env_name_candidates(
+    *, requested_env: object, metadata_env: object | None = None
+) -> list[str]:
+    candidates = [
+        "" if requested_env is None else str(requested_env),
+        _canonical_env_name(requested_env),
+        "" if metadata_env is None else str(metadata_env),
+        _canonical_env_name(metadata_env),
+        "",
+        "default",
+        "unknown",
+    ]
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for value in candidates:
+        if value in seen:
+            continue
+        seen.add(value)
+        ordered.append(value)
+    return ordered
+
+
+def _artifact_migration_lock(task_id: str, artifact_uuid: str) -> threading.Lock:
+    key = f"{task_id}:{artifact_uuid}"
+    with _ARTIFACT_MIGRATION_LOCKS_GUARD:
+        lock = _ARTIFACT_MIGRATION_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _ARTIFACT_MIGRATION_LOCKS[key] = lock
+    return lock
+
+
+def _read_artifact_metadata(meta_path: Path) -> dict[str, Any]:
+    if not meta_path.exists():
+        return {}
+    try:
+        data = json.loads(meta_path.read_text())
+    except Exception as exc:
+        logger.debug(f"Failed to parse metadata {meta_path}: {exc}")
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return cast(dict[str, Any], data)
+
+
+def _write_bytes_atomic(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp-{uuid4().hex}")
+    try:
+        tmp_path.write_bytes(payload)
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp-{uuid4().hex}")
+    try:
+        tmp_path.write_text(json.dumps(payload, indent=2))
+        os.replace(tmp_path, path)
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except Exception:
+            pass
+
+
 def encrypt_artifact(
     task_dict: dict[str, Any],
-    env_name: str,
+    env_name: str | None,
     source_path: str | Path,
     original_filename: str,
 ) -> str | None:
@@ -109,8 +201,10 @@ def encrypt_artifact(
         # Read source file
         source_data = source_path.read_bytes()
 
+        env_name_used = "" if env_name is None else str(env_name)
+
         # Generate encryption key
-        key = get_artifact_key(task_dict, env_name)
+        key = get_artifact_key(task_dict, env_name_used)
         fernet = Fernet(key)
 
         # Encrypt data
@@ -141,10 +235,12 @@ def encrypt_artifact(
             "mime_type": mime_type,
             "encrypted_at": datetime.now(timezone.utc).isoformat(),
             "size_bytes": len(source_data),
+            "key_version": _ARTIFACT_KEY_VERSION,
+            "env_name_used": env_name_used,
         }
 
         meta_path = artifacts_dir / f"{artifact_uuid}.meta"
-        meta_path.write_text(json.dumps(metadata, indent=2))
+        _write_json_atomic(meta_path, metadata)
 
         logger.info(f"Encrypted artifact {artifact_uuid}: {original_filename}")
         return artifact_uuid
@@ -156,7 +252,7 @@ def encrypt_artifact(
 
 def decrypt_artifact(
     task_dict: dict[str, Any],
-    env_name: str,
+    env_name: str | None,
     artifact_uuid: str,
     dest_path: str | Path,
 ) -> bool:
@@ -187,24 +283,65 @@ def decrypt_artifact(
             logger.error(f"Encrypted artifact not found: {artifact_uuid}")
             return False
 
-        # Read encrypted data
-        encrypted_data = enc_path.read_bytes()
+        meta_path = artifacts_dir / f"{artifact_uuid}.meta"
+        migration_lock = _artifact_migration_lock(str(task_id), str(artifact_uuid))
 
-        # Generate encryption key
-        key = get_artifact_key(task_dict, env_name)
-        fernet = Fernet(key)
+        with migration_lock:
+            # Read encrypted data
+            encrypted_data = enc_path.read_bytes()
+            metadata = _read_artifact_metadata(meta_path)
 
-        # Decrypt data
-        try:
-            decrypted_data = fernet.decrypt(encrypted_data)
-        except InvalidToken:
-            logger.error(f"Failed to decrypt artifact {artifact_uuid}: invalid key")
-            return False
+            requested_env_raw = "" if env_name is None else str(env_name)
+            canonical_env = _canonical_env_name(requested_env_raw)
+            metadata_env = metadata.get("env_name_used")
+            candidates = _build_env_name_candidates(
+                requested_env=requested_env_raw,
+                metadata_env=metadata_env,
+            )
+
+            decrypted_data: bytes | None = None
+            successful_env = ""
+            for candidate in candidates:
+                key = get_artifact_key(task_dict, candidate)
+                fernet = Fernet(key)
+                try:
+                    decrypted_data = fernet.decrypt(encrypted_data)
+                except InvalidToken:
+                    continue
+                successful_env = candidate
+                break
+
+            if decrypted_data is None:
+                logger.debug(f"Failed to decrypt artifact {artifact_uuid}: invalid key")
+                return False
+
+            # Migrate to canonical key when fallback was required.
+            if successful_env != canonical_env:
+                try:
+                    canonical_key = get_artifact_key(task_dict, canonical_env)
+                    canonical_fernet = Fernet(canonical_key)
+                    canonical_encrypted = canonical_fernet.encrypt(decrypted_data)
+                    _write_bytes_atomic(enc_path, canonical_encrypted)
+
+                    updated_meta = dict(metadata)
+                    if updated_meta:
+                        updated_meta["key_version"] = _ARTIFACT_KEY_VERSION
+                        updated_meta["env_name_used"] = canonical_env
+                        updated_meta["migrated_at"] = datetime.now(
+                            timezone.utc
+                        ).isoformat()
+                        _write_json_atomic(meta_path, updated_meta)
+                except Exception as exc:
+                    logger.debug(
+                        f"Artifact migration skipped for {artifact_uuid}: {exc}"
+                    )
 
         # Ensure destination directory exists
         dest_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Write decrypted file
+        if decrypted_data is None:
+            return False
         dest_path.write_bytes(decrypted_data)
 
         logger.info(f"Decrypted artifact {artifact_uuid} to {dest_path}")
@@ -304,7 +441,7 @@ def collect_artifacts_from_container(
         return []
 
     try:
-        files = [f for f in artifacts_staging.iterdir() if f.is_file()]
+        files = _iter_staging_files(artifacts_staging)
 
         if not files:
             logger.debug(f"No artifacts found in staging: {artifacts_staging}")
@@ -315,18 +452,24 @@ def collect_artifacts_from_container(
         # Encrypt each file
         for file_path in files:
             try:
+                relative_path = file_path.relative_to(artifacts_staging).as_posix()
                 artifact_uuid = encrypt_artifact(
-                    task_dict, env_name, str(file_path), file_path.name
+                    task_dict, env_name, str(file_path), relative_path
                 )
                 if artifact_uuid:
                     artifact_uuids.append(artifact_uuid)
                     logger.info(
-                        f"Collected artifact: {file_path.name} -> {artifact_uuid}"
+                        f"Collected artifact: {relative_path} -> {artifact_uuid}"
                     )
                     # Remove from staging after successful encryption
-                    file_path.unlink()
+                    try:
+                        file_path.unlink()
+                    except Exception as unlink_error:
+                        logger.warning(
+                            f"Failed to remove staged artifact {relative_path}: {unlink_error}"
+                        )
             except Exception as e:
-                logger.error(f"Failed to collect artifact {file_path.name}: {e}")
+                logger.error(f"Failed to collect artifact {file_path}: {e}")
                 continue
 
     except Exception as e:
@@ -486,6 +629,54 @@ def get_staging_dir(task_id: str) -> Path:
     return artifacts_dir / "staging"
 
 
+def _iter_staging_files(staging_dir: Path) -> list[Path]:
+    files: list[Path] = []
+    if not staging_dir.exists():
+        return files
+
+    try:
+        root_resolved = staging_dir.resolve()
+    except Exception as e:
+        logger.error(f"Failed to resolve staging dir {staging_dir}: {e}")
+        return files
+
+    def _on_walk_error(exc: OSError) -> None:
+        if _is_transient_staging_error(exc):
+            logger.debug(f"Staging walk race while scanning {staging_dir}: {exc}")
+            return
+        logger.warning(f"Failed to walk staging dir {staging_dir}: {exc}")
+
+    for root, dirs, filenames in os.walk(
+        staging_dir, followlinks=False, onerror=_on_walk_error
+    ):
+        root_path = Path(root)
+        pruned_dirs: list[str] = []
+        for dirname in dirs:
+            dir_path = root_path / dirname
+            try:
+                if dir_path.is_symlink():
+                    continue
+            except Exception:
+                continue
+            pruned_dirs.append(dirname)
+        dirs[:] = pruned_dirs
+
+        for filename in filenames:
+            file_path = root_path / filename
+            try:
+                if file_path.is_symlink():
+                    continue
+                resolved = file_path.resolve(strict=True)
+            except Exception:
+                continue
+            if not resolved.is_relative_to(root_resolved):
+                logger.warning(f"Skipping staged file outside root: {file_path}")
+                continue
+            files.append(file_path)
+
+    return files
+
+
 def list_staging_artifacts(task_id: str) -> list[StagingArtifactMeta]:
     """
     List artifacts in staging directory (for running tasks).
@@ -504,17 +695,21 @@ def list_staging_artifacts(task_id: str) -> list[StagingArtifactMeta]:
     artifacts: list[StagingArtifactMeta] = []
 
     try:
-        for file_path in staging_dir.iterdir():
-            if not file_path.is_file():
+        for file_path in _iter_staging_files(staging_dir):
+            try:
+                stat = file_path.stat()
+            except OSError as exc:
+                if _is_transient_staging_error(exc):
+                    continue
+                logger.warning(f"Failed to stat staging artifact {file_path}: {exc}")
                 continue
-
-            stat = file_path.stat()
-            mime_type, _ = mimetypes.guess_type(file_path.name)
+            relative_path = file_path.relative_to(staging_dir).as_posix()
+            mime_type, _ = mimetypes.guess_type(relative_path)
             if mime_type is None:
                 mime_type = "application/octet-stream"
 
             artifact = StagingArtifactMeta(
-                filename=file_path.name,
+                filename=relative_path,
                 path=file_path,
                 size_bytes=stat.st_size,
                 modified_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc),
@@ -543,20 +738,36 @@ def get_staging_artifact_path(task_id: str, filename: str) -> Path | None:
         Path to staging file, or None if not found
     """
     staging_dir = get_staging_dir(task_id)
+    if Path(filename).is_absolute():
+        logger.error(f"Absolute path rejected for staging artifact: {filename}")
+        return None
+
     file_path = staging_dir / filename
 
-    if file_path.exists() and file_path.is_file():
-        # Security: Verify file is within staging directory (prevent path traversal)
-        try:
-            if file_path.resolve().parent != staging_dir.resolve():
-                logger.error(f"Path traversal attempt: {filename}")
-                return None
-        except Exception as e:
-            logger.error(f"Failed to resolve path {filename}: {e}")
+    try:
+        if file_path.is_symlink():
+            logger.error(f"Symlink rejected for staging artifact: {filename}")
             return None
-        return file_path
+    except Exception as e:
+        logger.error(f"Failed to inspect path {filename}: {e}")
+        return None
 
-    return None
+    try:
+        resolved_root = staging_dir.resolve()
+        resolved_path = file_path.resolve(strict=True)
+    except Exception as e:
+        logger.error(f"Failed to resolve path {filename}: {e}")
+        return None
+
+    # Security: Verify file is within staging directory (prevent path traversal)
+    if not resolved_path.is_relative_to(resolved_root):
+        logger.error(f"Path traversal attempt: {filename}")
+        return None
+
+    if not resolved_path.is_file():
+        return None
+
+    return file_path
 
 
 @dataclass
@@ -592,7 +803,7 @@ def get_artifact_info(task_id: str) -> ArtifactInfo:
 
     if exists:
         try:
-            file_count = sum(1 for f in staging_dir.iterdir() if f.is_file())
+            file_count = len(_iter_staging_files(staging_dir))
         except Exception as e:
             logger.debug(f"Failed to count files in {staging_dir}: {e}")
             file_count = 0

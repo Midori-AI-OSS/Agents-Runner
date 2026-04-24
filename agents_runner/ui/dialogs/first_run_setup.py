@@ -22,16 +22,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from agents_runner.setup.agent_status import detect_all_agents, AgentStatus, StatusType
+from agents_runner.agent_labels import format_agent_ui_label
+from agents_runner.agent_systems.status import AgentStatus
+from agents_runner.agent_systems.status import StatusType
+from agents_runner.setup.agent_status import detect_all_agents
 from agents_runner.setup.orchestrator import (
     SetupOrchestrator,
     mark_setup_complete,
     mark_setup_skipped,
 )
 from agents_runner.ui.dialogs.docker_validator import DockerValidator
+from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 
 
-class FirstRunSetupDialog(QDialog):
+class FirstRunSetupDialog(ThemedDialog):
     """First-run setup dialog shown on app launch if setup incomplete."""
 
     def __init__(self, parent: QWidget | None = None):
@@ -56,8 +60,7 @@ class FirstRunSetupDialog(QDialog):
 
     def _setup_ui(self) -> None:
         """Set up the dialog UI."""
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        layout = self.content_layout()
 
         # Welcome message
         welcome_label = QLabel("Welcome to Agents Runner!")
@@ -162,7 +165,7 @@ class FirstRunSetupDialog(QDialog):
             self._status_table.insertRow(row)
 
             # Agent name
-            name_item = QTableWidgetItem(status.agent.capitalize())
+            name_item = QTableWidgetItem(format_agent_ui_label(status.agent))
             self._status_table.setItem(row, 0, name_item)
 
             # Installed status
@@ -189,7 +192,7 @@ class FirstRunSetupDialog(QDialog):
             # Setup checkbox
             checkbox = QCheckBox()
             # Pre-check if installed and not logged in
-            if status.installed and not status.logged_in:
+            if status.installed and status.status_type == StatusType.NOT_LOGGED_IN:
                 checkbox.setChecked(True)
             # Disable if not installed or already logged in
             if not status.installed or status.logged_in:
@@ -267,7 +270,7 @@ class FirstRunSetupDialog(QDialog):
             self.reject()
 
 
-class SetupProgressDialog(QDialog):
+class SetupProgressDialog(ThemedDialog):
     """Progress dialog shown during sequential agent setup."""
 
     def __init__(self, agents: list[str], parent: QWidget | None = None):
@@ -293,8 +296,7 @@ class SetupProgressDialog(QDialog):
 
     def _setup_ui(self) -> None:
         """Set up the progress dialog UI."""
-        layout = QVBoxLayout()
-        self.setLayout(layout)
+        layout = self.content_layout()
 
         # Title
         self._title_label = QLabel("Setting up agents...")
@@ -365,7 +367,7 @@ class SetupProgressDialog(QDialog):
             status_message: Status message to display
         """
         self._title_label.setText(f"Setting up agent {current} of {total}")
-        self._current_label.setText(f"Current: {agent.capitalize()}")
+        self._current_label.setText(f"Current: {format_agent_ui_label(agent)}")
         self._status_label.setText(status_message)
         self._progress_bar.setValue(
             current - 1 if "Starting in" in status_message else current
@@ -376,10 +378,14 @@ class SetupProgressDialog(QDialog):
         remaining = [a for a in self._agents[current:]]
 
         completed_text = (
-            ", ".join([a.capitalize() for a in completed]) if completed else "None"
+            ", ".join([format_agent_ui_label(a) for a in completed])
+            if completed
+            else "None"
         )
         remaining_text = (
-            ", ".join([a.capitalize() for a in remaining]) if remaining else "None"
+            ", ".join([format_agent_ui_label(a) for a in remaining])
+            if remaining
+            else "None"
         )
 
         self._completed_label.setText(f"Completed: {completed_text}")

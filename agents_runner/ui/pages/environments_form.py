@@ -15,27 +15,40 @@ from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
-from PySide6.QtWidgets import QSplitter
-from PySide6.QtWidgets import QStackedWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import ALLOWED_STAINS
+from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
+from agents_runner.environments.model import (
+    GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT,
+    INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE,
+    INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW,
+)
+from agents_runner.ide_systems import available_ide_system_names
+from agents_runner.ide_systems import get_ide_system
 from agents_runner.ui.constants import (
     BUTTON_ROW_SPACING,
-    GRID_HORIZONTAL_SPACING,
     GRID_VERTICAL_SPACING,
     STANDARD_BUTTON_WIDTH,
-    TAB_CONTENT_SPACING,
 )
+from agents_runner.ui.utils.form_helpers import (
+    add_grid_row,
+    configure_form_grid,
+    create_stretch_row,
+)
+from agents_runner.ui.pages.github_trust import collect_seed_usernames_for_environment
+from agents_runner.ui.pages.github_username_list import GitHubUsernameListWidget
 from agents_runner.ui.pages.environments_agents import AgentsTabWidget
+from agents_runner.ui.pages.environments_env_vars import EnvVarsTabWidget
+from agents_runner.ui.pages.environments_mounts import MountsTabWidget
 from agents_runner.ui.pages.environments_ports import PortsTabWidget
 from agents_runner.ui.pages.environments_prompts import PromptsTabWidget
-from agents_runner.ui.widgets import GlassCard
+from agents_runner.ui.widgets import ArtifactSyntaxHighlighter, EdgeFadeScrollArea
 
 
 @dataclass(frozen=True)
@@ -46,12 +59,12 @@ class _EnvironmentPaneSpec:
     section: str
 
 
-class _EnvironmentsFormMixin:
+class EnvironmentsFormMixin:
     def _default_pane_specs(self) -> list[_EnvironmentPaneSpec]:
         return [
             _EnvironmentPaneSpec(
                 key="general",
-                title="General",
+                title="Preferences",
                 subtitle="Core environment identity, limits, and runtime toggles.",
                 section="General",
             ),
@@ -66,6 +79,18 @@ class _EnvironmentsFormMixin:
                 title="Prompts",
                 subtitle="Prompt snippets and unlock behavior for this environment.",
                 section="Collaboration",
+            ),
+            _EnvironmentPaneSpec(
+                key="github_config",
+                title="Config",
+                subtitle="GitHub context, polling, and trust mode controls for this environment.",
+                section="GitHub",
+            ),
+            _EnvironmentPaneSpec(
+                key="github_trusted_users",
+                title="Trusted Users",
+                subtitle="Environment-specific trusted usernames for @agentsnova checks.",
+                section="GitHub",
             ),
             _EnvironmentPaneSpec(
                 key="env_vars",
@@ -88,7 +113,13 @@ class _EnvironmentsFormMixin:
             _EnvironmentPaneSpec(
                 key="preflight",
                 title="Preflight",
-                subtitle="Container setup scripts for cached and runtime execution.",
+                subtitle="Read-only setup-agents.sh preview.",
+                section="Automation",
+            ),
+            _EnvironmentPaneSpec(
+                key="caching",
+                title="Caching",
+                subtitle="Container and desktop caching controls for this environment.",
                 section="Automation",
             ),
         ]
@@ -117,6 +148,25 @@ class _EnvironmentsFormMixin:
         self._headless_desktop_enabled.stateChanged.connect(
             self._on_headless_desktop_toggled
         )
+        self._gpu_override_mode = QComboBox()
+        self._gpu_override_mode.addItem("Inherit global setting", "inherit")
+        self._gpu_override_mode.addItem("Enabled", "enabled")
+        self._gpu_override_mode.addItem("Disabled", "disabled")
+        self._gpu_override_mode.setToolTip(
+            "Override the global GPU runtime setting for this environment."
+        )
+        self._ide_system_override = QComboBox()
+        self._ide_system_override.addItem("Inherit setting default", "")
+        for ide_name in available_ide_system_names():
+            label = str(ide_name or "").strip()
+            try:
+                plugin = get_ide_system(ide_name)
+                display_name = str(getattr(plugin, "display_name", "") or "").strip()
+                if display_name:
+                    label = display_name
+            except Exception:
+                pass
+            self._ide_system_override.addItem(label, ide_name)
 
         self._cache_desktop_build = QCheckBox("Cache desktop build")
         self._cache_desktop_build.setToolTip(
@@ -129,10 +179,8 @@ class _EnvironmentsFormMixin:
 
         self._container_caching_enabled = QCheckBox("Enable container caching")
         self._container_caching_enabled.setToolTip(
-            "When enabled, environment preflight scripts are executed at Docker build time.\n"
-            "This creates a cached image with pre-installed dependencies, speeding up task startup.\n\n"
-            "The cached preflight script is configured in the Preflight pane.\n"
-            "Image is automatically rebuilt when the cached preflight script changes."
+            "When enabled, selected preflight phases build cached Docker layers.\n"
+            "Configure phase cache toggles in the Caching pane."
         )
         self._container_caching_enabled.stateChanged.connect(
             self._on_container_caching_toggled
@@ -154,6 +202,137 @@ class _EnvironmentsFormMixin:
         )
         self._gh_context_enabled.setEnabled(False)
         self._gh_context_enabled.setVisible(True)
+        self._github_polling_enabled = QCheckBox(
+            "Enable background GitHub polling for this environment"
+        )
+        self._github_polling_enabled.setToolTip(
+            "Used only when global GitHub polling is disabled. "
+            "This control is hidden while global GitHub polling is enabled."
+        )
+        self._agentsnova_trusted_mode = QComboBox()
+        self._agentsnova_trusted_mode.addItem("Inherit global trusted users", "inherit")
+        self._agentsnova_trusted_mode.addItem(
+            "Add environment trusted users", "additive"
+        )
+        self._agentsnova_trusted_mode.addItem(
+            "Replace with environment trusted users", "replace"
+        )
+        self._agentsnova_trusted_mode.setToolTip(
+            "Controls how this environment resolves trusted usernames for auto-review mention checks."
+        )
+        self._agentsnova_auto_review_mode = QComboBox()
+        self._agentsnova_auto_review_mode.addItem("Inherit global setting", "inherit")
+        self._agentsnova_auto_review_mode.addItem("Enabled", "enabled")
+        self._agentsnova_auto_review_mode.addItem("Disabled", "disabled")
+        self._agentsnova_auto_review_mode.setToolTip(
+            "Override whether @agentsnova mentions auto-queue review work for this environment."
+        )
+        self._agentsnova_auto_reactions_mode = QComboBox()
+        self._agentsnova_auto_reactions_mode.addItem(
+            "Inherit global setting", "inherit"
+        )
+        self._agentsnova_auto_reactions_mode.addItem("Enabled", "enabled")
+        self._agentsnova_auto_reactions_mode.addItem("Disabled", "disabled")
+        self._agentsnova_auto_reactions_mode.setToolTip(
+            "Override whether @agentsnova queue triggers add GitHub reactions for this environment."
+        )
+        self._agentsnova_marker_comment_mode = QComboBox()
+        self._agentsnova_marker_comment_mode.addItem(
+            "Inherit global setting", "inherit"
+        )
+        self._agentsnova_marker_comment_mode.addItem("Keep", "keep")
+        self._agentsnova_marker_comment_mode.addItem(
+            "Delete after 15s", "delete_after_15s"
+        )
+        self._agentsnova_marker_comment_mode.addItem("Disabled", "disabled")
+        self._agentsnova_marker_comment_mode.setToolTip(
+            "Override marker-comment behavior for @agentsnova auto-review activity in this environment."
+        )
+        self._interactive_pr_prompt_enabled = QCheckBox("Show interactive PR prompt")
+        self._interactive_pr_prompt_enabled.setToolTip(
+            "When enabled, interactive GitHub work can keep showing the PR prompt for this environment."
+        )
+        self._interactive_pr_no_prompt_mode = QComboBox()
+        self._interactive_pr_no_prompt_mode.addItem(
+            "Auto-create PR after interactive run",
+            INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE,
+        )
+        self._interactive_pr_no_prompt_mode.addItem(
+            "Manual only (Review -> Create PR)",
+            INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW,
+        )
+        self._interactive_pr_no_prompt_mode.setToolTip(
+            "Used when 'Show interactive PR prompt' is disabled.\n"
+            "Manual mode means you can enter the task, then click Review -> Create PR yourself."
+        )
+        self._interactive_pr_no_prompt_mode.setVisible(False)
+        self._interactive_pr_prompt_enabled.toggled.connect(
+            self._sync_interactive_pr_controls
+        )
+        self._setup_agents_missing_prompt_enabled = QCheckBox(
+            "Inject missing setup-agents prompt"
+        )
+        self._setup_agents_missing_prompt_enabled.setToolTip(
+            "When enabled, missing setup-agents guidance can be injected for this environment."
+        )
+        self._interactive_pull_before_run_enabled = QCheckBox(
+            "Pull before interactive run"
+        )
+        self._interactive_pull_before_run_enabled.setToolTip(
+            "When enabled, interactive runs can pull/update before starting for this environment."
+        )
+        self._gh_branch_work_mode = QComboBox()
+        self._gh_branch_work_mode.addItem("Use task branches", "task_branch")
+        self._gh_branch_work_mode.addItem("Work on direct base", "direct_base")
+        self._gh_branch_work_mode.setToolTip(
+            "Controls whether GitHub work for this environment uses per-task branches or works directly on the selected base branch."
+        )
+        self._gh_task_branch_naming_style = QComboBox()
+        self._gh_task_branch_naming_style.addItem("Standard", "standard")
+        self._gh_task_branch_naming_style.addItem("Songs", "songs")
+        self._gh_task_branch_naming_style.addItem("Foods", "foods")
+        self._gh_task_branch_naming_style.addItem("Animals", "animals")
+        self._gh_task_branch_naming_style.addItem("Colors", "colors")
+        self._gh_task_branch_naming_style.addItem("Space", "space")
+        self._gh_task_branch_naming_style.addItem("Custom", "custom")
+        self._gh_task_branch_naming_style.setToolTip(
+            "Controls how future task branches are named for this environment."
+        )
+        self._gh_task_branch_custom_template = QLineEdit()
+        self._gh_task_branch_custom_template.setPlaceholderText(
+            GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
+        )
+        self._gh_task_branch_custom_template.setToolTip(
+            "Custom template used when task branch naming style is set to Custom."
+        )
+        self._gh_task_branch_custom_template_helper = QLabel(
+            "Custom templates can use placeholders like {task_id}."
+        )
+        self._gh_task_branch_custom_template_helper.setObjectName(
+            "SettingsPaneSubtitle"
+        )
+        self._gh_task_branch_custom_template.setVisible(False)
+        self._gh_task_branch_custom_template_helper.setVisible(False)
+        self._gh_branch_work_mode.currentIndexChanged.connect(
+            self._sync_github_branch_naming_controls
+        )
+        self._gh_task_branch_naming_style.currentIndexChanged.connect(
+            self._sync_github_branch_naming_controls
+        )
+        self._agentsnova_trusted_users_env = GitHubUsernameListWidget()
+        self._agentsnova_trusted_users_env.set_add_button_visible(False)
+        self._add_trusted_user_env = (
+            self._agentsnova_trusted_users_env.create_add_button(self)
+        )
+        self._setup_github_defaults_env = QToolButton()
+        self._setup_github_defaults_env.setText("Setup Defaults")
+        self._setup_github_defaults_env.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._setup_github_defaults_env.setToolTip(
+            "Seed trusted users from this environment's repo owner/org members and current gh login."
+        )
+        self._setup_github_defaults_env.clicked.connect(
+            self._on_setup_environment_github_defaults
+        )
 
         # Workspace controls are retained for compatibility with existing logic but remain hidden.
         self._workspace_type_combo = QComboBox()
@@ -184,114 +363,42 @@ class _EnvironmentsFormMixin:
         self._workspace_target.setVisible(False)
         self._gh_management_browse.setVisible(False)
 
-        self._preflight_enabled = QCheckBox("Enable environment preflight")
-        self._preflight_enabled.setToolTip(
-            "Runs after Settings preflight script.\n"
-            "Use for environment-specific setup tasks."
+        self._setup_agents_preview = QPlainTextEdit()
+        self._setup_agents_preview.setReadOnly(True)
+        self._setup_agents_preview.setPlaceholderText(
+            "# setup-agents.sh is not available for this environment."
         )
-
-        self._preflight_script = QPlainTextEdit()
-        self._preflight_script.setPlaceholderText(
-            "#!/usr/bin/env bash\n"
-            "set -euo pipefail\n"
-            "\n"
-            "# Runs inside the container before the agent command.\n"
-            "# Runs after Settings preflight (if enabled).\n"
+        self._setup_agents_preview.setToolTip("Create in repo: .agents/setup-agents.sh")
+        self._setup_agents_preview.setTabChangesFocus(True)
+        self._setup_agents_preview_highlighter = ArtifactSyntaxHighlighter(
+            self._setup_agents_preview.document()
         )
-        self._preflight_script.setTabChangesFocus(True)
-        self._preflight_enabled.toggled.connect(self._preflight_script.setEnabled)
-        self._preflight_script.setEnabled(False)
+        self._setup_agents_preview_highlighter.set_language("bash")
 
-        self._cached_preflight_enabled = QCheckBox("Enable cached preflight")
-        self._cached_preflight_enabled.setToolTip(
-            "Runs at Docker build time to pre-install dependencies.\n"
-            "Creates a cached image for faster task startup."
+        self._cache_system_preflight_enabled = QCheckBox("Cache system phase")
+        self._cache_system_preflight_enabled.setToolTip(
+            "When enabled, the system preflight (`pixelarch_yay.sh`) is cached as an image layer."
         )
+        self._cache_system_preflight_enabled.setEnabled(False)
 
-        self._cached_preflight_script = QPlainTextEdit()
-        self._cached_preflight_script.setPlaceholderText(
-            "#!/usr/bin/env bash\n"
-            "set -euo pipefail\n"
-            "\n"
-            "# Runs at Docker build time.\n"
-            "# Use for installing packages and dependencies.\n"
+        self._cache_settings_preflight_enabled = QCheckBox("Cache settings phase")
+        self._cache_settings_preflight_enabled.setToolTip(
+            "When enabled, the Settings preflight script is cached as an image layer."
         )
-        self._cached_preflight_script.setTabChangesFocus(True)
-        self._cached_preflight_enabled.toggled.connect(
-            self._cached_preflight_script.setEnabled
+        self._cache_settings_preflight_enabled.setEnabled(False)
+
+        self._cache_ide_preflight_enabled = QCheckBox("Cache IDE setup phase")
+        self._cache_ide_preflight_enabled.setToolTip(
+            "When enabled, the IDE install/setup preflight is cached as an image layer.\n"
+            "Cache key is chained from base image + IDE setup script content."
         )
-        self._cached_preflight_script.setEnabled(False)
+        self._cache_ide_preflight_enabled.setEnabled(False)
 
-        self._run_preflight_enabled = QCheckBox("Enable run preflight")
-        self._run_preflight_enabled.setToolTip(
-            "Runs at task startup after cached preflight.\n"
-            "Use for runtime setup and validation."
-        )
+        self._env_vars_tab = EnvVarsTabWidget()
+        self._env_vars_tab.env_vars_changed.connect(self._queue_advanced_autosave)
 
-        self._run_preflight_script = QPlainTextEdit()
-        self._run_preflight_script.setPlaceholderText(
-            "#!/usr/bin/env bash\n"
-            "set -euo pipefail\n"
-            "\n"
-            "# Runs at task startup (after cached layer).\n"
-            "# Use for runtime-specific setup.\n"
-        )
-        self._run_preflight_script.setTabChangesFocus(True)
-        self._run_preflight_enabled.toggled.connect(
-            self._run_preflight_script.setEnabled
-        )
-        self._run_preflight_script.setEnabled(False)
-
-        self._preflight_single_container = QWidget()
-        single_layout = QVBoxLayout(self._preflight_single_container)
-        single_layout.setSpacing(TAB_CONTENT_SPACING)
-        single_layout.setContentsMargins(0, 0, 0, 0)
-        single_layout.addWidget(self._preflight_enabled)
-        single_layout.addWidget(QLabel("Preflight script"))
-        single_layout.addWidget(self._preflight_script, 1)
-
-        self._preflight_dual_container = QWidget()
-        dual_layout = QVBoxLayout(self._preflight_dual_container)
-        dual_layout.setSpacing(TAB_CONTENT_SPACING)
-        dual_layout.setContentsMargins(0, 0, 0, 0)
-
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.setChildrenCollapsible(False)
-
-        left_panel = GlassCard()
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(18, 16, 18, 16)
-        left_layout.setSpacing(10)
-        left_layout.addWidget(self._cached_preflight_enabled)
-        left_layout.addWidget(QLabel("Cached preflight"))
-        left_layout.addWidget(self._cached_preflight_script, 1)
-
-        right_panel = GlassCard()
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(18, 16, 18, 16)
-        right_layout.setSpacing(10)
-        right_layout.addWidget(self._run_preflight_enabled)
-        right_layout.addWidget(QLabel("Run preflight"))
-        right_layout.addWidget(self._run_preflight_script, 1)
-
-        splitter.addWidget(left_panel)
-        splitter.addWidget(right_panel)
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
-
-        dual_layout.addWidget(splitter, 1)
-
-        self._preflight_stack = QStackedWidget()
-        self._preflight_stack.addWidget(self._preflight_single_container)
-        self._preflight_stack.addWidget(self._preflight_dual_container)
-
-        self._env_vars = QPlainTextEdit()
-        self._env_vars.setPlaceholderText("# KEY=VALUE (one per line)\n")
-        self._env_vars.setTabChangesFocus(True)
-
-        self._mounts = QPlainTextEdit()
-        self._mounts.setPlaceholderText("# host_path:container_path[:ro]\n")
-        self._mounts.setTabChangesFocus(True)
+        self._mounts_tab = MountsTabWidget()
+        self._mounts_tab.mounts_changed.connect(self._queue_advanced_autosave)
 
         self._ports_tab = PortsTabWidget()
         self._ports_tab.ports_changed.connect(self._on_ports_changed)
@@ -307,64 +414,23 @@ class _EnvironmentsFormMixin:
 
         general_page, general_body = self._create_page(specs_by_key["general"])
         grid = QGridLayout()
-        grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        grid.setContentsMargins(0, 0, 0, 0)
+        configure_form_grid(grid)
 
-        max_agents_row = QWidget(general_page)
-        max_agents_row_layout = QHBoxLayout(max_agents_row)
-        max_agents_row_layout.setContentsMargins(0, 0, 0, 0)
-        max_agents_row_layout.setSpacing(BUTTON_ROW_SPACING)
-        max_agents_row_layout.addWidget(self._max_agents_running)
-        max_agents_row_layout.addStretch(1)
+        max_agents_row = create_stretch_row(self._max_agents_running, stretch_index=1)
+        self._headless_desktop_label = QLabel("Headless desktop")
+        self._headless_desktop_row = create_stretch_row(
+            self._headless_desktop_enabled,
+            stretch_index=1,
+        )
+        cross_agents_row = create_stretch_row(self._use_cross_agents, stretch_index=1)
 
-        headless_desktop_row = QWidget(general_page)
-        headless_desktop_layout = QHBoxLayout(headless_desktop_row)
-        headless_desktop_layout.setContentsMargins(0, 0, 0, 0)
-        headless_desktop_layout.setSpacing(BUTTON_ROW_SPACING)
-        headless_desktop_layout.addWidget(self._headless_desktop_enabled)
-        headless_desktop_layout.addWidget(self._cache_desktop_build)
-        headless_desktop_layout.addStretch(1)
-
-        container_caching_row = QWidget(general_page)
-        container_caching_layout = QHBoxLayout(container_caching_row)
-        container_caching_layout.setContentsMargins(0, 0, 0, 0)
-        container_caching_layout.setSpacing(BUTTON_ROW_SPACING)
-        container_caching_layout.addWidget(self._container_caching_enabled)
-        container_caching_layout.addStretch(1)
-
-        cross_agents_row = QWidget(general_page)
-        cross_agents_layout = QHBoxLayout(cross_agents_row)
-        cross_agents_layout.setContentsMargins(0, 0, 0, 0)
-        cross_agents_layout.setSpacing(BUTTON_ROW_SPACING)
-        cross_agents_layout.addWidget(self._use_cross_agents)
-        cross_agents_layout.addStretch(1)
-
-        self._gh_context_label = QLabel("GitHub context")
-        self._gh_context_row = QWidget(general_page)
-        gh_context_layout = QHBoxLayout(self._gh_context_row)
-        gh_context_layout.setContentsMargins(0, 0, 0, 0)
-        gh_context_layout.setSpacing(BUTTON_ROW_SPACING)
-        gh_context_layout.addWidget(self._gh_context_enabled)
-        gh_context_layout.addStretch(1)
-
-        self._gh_context_label.setVisible(False)
-        self._gh_context_row.setVisible(False)
-
-        grid.addWidget(QLabel("Name"), 0, 0)
-        grid.addWidget(self._name, 0, 1, 1, 2)
-        grid.addWidget(QLabel("Color"), 1, 0)
-        grid.addWidget(self._color, 1, 1, 1, 2)
-        grid.addWidget(QLabel("Max agents running"), 3, 0)
-        grid.addWidget(max_agents_row, 3, 1, 1, 2)
-        grid.addWidget(self._gh_context_label, 4, 0)
-        grid.addWidget(self._gh_context_row, 4, 1, 1, 2)
-        grid.addWidget(QLabel("Headless desktop"), 5, 0)
-        grid.addWidget(headless_desktop_row, 5, 1, 1, 2)
-        grid.addWidget(QLabel("Container caching"), 6, 0)
-        grid.addWidget(container_caching_row, 6, 1, 1, 2)
-        grid.addWidget(QLabel("Cross agents"), 7, 0)
-        grid.addWidget(cross_agents_row, 7, 1, 1, 2)
+        add_grid_row(grid, 0, QLabel("Name"), self._name)
+        add_grid_row(grid, 1, QLabel("Color"), self._color)
+        add_grid_row(grid, 3, QLabel("Max agents running"), max_agents_row)
+        add_grid_row(grid, 4, self._headless_desktop_label, self._headless_desktop_row)
+        add_grid_row(grid, 5, QLabel("GPU runtime"), self._gpu_override_mode)
+        add_grid_row(grid, 6, QLabel("IDE override"), self._ide_system_override)
+        add_grid_row(grid, 7, QLabel("Cross agents"), cross_agents_row)
 
         general_body.addLayout(grid)
         general_body.addStretch(1)
@@ -378,14 +444,124 @@ class _EnvironmentsFormMixin:
         prompts_body.addWidget(self._prompts_tab, 1)
         self._register_page("prompts", prompts_page)
 
+        github_config_page, github_config_body = self._create_page(
+            specs_by_key["github_config"]
+        )
+        github_grid = QGridLayout()
+        configure_form_grid(github_grid)
+
+        gh_context_row = create_stretch_row(self._gh_context_enabled, stretch_index=1)
+        self._github_polling_enabled_label = QLabel("GitHub polling")
+        self._github_polling_enabled_row = create_stretch_row(
+            self._github_polling_enabled,
+            stretch_index=1,
+        )
+        trusted_mode_row = self._agentsnova_trusted_mode
+        auto_review_row = self._agentsnova_auto_review_mode
+        auto_reactions_row = self._agentsnova_auto_reactions_mode
+        marker_comment_row = self._agentsnova_marker_comment_mode
+        interactive_pr_prompt_row = create_stretch_row(
+            self._interactive_pr_prompt_enabled,
+            stretch_index=1,
+        )
+        self._interactive_pr_no_prompt_mode_label = QLabel("When prompt is disabled")
+        self._interactive_pr_no_prompt_mode_row = create_stretch_row(
+            self._interactive_pr_no_prompt_mode,
+            stretch_index=1,
+        )
+        setup_agents_missing_prompt_row = create_stretch_row(
+            self._setup_agents_missing_prompt_enabled,
+            stretch_index=1,
+        )
+        interactive_pull_before_run_row = create_stretch_row(
+            self._interactive_pull_before_run_enabled,
+            stretch_index=1,
+        )
+        branch_work_mode_row = self._gh_branch_work_mode
+        task_branch_naming_row = self._gh_task_branch_naming_style
+        self._gh_task_branch_custom_template_label = QLabel("Custom branch template")
+        self._gh_task_branch_custom_template_row = QWidget(github_config_page)
+        gh_custom_template_layout = QVBoxLayout(
+            self._gh_task_branch_custom_template_row
+        )
+        gh_custom_template_layout.setContentsMargins(0, 0, 0, 0)
+        gh_custom_template_layout.setSpacing(GRID_VERTICAL_SPACING)
+        gh_custom_template_layout.addWidget(self._gh_task_branch_custom_template)
+        gh_custom_template_layout.addWidget(self._gh_task_branch_custom_template_helper)
+
+        add_grid_row(github_grid, 0, QLabel("GitHub context"), gh_context_row)
+        add_grid_row(
+            github_grid,
+            1,
+            self._github_polling_enabled_label,
+            self._github_polling_enabled_row,
+        )
+        add_grid_row(
+            github_grid,
+            2,
+            QLabel("Interactive PR prompt"),
+            interactive_pr_prompt_row,
+        )
+        add_grid_row(
+            github_grid,
+            3,
+            self._interactive_pr_no_prompt_mode_label,
+            self._interactive_pr_no_prompt_mode_row,
+        )
+        add_grid_row(
+            github_grid,
+            4,
+            QLabel("Missing setup-agents prompt injection"),
+            setup_agents_missing_prompt_row,
+        )
+        add_grid_row(
+            github_grid,
+            5,
+            QLabel("Interactive pull before run"),
+            interactive_pull_before_run_row,
+        )
+        add_grid_row(github_grid, 6, QLabel("Trusted mode"), trusted_mode_row)
+        add_grid_row(github_grid, 7, QLabel("Auto review"), auto_review_row)
+        add_grid_row(github_grid, 8, QLabel("Auto reactions"), auto_reactions_row)
+        add_grid_row(github_grid, 9, QLabel("Marker comments"), marker_comment_row)
+        add_grid_row(github_grid, 10, QLabel("Branch workflow"), branch_work_mode_row)
+        add_grid_row(
+            github_grid, 11, QLabel("Task branch naming"), task_branch_naming_row
+        )
+        add_grid_row(
+            github_grid,
+            12,
+            self._gh_task_branch_custom_template_label,
+            self._gh_task_branch_custom_template_row,
+        )
+        self._interactive_pr_no_prompt_mode_label.setVisible(False)
+        self._interactive_pr_no_prompt_mode_row.setVisible(False)
+        self._gh_task_branch_custom_template_label.setVisible(False)
+        self._gh_task_branch_custom_template_row.setVisible(False)
+
+        github_config_body.addLayout(github_grid)
+        github_config_body.addStretch(1)
+        self._register_page("github_config", github_config_page)
+
+        github_trusted_page, github_trusted_body = self._create_page(
+            specs_by_key["github_trusted_users"]
+        )
+        github_trusted_body.addWidget(self._agentsnova_trusted_users_env, 1)
+
+        github_actions = QHBoxLayout()
+        github_actions.setSpacing(BUTTON_ROW_SPACING)
+        github_actions.addWidget(self._add_trusted_user_env)
+        github_actions.addStretch(1)
+        github_actions.addWidget(self._setup_github_defaults_env)
+        github_trusted_body.addLayout(github_actions)
+        self._register_page("github_trusted_users", github_trusted_page)
+
         env_vars_page, env_vars_body = self._create_page(specs_by_key["env_vars"])
-        env_vars_body.addWidget(QLabel("Container env vars"))
-        env_vars_body.addWidget(self._env_vars, 1)
+        env_vars_body.addWidget(self._env_vars_tab, 1)
         self._register_page("env_vars", env_vars_page)
 
         mounts_page, mounts_body = self._create_page(specs_by_key["mounts"])
-        mounts_body.addWidget(QLabel("Extra bind mounts"))
-        mounts_body.addWidget(self._mounts, 1)
+        mounts_body.addWidget(self._mounts_tab, 1)
         self._register_page("mounts", mounts_page)
 
         ports_page, ports_body = self._create_page(specs_by_key["ports"])
@@ -393,8 +569,59 @@ class _EnvironmentsFormMixin:
         self._register_page("ports", ports_page)
 
         preflight_page, preflight_body = self._create_page(specs_by_key["preflight"])
-        preflight_body.addWidget(self._preflight_stack, 1)
+        preflight_body.addWidget(self._setup_agents_preview, 1)
         self._register_page("preflight", preflight_page)
+
+        caching_page, caching_body = self._create_page(specs_by_key["caching"])
+        caching_grid = QGridLayout()
+        configure_form_grid(caching_grid)
+
+        container_caching_row = create_stretch_row(
+            self._container_caching_enabled,
+            stretch_index=1,
+        )
+        desktop_build_cache_row = create_stretch_row(
+            self._cache_desktop_build,
+            stretch_index=1,
+        )
+        system_phase_cache_row = create_stretch_row(
+            self._cache_system_preflight_enabled,
+            stretch_index=1,
+        )
+        settings_phase_cache_row = create_stretch_row(
+            self._cache_settings_preflight_enabled,
+            stretch_index=1,
+        )
+        ide_setup_phase_cache_row = create_stretch_row(
+            self._cache_ide_preflight_enabled,
+            stretch_index=1,
+        )
+
+        add_grid_row(
+            caching_grid, 0, QLabel("Container caching"), container_caching_row
+        )
+        add_grid_row(
+            caching_grid, 1, QLabel("Desktop build cache"), desktop_build_cache_row
+        )
+        add_grid_row(
+            caching_grid, 2, QLabel("System phase cache"), system_phase_cache_row
+        )
+        add_grid_row(
+            caching_grid,
+            3,
+            QLabel("Settings phase cache"),
+            settings_phase_cache_row,
+        )
+        add_grid_row(
+            caching_grid,
+            4,
+            QLabel("IDE setup phase cache"),
+            ide_setup_phase_cache_row,
+        )
+
+        caching_body.addLayout(caching_grid)
+        caching_body.addStretch(1)
+        self._register_page("caching", caching_page)
 
     def _build_navigation(self, nav_layout: QVBoxLayout) -> None:
         sections: dict[str, list[_EnvironmentPaneSpec]] = {}
@@ -416,7 +643,7 @@ class _EnvironmentsFormMixin:
                 button.setToolButtonStyle(Qt.ToolButtonTextOnly)
                 button.setFixedHeight(40)
                 button.setSizePolicy(
-                    QSizePolicy.Policy.Fixed,
+                    QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Fixed,
                 )
                 button.clicked.connect(
@@ -432,23 +659,29 @@ class _EnvironmentsFormMixin:
         page = QWidget()
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.setSpacing(10)
+        page_layout.setSpacing(0)
+
+        scroll = EdgeFadeScrollArea(page)
+        scroll.setObjectName("SettingsPaneScrollArea")
+
+        content = QWidget(scroll)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(10)
 
         title = QLabel(spec.title)
         title.setObjectName("SettingsPaneTitle")
 
-        subtitle = QLabel(spec.subtitle)
-        subtitle.setObjectName("SettingsPaneSubtitle")
-        subtitle.setWordWrap(True)
-
-        body = QWidget(page)
+        body = QWidget(content)
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(GRID_VERTICAL_SPACING)
 
-        page_layout.addWidget(title)
-        page_layout.addWidget(subtitle)
-        page_layout.addWidget(body, 1)
+        content_layout.addWidget(title)
+        content_layout.addWidget(body)
+
+        scroll.setWidget(content)
+        page_layout.addWidget(scroll, 1)
         return page, body_layout
 
     def _register_page(self, key: str, widget: QWidget) -> None:
@@ -457,9 +690,26 @@ class _EnvironmentsFormMixin:
 
     @staticmethod
     def _pane_button_label(key: str, title: str) -> str:
-        if key == "env_vars":
-            return "Env Vars"
         return title
+
+    def _current_environment(self) -> Environment | None:
+        envs = getattr(self, "_environments", {})
+        if not isinstance(envs, dict):
+            return None
+        env_id = str(getattr(self, "_current_env_id", "") or "").strip()
+        env = envs.get(env_id)
+        return env if isinstance(env, Environment) else None
+
+    def _on_setup_environment_github_defaults(self) -> None:
+        env = self._current_environment()
+        seeded = collect_seed_usernames_for_environment(env)
+        if not seeded:
+            return
+        self._agentsnova_trusted_users_env.merge_usernames(seeded)
+        try:
+            self._queue_advanced_autosave()
+        except Exception:
+            pass
 
     def _pick_gh_management_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(

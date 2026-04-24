@@ -16,13 +16,13 @@ TASKS_DIR_NAME = "tasks"
 TASKS_DONE_DIR_NAME = "done"
 
 
-def _strip_none_for_toml(value: Any) -> Any:
+def strip_none_for_toml(value: Any) -> Any:
     if isinstance(value, dict):
         cleaned: dict[str, Any] = {}
         for key, item in value.items():
             if item is None:
                 continue
-            cleaned_item = _strip_none_for_toml(item)
+            cleaned_item = strip_none_for_toml(item)
             if cleaned_item is None:
                 continue
             cleaned[str(key)] = cleaned_item
@@ -32,7 +32,7 @@ def _strip_none_for_toml(value: Any) -> Any:
         for item in value:
             if item is None:
                 continue
-            cleaned_item = _strip_none_for_toml(item)
+            cleaned_item = strip_none_for_toml(item)
             if cleaned_item is None:
                 continue
             cleaned_list.append(cleaned_item)
@@ -121,7 +121,7 @@ def save_state(path: str, payload: dict[str, Any]) -> None:
     )
     try:
         with os.fdopen(fd, "wb") as f:
-            tomli_w.dump(_strip_none_for_toml(payload), f)
+            tomli_w.dump(strip_none_for_toml(payload), f)
         os.replace(tmp_path, path)
     finally:
         try:
@@ -170,7 +170,7 @@ def _atomic_write_json(path: str, payload: dict[str, Any]) -> None:
     )
     try:
         with os.fdopen(fd, "wb") as f:
-            tomli_w.dump(_strip_none_for_toml(payload), f)
+            tomli_w.dump(strip_none_for_toml(payload), f)
         os.replace(tmp_path, path)
     finally:
         try:
@@ -340,6 +340,9 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "agent_cli": getattr(task, "agent_cli", ""),
         "agent_instance_id": getattr(task, "agent_instance_id", ""),
         "agent_cli_args": getattr(task, "agent_cli_args", ""),
+        "launch_mode": getattr(task, "launch_mode", "agent"),
+        "ide_system": getattr(task, "ide_system", ""),
+        "ide_display_target": getattr(task, "ide_display_target", ""),
         "headless_desktop_enabled": bool(
             getattr(task, "headless_desktop_enabled", False)
         ),
@@ -381,9 +384,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         prompt=sanitize_prompt(str(data.get("prompt") or "")),
         image=str(data.get("image") or ""),
         host_workdir=str(data.get("host_workdir") or ""),
-        host_config_dir=str(
-            data.get("host_config_dir") or data.get("host_codex_dir") or ""
-        ),
+        host_config_dir=str(data.get("host_config_dir") or ""),
         environment_id=str(data.get("environment_id") or ""),
         created_at_s=float(data.get("created_at_s") or 0.0),
         status=str(data.get("status") or "queued"),
@@ -406,6 +407,9 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         agent_cli=str(data.get("agent_cli") or ""),
         agent_instance_id=str(data.get("agent_instance_id") or ""),
         agent_cli_args=str(data.get("agent_cli_args") or ""),
+        launch_mode=str(data.get("launch_mode") or "agent"),
+        ide_system=str(data.get("ide_system") or ""),
+        ide_display_target=str(data.get("ide_display_target") or ""),
         headless_desktop_enabled=bool(data.get("headless_desktop_enabled") or False),
         novnc_url=str(data.get("novnc_url") or ""),
         vnc_password="",
@@ -465,6 +469,13 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
         if isinstance(raw_args, list):
             agent_cli_args = [str(item) for item in raw_args if str(item).strip()]
 
+        custom_command_argv: list[str] = []
+        raw_custom_command = payload.get("custom_command_argv")
+        if isinstance(raw_custom_command, list):
+            custom_command_argv = [
+                str(item) for item in raw_custom_command if str(item).strip()
+            ]
+
         artifact_collection_timeout_s = 30.0
         raw_timeout = payload.get("artifact_collection_timeout_s")
         if raw_timeout is not None:
@@ -476,17 +487,12 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             artifact_collection_timeout_s = 30.0
 
         agent_cli = str(payload.get("agent_cli") or "codex")
-        agent_cli_lower = agent_cli.strip().lower()
         container_config_dir = str(payload.get("container_config_dir") or "").strip()
-        if not container_config_dir and agent_cli_lower == "codex":
-            container_config_dir = str(payload.get("container_codex_dir") or "").strip()
 
         return DockerRunnerConfig(
             task_id=str(payload.get("task_id") or task_id),
             image=str(payload.get("image") or ""),
-            host_config_dir=str(
-                payload.get("host_config_dir") or payload.get("host_codex_dir") or ""
-            ),
+            host_config_dir=str(payload.get("host_config_dir") or ""),
             host_workdir=str(payload.get("host_workdir") or ""),
             agent_cli=agent_cli,
             container_config_dir=container_config_dir,
@@ -503,26 +509,110 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
                 payload.get("settings_preflight_script") or ""
             ).strip()
             or None,
-            environment_preflight_script=str(
-                payload.get("environment_preflight_script") or ""
-            ).strip()
+            ide_preflight_script=str(payload.get("ide_preflight_script") or "").strip()
             or None,
             headless_desktop_enabled=bool(
                 payload.get("headless_desktop_enabled") or False
             ),
+            desktop_cache_enabled=bool(payload.get("desktop_cache_enabled") or False),
+            container_caching_enabled=bool(
+                payload.get("container_caching_enabled") or False
+            ),
+            cache_system_preflight_enabled=bool(
+                payload.get("cache_system_preflight_enabled") or False
+            ),
+            cache_settings_preflight_enabled=bool(
+                payload.get("cache_settings_preflight_enabled") or False
+            ),
+            cache_ide_preflight_enabled=bool(
+                payload.get("cache_ide_preflight_enabled") or False
+            ),
+            gpu_enabled=bool(payload.get("gpu_enabled") or False),
+            setup_agents_missing_prompt_enabled=bool(
+                payload.get("setup_agents_missing_prompt_enabled") or False
+            ),
+            workspace_type=str(payload.get("workspace_type") or "none"),
+            workspace_target=str(payload.get("workspace_target") or ""),
             container_settings_preflight_path=str(
                 payload.get("container_settings_preflight_path")
                 or "/tmp/agents-runner-preflight-settings-{task_id}.sh"
             ),
-            container_environment_preflight_path=str(
-                payload.get("container_environment_preflight_path")
-                or "/tmp/agents-runner-preflight-environment-{task_id}.sh"
+            container_setup_agents_preflight_path=str(
+                payload.get("container_setup_agents_preflight_path")
+                or "/tmp/agents-runner-preflight-setup-agents-{task_id}.sh"
+            ),
+            container_ide_preflight_path=str(
+                payload.get("container_ide_preflight_path")
+                or "/tmp/agents-runner-preflight-ide-{task_id}.sh"
             ),
             env_vars=env_vars,
             extra_mounts=extra_mounts,
             ports=ports,
             agent_cli_args=agent_cli_args,
+            environment_id=str(payload.get("environment_id") or ""),
+            launch_mode=str(payload.get("launch_mode") or "agent"),
+            ide_system=str(payload.get("ide_system") or ""),
+            ide_display_target=str(payload.get("ide_display_target") or ""),
+            ide_auto_mounts_enabled=bool(
+                payload.get("ide_auto_mounts_enabled") or False
+            ),
+            custom_command_argv=custom_command_argv,
+            custom_verify_executable=str(
+                payload.get("custom_verify_executable") or ""
+            ).strip(),
+            gh_repo=(
+                str(payload.get("gh_repo") or "").strip()
+                if str(payload.get("gh_repo") or "").strip()
+                else None
+            ),
+            gh_prefer_gh_cli=bool(
+                payload.get("gh_prefer_gh_cli")
+                if "gh_prefer_gh_cli" in payload
+                else True
+            ),
+            gh_recreate_if_needed=bool(
+                payload.get("gh_recreate_if_needed")
+                if "gh_recreate_if_needed" in payload
+                else True
+            ),
+            gh_base_branch=(
+                str(payload.get("gh_base_branch") or "").strip()
+                if str(payload.get("gh_base_branch") or "").strip()
+                else None
+            ),
+            gh_branch_work_mode=str(
+                payload.get("gh_branch_work_mode") or "task_branch"
+            ).strip()
+            or "task_branch",
+            gh_task_branch_naming_style=str(
+                payload.get("gh_task_branch_naming_style") or "standard"
+            ).strip()
+            or "standard",
+            gh_task_branch_custom_template=str(
+                payload.get("gh_task_branch_custom_template") or "{task_id}"
+            ).strip()
+            or "{task_id}",
+            gh_pr_head_ref=(
+                str(payload.get("gh_pr_head_ref") or "").strip()
+                if str(payload.get("gh_pr_head_ref") or "").strip()
+                else None
+            ),
+            gh_pr_base_ref=(
+                str(payload.get("gh_pr_base_ref") or "").strip()
+                if str(payload.get("gh_pr_base_ref") or "").strip()
+                else None
+            ),
+            gh_context_file_path=(
+                str(payload.get("gh_context_file_path") or "").strip()
+                if str(payload.get("gh_context_file_path") or "").strip()
+                else None
+            ),
             artifact_collection_timeout_s=artifact_collection_timeout_s,
+            container_name=(
+                str(payload.get("container_name") or "").strip()
+                if str(payload.get("container_name") or "").strip()
+                else None
+            ),
         )
     except Exception:
         return None

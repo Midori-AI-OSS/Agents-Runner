@@ -1,20 +1,21 @@
 from __future__ import annotations
 
-import os
+from pathlib import Path
 from dataclasses import dataclass
+from typing import Any
 
 from PySide6.QtCore import QSignalBlocker, Qt
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QDoubleSpinBox
-from PySide6.QtWidgets import QFileDialog
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
-from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QSlider
 from PySide6.QtWidgets import QToolButton
@@ -22,20 +23,37 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
+from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.agent_systems import available_agent_system_names
-from agents_runner.agent_systems import get_agent_system
 from agents_runner.agent_systems import get_default_agent_system_name
+from agents_runner.ide_systems import available_ide_system_names
+from agents_runner.ide_systems import get_default_ide_system_name
+from agents_runner.ide_systems import get_ide_system
+from agents_runner.ide_systems import normalize_ide_system_name
+from agents_runner.environments import load_environments
+from agents_runner.terminal_apps import detect_terminal_options
+from agents_runner.ui.pages.github_trust import (
+    collect_seed_usernames_for_cloned_environments,
+)
+from agents_runner.ui.pages.github_username_list import GitHubUsernameListWidget
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
 from agents_runner.ui.graphics import normalize_ui_theme_name
+from agents_runner.ui.widgets import EdgeFadeScrollArea
+from agents_runner.ui.widgets.artifact_highlighter import ArtifactSyntaxHighlighter
 from agents_runner.ui.widgets.theme_preview import ThemePreviewTile
 from agents_runner.ui.constants import (
     GRID_HORIZONTAL_SPACING,
     GRID_VERTICAL_SPACING,
     BUTTON_ROW_SPACING,
-    STANDARD_BUTTON_WIDTH,
 )
+from agents_runner.ui.utils.form_helpers import (
+    add_grid_row,
+    configure_form_grid,
+    create_stretch_row,
+)
+from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 
 @dataclass(frozen=True)
@@ -46,7 +64,17 @@ class _SettingsPaneSpec:
     section: str
 
 
-class _SettingsFormMixin:
+class SettingsFormMixin:
+    _PREFLIGHT_PRESETS_DIRNAME = "preflight-scripts"
+    _PREFLIGHT_PRESET_SUFFIXES = {".sh", ".bash", ".zsh"}
+
+    @staticmethod
+    def _normalize_novnc_auto_open_mode(value: object) -> str:
+        mode = str(value or "").strip().lower()
+        if mode in {"always", "viewing_only"}:
+            return mode
+        return "viewing_only"
+
     def _default_pane_specs(self) -> list[_SettingsPaneSpec]:
         specs = [
             _SettingsPaneSpec(
@@ -68,10 +96,16 @@ class _SettingsFormMixin:
                 section="Agent Setup",
             ),
             _SettingsPaneSpec(
-                key="config_paths",
-                title="Config Paths",
-                subtitle="Host config folders used by each agent.",
-                section="Agent Setup",
+                key="github_config",
+                title="Config",
+                subtitle="GitHub polling, auto-review, and write confirmation controls.",
+                section="GitHub",
+            ),
+            _SettingsPaneSpec(
+                key="github_trusted_users",
+                title="Trusted Users",
+                subtitle="Global trusted usernames for @agentsnova auto-review checks.",
+                section="GitHub",
             ),
             _SettingsPaneSpec(
                 key="runtime_behavior",
@@ -82,7 +116,7 @@ class _SettingsFormMixin:
             _SettingsPaneSpec(
                 key="preflight_script",
                 title="Preflight Script",
-                subtitle="Global setup script executed before environment scripts.",
+                subtitle="Global setup script executed before setup-agents.sh.",
                 section="Runtime",
             ),
         ]
@@ -111,11 +145,32 @@ class _SettingsFormMixin:
         ]:
             self._shell.addItem(label, value)
 
+        self._interactive_terminal = QComboBox()
+        self._interactive_terminal.setToolTip(
+            "Default terminal used by Run Interactive and Get Agent Help."
+        )
+        self._refresh_terminal_options(selected_terminal_id="")
+        self._ide_system_default = QComboBox()
+        self._populate_ide_combo(self._ide_system_default)
+
+        self._refresh_interactive_terminal = QToolButton()
+        self._refresh_interactive_terminal.setText("Refresh")
+        self._refresh_interactive_terminal.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._refresh_interactive_terminal.clicked.connect(
+            self._on_refresh_terminal_options_clicked
+        )
+
         self._ui_theme = QComboBox()
         self._ui_theme.setToolTip(
             "Auto syncs background theme to the active agent.\n"
             "Select a specific theme to force an override."
         )
+        self._popup_theme_animation_enabled = QCheckBox("Enabled")
+        self._popup_theme_animation_enabled.setToolTip(
+            "When enabled, themed popup backgrounds stay animated. "
+            "Disable to render popups as static backgrounds."
+        )
+        self._popup_theme_animation_enabled.setChecked(True)
         self._theme_preview_tiles: dict[str, ThemePreviewTile] = {}
         self._theme_preview_order: list[str] = []
         self._theme_preview_grid: QGridLayout | None = None
@@ -123,65 +178,133 @@ class _SettingsFormMixin:
         self._ui_theme.currentIndexChanged.connect(self._on_theme_combo_changed)
         self._refresh_theme_options(selected="auto")
 
-        self._host_codex_dir = QLineEdit()
-        self._host_codex_dir.setPlaceholderText(os.path.expanduser("~/.codex"))
-        self._host_claude_dir = QLineEdit()
-        self._host_claude_dir.setPlaceholderText(os.path.expanduser("~/.claude"))
-        self._host_copilot_dir = QLineEdit()
-        self._host_copilot_dir.setPlaceholderText(os.path.expanduser("~/.copilot"))
-        self._host_gemini_dir = QLineEdit()
-        self._host_gemini_dir.setPlaceholderText(os.path.expanduser("~/.gemini"))
-
-        self._browse_codex = QPushButton("Browse…")
-        self._browse_codex.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        self._browse_codex.clicked.connect(self._pick_codex_dir)
-
-        self._browse_claude = QPushButton("Browse…")
-        self._browse_claude.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        self._browse_claude.clicked.connect(self._pick_claude_dir)
-
-        self._browse_copilot = QPushButton("Browse…")
-        self._browse_copilot.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        self._browse_copilot.clicked.connect(self._pick_copilot_dir)
-
-        self._browse_gemini = QPushButton("Browse…")
-        self._browse_gemini.setFixedWidth(STANDARD_BUTTON_WIDTH)
-        self._browse_gemini.clicked.connect(self._pick_gemini_dir)
-
-        self._preflight_enabled = QCheckBox("Enable settings preflight")
+        self._preflight_enabled = QToolButton()
+        self._preflight_enabled.setCheckable(True)
+        self._preflight_enabled.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self._preflight_enabled.setToolTip(
-            "Runs on all environments before environment-specific preflight.\n"
-            "Useful for global setup tasks like installing system packages."
+            "Run global preflight before setup-agents.sh."
         )
+        self._preflight_enabled.toggled.connect(self._on_preflight_enabled_toggled)
 
-        self._append_pixelarch_context = QCheckBox("Append PixelArch context")
+        self._append_pixelarch_context = QCheckBox("Enabled")
         self._append_pixelarch_context.setToolTip(
             "When enabled, appends a short note to prompts passed to Run Agent.\n"
             "This does not affect Run Interactive."
         )
 
-        self._headless_desktop_enabled = QCheckBox(
-            "Force headless desktop for all environments"
-        )
+        self._headless_desktop_enabled = QCheckBox("Enabled")
         self._headless_desktop_enabled.setToolTip(
             "When enabled, this overrides per-environment headless desktop settings."
         )
-
-        self._gh_context_default = QCheckBox(
-            "Enable GitHub context by default for new environments"
+        self._gpu_enabled = QCheckBox("Enabled")
+        self._gpu_enabled.setToolTip(
+            "When enabled, task containers request GPU runtime access (`--gpus all`) "
+            "for Agent, Interactive, and IDE runs."
         )
+        self._auto_navigate_on_run_agent_start = QCheckBox("Enabled")
+        self._auto_navigate_on_run_agent_start.setToolTip(
+            "When enabled, starting a Run Agent task switches to the Home dashboard."
+        )
+        self._auto_navigate_on_run_interactive_start = QCheckBox("Enabled")
+        self._auto_navigate_on_run_interactive_start.setToolTip(
+            "When enabled, starting a Run Interactive task switches to the Home dashboard."
+        )
+
+        self._gh_context_default = QCheckBox("Enabled")
         self._gh_context_default.setToolTip(
             "Only affects newly created environments. Existing environments keep their settings."
         )
 
-        self._spellcheck_enabled = QCheckBox("Enable spellcheck in prompt editor")
+        self._spellcheck_enabled = QCheckBox("Enabled")
         self._spellcheck_enabled.setToolTip(
             "Underlines misspelled words in the prompt editor and provides suggestions."
         )
 
-        self._mount_host_cache = QCheckBox("Mount host cache into containers")
+        self._mount_host_cache = QCheckBox("Enabled")
         self._mount_host_cache.setToolTip(
             "Mounts ~/.cache to speed up package manager installs across environments."
+        )
+        self._ide_novnc_auto_open_enabled = QCheckBox("Enabled")
+        self._ide_novnc_auto_open_enabled.setToolTip(
+            "When enabled, Run IDE opens the desktop viewer automatically after noVNC is ready."
+        )
+        self._ide_novnc_auto_open_mode = QComboBox()
+        self._ide_novnc_auto_open_mode.addItem("Only if viewing task", "viewing_only")
+        self._ide_novnc_auto_open_mode.addItem("Always", "always")
+        self._ide_novnc_auto_open_mode.setToolTip(
+            "Choose whether auto-open waits until the task details page is open."
+        )
+
+        self._github_workroom_prefer_browser = QCheckBox("Enabled")
+        self._github_workroom_prefer_browser.setToolTip(
+            "When enabled, opening an issue or pull request goes directly to the system browser."
+        )
+
+        self._github_write_confirmation_mode = QComboBox()
+        self._github_write_confirmation_mode.addItem("Always confirm", "always")
+        self._github_write_confirmation_mode.addItem(
+            "Confirm destructive only",
+            "destructive_only",
+        )
+        self._github_write_confirmation_mode.addItem("No confirmations", "never")
+        self._github_write_confirmation_mode.setToolTip(
+            "Controls confirmation prompts for GitHub write actions "
+            "(open/close, comments, reaction markers)."
+        )
+
+        self._agentsnova_auto_review_enabled = QCheckBox("Enabled")
+        self._agentsnova_auto_review_enabled.setToolTip(
+            "When enabled, PR/Issue mentions of @agentsnova can auto-queue tasks."
+        )
+        self._agentsnova_auto_marker_comments_mode = QComboBox()
+        self._agentsnova_auto_marker_comments_mode.addItem(
+            "Keep",
+            "keep",
+        )
+        self._agentsnova_auto_marker_comments_mode.addItem(
+            "Delete after 15s",
+            "delete_after_15s",
+        )
+        self._agentsnova_auto_marker_comments_mode.addItem(
+            "Disabled",
+            "disabled",
+        )
+        self._agentsnova_auto_marker_comments_mode.setToolTip(
+            "Default mode for @agentsnova marker comments. Environments can inherit "
+            "this mode or override it."
+        )
+        self._agentsnova_auto_reactions_enabled = QCheckBox("Enabled")
+        self._agentsnova_auto_reactions_enabled.setToolTip(
+            "When enabled, @agentsnova queue triggers apply GitHub `eyes` reactions."
+        )
+        self._github_polling_enabled = QCheckBox("Enabled")
+        self._github_polling_enabled.setToolTip(
+            "When enabled, GitHub Issues/PRs poll in the background across enabled environments."
+        )
+        self._github_poll_startup_delay_s = QLineEdit()
+        self._github_poll_startup_delay_s.setValidator(QIntValidator(0, 3600, self))
+        self._github_poll_startup_delay_s.setPlaceholderText("35")
+        self._github_poll_startup_delay_s.setMaximumWidth(120)
+        self._github_poll_startup_delay_s.setToolTip(
+            "Seconds to wait after app startup before beginning background GitHub polling."
+        )
+        self._agentsnova_trusted_users_global = GitHubUsernameListWidget()
+        self._agentsnova_trusted_users_global.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self._agentsnova_trusted_users_global.set_add_button_visible(False)
+        self._add_trusted_user_global = (
+            self._agentsnova_trusted_users_global.create_add_button(self)
+        )
+        self._setup_github_defaults_global = QToolButton()
+        self._setup_github_defaults_global.setText("Setup Defaults")
+        self._setup_github_defaults_global.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._setup_github_defaults_global.setToolTip(
+            "Seed trusted users from cloned environment owners/org members and current gh login."
+        )
+        self._setup_github_defaults_global.clicked.connect(
+            self._on_setup_global_github_defaults
         )
 
         self._preflight_script = QPlainTextEdit()
@@ -190,23 +313,42 @@ class _SettingsFormMixin:
             "set -euo pipefail\n"
             "\n"
             "# Runs inside the container before the agent command.\n"
-            "# Runs on every environment, before environment preflight (if enabled).\n"
+            "# Runs on every environment, before setup-agents.sh.\n"
             "# This script is mounted read-only and deleted from the host after task finish.\n"
         )
         self._preflight_script.setTabChangesFocus(True)
         self._preflight_script.setEnabled(False)
-        self._preflight_enabled.toggled.connect(self._preflight_script.setEnabled)
+        self._on_preflight_enabled_toggled(bool(self._preflight_enabled.isChecked()))
+        self._preflight_script.textChanged.connect(
+            self._on_preflight_script_text_changed
+        )
+        self._preflight_script_highlighter = ArtifactSyntaxHighlighter(
+            self._preflight_script.document()
+        )
+        self._refresh_preflight_script_highlighting(
+            str(self._preflight_script.toPlainText() or "")
+        )
+
+        self._recommended_preflights = QComboBox()
+        self._recommended_preflights.setToolTip("Load a recommended preflight script.")
+        self._populate_recommended_preflights()
+        self._recommended_preflights.currentIndexChanged.connect(
+            self._on_recommended_preflight_selected
+        )
 
         self._test_preflights = QToolButton()
-        self._test_preflights.setText("Test preflights (all envs)")
+        self._test_preflights.setText("Run preflight checks")
         self._test_preflights.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._test_preflights.setToolTip(
+            "Run preflight smoke test for all environments."
+        )
         self._test_preflights.clicked.connect(self._on_test_preflight)
 
-        self._radio_enabled = QCheckBox("Enable Midori AI Radio")
+        self._radio_enabled = QCheckBox("Enabled")
         self._radio_enabled.setToolTip(
-            "Allows starting radio playback from the navbar control."
+            "Controls whether the navbar radio system is enabled."
         )
-        self._radio_autostart = QCheckBox("Auto-start radio on app launch")
+        self._radio_autostart = QCheckBox("Enabled")
         self._radio_autostart.setToolTip(
             "Starts playback automatically at launch when radio is enabled."
         )
@@ -234,7 +376,7 @@ class _SettingsFormMixin:
         self._radio_volume_value.setObjectName("SettingsPaneSubtitle")
         self._radio_volume.valueChanged.connect(self._on_radio_volume_value_changed)
 
-        self._radio_loudness_boost_enabled = QCheckBox("Loudness Boost")
+        self._radio_loudness_boost_enabled = QCheckBox("Enabled")
         self._radio_loudness_boost_enabled.setToolTip(
             "Applies a gain multiplier to radio volume mapping."
         )
@@ -273,19 +415,42 @@ class _SettingsFormMixin:
         general_page, general_body = self._create_page(
             specs_by_key["general_preferences"]
         )
-        general_body.addWidget(self._spellcheck_enabled)
-        general_body.addWidget(self._gh_context_default)
-        general_body.addWidget(self._append_pixelarch_context)
+        terminal_layout = QGridLayout()
+        configure_form_grid(terminal_layout)
+        add_grid_row(terminal_layout, 0, QLabel("Spellcheck"), self._spellcheck_enabled)
+        add_grid_row(
+            terminal_layout,
+            1,
+            QLabel("GitHub context default"),
+            self._gh_context_default,
+        )
+        add_grid_row(
+            terminal_layout,
+            2,
+            QLabel("Append PixelArch context"),
+            self._append_pixelarch_context,
+        )
+        add_grid_row(
+            terminal_layout,
+            3,
+            QLabel("Interactive terminal"),
+            self._interactive_terminal,
+            self._refresh_interactive_terminal,
+        )
+        general_body.addLayout(terminal_layout)
         general_body.addStretch(1)
         self._register_page("general_preferences", general_page)
 
         themes_page, themes_body = self._create_page(specs_by_key["themes"])
         themes_grid = QGridLayout()
-        themes_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        themes_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        themes_grid.setColumnStretch(1, 1)
-        themes_grid.addWidget(QLabel("Theme"), 0, 0)
-        themes_grid.addWidget(self._ui_theme, 0, 1)
+        configure_form_grid(themes_grid)
+        add_grid_row(
+            themes_grid,
+            0,
+            QLabel("Animate popup backgrounds"),
+            self._popup_theme_animation_enabled,
+        )
+        add_grid_row(themes_grid, 1, QLabel("Theme"), self._ui_theme)
         themes_body.addLayout(themes_grid)
         previews_heading = QLabel("Theme previews")
         previews_heading.setObjectName("SettingsPaneSubtitle")
@@ -304,52 +469,135 @@ class _SettingsFormMixin:
 
         agent_page, agent_body = self._create_page(specs_by_key["agent_defaults"])
         agent_grid = QGridLayout()
-        agent_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        agent_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        agent_grid.setColumnStretch(1, 1)
-        agent_grid.addWidget(QLabel("Agent CLI"), 0, 0)
-        agent_grid.addWidget(self._use, 0, 1)
-        agent_grid.addWidget(QLabel("Shell"), 1, 0)
-        agent_grid.addWidget(self._shell, 1, 1)
+        configure_form_grid(agent_grid)
+        add_grid_row(agent_grid, 0, QLabel("Agent CLI"), self._use)
+        add_grid_row(agent_grid, 1, QLabel("Agent Shell"), self._shell)
         agent_body.addLayout(agent_grid)
         agent_body.addStretch(1)
         self._register_page("agent_defaults", agent_page)
 
-        paths_page, paths_body = self._create_page(specs_by_key["config_paths"])
-        paths_grid = QGridLayout()
-        paths_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-        paths_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-        paths_grid.setColumnStretch(1, 1)
-        paths_grid.addWidget(QLabel("Codex Config folder"), 0, 0)
-        paths_grid.addWidget(self._host_codex_dir, 0, 1)
-        paths_grid.addWidget(self._browse_codex, 0, 2)
-        paths_grid.addWidget(QLabel("Claude Config folder"), 1, 0)
-        paths_grid.addWidget(self._host_claude_dir, 1, 1)
-        paths_grid.addWidget(self._browse_claude, 1, 2)
-        paths_grid.addWidget(QLabel("Copilot Config folder"), 2, 0)
-        paths_grid.addWidget(self._host_copilot_dir, 2, 1)
-        paths_grid.addWidget(self._browse_copilot, 2, 2)
-        paths_grid.addWidget(QLabel("Gemini Config folder"), 3, 0)
-        paths_grid.addWidget(self._host_gemini_dir, 3, 1)
-        paths_grid.addWidget(self._browse_gemini, 3, 2)
-        paths_body.addLayout(paths_grid)
-        paths_body.addStretch(1)
-        self._register_page("config_paths", paths_page)
+        github_config_page, github_config_body = self._create_page(
+            specs_by_key["github_config"]
+        )
+        github_grid = QGridLayout()
+        configure_form_grid(github_grid)
+        add_grid_row(
+            github_grid,
+            0,
+            QLabel("Workroom browser"),
+            self._github_workroom_prefer_browser,
+        )
+        add_grid_row(
+            github_grid,
+            1,
+            QLabel("Auto-review queueing"),
+            self._agentsnova_auto_review_enabled,
+        )
+        add_grid_row(
+            github_grid,
+            2,
+            QLabel("Auto reactions"),
+            self._agentsnova_auto_reactions_enabled,
+        )
+        add_grid_row(
+            github_grid,
+            3,
+            QLabel("GitHub polling"),
+            self._github_polling_enabled,
+        )
+        add_grid_row(
+            github_grid,
+            4,
+            QLabel("Default marker comments"),
+            self._agentsnova_auto_marker_comments_mode,
+        )
+        add_grid_row(
+            github_grid,
+            5,
+            QLabel("GitHub write confirmations"),
+            self._github_write_confirmation_mode,
+        )
+        add_grid_row(
+            github_grid,
+            6,
+            QLabel("Polling startup delay (s)"),
+            self._github_poll_startup_delay_s,
+        )
+        github_config_body.addLayout(github_grid)
+        github_config_body.addStretch(1)
+        self._register_page("github_config", github_config_page)
+
+        github_trusted_page, github_trusted_body = self._create_page(
+            specs_by_key["github_trusted_users"]
+        )
+        github_trusted_body.addWidget(self._agentsnova_trusted_users_global, 1)
+
+        github_actions = QHBoxLayout()
+        github_actions.setSpacing(BUTTON_ROW_SPACING)
+        github_actions.addWidget(self._add_trusted_user_global)
+        github_actions.addStretch(1)
+        github_actions.addWidget(self._setup_github_defaults_global)
+        github_trusted_body.addLayout(github_actions)
+        self._register_page("github_trusted_users", github_trusted_page)
 
         runtime_page, runtime_body = self._create_page(specs_by_key["runtime_behavior"])
-        runtime_body.addWidget(self._headless_desktop_enabled)
-        runtime_body.addWidget(self._mount_host_cache)
+        ide_grid = QGridLayout()
+        configure_form_grid(ide_grid)
+        add_grid_row(
+            ide_grid,
+            0,
+            QLabel("Auto-open noVNC viewer"),
+            self._ide_novnc_auto_open_enabled,
+        )
+        add_grid_row(
+            ide_grid,
+            1,
+            QLabel("Force headless desktop"),
+            self._headless_desktop_enabled,
+        )
+        add_grid_row(
+            ide_grid,
+            2,
+            QLabel("Enable GPU"),
+            self._gpu_enabled,
+        )
+        add_grid_row(
+            ide_grid,
+            3,
+            QLabel("Navigate Home on Run Agent start"),
+            self._auto_navigate_on_run_agent_start,
+        )
+        add_grid_row(
+            ide_grid,
+            4,
+            QLabel("Navigate Home on Run Interactive start"),
+            self._auto_navigate_on_run_interactive_start,
+        )
+        add_grid_row(
+            ide_grid,
+            5,
+            QLabel("Mount host cache"),
+            self._mount_host_cache,
+        )
+        add_grid_row(ide_grid, 6, QLabel("Default IDE"), self._ide_system_default)
+        add_grid_row(
+            ide_grid,
+            7,
+            QLabel("Run IDE auto-open mode"),
+            self._ide_novnc_auto_open_mode,
+        )
+        runtime_body.addLayout(ide_grid)
         runtime_body.addStretch(1)
         self._register_page("runtime_behavior", runtime_page)
 
         preflight_page, preflight_body = self._create_page(
             specs_by_key["preflight_script"]
         )
-        preflight_body.addWidget(self._preflight_enabled)
-        preflight_body.addWidget(QLabel("Preflight script"))
         preflight_body.addWidget(self._preflight_script, 1)
         preflight_actions = QHBoxLayout()
         preflight_actions.setSpacing(BUTTON_ROW_SPACING)
+        preflight_actions.addWidget(self._preflight_enabled)
+        preflight_actions.addWidget(self._recommended_preflights)
         preflight_actions.addWidget(self._test_preflights)
         preflight_actions.addStretch(1)
         autosave_hint = QLabel("Changes save automatically.")
@@ -361,31 +609,29 @@ class _SettingsFormMixin:
         radio_spec = specs_by_key.get("radio")
         if radio_spec is not None:
             radio_page, radio_body = self._create_page(radio_spec)
-            radio_body.addWidget(self._radio_enabled)
-            radio_body.addWidget(self._radio_autostart)
-
             radio_grid = QGridLayout()
-            radio_grid.setHorizontalSpacing(GRID_HORIZONTAL_SPACING)
-            radio_grid.setVerticalSpacing(GRID_VERTICAL_SPACING)
-            radio_grid.setColumnStretch(1, 1)
-            radio_grid.addWidget(QLabel("Channel"), 0, 0)
-            radio_grid.addWidget(self._radio_channel, 0, 1)
-            radio_grid.addWidget(QLabel("Stream quality"), 1, 0)
-            radio_grid.addWidget(self._radio_quality, 1, 1)
-            radio_grid.addWidget(QLabel("Volume"), 2, 0)
-            volume_row = QHBoxLayout()
-            volume_row.setSpacing(8)
-            volume_row.addWidget(self._radio_volume, 1)
-            volume_row.addWidget(self._radio_volume_value, 0, Qt.AlignRight)
-            radio_grid.addLayout(volume_row, 2, 1)
-            radio_grid.addWidget(QLabel("Loudness"), 3, 0)
+            configure_form_grid(radio_grid)
+            add_grid_row(radio_grid, 0, QLabel("Midori AI Radio"), self._radio_enabled)
+            add_grid_row(
+                radio_grid, 1, QLabel("Radio auto-start"), self._radio_autostart
+            )
+            add_grid_row(radio_grid, 2, QLabel("Channel"), self._radio_channel)
+            add_grid_row(radio_grid, 3, QLabel("Stream quality"), self._radio_quality)
 
-            boost_row = QHBoxLayout()
-            boost_row.setSpacing(8)
-            boost_row.addWidget(self._radio_loudness_boost_enabled)
-            boost_row.addWidget(self._radio_loudness_boost_factor)
-            boost_row.addStretch(1)
-            radio_grid.addLayout(boost_row, 3, 1)
+            volume_row = QWidget(radio_page)
+            volume_layout = QHBoxLayout(volume_row)
+            volume_layout.setContentsMargins(0, 0, 0, 0)
+            volume_layout.setSpacing(BUTTON_ROW_SPACING)
+            volume_layout.addWidget(self._radio_volume, 1)
+            volume_layout.addWidget(self._radio_volume_value)
+            add_grid_row(radio_grid, 4, QLabel("Volume"), volume_row)
+
+            boost_row = create_stretch_row(
+                self._radio_loudness_boost_enabled,
+                self._radio_loudness_boost_factor,
+                stretch_index=2,
+            )
+            add_grid_row(radio_grid, 5, QLabel("Loudness"), boost_row)
 
             radio_body.addLayout(radio_grid)
             radio_body.addStretch(1)
@@ -414,7 +660,7 @@ class _SettingsFormMixin:
                 button.setToolButtonStyle(Qt.ToolButtonTextOnly)
                 button.setFixedHeight(40)
                 button.setSizePolicy(
-                    QSizePolicy.Policy.Fixed,
+                    QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Fixed,
                 )
                 button.clicked.connect(
@@ -422,7 +668,7 @@ class _SettingsFormMixin:
                 )
                 nav_layout.addWidget(button)
                 self._nav_buttons[spec.key] = button
-                self._compact_nav.addItem(spec.title, spec.key)
+                self._compact_nav.addItem(button_label, spec.key)
 
         nav_layout.addStretch(1)
 
@@ -430,23 +676,29 @@ class _SettingsFormMixin:
         page = QWidget()
         page_layout = QVBoxLayout(page)
         page_layout.setContentsMargins(0, 0, 0, 0)
-        page_layout.setSpacing(10)
+        page_layout.setSpacing(0)
+
+        scroll = EdgeFadeScrollArea(page)
+        scroll.setObjectName("SettingsPaneScrollArea")
+
+        content = QWidget(scroll)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(10)
 
         title = QLabel(spec.title)
         title.setObjectName("SettingsPaneTitle")
 
-        subtitle = QLabel(spec.subtitle)
-        subtitle.setObjectName("SettingsPaneSubtitle")
-        subtitle.setWordWrap(True)
-
-        body = QWidget(page)
+        body = QWidget(content)
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(GRID_VERTICAL_SPACING)
 
-        page_layout.addWidget(title)
-        page_layout.addWidget(subtitle)
-        page_layout.addWidget(body, 1)
+        content_layout.addWidget(title)
+        content_layout.addWidget(body)
+
+        scroll.setWidget(content)
+        page_layout.addWidget(scroll, 1)
         return page, body_layout
 
     def _register_page(self, key: str, widget: QWidget) -> None:
@@ -458,10 +710,25 @@ class _SettingsFormMixin:
 
         with QSignalBlocker(self._use):
             self._use.clear()
-            for agent_name in available_agent_system_names():
-                label = self._format_key_label(agent_name)
+            for agent_name in available_agent_system_names(include_internal=False):
+                label = format_agent_ui_label(agent_name)
+                self._use.addItem(label, agent_name)
+
+            if self._use.count() == 0:
+                default_name = get_default_agent_system_name()
+                self._use.addItem(format_agent_ui_label(default_name), default_name)
+
+        preferred = normalize_agent(selected or str(self._use.itemData(0) or ""))
+        self._set_combo_value(self._use, preferred, fallback=preferred)
+
+    def _populate_ide_combo(self, combo: QComboBox) -> None:
+        selected = str(combo.currentData() or "") if combo.count() > 0 else ""
+        with QSignalBlocker(combo):
+            combo.clear()
+            for ide_name in available_ide_system_names():
+                label = self._format_key_label(ide_name)
                 try:
-                    plugin = get_agent_system(agent_name)
+                    plugin = get_ide_system(ide_name)
                     display_name = str(
                         getattr(plugin, "display_name", "") or ""
                     ).strip()
@@ -469,14 +736,16 @@ class _SettingsFormMixin:
                         label = display_name
                 except Exception:
                     pass
-                self._use.addItem(label, agent_name)
+                combo.addItem(label, ide_name)
 
-            if self._use.count() == 0:
-                default_name = get_default_agent_system_name()
-                self._use.addItem(self._format_key_label(default_name), default_name)
+            if combo.count() == 0:
+                default_name = get_default_ide_system_name()
+                combo.addItem(self._format_key_label(default_name), default_name)
 
-        preferred = normalize_agent(selected or str(self._use.itemData(0) or ""))
-        self._set_combo_value(self._use, preferred, fallback=preferred)
+        preferred = normalize_ide_system_name(
+            selected or str(combo.itemData(0) or get_default_ide_system_name())
+        )
+        self._set_combo_value(combo, preferred, fallback=preferred)
 
     def _refresh_theme_options(self, selected: str | None) -> None:
         normalized_selected = normalize_ui_theme_name(selected, allow_auto=True)
@@ -578,7 +847,11 @@ class _SettingsFormMixin:
             return "Midori AI (Dark Theme)"
         if normalized == "midoriai_light":
             return "Midori AI (Light Theme)"
-        return _SettingsFormMixin._format_key_label(normalized)
+        try:
+            return format_agent_ui_label(normalized)
+        except Exception:
+            pass
+        return SettingsFormMixin._format_key_label(normalized)
 
     @staticmethod
     def _format_key_label(value: str) -> str:
@@ -644,7 +917,7 @@ class _SettingsFormMixin:
         )
         return max(0, int(round(raw * factor)))
 
-    def set_settings(self, settings: dict) -> None:
+    def set_settings(self, settings: dict[str, Any]) -> None:
         self._suppress_autosave = True
         try:
             self._populate_agent_combo()
@@ -657,37 +930,19 @@ class _SettingsFormMixin:
 
             shell_value = str(settings.get("shell") or "bash").strip().lower()
             self._set_combo_value(self._shell, shell_value, fallback="bash")
-
-            self._host_codex_dir.setText(
-                os.path.expanduser(
-                    str(
-                        settings.get("host_codex_dir") or os.path.expanduser("~/.codex")
-                    )
-                )
+            self._refresh_terminal_options(
+                selected_terminal_id=str(
+                    settings.get("interactive_terminal_id") or ""
+                ).strip()
             )
-            self._host_claude_dir.setText(
-                os.path.expanduser(
-                    str(
-                        settings.get("host_claude_dir")
-                        or os.path.expanduser("~/.claude")
-                    )
-                )
+            self._populate_ide_combo(self._ide_system_default)
+            ide_system_default = normalize_ide_system_name(
+                str(settings.get("ide_system_default") or get_default_ide_system_name())
             )
-            self._host_copilot_dir.setText(
-                os.path.expanduser(
-                    str(
-                        settings.get("host_copilot_dir")
-                        or os.path.expanduser("~/.copilot")
-                    )
-                )
-            )
-            self._host_gemini_dir.setText(
-                os.path.expanduser(
-                    str(
-                        settings.get("host_gemini_dir")
-                        or os.path.expanduser("~/.gemini")
-                    )
-                )
+            self._set_combo_value(
+                self._ide_system_default,
+                ide_system_default,
+                fallback=get_default_ide_system_name(),
             )
 
             enabled = bool(settings.get("preflight_enabled") or False)
@@ -696,12 +951,65 @@ class _SettingsFormMixin:
             self._preflight_script.setPlainText(
                 str(settings.get("preflight_script") or "")
             )
+            self._refresh_preflight_script_highlighting(
+                str(self._preflight_script.toPlainText() or "")
+            )
+            self._reset_recommended_preflight_selection()
 
             self._append_pixelarch_context.setChecked(
                 bool(settings.get("append_pixelarch_context") or False)
             )
+            self._github_workroom_prefer_browser.setChecked(
+                bool(settings.get("github_workroom_prefer_browser") or False)
+            )
+            self._agentsnova_auto_review_enabled.setChecked(
+                bool(settings.get("agentsnova_auto_review_enabled", True))
+            )
+            self._set_combo_value(
+                self._agentsnova_auto_marker_comments_mode,
+                normalize_default_marker_comment_mode(
+                    settings.get(
+                        "agentsnova_auto_marker_comments_mode",
+                        settings.get("agentsnova_auto_marker_comments_enabled", True),
+                    )
+                ),
+                fallback="keep",
+            )
+            self._agentsnova_auto_reactions_enabled.setChecked(
+                bool(settings.get("agentsnova_auto_reactions_enabled", True))
+            )
+            self._github_polling_enabled.setChecked(
+                bool(settings.get("github_polling_enabled") or False)
+            )
+            try:
+                poll_startup_delay_s = max(
+                    0, int(settings.get("github_poll_startup_delay_s", 35))
+                )
+            except Exception:
+                poll_startup_delay_s = 35
+            self._github_poll_startup_delay_s.setText(str(poll_startup_delay_s))
+            trusted_users_raw = settings.get("agentsnova_trusted_users_global", [])
+            trusted_users = (
+                trusted_users_raw if isinstance(trusted_users_raw, list) else []
+            )
+            self._agentsnova_trusted_users_global.set_usernames(trusted_users)
             self._headless_desktop_enabled.setChecked(
                 bool(settings.get("headless_desktop_enabled") or False)
+            )
+            self._gpu_enabled.setChecked(bool(settings.get("gpu_enabled") or False))
+            self._auto_navigate_on_run_agent_start.setChecked(
+                bool(settings.get("auto_navigate_on_run_agent_start") or False)
+            )
+            self._auto_navigate_on_run_interactive_start.setChecked(
+                bool(settings.get("auto_navigate_on_run_interactive_start") or False)
+            )
+            confirmation_mode = str(
+                settings.get("github_write_confirmation_mode") or "always"
+            ).strip()
+            self._set_combo_value(
+                self._github_write_confirmation_mode,
+                confirmation_mode,
+                fallback="always",
             )
             self._gh_context_default.setChecked(
                 bool(settings.get("gh_context_default_enabled") or False)
@@ -712,11 +1020,24 @@ class _SettingsFormMixin:
             self._mount_host_cache.setChecked(
                 bool(settings.get("mount_host_cache", False))
             )
+            self._ide_novnc_auto_open_enabled.setChecked(
+                bool(settings.get("ide_novnc_auto_open_enabled", True))
+            )
+            self._set_combo_value(
+                self._ide_novnc_auto_open_mode,
+                self._normalize_novnc_auto_open_mode(
+                    settings.get("ide_novnc_auto_open_mode")
+                ),
+                fallback="viewing_only",
+            )
 
             theme_value = normalize_ui_theme_name(
                 settings.get("ui_theme"), allow_auto=True
             )
             self._refresh_theme_options(selected=theme_value)
+            self._popup_theme_animation_enabled.setChecked(
+                bool(settings.get("popup_theme_animation_enabled", True))
+            )
 
             radio_enabled = bool(settings.get("radio_enabled") or False)
             self._radio_enabled.setChecked(radio_enabled)
@@ -753,36 +1074,168 @@ class _SettingsFormMixin:
         finally:
             self._suppress_autosave = False
 
-    def get_settings(self) -> dict:
+    def _on_preflight_enabled_toggled(self, enabled: bool) -> None:
+        self._preflight_enabled.setText(
+            "Preflight Enabled" if bool(enabled) else "Enable Preflight"
+        )
+        if hasattr(self, "_preflight_script"):
+            self._preflight_script.setEnabled(bool(enabled))
+
+    def _on_preflight_script_text_changed(self) -> None:
+        self._refresh_preflight_script_highlighting(
+            str(self._preflight_script.toPlainText() or "")
+        )
+
+    @staticmethod
+    def _detect_preflight_script_language(script: str) -> str:
+        shebang = str(script or "").split("\n", 1)[0].strip().lower()
+        if shebang.startswith("#!"):
+            if "fish" in shebang:
+                return "fish"
+            if "bash" in shebang or "zsh" in shebang or "sh" in shebang:
+                return "bash"
+        return "bash"
+
+    def _refresh_preflight_script_highlighting(self, script: str) -> None:
+        self._preflight_script_highlighter.set_language(
+            self._detect_preflight_script_language(script)
+        )
+
+    @staticmethod
+    def _recommended_preflights_dir() -> Path:
+        return (
+            Path(__file__).resolve().parents[2]
+            / SettingsFormMixin._PREFLIGHT_PRESETS_DIRNAME
+        )
+
+    def _load_recommended_preflights(self) -> list[tuple[str, str]]:
+        scripts_dir = self._recommended_preflights_dir()
+        if not scripts_dir.is_dir():
+            return []
+
+        presets: list[tuple[str, str]] = []
+        for file_path in scripts_dir.iterdir():
+            if not file_path.is_file():
+                continue
+            if file_path.suffix.lower() not in self._PREFLIGHT_PRESET_SUFFIXES:
+                continue
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            label = self._format_key_label(file_path.stem)
+            presets.append((label, content))
+        presets.sort(key=lambda item: item[0].lower())
+        return presets
+
+    def _populate_recommended_preflights(self) -> None:
+        with QSignalBlocker(self._recommended_preflights):
+            self._recommended_preflights.clear()
+            self._recommended_preflights.addItem("Recommended preflights...", None)
+            for label, content in self._load_recommended_preflights():
+                self._recommended_preflights.addItem(label, content)
+            self._recommended_preflights.setCurrentIndex(0)
+
+    def _reset_recommended_preflight_selection(self) -> None:
+        with QSignalBlocker(self._recommended_preflights):
+            self._recommended_preflights.setCurrentIndex(0)
+
+    def _on_recommended_preflight_selected(self, index: int) -> None:
+        if index <= 0:
+            return
+
+        preset_script = str(self._recommended_preflights.itemData(index) or "")
+        if not preset_script.strip():
+            self._reset_recommended_preflight_selection()
+            return
+
+        current_script = str(self._preflight_script.toPlainText() or "")
+        should_replace = True
+        if current_script.strip():
+            should_replace = (
+                QMessageBox.question(
+                    None,
+                    "Replace preflight script?",
+                    "Would you like to replace what you have with the recommended preflight?",
+                )
+                == QMessageBox.StandardButton.Yes
+            )
+
+        if should_replace:
+            self._preflight_script.setPlainText(preset_script)
+            self._refresh_preflight_script_highlighting(preset_script)
+        self._reset_recommended_preflight_selection()
+
+    def get_settings(self) -> dict[str, Any]:
+        poll_startup_delay_text = str(
+            self._github_poll_startup_delay_s.text() or "35"
+        ).strip()
+        try:
+            poll_startup_delay_s = max(0, int(poll_startup_delay_text or "35"))
+        except Exception:
+            poll_startup_delay_s = 35
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
+            "interactive_terminal_id": str(
+                self._interactive_terminal.currentData() or ""
+            ),
+            "ide_system_default": normalize_ide_system_name(
+                str(
+                    self._ide_system_default.currentData()
+                    or get_default_ide_system_name()
+                )
+            ),
             "ui_theme": normalize_ui_theme_name(
                 str(self._ui_theme.currentData() or "auto"), allow_auto=True
             ),
-            "host_codex_dir": os.path.expanduser(
-                str(self._host_codex_dir.text() or "").strip()
-            ),
-            "host_claude_dir": os.path.expanduser(
-                str(self._host_claude_dir.text() or "").strip()
-            ),
-            "host_copilot_dir": os.path.expanduser(
-                str(self._host_copilot_dir.text() or "").strip()
-            ),
-            "host_gemini_dir": os.path.expanduser(
-                str(self._host_gemini_dir.text() or "").strip()
+            "popup_theme_animation_enabled": bool(
+                self._popup_theme_animation_enabled.isChecked()
             ),
             "preflight_enabled": bool(self._preflight_enabled.isChecked()),
             "preflight_script": str(self._preflight_script.toPlainText() or ""),
             "append_pixelarch_context": bool(
                 self._append_pixelarch_context.isChecked()
             ),
+            "github_workroom_prefer_browser": bool(
+                self._github_workroom_prefer_browser.isChecked()
+            ),
+            "github_write_confirmation_mode": str(
+                self._github_write_confirmation_mode.currentData() or "always"
+            ),
+            "agentsnova_auto_review_enabled": bool(
+                self._agentsnova_auto_review_enabled.isChecked()
+            ),
+            "agentsnova_auto_marker_comments_mode": (
+                normalize_default_marker_comment_mode(
+                    self._agentsnova_auto_marker_comments_mode.currentData()
+                )
+            ),
+            "agentsnova_auto_reactions_enabled": bool(
+                self._agentsnova_auto_reactions_enabled.isChecked()
+            ),
+            "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
+            "github_poll_startup_delay_s": poll_startup_delay_s,
+            "agentsnova_trusted_users_global": self._agentsnova_trusted_users_global.get_usernames(),
             "headless_desktop_enabled": bool(
                 self._headless_desktop_enabled.isChecked()
+            ),
+            "gpu_enabled": bool(self._gpu_enabled.isChecked()),
+            "auto_navigate_on_run_agent_start": bool(
+                self._auto_navigate_on_run_agent_start.isChecked()
+            ),
+            "auto_navigate_on_run_interactive_start": bool(
+                self._auto_navigate_on_run_interactive_start.isChecked()
             ),
             "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
             "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),
             "mount_host_cache": bool(self._mount_host_cache.isChecked()),
+            "ide_novnc_auto_open_enabled": bool(
+                self._ide_novnc_auto_open_enabled.isChecked()
+            ),
+            "ide_novnc_auto_open_mode": self._normalize_novnc_auto_open_mode(
+                self._ide_novnc_auto_open_mode.currentData()
+            ),
             "radio_enabled": bool(self._radio_enabled.isChecked()),
             "radio_autostart": bool(self._radio_autostart.isChecked()),
             "radio_channel": RadioController.normalize_channel(
@@ -802,41 +1255,48 @@ class _SettingsFormMixin:
             ),
         }
 
-    def _pick_codex_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Config folder",
-            self._host_codex_dir.text() or os.path.expanduser("~/.codex"),
-        )
-        if path:
-            self._host_codex_dir.setText(path)
+    def _on_setup_global_github_defaults(self) -> None:
+        environments = load_environments().values()
+        seeded = collect_seed_usernames_for_cloned_environments(environments)
+        if not seeded:
+            return
+        self._agentsnova_trusted_users_global.merge_usernames(seeded)
+        try:
+            self._queue_debounced_autosave()
+        except Exception:
+            pass
 
-    def _pick_claude_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Claude Config folder",
-            self._host_claude_dir.text() or os.path.expanduser("~/.claude"),
-        )
-        if path:
-            self._host_claude_dir.setText(path)
+    def _refresh_terminal_options(self, *, selected_terminal_id: str) -> None:
+        selected_id = str(selected_terminal_id or "").strip()
+        current_id = str(self._interactive_terminal.currentData() or "").strip()
+        options = detect_terminal_options()
 
-    def _pick_copilot_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Copilot Config folder",
-            self._host_copilot_dir.text() or os.path.expanduser("~/.copilot"),
-        )
-        if path:
-            self._host_copilot_dir.setText(path)
+        with QSignalBlocker(self._interactive_terminal):
+            self._interactive_terminal.clear()
+            if not options:
+                self._interactive_terminal.addItem("No terminals detected", "")
+                self._interactive_terminal.setCurrentIndex(0)
+                return
 
-    def _pick_gemini_dir(self) -> None:
-        path = QFileDialog.getExistingDirectory(
-            self,
-            "Select Host Gemini Config folder",
-            self._host_gemini_dir.text() or os.path.expanduser("~/.gemini"),
+            for option in options:
+                self._interactive_terminal.addItem(option.label, option.terminal_id)
+
+            desired = selected_id or current_id
+            if not desired:
+                desired = str(options[0].terminal_id or "").strip()
+            self._set_combo_value(
+                self._interactive_terminal,
+                desired,
+                fallback=str(options[0].terminal_id or "").strip(),
+            )
+
+    def _on_refresh_terminal_options_clicked(self) -> None:
+        self._refresh_terminal_options(
+            selected_terminal_id=str(
+                self._interactive_terminal.currentData() or ""
+            ).strip()
         )
-        if path:
-            self._host_gemini_dir.setText(path)
+        self._queue_debounced_autosave()
 
     @staticmethod
     def _set_combo_value(combo: QComboBox, value: str, fallback: str) -> None:

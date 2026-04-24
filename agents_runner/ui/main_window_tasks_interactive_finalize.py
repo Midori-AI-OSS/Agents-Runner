@@ -13,17 +13,20 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_display import format_agent_markdown_link
 from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import WORKSPACE_CLONED
+from agents_runner.environments.model import INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW
+from agents_runner.environments.model import normalize_interactive_pr_no_prompt_mode
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.gh_management import commit_push_and_pr
 from agents_runner.gh_management import GhManagementError
 from agents_runner.log_format import format_log
 from agents_runner.pr_metadata import load_pr_metadata
 from agents_runner.pr_metadata import normalize_pr_title
+from agents_runner.pr_metadata import pr_metadata_host_path
 from agents_runner.ui.task_git_metadata import derive_task_git_metadata
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 
 
-class _MainWindowTasksInteractiveFinalizeMixin:
+class MainWindowTasksInteractiveFinalizeMixin:
     def _on_interactive_finished(self, task_id: str, exit_code: int) -> None:
         task_id = str(task_id or "").strip()
         watch = self._interactive_watch.pop(task_id, None)
@@ -71,40 +74,43 @@ class _MainWindowTasksInteractiveFinalizeMixin:
 
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
+        self._refresh_new_task_agent_info()
         QApplication.beep()
         self._on_task_log(
             task_id,
             format_log("host", "interactive", "INFO", f"exited with {task.exit_code}"),
         )
 
-        # Interactive tasks handle PR creation immediately via user dialog, then mark finalization done
-        # This is different from agent tasks which queue finalization work for background processing
+        # Collect staged artifacts and emit UUIDs back through host_artifacts.
+        self._start_artifact_finalization(task)
+
+        # Interactive tasks can create PRs immediately based on environment settings,
+        # then mark finalization done. Agent tasks still finalize in background workers.
         if (
-            task.workspace_type == WORKSPACE_CLONED
+            task.status == "done"
+            and task.workspace_type == WORKSPACE_CLONED
             and task.gh_repo_root
             and task.gh_branch
+            and str(task.gh_branch or "").strip()
+            != str(task.gh_base_branch or "").strip()
             and not task.gh_pr_url
         ):
             base = str(task.gh_base_branch or "").strip()
             base_display = base or "auto"
-            message = f"Interactive run finished.\n\nCreate a PR from {task.gh_branch} -> {base_display}?"
-            if (
-                QMessageBox.question(self, "Create pull request?", message)
-                == QMessageBox.StandardButton.Yes
-            ):
-                self.host_log.emit(
-                    task_id,
-                    format_log(
-                        "host",
-                        "interactive",
-                        "INFO",
-                        f"Task {task_id}: creating PR after interactive run (branch={task.gh_branch}, base={base_display})",
-                    ),
-                )
+            prompt_enabled = bool(
+                getattr(env, "interactive_pr_prompt_enabled", True) if env else True
+            )
+            no_prompt_mode = normalize_interactive_pr_no_prompt_mode(
+                getattr(env, "interactive_pr_no_prompt_mode", "auto_create_pr")
+                if env
+                else "auto_create_pr"
+            )
+
+            def _queue_interactive_pr_creation() -> None:
                 threading.Thread(
                     target=self._finalize_gh_management_worker,
                     args=(
@@ -121,6 +127,46 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                     ),
                     daemon=True,
                 ).start()
+
+            if prompt_enabled:
+                message = (
+                    "Interactive run finished.\n\n"
+                    f"Create a PR from {task.gh_branch} -> {base_display}?"
+                )
+                if (
+                    QMessageBox.question(self, "Create pull request?", message)
+                    == QMessageBox.StandardButton.Yes
+                ):
+                    self.host_log.emit(
+                        task_id,
+                        format_log(
+                            "host",
+                            "interactive",
+                            "INFO",
+                            f"Task {task_id}: creating PR after interactive run (branch={task.gh_branch}, base={base_display})",
+                        ),
+                    )
+                    _queue_interactive_pr_creation()
+                else:
+                    self.host_log.emit(
+                        task_id,
+                        format_log(
+                            "host",
+                            "interactive",
+                            "INFO",
+                            f"Task {task_id}: PR creation declined by user",
+                        ),
+                    )
+            elif no_prompt_mode == INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW:
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "interactive",
+                        "INFO",
+                        "Interactive PR prompt disabled and mode=manual; use Review -> Create PR to open the PR.",
+                    ),
+                )
             else:
                 self.host_log.emit(
                     task_id,
@@ -128,11 +174,12 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                         "host",
                         "interactive",
                         "INFO",
-                        f"Task {task_id}: PR creation declined by user",
+                        f"Interactive PR prompt disabled and mode=auto-create; creating PR ({task.gh_branch} -> {base_display}).",
                     ),
                 )
+                _queue_interactive_pr_creation()
 
-        # Mark finalization done for interactive tasks (PR creation handled synchronously above)
+        # Mark finalization done for interactive tasks (PR handling selected above).
         self.host_log.emit(
             task_id,
             format_log(
@@ -145,6 +192,70 @@ class _MainWindowTasksInteractiveFinalizeMixin:
         task.finalization_state = "done"
         task.finalization_error = ""
         self._schedule_save()
+
+    def _resolve_pr_metadata_path_for_finalize(
+        self,
+        *,
+        task_id: str,
+        provided_path: str | None,
+    ) -> str | None:
+        normalized_provided = os.path.abspath(
+            os.path.expanduser(str(provided_path or "").strip())
+        )
+        if normalized_provided:
+            if os.path.exists(normalized_provided):
+                return normalized_provided
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "gh",
+                    "pr",
+                    "WARN",
+                    f"configured PR metadata file is missing: {normalized_provided}",
+                ),
+            )
+
+        state_path = str(getattr(self, "_state_path", "") or "").strip()
+        if not state_path:
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "gh",
+                    "pr",
+                    "WARN",
+                    "state path unavailable; cannot resolve PR metadata fallback path",
+                ),
+            )
+            return None
+
+        fallback_path = os.path.abspath(
+            os.path.expanduser(
+                pr_metadata_host_path(os.path.dirname(state_path), task_id)
+            )
+        )
+        if os.path.exists(fallback_path):
+            if fallback_path != normalized_provided:
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "gh",
+                        "pr",
+                        "INFO",
+                        f"using fallback PR metadata file: {fallback_path}",
+                    ),
+                )
+            return fallback_path
+
+        self.host_log.emit(
+            task_id,
+            format_log(
+                "gh",
+                "pr",
+                "INFO",
+                f"no PR metadata file found (checked: {fallback_path}); using generated PR title/body defaults",
+            ),
+        )
+        return None
 
     def _finalize_gh_management_worker(
         self,
@@ -250,14 +361,42 @@ class _MainWindowTasksInteractiveFinalizeMixin:
                 "Prompt:\n"
                 f"{(prompt_text or '').strip()}\n"
             )
+            provided_metadata_path = (
+                str(pr_metadata_path or "").strip()
+                or (
+                    str(getattr(task, "gh_pr_metadata_path", "") or "").strip()
+                    if task
+                    else ""
+                )
+                or None
+            )
+            resolved_pr_metadata_path = self._resolve_pr_metadata_path_for_finalize(
+                task_id=task_id,
+                provided_path=provided_metadata_path,
+            )
             metadata = (
-                load_pr_metadata(pr_metadata_path or "") if pr_metadata_path else None
+                load_pr_metadata(resolved_pr_metadata_path)
+                if resolved_pr_metadata_path
+                else None
             )
             if metadata is not None and (metadata.title or metadata.body):
                 self.host_log.emit(
                     task_id,
                     format_log(
-                        "gh", "pr", "INFO", f"using PR metadata from {pr_metadata_path}"
+                        "gh",
+                        "pr",
+                        "INFO",
+                        f"using PR metadata from {resolved_pr_metadata_path}",
+                    ),
+                )
+            elif resolved_pr_metadata_path:
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "gh",
+                        "pr",
+                        "INFO",
+                        f"PR metadata file is empty: {resolved_pr_metadata_path}; using generated defaults where needed",
                     ),
                 )
             title = (

@@ -22,6 +22,8 @@ from agents_runner.gh.task_plan import (
     plan_repo_task,
     prepare_branch_for_task,
 )
+from agents_runner.gh.process import require_ok
+from agents_runner.gh.process import run_gh
 from agents_runner.log_format import format_log
 
 __all__ = [
@@ -69,6 +71,11 @@ def prepare_github_repo_for_task(
     *,
     task_id: str,
     base_branch: str | None = None,
+    branch_work_mode: str = "task_branch",
+    task_branch_naming_style: str = "standard",
+    task_branch_custom_template: str = "{task_id}",
+    pr_head_ref: str | None = None,
+    pr_base_ref: str | None = None,
     prefer_gh: bool = True,
     recreate_if_needed: bool = True,
     on_log: Callable[[str], None] | None = None,
@@ -169,10 +176,72 @@ def prepare_github_repo_for_task(
                 )
                 return result
 
+            pr_head = str(pr_head_ref or "").strip()
+            pr_base = str(pr_base_ref or "").strip()
+            if pr_head:
+                repo_root = git_repo_root(dest_dir) or dest_dir
+                current_branch = git_current_branch(repo_root)
+                if not git_is_clean(repo_root):
+                    _log(
+                        format_log(
+                            "gh",
+                            "branch",
+                            "WARN",
+                            "repo has uncommitted changes; skipping PR head base prep",
+                        )
+                    )
+                    return {
+                        "repo_root": repo_root,
+                        "base_branch": pr_head or pr_base or str(base_branch or ""),
+                        "branch": current_branch or "",
+                    }
+                try:
+                    _log(
+                        format_log(
+                            "gh",
+                            "branch",
+                            "INFO",
+                            f"fetching PR head branch {pr_head}",
+                        )
+                    )
+                    fetch_proc = run_gh(
+                        ["git", "-C", repo_root, "fetch", "origin", pr_head],
+                        timeout_s=30.0,
+                    )
+                    require_ok(
+                        fetch_proc,
+                        args=["git", "-C", repo_root, "fetch", "origin", pr_head],
+                    )
+                    _log(
+                        format_log(
+                            "gh",
+                            "branch",
+                            "INFO",
+                            f"using PR head branch {pr_head} as base",
+                        )
+                    )
+                    base_branch = pr_head
+                except Exception as exc:
+                    _log(
+                        format_log(
+                            "gh",
+                            "branch",
+                            "WARN",
+                            (
+                                "failed to fetch PR head branch "
+                                f"{pr_head}; using fallback base: {exc}"
+                            ),
+                        )
+                    )
+                    pr_head = ""
+
             plan = plan_repo_task(
                 dest_dir,
                 task_id=task_id or "task",
                 base_branch=(base_branch or None),
+                branch_work_mode=branch_work_mode,
+                task_branch_naming_style=task_branch_naming_style,
+                task_branch_custom_template=task_branch_custom_template,
             )
             if plan is None:
                 _log(
@@ -184,12 +253,17 @@ def prepare_github_repo_for_task(
 
             current_branch = git_current_branch(plan.repo_root)
             if current_branch and current_branch == plan.branch:
+                ready_label = (
+                    f"already on base branch {plan.base_branch}"
+                    if plan.branch == plan.base_branch
+                    else f"already on task branch {plan.branch}"
+                )
                 _log(
                     format_log(
                         "gh",
                         "branch",
                         "INFO",
-                        f"already on task branch {plan.branch}; skipping branch prep",
+                        f"{ready_label}; skipping branch prep",
                     )
                 )
                 return {
@@ -218,7 +292,11 @@ def prepare_github_repo_for_task(
                     "gh",
                     "branch",
                     "INFO",
-                    f"creating branch {plan.branch} (base {plan.base_branch})",
+                    (
+                        f"using base branch {plan.base_branch}"
+                        if plan.branch == plan.base_branch
+                        else f"creating branch {plan.branch} (base {plan.base_branch})"
+                    ),
                 )
             )
             resolved_base_branch, branch = prepare_branch_for_task(
@@ -244,3 +322,5 @@ def prepare_github_repo_for_task(
                 _delete_checkout_dir(dest_dir, on_log=on_log)
                 continue
             raise
+
+    raise GhManagementError("repo preparation failed after retry")

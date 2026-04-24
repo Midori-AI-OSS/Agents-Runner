@@ -333,6 +333,7 @@ def detect_language(filename: str, content: str) -> str:
         ".sh": "bash",
         ".bash": "bash",
         ".zsh": "bash",
+        ".fish": "fish",
         ".ini": "ini",
         ".cfg": "ini",
         ".conf": "ini",
@@ -361,6 +362,8 @@ def detect_language(filename: str, content: str) -> str:
         shebang_line = content.split("\n", 1)[0].lower()
         if "python" in shebang_line:
             return "python"
+        elif "fish" in shebang_line:
+            return "fish"
         elif "bash" in shebang_line or "sh" in shebang_line:
             return "bash"
         elif "node" in shebang_line:

@@ -92,7 +92,7 @@ class PastTaskAnimator:
             self._entrance_queue.clear()
             self._entrance_timer.stop()
             for row in stale_queue:
-                if row is None or row.parent() is None:
+                if row.parent() is None:
                     continue
                 row.cancel_entrance()
 
@@ -130,7 +130,7 @@ class PastTaskAnimator:
         """Play the next entrance animation in the queue."""
         while self._entrance_queue:
             row = self._entrance_queue.pop(0)
-            if row is None or row.parent() is None:
+            if row.parent() is None:
                 continue
             if not row.isVisible():
                 row.cancel_entrance()

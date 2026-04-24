@@ -1,0 +1,1 @@
+"""OpenCode UI theme package."""

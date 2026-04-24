@@ -11,12 +11,19 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_AGENT_SYSTEM = "codex"
 
-_REGISTRY: dict[str, AgentSystemPlugin] | None = None
+_registry: dict[str, AgentSystemPlugin] | None = None
 
 
-def available_agent_system_names() -> list[str]:
+def available_agent_system_names(*, include_internal: bool = True) -> list[str]:
     """Return discovered agent system plugin names."""
-    return sorted(_ensure_registry().keys())
+    registry = _ensure_registry()
+    if include_internal:
+        return sorted(registry.keys())
+    return sorted(
+        name
+        for name, plugin in registry.items()
+        if not bool(getattr(plugin, "internal_only", False))
+    )
 
 
 def get_default_agent_system_name() -> str:
@@ -52,11 +59,11 @@ def get_agent_system(name: str) -> AgentSystemPlugin:
 
 
 def _ensure_registry() -> dict[str, AgentSystemPlugin]:
-    global _REGISTRY
-    if _REGISTRY is None:
-        _REGISTRY = {}
-        _discover_builtin_plugins(_REGISTRY)
-    return _REGISTRY
+    global _registry
+    if _registry is None:
+        _registry = {}
+        _discover_builtin_plugins(_registry)
+    return _registry
 
 
 def _discover_builtin_plugins(registry: dict[str, AgentSystemPlugin]) -> None:

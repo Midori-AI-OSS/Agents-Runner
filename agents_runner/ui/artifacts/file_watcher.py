@@ -7,7 +7,9 @@ in the staging directory during task runtime.
 
 from __future__ import annotations
 
+import errno
 import logging
+import os
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -23,6 +25,7 @@ from PySide6.QtCore import (
 from PySide6.QtWidgets import QApplication
 
 logger = logging.getLogger(__name__)
+_TRANSIENT_STAGING_ERRNOS = {errno.ENOENT, errno.ENOTDIR}
 
 
 class ArtifactFileWatcher(QObject):
@@ -138,16 +141,7 @@ class ArtifactFileWatcher(QObject):
         if self._watcher is None:
             return
 
-        # Watch directory
-        self._watcher.addPath(str(self._staging_dir))
-
-        # Watch existing files
-        try:
-            for file_path in self._staging_dir.iterdir():
-                if file_path.is_file():
-                    self._watcher.addPath(str(file_path))
-        except Exception as e:
-            logger.error(f"Failed to add initial files to watcher: {e}")
+        self._refresh_watched_directories()
 
         logger.debug(f"Started watching: {self._staging_dir}")
 
@@ -179,7 +173,7 @@ class ArtifactFileWatcher(QObject):
     def _on_directory_changed(self, path: str) -> None:
         """Directory contents changed (file added/removed)."""
         logger.debug(f"Directory changed: {path}")
-        self._refresh_watched_files()
+        self._refresh_watched_directories()
         self._schedule_emit()
 
     def _on_file_changed(self, path: str) -> None:
@@ -215,8 +209,8 @@ class ArtifactFileWatcher(QObject):
         logger.debug("Emitting files_changed signal")
         self.files_changed.emit()
 
-    def _refresh_watched_files(self) -> None:
-        """Update list of watched files."""
+    def _refresh_watched_directories(self) -> None:
+        """Update list of watched directories."""
         if not self._staging_dir.exists():
             return
 
@@ -225,20 +219,55 @@ class ArtifactFileWatcher(QObject):
             if watcher is None:
                 return
 
-            current_files = {str(f) for f in self._staging_dir.iterdir() if f.is_file()}
-            watched_files = set(watcher.files())
+            current_dirs = self._collect_directories()
+            watched_dirs = set(watcher.directories())
 
-            # Add new files
-            new_files = current_files - watched_files
-            if new_files:
-                watcher.addPaths(list(new_files))
-                logger.debug(f"Added {len(new_files)} new files to watcher")
+            new_dirs = current_dirs - watched_dirs
+            if new_dirs:
+                watcher.addPaths(list(new_dirs))
+                logger.debug(f"Added {len(new_dirs)} new directories to watcher")
 
-            # Remove deleted files
-            deleted_files = watched_files - current_files
-            if deleted_files:
-                watcher.removePaths(list(deleted_files))
-                logger.debug(f"Removed {len(deleted_files)} deleted files from watcher")
+            removed_dirs = watched_dirs - current_dirs
+            if removed_dirs:
+                watcher.removePaths(list(removed_dirs))
+                logger.debug(
+                    f"Removed {len(removed_dirs)} deleted directories from watcher"
+                )
 
         except Exception as e:
-            logger.error(f"Failed to refresh watched files: {e}")
+            logger.error(f"Failed to refresh watched directories: {e}")
+
+    def _collect_directories(self) -> set[str]:
+        """Collect all directories under the staging dir (recursive)."""
+        if not self._staging_dir.exists():
+            return set()
+
+        directories: set[str] = {str(self._staging_dir)}
+
+        def _on_walk_error(exc: OSError) -> None:
+            if int(getattr(exc, "errno", -1)) in _TRANSIENT_STAGING_ERRNOS:
+                logger.debug(
+                    "Staging walk race while scanning %s: %s",
+                    self._staging_dir,
+                    exc,
+                )
+                return
+            logger.warning(f"Failed to walk staging dir {self._staging_dir}: {exc}")
+
+        for root, dirnames, _ in os.walk(
+            self._staging_dir, followlinks=False, onerror=_on_walk_error
+        ):
+            root_path = Path(root)
+            pruned_dirs: list[str] = []
+            for dirname in dirnames:
+                dir_path = root_path / dirname
+                try:
+                    if dir_path.is_symlink():
+                        continue
+                except Exception:
+                    continue
+                pruned_dirs.append(dirname)
+                directories.add(str(dir_path))
+            dirnames[:] = pruned_dirs
+
+        return directories

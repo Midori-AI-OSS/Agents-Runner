@@ -4,8 +4,9 @@ import tomli
 import tomli_w
 
 from dataclasses import dataclass
+from typing import Any
 
-from agents_runner.persistence import _strip_none_for_toml
+from agents_runner.persistence import strip_none_for_toml
 from agents_runner.prompts import load_prompt
 
 
@@ -84,6 +85,8 @@ def ensure_pr_metadata_file(path: str, *, task_id: str) -> None:
         "title": "",
         "body": "",
     }
+    # Startup/prep calls intentionally reset title/body to defaults for a new run.
+    # Manual metadata edits must happen after this write and before finalization.
     with open(path, "wb") as f:
         tomli_w.dump(payload, f)
 
@@ -115,7 +118,7 @@ def ensure_github_context_file(
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
     # Build payload
-    payload: dict = {
+    payload: dict[str, Any] = {
         "version": GITHUB_CONTEXT_VERSION,
         "task_id": str(task_id or ""),
         "title": "",
@@ -134,7 +137,7 @@ def ensure_github_context_file(
         }
 
     with open(path, "wb") as f:
-        tomli_w.dump(_strip_none_for_toml(payload), f)
+        tomli_w.dump(strip_none_for_toml(payload), f)
 
     # Fix 1.3: Use container-compatible permissions
     # 0o666 allows container user (different UID) to write during Phase 2 update
@@ -183,7 +186,7 @@ def update_github_context_after_clone(
     }
 
     with open(path, "wb") as f:
-        tomli_w.dump(_strip_none_for_toml(payload), f)
+        tomli_w.dump(strip_none_for_toml(payload), f)
 
 
 def load_pr_metadata(path: str) -> PrMetadata:

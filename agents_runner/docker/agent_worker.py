@@ -10,6 +10,7 @@ from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.agent_worker_github import GitHubOperations
 from agents_runner.docker.agent_worker_setup import WorkerSetup
 from agents_runner.docker.agent_worker_container import ContainerExecutor
+from agents_runner.log_format import format_log
 
 
 class DockerAgentWorker:
@@ -65,26 +66,26 @@ class DockerAgentWorker:
 
     def request_stop(self) -> None:
         """Request graceful container stop."""
-        from agents_runner.docker.process import _run_docker
+        from agents_runner.docker.process import run_docker
 
         self._stop.set()
         if self._container_id:
             try:
-                _run_docker(["stop", "-t", "1", self._container_id], timeout_s=10.0)
+                run_docker(["stop", "-t", "1", self._container_id], timeout_s=10.0)
             except Exception:
                 try:
-                    _run_docker(["kill", self._container_id], timeout_s=10.0)
+                    run_docker(["kill", self._container_id], timeout_s=10.0)
                 except Exception:
                     pass
 
     def request_kill(self) -> None:
         """Force-kill the container immediately."""
-        from agents_runner.docker.process import _run_docker
+        from agents_runner.docker.process import run_docker
 
         self._stop.set()
         if self._container_id:
             try:
-                _run_docker(["kill", self._container_id], timeout_s=10.0)
+                run_docker(["kill", self._container_id], timeout_s=10.0)
             except Exception:
                 pass
 
@@ -141,6 +142,14 @@ class DockerAgentWorker:
             self._on_done(exit_code, None, self._collected_artifacts)
 
         except Exception as exc:
+            self._on_log(
+                format_log(
+                    "host",
+                    "task",
+                    "ERROR",
+                    f"worker execution failed before completion: {exc}",
+                )
+            )
             self._on_done(1, str(exc), self._collected_artifacts)
         finally:
             # Clean up temporary preflight scripts

@@ -22,6 +22,7 @@ import os
 import subprocess
 import tempfile
 import time
+import uuid
 from dataclasses import replace
 from threading import Event
 from typing import Any
@@ -30,7 +31,7 @@ import pytest
 
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.workers import DockerAgentWorker
-from agents_runner.docker.process import _run_docker, _inspect_state
+from agents_runner.docker.process import run_docker, inspect_state
 from agents_runner.persistence import (
     save_task_payload,
     load_task_payload,
@@ -73,17 +74,17 @@ def cleanup_test_containers():
     def cleanup():
         try:
             # List all containers with agents-runner prefix
-            result = _run_docker(
+            result = run_docker(
                 ["ps", "-a", "--filter", "name=agents-runner-", "--format", "{{.ID}}"],
                 timeout_s=10.0,
             )
-            container_ids = result.stdout.strip().split("\n")
+            container_ids = str(result).strip().split("\n")
             container_ids = [cid.strip() for cid in container_ids if cid.strip()]
 
             # Remove each container
             for container_id in container_ids:
                 try:
-                    _run_docker(["rm", "-f", container_id], timeout_s=10.0)
+                    run_docker(["rm", "-f", container_id], timeout_s=10.0)
                 except Exception:
                     # Best-effort - continue even if removal fails
                     pass
@@ -132,7 +133,7 @@ def test_config(temp_state_dir, request):
     # Truncate test name to stay under Docker's 63-char limit
     # Format: agents-runner-test-{test_name}-{short_uuid}
     test_name = request.node.name[:20]  # Max 20 chars for test name
-    short_uuid = f"{int(time.time() * 1000) % 1000000:06d}"  # 6-digit time-based ID
+    short_uuid = uuid.uuid4().hex[:6]
     container_name = f"agents-runner-test-{test_name}-{short_uuid}"
 
     container_id = None
@@ -157,10 +158,10 @@ def test_config(temp_state_dir, request):
         if container_id:
             for _ in range(10):
                 try:
-                    _inspect_state(container_id)
+                    inspect_state(container_id)
                     # Container still exists, wait
                     time.sleep(1)
-                except subprocess.CalledProcessError:
+                except Exception:
                     # Container removed successfully
                     break
 
@@ -185,10 +186,10 @@ def test_config(temp_state_dir, request):
 def ensure_test_image():
     """Ensure the test Docker image is available."""
     try:
-        _run_docker(["image", "inspect", TEST_IMAGE], timeout_s=10.0)
+        run_docker(["image", "inspect", TEST_IMAGE], timeout_s=10.0)
     except Exception:
         # Pull the image if not available
-        _run_docker(["pull", TEST_IMAGE], timeout_s=120.0)
+        run_docker(["pull", TEST_IMAGE], timeout_s=120.0)
 
 
 def test_task_lifecycle_completes_successfully(test_config):
@@ -212,10 +213,16 @@ def test_task_lifecycle_completes_successfully(test_config):
     # Modify config to use a more robust command that avoids Docker stream race conditions
     # Add 20s sleep before echo to ensure container has time to start and report state
     # Use absolute path /bin/sh to avoid PATH resolution issues in PixelArch
+    # Force git --global to use a writable path in CI while preserving strict failure behavior.
     config = replace(
         config,
         agent_cli="/bin/sh",
         agent_cli_args=["-c", "sleep 20 && echo 'test output' && exit 0"],
+        env_vars={
+            **dict(config.env_vars or {}),
+            "HOME": "/tmp",
+            "GIT_CONFIG_GLOBAL": f"/tmp/agents-runner-{task_id}.gitconfig",
+        },
     )
 
     # Task tracking
@@ -270,7 +277,12 @@ def test_task_lifecycle_completes_successfully(test_config):
     assert done_called.wait(timeout=30), "Task did not complete in time"
 
     # Verify final state
-    assert final_exit_code == 0, f"Expected exit code 0, got {final_exit_code}"
+    recent_logs = "\n".join(logs_received[-20:])
+    assert final_exit_code == 0, (
+        f"Expected exit code 0, got {final_exit_code}; "
+        f"error={final_error}; container_id={worker.container_id}\n"
+        f"Recent logs:\n{recent_logs}"
+    )
     assert final_error is None, f"Unexpected error: {final_error}"
 
     # Verify state transitions were recorded

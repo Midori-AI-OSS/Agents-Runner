@@ -5,18 +5,18 @@ from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_done_task_payloads
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 
 
 PAST_TASK_PAGE_SIZE = 10
 
 
-class _MainWindowDashboardMixin:
+class MainWindowDashboardMixin:
     def _refresh_task_rows(self) -> None:
         for task in self._tasks.values():
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
-            spinner = _stain_color(env.color) if env else None
+            spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
     def _tick_dashboard_elapsed(self) -> None:
@@ -27,7 +27,7 @@ class _MainWindowDashboardMixin:
                 continue
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
-            spinner = _stain_color(env.color) if env else None
+            spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
     def _load_past_tasks_batch(self, offset: int, limit: int) -> int:

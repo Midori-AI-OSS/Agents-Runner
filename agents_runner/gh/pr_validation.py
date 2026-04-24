@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 import subprocess
 
+from .auth import is_gh_authenticated
+
 
 def validate_pr_prerequisites(
     *,
@@ -126,16 +128,8 @@ def _validate_gh_cli(use_gh: bool) -> tuple[bool, str]:
 
     # Check authentication
     try:
-        result = subprocess.run(
-            ["gh", "auth", "status"],
-            capture_output=True,
-            text=True,
-            timeout=10.0,
-        )
-        if result.returncode != 0:
+        if not is_gh_authenticated(timeout_s=10.0, use_cache=True):
             return (False, "gh CLI not authenticated (run 'gh auth login')")
-    except subprocess.TimeoutExpired:
-        return (False, "gh auth status check timed out")
     except Exception as exc:
         return (False, f"gh auth check failed: {exc}")
 

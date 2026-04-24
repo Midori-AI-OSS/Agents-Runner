@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QDialog,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QVBoxLayout,
     QWidget,
 )
 
-from agents_runner.ui.widgets.theme_preview import ThemePreviewWidget
+from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 
 
-class ThemePreviewDialog(QDialog):
+class ThemePreviewDialog(ThemedDialog):
     """Modal dialog that previews and optionally applies a single theme."""
 
     def __init__(
@@ -22,16 +20,16 @@ class ThemePreviewDialog(QDialog):
         theme_label: str,
         parent: QWidget | None = None,
     ) -> None:
-        super().__init__(parent)
         self._theme_name = str(theme_name or "").strip().lower()
         self._applied = False
+        super().__init__(parent, theme_name=self._theme_name)
 
         self.setWindowTitle(f"Theme Preview - {theme_label}")
         self.setModal(True)
-        self.setMinimumSize(760, 460)
-        self.resize(940, 560)
+        self.setMinimumSize(760, 360)
+        self.resize(940, 420)
 
-        layout = QVBoxLayout(self)
+        layout = self.content_layout()
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
 
@@ -43,18 +41,15 @@ class ThemePreviewDialog(QDialog):
         subtitle.setObjectName("SettingsPaneSubtitle")
         layout.addWidget(subtitle)
 
-        preview_frame = QWidget(self)
-        preview_frame.setObjectName("ThemePreviewDialogFrame")
-        preview_layout = QVBoxLayout(preview_frame)
-        preview_layout.setContentsMargins(8, 8, 8, 8)
-        preview_layout.setSpacing(0)
+        details = QLabel(
+            "This dialog surface is the live theme preview. "
+            "Apply to switch the app background."
+        )
+        details.setWordWrap(True)
+        details.setObjectName("SettingsPaneSubtitle")
+        layout.addWidget(details)
 
-        self._preview = ThemePreviewWidget(self._theme_name, preview_frame)
-        self._preview.setObjectName("ThemePreviewDialogCanvas")
-        self._preview.setMinimumHeight(380)
-        preview_layout.addWidget(self._preview, 1)
-
-        layout.addWidget(preview_frame, 1)
+        layout.addStretch(1)
 
         actions = QHBoxLayout()
         actions.setSpacing(10)

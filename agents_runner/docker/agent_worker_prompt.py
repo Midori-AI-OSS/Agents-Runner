@@ -10,6 +10,7 @@ from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.environments import load_environments
 from agents_runner.prompts import load_prompt
+from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
 from agents_runner.log_format import format_log
 from agents_runner.midoriai_template import MidoriAITemplateDetection
 
@@ -37,9 +38,22 @@ class PromptAssembler:
         """Assemble final prompt with desktop context and templates."""
         prompt_for_agent = self._base_prompt
 
+        if template_detection.midoriai_template_detected:
+            template_parts = self._load_template_parts(agent_cli)
+            if template_parts:
+                combined_template = "\n\n".join(template_parts)
+                prompt_for_agent = insert_prompt_sections_before_user_prompt(
+                    prompt_for_agent,
+                    [combined_template],
+                )
+                self._on_log(
+                    format_log("env", "template", "INFO", "injected template prompts")
+                )
+
         if desktop_enabled:
-            prompt_for_agent = sanitize_prompt(
-                f"{prompt_for_agent.rstrip()}{self._headless_desktop_prompt_instructions(display=desktop_display)}"
+            prompt_for_agent = insert_prompt_sections_before_user_prompt(
+                prompt_for_agent,
+                [self._headless_desktop_prompt_instructions(display=desktop_display)],
             )
             self._on_log(
                 format_log(
@@ -50,22 +64,11 @@ class PromptAssembler:
                 )
             )
 
-        if template_detection.midoriai_template_detected:
-            template_parts = self._load_template_parts(agent_cli)
-            if template_parts:
-                combined_template = "\n\n".join(template_parts)
-                prompt_for_agent = sanitize_prompt(
-                    f"{prompt_for_agent.rstrip()}\n\n{combined_template}"
-                )
-                self._on_log(
-                    format_log("env", "template", "INFO", "injected template prompts")
-                )
-
-        return prompt_for_agent
+        return sanitize_prompt(prompt_for_agent)
 
     def _load_template_parts(self, agent_cli: str) -> list[str]:
         """Load all template parts."""
-        template_parts = []
+        template_parts: list[str] = []
 
         for template_name in [
             "templates/midoriaibasetemplate",
@@ -130,7 +133,7 @@ class PromptAssembler:
             environments = load_environments()
             env = environments.get(str(self._environment_id))
             if env is not None:
-                cross_agents_enabled = (
+                cross_agents_enabled = bool(
                     env.use_cross_agents is True
                     and env.cross_agent_allowlist
                     and len(env.cross_agent_allowlist) > 0

@@ -6,12 +6,13 @@ from PySide6.QtCore import (
     QPoint,
     QPropertyAnimation,
     QSignalBlocker,
-    QTimer,
 )
 from PySide6.QtWidgets import QGraphicsOpacityEffect
 
+from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 
-class _EnvironmentsNavigationMixin:
+
+class EnvironmentsNavigationMixin:
     def _on_back(self) -> None:
         if not self.try_autosave():
             return
@@ -21,8 +22,17 @@ class _EnvironmentsNavigationMixin:
         for combo in (
             self._color,
             self._workspace_type_combo,
+            self._gpu_override_mode,
+            self._ide_system_override,
+            self._agentsnova_trusted_mode,
+            self._agentsnova_auto_review_mode,
+            self._agentsnova_auto_reactions_mode,
+            self._agentsnova_marker_comment_mode,
+            self._interactive_pr_no_prompt_mode,
+            self._gh_branch_work_mode,
+            self._gh_task_branch_naming_style,
         ):
-            combo.currentIndexChanged.connect(self._trigger_immediate_autosave)
+            combo.currentIndexChanged.connect(self._queue_debounced_autosave)
 
         for checkbox in (
             self._headless_desktop_enabled,
@@ -30,28 +40,22 @@ class _EnvironmentsNavigationMixin:
             self._container_caching_enabled,
             self._use_cross_agents,
             self._gh_context_enabled,
+            self._github_polling_enabled,
             self._gh_use_host_cli,
-            self._preflight_enabled,
-            self._cached_preflight_enabled,
-            self._run_preflight_enabled,
+            self._interactive_pr_prompt_enabled,
+            self._setup_agents_missing_prompt_enabled,
+            self._interactive_pull_before_run_enabled,
+            self._cache_system_preflight_enabled,
+            self._cache_settings_preflight_enabled,
+            self._cache_ide_preflight_enabled,
         ):
-            checkbox.toggled.connect(self._trigger_immediate_autosave)
-
-        for line_edit in (
-            self._name,
-            self._max_agents_running,
-            self._workspace_target,
-        ):
-            line_edit.textChanged.connect(self._queue_debounced_autosave)
-
-        for editor in (
-            self._preflight_script,
-            self._cached_preflight_script,
-            self._run_preflight_script,
-            self._env_vars,
-            self._mounts,
-        ):
-            editor.textChanged.connect(self._queue_debounced_autosave)
+            checkbox.toggled.connect(self._queue_debounced_autosave)
+        self._gh_task_branch_custom_template.textChanged.connect(
+            self._queue_debounced_autosave
+        )
+        self._agentsnova_trusted_users_env.usernames_changed.connect(
+            self._queue_advanced_autosave
+        )
 
     def _on_nav_button_clicked(self, key: str) -> None:
         self._navigate_to_pane(key, user_initiated=True)
@@ -144,8 +148,7 @@ class _EnvironmentsNavigationMixin:
         group.addAnimation(opacity_anim)
 
         def _cleanup() -> None:
-            if self._pane_rest_pos is not None:
-                self._page_stack.move(self._pane_rest_pos)
+            self._page_stack.move(self._pane_rest_pos)
             self._page_stack.setGraphicsEffect(None)
             self._pane_animation = None
 
@@ -158,42 +161,15 @@ class _EnvironmentsNavigationMixin:
             return
         self._autosave_timer.start()
 
-    def _trigger_immediate_autosave(self, *_args: object) -> None:
-        if self._suppress_autosave:
-            return
-        if self._autosave_timer.isActive():
-            self._autosave_timer.stop()
-        self._emit_autosave()
-
     def _emit_autosave(self) -> None:
         if self._suppress_autosave:
             return
         self.try_autosave(show_validation_errors=False)
 
     def _update_navigation_mode(self) -> None:
-        compact = self.width() < 1080
+        compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD
         if compact == self._compact_mode:
             return
         self._compact_mode = compact
         self._compact_nav.setVisible(compact)
-        self._nav_panel.setVisible(not compact)
-        if not compact:
-            QTimer.singleShot(0, self._sync_nav_button_sizes)
-
-    def _sync_nav_button_sizes(self) -> None:
-        if self._compact_mode or not self._nav_buttons:
-            return
-
-        panel_width = self._nav_panel.width()
-        if panel_width <= 0:
-            return
-
-        inner_width = panel_width
-        nav_layout = self._nav_panel.layout()
-        if nav_layout is not None:
-            margins = nav_layout.contentsMargins()
-            inner_width -= margins.left() + margins.right()
-
-        target_width = max(1, inner_width - 2)
-        for button in self._nav_buttons.values():
-            button.setFixedWidth(target_width)
+        self._nav_scroll.setVisible(not compact)

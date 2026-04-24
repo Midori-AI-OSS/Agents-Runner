@@ -19,6 +19,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import parse_ports_text
+from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.constants import (
     TAB_CONTENT_MARGINS,
     TAB_CONTENT_SPACING,
@@ -371,8 +372,8 @@ class PortsTabWidget(QWidget):
             host.setPlaceholderText("random")
             host.setText(str(row.host_port or ""))
             host.setValidator(validator)
-            host.editingFinished.connect(
-                lambda r=row_index, w=host: self._commit_host_port(r, w)
+            host.textChanged.connect(
+                lambda text, r=row_index: self._on_host_port_changed(r, text)
             )
             self._table.setCellWidget(row_index, self._COL_HOST, host)
 
@@ -380,28 +381,42 @@ class PortsTabWidget(QWidget):
             container.setPlaceholderText("container")
             container.setText(str(row.container_port or ""))
             container.setValidator(validator)
-            container.editingFinished.connect(
-                lambda r=row_index, w=container: self._commit_container_port(r, w)
+            container.textChanged.connect(
+                lambda text, r=row_index: self._on_container_port_changed(r, text)
             )
             self._table.setCellWidget(row_index, self._COL_CONTAINER, container)
 
             remove_btn = QToolButton()
             remove_btn.setObjectName("RowTrash")
-            remove_btn.setText("✕")
-            remove_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            remove_btn.setIcon(lucide_icon("trash-2"))
+            remove_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            remove_btn.setToolTip("Remove row")
             remove_btn.clicked.connect(lambda r=row_index: self._remove_row(r))
             self._table.setCellWidget(row_index, self._COL_REMOVE, remove_btn)
 
-    def _commit_host_port(self, row_index: int, widget: QLineEdit) -> None:
+    def flush_widget_state(self) -> None:
+        if self._unlocked:
+            return
+        for row_index in range(len(self._rows)):
+            host_widget = self._table.cellWidget(row_index, self._COL_HOST)
+            container_widget = self._table.cellWidget(row_index, self._COL_CONTAINER)
+            if isinstance(host_widget, QLineEdit):
+                self._rows[row_index].host_port = str(host_widget.text() or "").strip()
+            if isinstance(container_widget, QLineEdit):
+                self._rows[row_index].container_port = str(
+                    container_widget.text() or ""
+                ).strip()
+
+    def _on_host_port_changed(self, row_index: int, text: str) -> None:
         if row_index < 0 or row_index >= len(self._rows):
             return
-        self._rows[row_index].host_port = str(widget.text() or "").strip()
+        self._rows[row_index].host_port = str(text or "").strip()
         self.ports_changed.emit()
 
-    def _commit_container_port(self, row_index: int, widget: QLineEdit) -> None:
+    def _on_container_port_changed(self, row_index: int, text: str) -> None:
         if row_index < 0 or row_index >= len(self._rows):
             return
-        self._rows[row_index].container_port = str(widget.text() or "").strip()
+        self._rows[row_index].container_port = str(text or "").strip()
         self.ports_changed.emit()
 
     def _remove_row(self, row_index: int) -> None:

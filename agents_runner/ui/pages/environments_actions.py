@@ -11,14 +11,23 @@ from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments import delete_environment
 from agents_runner.environments import load_environments
-from agents_runner.environments import parse_env_vars_text
-from agents_runner.environments import parse_mounts_text
 from agents_runner.environments import save_environment
+from agents_runner.environments.model import (
+    normalize_agentsnova_auto_mode,
+    normalize_gpu_override_mode,
+    normalize_interactive_pr_no_prompt_mode,
+    normalize_agentsnova_marker_comment_mode,
+    normalize_gh_branch_work_mode,
+    normalize_gh_task_branch_custom_template,
+    normalize_gh_task_branch_naming_style,
+)
 from agents_runner.gh_management import is_gh_available
+from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
+from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 
 
-class _EnvironmentsPageActionsMixin:
+class EnvironmentsPageActionsMixin:
     def _sync_workspace_controls(
         self, *_: object, env: Environment | None = None
     ) -> None:
@@ -92,15 +101,55 @@ class _EnvironmentsPageActionsMixin:
         delete_environment(env.env_id)
         self.updated.emit("")
 
+    def _issue_294_environment_values(self) -> dict[str, object]:
+        return {
+            "agentsnova_auto_review_mode": normalize_agentsnova_auto_mode(
+                self._agentsnova_auto_review_mode.currentData() or "inherit"
+            ),
+            "agentsnova_auto_reactions_mode": normalize_agentsnova_auto_mode(
+                self._agentsnova_auto_reactions_mode.currentData() or "inherit"
+            ),
+            "agentsnova_marker_comment_mode": normalize_agentsnova_marker_comment_mode(
+                self._agentsnova_marker_comment_mode.currentData() or "inherit"
+            ),
+            "interactive_pr_prompt_enabled": bool(
+                self._interactive_pr_prompt_enabled.isChecked()
+            ),
+            "interactive_pr_no_prompt_mode": normalize_interactive_pr_no_prompt_mode(
+                self._interactive_pr_no_prompt_mode.currentData() or "auto_create_pr"
+            ),
+            "setup_agents_missing_prompt_enabled": bool(
+                self._setup_agents_missing_prompt_enabled.isChecked()
+            ),
+            "interactive_pull_before_run_enabled": bool(
+                self._interactive_pull_before_run_enabled.isChecked()
+            ),
+            "gh_branch_work_mode": normalize_gh_branch_work_mode(
+                self._gh_branch_work_mode.currentData() or "task_branch"
+            ),
+            "gh_task_branch_naming_style": normalize_gh_task_branch_naming_style(
+                self._gh_task_branch_naming_style.currentData() or "standard"
+            ),
+            "gh_task_branch_custom_template": (
+                normalize_gh_task_branch_custom_template(
+                    self._gh_task_branch_custom_template.text()
+                )
+            ),
+            "gpu_override_mode": normalize_gpu_override_mode(
+                str(self._gpu_override_mode.currentData() or "inherit")
+            ),
+        }
+
     def try_autosave(
         self,
         *,
         preferred_env_id: str | None = None,
         show_validation_errors: bool = True,
     ) -> bool:
-        autosave_timer = getattr(self, "_autosave_timer", None)
-        if autosave_timer is not None and autosave_timer.isActive():
-            autosave_timer.stop()
+        for timer_name in ("_autosave_timer", "_advanced_autosave_timer"):
+            autosave_timer = getattr(self, timer_name, None)
+            if autosave_timer is not None and autosave_timer.isActive():
+                autosave_timer.stop()
 
         if bool(getattr(self, "_suppress_autosave", False)):
             return True
@@ -151,8 +200,28 @@ class _EnvironmentsPageActionsMixin:
                 gh_context_enabled = False
         else:
             gh_context_enabled = False
+        github_polling_enabled = bool(self._github_polling_enabled.isChecked())
+        agentsnova_trusted_mode = normalize_trusted_mode(
+            self._agentsnova_trusted_mode.currentData() or "inherit"
+        )
+        ide_system_override_raw = str(
+            self._ide_system_override.currentData() or ""
+        ).strip()
+        ide_system_override = (
+            normalize_ide_system_name(ide_system_override_raw)
+            if ide_system_override_raw
+            else ""
+        )
+        agentsnova_trusted_users_env = (
+            self._agentsnova_trusted_users_env.get_usernames()
+        )
 
-        env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
+        self._env_vars_tab.flush_widget_state()
+        self._mounts_tab.flush_widget_state()
+        self._ports_tab.flush_widget_state()
+        self._agents_tab.flush_widget_state()
+
+        env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
             if show_validation_errors:
                 QMessageBox.warning(
@@ -160,7 +229,21 @@ class _EnvironmentsPageActionsMixin:
                 )
             return False
 
-        mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        mounts, mount_errors = self._mounts_tab.get_mounts()
+        if mount_errors:
+            if show_validation_errors:
+                QMessageBox.warning(
+                    self,
+                    "Invalid mounts",
+                    "Fix mounts:\n" + "\n".join(mount_errors[:12]),
+                )
+            return False
+        env_vars_advanced_mode = bool(self._env_vars_tab.is_advanced_mode())
+        mounts_advanced_mode = bool(self._mounts_tab.is_advanced_mode())
+        env_vars_advanced_acknowledged = bool(
+            self._env_vars_tab.is_advanced_acknowledged()
+        )
+        mounts_advanced_acknowledged = bool(self._mounts_tab.is_advanced_acknowledged())
         ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
             self._ports_tab.get_ports()
         )
@@ -177,23 +260,16 @@ class _EnvironmentsPageActionsMixin:
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
-        # Read preflight scripts based on container caching state
-        container_caching_enabled = bool(self._container_caching_enabled.isChecked())
-
-        if container_caching_enabled:
-            # Dual-editor mode: read from both editors
-            cached_preflight_script = (
-                str(self._cached_preflight_script.toPlainText() or "")
-                if self._cached_preflight_enabled.isChecked()
-                else ""
-            )
-            preflight_enabled = bool(self._run_preflight_enabled.isChecked())
-            preflight_script = str(self._run_preflight_script.toPlainText() or "")
-        else:
-            # Single-editor mode: read from single editor only
-            cached_preflight_script = ""
-            preflight_enabled = bool(self._preflight_enabled.isChecked())
-            preflight_script = str(self._preflight_script.toPlainText() or "")
+        cache_system_preflight_enabled = bool(
+            self._cache_system_preflight_enabled.isChecked()
+        )
+        cache_settings_preflight_enabled = bool(
+            self._cache_settings_preflight_enabled.isChecked()
+        )
+        cache_ide_preflight_enabled = bool(
+            self._cache_ide_preflight_enabled.isChecked()
+        )
+        issue_294_values = self._issue_294_environment_values()
 
         if base_env is None:
             env = Environment(
@@ -205,15 +281,20 @@ class _EnvironmentsPageActionsMixin:
                 headless_desktop_enabled=bool(
                     self._headless_desktop_enabled.isChecked()
                 ),
+                ide_system_override=ide_system_override,
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
-                cached_preflight_script=cached_preflight_script,
-                preflight_enabled=preflight_enabled,
-                preflight_script=preflight_script,
+                cache_system_preflight_enabled=cache_system_preflight_enabled,
+                cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+                cache_ide_preflight_enabled=cache_ide_preflight_enabled,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                env_vars_advanced_mode=env_vars_advanced_mode,
+                mounts_advanced_mode=mounts_advanced_mode,
+                env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+                mounts_advanced_acknowledged=mounts_advanced_acknowledged,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
                 ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -222,11 +303,15 @@ class _EnvironmentsPageActionsMixin:
                 workspace_target=workspace_target,
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
+                github_polling_enabled=github_polling_enabled,
+                agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+                agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
                 use_cross_agents=use_cross_agents,
                 cross_agent_allowlist=cross_agent_allowlist,
+                **issue_294_values,
             )
         else:
             env = replace(
@@ -237,15 +322,20 @@ class _EnvironmentsPageActionsMixin:
                 headless_desktop_enabled=bool(
                     self._headless_desktop_enabled.isChecked()
                 ),
+                ide_system_override=ide_system_override,
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
-                cached_preflight_script=cached_preflight_script,
-                preflight_enabled=preflight_enabled,
-                preflight_script=preflight_script,
+                cache_system_preflight_enabled=cache_system_preflight_enabled,
+                cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+                cache_ide_preflight_enabled=cache_ide_preflight_enabled,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                env_vars_advanced_mode=env_vars_advanced_mode,
+                mounts_advanced_mode=mounts_advanced_mode,
+                env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+                mounts_advanced_acknowledged=mounts_advanced_acknowledged,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
                 ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -254,11 +344,15 @@ class _EnvironmentsPageActionsMixin:
                 workspace_target=workspace_target,
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
+                github_polling_enabled=github_polling_enabled,
+                agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+                agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
                 use_cross_agents=use_cross_agents,
                 cross_agent_allowlist=cross_agent_allowlist,
+                **issue_294_values,
             )
         save_environment(env)
         self.updated.emit(preferred_env_id if preferred_env_id is not None else env_id)
@@ -305,15 +399,41 @@ class _EnvironmentsPageActionsMixin:
                 gh_context_enabled = False
         else:
             gh_context_enabled = False
+        github_polling_enabled = bool(self._github_polling_enabled.isChecked())
+        agentsnova_trusted_mode = normalize_trusted_mode(
+            self._agentsnova_trusted_mode.currentData() or "inherit"
+        )
+        ide_system_override_raw = str(
+            self._ide_system_override.currentData() or ""
+        ).strip()
+        ide_system_override = (
+            normalize_ide_system_name(ide_system_override_raw)
+            if ide_system_override_raw
+            else ""
+        )
+        agentsnova_trusted_users_env = (
+            self._agentsnova_trusted_users_env.get_usernames()
+        )
 
-        env_vars, errors = parse_env_vars_text(self._env_vars.toPlainText() or "")
+        env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
             QMessageBox.warning(
                 self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
             )
             return None
 
-        mounts = parse_mounts_text(self._mounts.toPlainText() or "")
+        mounts, mount_errors = self._mounts_tab.get_mounts()
+        if mount_errors:
+            QMessageBox.warning(
+                self, "Invalid mounts", "Fix mounts:\n" + "\n".join(mount_errors[:12])
+            )
+            return None
+        env_vars_advanced_mode = bool(self._env_vars_tab.is_advanced_mode())
+        mounts_advanced_mode = bool(self._mounts_tab.is_advanced_mode())
+        env_vars_advanced_acknowledged = bool(
+            self._env_vars_tab.is_advanced_acknowledged()
+        )
+        mounts_advanced_acknowledged = bool(self._mounts_tab.is_advanced_acknowledged())
         ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
             self._ports_tab.get_ports()
         )
@@ -330,23 +450,16 @@ class _EnvironmentsPageActionsMixin:
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
-        # Read preflight scripts based on container caching state
-        container_caching_enabled = bool(self._container_caching_enabled.isChecked())
-
-        if container_caching_enabled:
-            # Dual-editor mode: read from both editors
-            cached_preflight_script = (
-                str(self._cached_preflight_script.toPlainText() or "")
-                if self._cached_preflight_enabled.isChecked()
-                else ""
-            )
-            preflight_enabled = bool(self._run_preflight_enabled.isChecked())
-            preflight_script = str(self._run_preflight_script.toPlainText() or "")
-        else:
-            # Single-editor mode: read from single editor only
-            cached_preflight_script = ""
-            preflight_enabled = bool(self._preflight_enabled.isChecked())
-            preflight_script = str(self._preflight_script.toPlainText() or "")
+        cache_system_preflight_enabled = bool(
+            self._cache_system_preflight_enabled.isChecked()
+        )
+        cache_settings_preflight_enabled = bool(
+            self._cache_settings_preflight_enabled.isChecked()
+        )
+        cache_ide_preflight_enabled = bool(
+            self._cache_ide_preflight_enabled.isChecked()
+        )
+        issue_294_values = self._issue_294_environment_values()
 
         if existing is None:
             return Environment(
@@ -358,15 +471,20 @@ class _EnvironmentsPageActionsMixin:
                 headless_desktop_enabled=bool(
                     self._headless_desktop_enabled.isChecked()
                 ),
+                ide_system_override=ide_system_override,
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
-                cached_preflight_script=cached_preflight_script,
-                preflight_enabled=preflight_enabled,
-                preflight_script=preflight_script,
+                cache_system_preflight_enabled=cache_system_preflight_enabled,
+                cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+                cache_ide_preflight_enabled=cache_ide_preflight_enabled,
                 env_vars=env_vars,
                 extra_mounts=mounts,
+                env_vars_advanced_mode=env_vars_advanced_mode,
+                mounts_advanced_mode=mounts_advanced_mode,
+                env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+                mounts_advanced_acknowledged=mounts_advanced_acknowledged,
                 ports=ports,
                 ports_unlocked=ports_unlocked,
                 ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -375,11 +493,15 @@ class _EnvironmentsPageActionsMixin:
                 workspace_target=workspace_target,
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
+                github_polling_enabled=github_polling_enabled,
+                agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+                agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
                 prompts_unlocked=prompts_unlocked,
                 agent_selection=agent_selection,
                 use_cross_agents=use_cross_agents,
                 cross_agent_allowlist=cross_agent_allowlist,
+                **issue_294_values,
             )
 
         return replace(
@@ -388,13 +510,18 @@ class _EnvironmentsPageActionsMixin:
             color=str(self._color.currentData() or "slate"),
             max_agents_running=max_agents_running,
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
+            ide_system_override=ide_system_override,
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
-            cached_preflight_script=cached_preflight_script,
-            preflight_enabled=preflight_enabled,
-            preflight_script=preflight_script,
+            cache_system_preflight_enabled=cache_system_preflight_enabled,
+            cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+            cache_ide_preflight_enabled=cache_ide_preflight_enabled,
             env_vars=env_vars,
             extra_mounts=mounts,
+            env_vars_advanced_mode=env_vars_advanced_mode,
+            mounts_advanced_mode=mounts_advanced_mode,
+            env_vars_advanced_acknowledged=env_vars_advanced_acknowledged,
+            mounts_advanced_acknowledged=mounts_advanced_acknowledged,
             ports=ports,
             ports_unlocked=ports_unlocked,
             ports_advanced_acknowledged=ports_advanced_acknowledged,
@@ -403,11 +530,15 @@ class _EnvironmentsPageActionsMixin:
             workspace_target=workspace_target,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=gh_context_enabled,
+            github_polling_enabled=github_polling_enabled,
+            agentsnova_trusted_users_env=agentsnova_trusted_users_env,
+            agentsnova_trusted_mode=agentsnova_trusted_mode,
             prompts=prompts,
             prompts_unlocked=prompts_unlocked,
             agent_selection=agent_selection,
             use_cross_agents=use_cross_agents,
             cross_agent_allowlist=cross_agent_allowlist,
+            **issue_294_values,
         )
 
     def _on_test_preflight(self) -> None:

@@ -13,12 +13,14 @@ from PySide6.QtCore import QThread
 
 from PySide6.QtWidgets import QMessageBox
 
+from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
-from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh_management import is_gh_available
+from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
+from agents_runner.ide_systems import get_ide_system
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.log_format import format_log
 from agents_runner.pr_metadata import ensure_github_context_file
@@ -30,6 +32,8 @@ from agents_runner.pr_metadata import pr_metadata_container_path
 from agents_runner.pr_metadata import pr_metadata_host_path
 from agents_runner.pr_metadata import pr_metadata_prompt_instructions
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.prompts.sections import compose_prompt_sections
+from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.bridges import TaskRunnerBridge
@@ -39,12 +43,57 @@ from agents_runner.ui.constants import PIXELARCH_GIT_CONTEXT_SUFFIX
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.task_model import Task
-from agents_runner.ui.utils import _stain_color
+from agents_runner.ui.utils import stain_color
 
 logger = logging.getLogger(__name__)
 
 
-class _MainWindowTasksAgentMixin:
+class MainWindowTasksAgentMixin:
+    @staticmethod
+    def _mount_container_path_from_spec(spec: str) -> str:
+        parts = str(spec or "").strip().split(":")
+        if len(parts) < 2:
+            return ""
+        return str(parts[1] or "").strip()
+
+    def _warn_ide_mount_conflicts(
+        self, *, ide_system: str, extra_mounts: list[str]
+    ) -> None:
+        try:
+            plugin = get_ide_system(ide_system)
+        except Exception:
+            return
+        managed_paths = {
+            str(getattr(spec, "container_path", "") or "").strip()
+            for spec in tuple(getattr(plugin, "auto_mount_specs", ()) or ())
+            if str(getattr(spec, "container_path", "") or "").strip()
+        }
+        if not managed_paths:
+            return
+
+        conflicts = sorted(
+            {
+                container_path
+                for container_path in (
+                    self._mount_container_path_from_spec(mount)
+                    for mount in extra_mounts
+                )
+                if container_path and container_path in managed_paths
+            }
+        )
+        if not conflicts:
+            return
+
+        joined = "\n".join(f"- {path}" for path in conflicts[:8])
+        QMessageBox.information(
+            self,
+            "IDE mount path reserved",
+            "One or more environment mounts target container paths reserved by the IDE system.\n\n"
+            "Managed IDE mounts will override these paths:\n"
+            f"{joined}\n\n"
+            "If you need to use your own mount at these paths, turn off the IDE system for this run.",
+        )
+
     def _clean_old_tasks(self) -> None:
         to_remove: set[str] = set()
         for task_id, task in self._tasks.items():
@@ -85,9 +134,13 @@ class _MainWindowTasksAgentMixin:
 
         self._dashboard.remove_tasks(to_remove)
         for task_id in to_remove:
+            self._clear_ide_novnc_auto_open_state(task_id)
             self._tasks.pop(task_id, None)
             self._threads.pop(task_id, None)
             self._bridges.pop(task_id, None)
+            remove_proxy = getattr(self, "_remove_task_event_proxy", None)
+            if callable(remove_proxy):
+                remove_proxy(task_id)
             self._run_started_s.pop(task_id, None)
             self._dashboard_log_refresh_s.pop(task_id, None)
         for task in archived_tasks:
@@ -96,13 +149,308 @@ class _MainWindowTasksAgentMixin:
             self._dashboard.upsert_past_task(task, stain=stain)
         self._schedule_save()
 
+    @staticmethod
+    def _build_ide_install_preflight_script(*, package_name: str) -> str:
+        package = "".join(
+            ch
+            for ch in str(package_name or "").strip()
+            if ch.isalnum() or ch in {"-", "_", "."}
+        )
+        if not package:
+            return ""
+        return (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            f"yay -Syu --noconfirm --needed {package} && yay -Yccc --noconfirm\n"
+        )
+
+    def _start_ide_task_from_ui(
+        self,
+        prompt: str,
+        host_config_dir: str,
+        env_id: str,
+        terminal_id: str,
+        base_branch: str,
+        ide_override: dict[str, str] | None,
+    ) -> str | None:
+        del prompt
+        del terminal_id
+        del host_config_dir
+        if shutil.which("docker") is None:
+            QMessageBox.critical(
+                self, "Docker not found", "Could not find `docker` in PATH."
+            )
+            return None
+
+        task_id = uuid4().hex[:10]
+        env_id = str(env_id or "").strip() or self._active_environment_id()
+        if env_id not in self._environments:
+            QMessageBox.warning(
+                self, "Unknown environment", "Pick an environment first."
+            )
+            return None
+
+        self._settings_data["active_environment_id"] = env_id
+        env = self._environments.get(env_id)
+        effective_agent_cli, auto_config_dir = self._effective_agent_and_config(env=env)
+        ide_agent_cli = "smoke_agent"
+
+        ide_config_override = self._coerce_ide_override(ide_override)
+        ide_system, ide_display_target = self._effective_ide_launch_config(
+            env=env,
+            override=ide_config_override,
+            settings=self._settings_data,
+        )
+        try:
+            ide_plugin = get_ide_system(ide_system)
+        except Exception as exc:
+            QMessageBox.warning(self, "IDE unavailable", str(exc))
+            return None
+
+        workspace_type = env.workspace_type if env else "none"
+        effective_workdir, ready, message = self._new_task_workspace(
+            env, task_id=task_id
+        )
+        if not ready:
+            QMessageBox.warning(self, "Workspace not configured", message)
+            return None
+        if workspace_type == WORKSPACE_CLONED:
+            try:
+                os.makedirs(effective_workdir, exist_ok=True)
+            except Exception as exc:
+                logger.error(
+                    format_log(
+                        "host",
+                        "workspace",
+                        "ERROR",
+                        f"Failed to create directory {effective_workdir}: {exc}",
+                    )
+                )
+                QMessageBox.warning(
+                    self,
+                    "Directory Creation Failed",
+                    f"Could not create workspace directory: {exc}",
+                )
+                return None
+        elif not os.path.isdir(effective_workdir):
+            QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
+            return None
+
+        self._settings_data["host_workdir"] = effective_workdir
+
+        desired_base = str(base_branch or "").strip()
+        self._remember_environment_base_branch(env, desired_base)
+
+        host_config_dir = auto_config_dir
+        if not self._ensure_agent_config_dir(effective_agent_cli, host_config_dir):
+            return None
+
+        launch_argv = ide_plugin.build_launch_argv(
+            workspace_dir="/home/midori-ai/workspace"
+        )
+        remembered_safe_mode = False
+        if env is not None:
+            raw_safe_mode_map = getattr(env, "ide_safe_mode_by_system", {})
+            if isinstance(raw_safe_mode_map, dict):
+                remembered_safe_mode = bool(raw_safe_mode_map.get(ide_system, False))
+
+        if remembered_safe_mode:
+            for safe_arg in ("--disable-gpu", "--disable-dev-shm-usage"):
+                if safe_arg not in launch_argv:
+                    launch_argv.append(safe_arg)
+
+        if "--verbose" not in launch_argv:
+            launch_argv.append("--verbose")
+
+        if "--log" in launch_argv:
+            log_index = launch_argv.index("--log")
+            if log_index + 1 < len(launch_argv):
+                launch_argv[log_index + 1] = "debug"
+            else:
+                launch_argv.append("debug")
+        else:
+            launch_argv.extend(["--log", "debug"])
+
+        launch_command = " ".join(shlex.quote(part) for part in launch_argv)
+        verify_executable = str(getattr(ide_plugin, "executable", "") or "").strip()
+        ide_preflight_script = self._build_ide_install_preflight_script(
+            package_name=str(getattr(ide_plugin, "package_name", "") or ide_system)
+        )
+
+        settings_preflight_script: str | None = None
+        if (
+            self._settings_data.get("preflight_enabled")
+            and str(self._settings_data.get("preflight_script") or "").strip()
+        ):
+            settings_preflight_script = str(
+                self._settings_data.get("preflight_script") or ""
+            )
+
+        headless_desktop_enabled = ide_display_target == IDE_DISPLAY_CONTAINER_DESKTOP
+        gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
+        desktop_cache_enabled = (
+            bool(getattr(env, "cache_desktop_build", False)) if env else False
+        )
+        container_caching_enabled = (
+            bool(getattr(env, "container_caching_enabled", False)) if env else False
+        )
+        cache_system_preflight_enabled = (
+            bool(getattr(env, "cache_system_preflight_enabled", False))
+            if env
+            else False
+        )
+        cache_settings_preflight_enabled = (
+            bool(getattr(env, "cache_settings_preflight_enabled", False))
+            if env
+            else False
+        )
+        cache_ide_preflight_enabled = (
+            bool(getattr(env, "cache_ide_preflight_enabled", False)) if env else False
+        )
+        desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
+
+        use_host_gh = bool(getattr(env, "gh_use_host_cli", True)) if env else True
+        use_host_gh = bool(use_host_gh and is_gh_available())
+
+        env_vars_for_task = dict(env.env_vars) if env else {}
+        env_vars_for_task.pop("AGENTS_RUNNER_IDE_SAFE_MODE", None)
+        if remembered_safe_mode:
+            env_vars_for_task["AGENTS_RUNNER_IDE_SAFE_MODE"] = "1"
+        extra_mounts_for_task = list(env.extra_mounts) if env else []
+        ports_for_task = list(getattr(env, "ports", []) or []) if env else []
+
+        if self._settings_data.get("mount_host_cache", False):
+            host_cache = os.path.expanduser("~/.cache")
+            container_cache = "/home/midori-ai/.cache"
+            extra_mounts_for_task.append(f"{host_cache}:{container_cache}:rw")
+        self._warn_ide_mount_conflicts(
+            ide_system=ide_system,
+            extra_mounts=extra_mounts_for_task,
+        )
+
+        gh_repo: str | None = None
+        gh_branch_work_mode = "task_branch"
+        gh_task_branch_naming_style = "standard"
+        gh_task_branch_custom_template = "{task_id}"
+        if workspace_type == WORKSPACE_CLONED and env:
+            gh_repo = str(env.workspace_target or "").strip() or None
+            gh_branch_work_mode = str(
+                getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch"
+            ).strip()
+            gh_task_branch_naming_style = str(
+                getattr(env, "gh_task_branch_naming_style", "standard") or "standard"
+            ).strip()
+            gh_task_branch_custom_template = str(
+                getattr(env, "gh_task_branch_custom_template", "{task_id}")
+                or "{task_id}"
+            ).strip()
+
+        task_prompt = (
+            str(getattr(ide_plugin, "display_name", "") or "").strip() or ide_system
+        )
+        task_prompt = sanitize_prompt(f"Run IDE: {task_prompt}")
+
+        task = Task(
+            task_id=task_id,
+            prompt=task_prompt,
+            image=PIXELARCH_EMERALD_IMAGE,
+            host_workdir=effective_workdir,
+            host_config_dir=host_config_dir,
+            environment_id=env_id,
+            created_at_s=time.time(),
+            status="queued",
+            gh_use_host_cli=use_host_gh,
+            workspace_type=workspace_type,
+            agent_cli=ide_agent_cli,
+            launch_mode="ide",
+            ide_system=ide_system,
+            ide_display_target=ide_display_target,
+            headless_desktop_enabled=headless_desktop_enabled,
+        )
+        self._tasks[task_id] = task
+        stain = env.color if env else None
+        spinner = stain_color(env.color) if env else None
+        self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+        self._schedule_save()
+        if remembered_safe_mode:
+            self._on_task_log(
+                task_id,
+                format_log(
+                    "ide",
+                    "retry",
+                    "INFO",
+                    f"safe-mode-initial for ide={ide_system}",
+                ),
+            )
+
+        config = DockerRunnerConfig(
+            task_id=task_id,
+            image=PIXELARCH_EMERALD_IMAGE,
+            host_config_dir=host_config_dir,
+            host_workdir=effective_workdir,
+            agent_cli=ide_agent_cli,
+            environment_id=env_id,
+            workspace_type=workspace_type,
+            workspace_target=str(env.workspace_target or "") if env else "",
+            auto_remove=True,
+            pull_before_run=True,
+            settings_preflight_script=settings_preflight_script,
+            ide_preflight_script=ide_preflight_script,
+            headless_desktop_enabled=headless_desktop_enabled,
+            desktop_cache_enabled=desktop_cache_enabled,
+            container_caching_enabled=container_caching_enabled,
+            cache_system_preflight_enabled=cache_system_preflight_enabled,
+            cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+            cache_ide_preflight_enabled=cache_ide_preflight_enabled,
+            gpu_enabled=gpu_enabled,
+            setup_agents_missing_prompt_enabled=bool(
+                env and getattr(env, "setup_agents_missing_prompt_enabled", False)
+            ),
+            env_vars=env_vars_for_task,
+            extra_mounts=extra_mounts_for_task,
+            ports=ports_for_task,
+            agent_cli_args=[],
+            gh_repo=gh_repo,
+            gh_prefer_gh_cli=use_host_gh,
+            gh_recreate_if_needed=True,
+            gh_base_branch=desired_base or None,
+            gh_branch_work_mode=gh_branch_work_mode,
+            gh_task_branch_naming_style=gh_task_branch_naming_style,
+            gh_task_branch_custom_template=gh_task_branch_custom_template,
+            launch_mode="ide",
+            ide_system=ide_system,
+            ide_display_target=ide_display_target,
+            custom_command_argv=launch_argv,
+            custom_verify_executable=verify_executable,
+        )
+        task._runner_config = config
+        task._runner_prompt = launch_command
+        task._agent_selection = None
+
+        if self._can_start_new_agent_for_env(env_id):
+            self._actually_start_task(task)
+        else:
+            self._on_task_log(
+                task_id,
+                format_log("queue", "slot", "INFO", "Waiting for available slot..."),
+            )
+            self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+            self._schedule_save()
+
+        self._maybe_auto_navigate_on_task_start(interactive=False)
+        self._new_task.reset_for_new_run()
+        return task_id
+
     def _start_task_from_ui(
         self,
         prompt: str,
-        host_codex: str,
+        host_config_dir: str,
         env_id: str,
         base_branch: str,
+        pr_context: dict[str, object] | None = None,
+        agent_override: dict[str, str] | None = None,
     ) -> str | None:
+        del host_config_dir
         if shutil.which("docker") is None:
             QMessageBox.critical(
                 self, "Docker not found", "Could not find `docker` in PATH."
@@ -120,8 +468,11 @@ class _MainWindowTasksAgentMixin:
         self._settings_data["active_environment_id"] = env_id
         env = self._environments.get(env_id)
 
+        override = self._coerce_agent_override(agent_override)
+
         if (
-            env
+            not override
+            and env
             and env.agent_selection
             and str(getattr(env.agent_selection, "selection_mode", "") or "")
             .strip()
@@ -158,12 +509,30 @@ class _MainWindowTasksAgentMixin:
 
         # Get effective agent and config dir (environment agent_selection overrides settings)
         agent_instance_id = ""
-        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+        selected_cli_flags = ""
+        uses_environment_agent_selection = bool(
+            not override
+            and env
+            and env.agent_selection
+            and getattr(env.agent_selection, "agents", None)
+        )
+        if override:
+            agent_cli = override.get("agent_cli", "")
+            auto_config_dir = self._resolve_override_config_dir(
+                override=override,
+                env=env,
+                settings=self._settings_data,
+            )
+            agent_instance_id = str(override.get("agent_id") or "").strip()
+            selected_cli_flags = str(override.get("cli_flags") or "").strip()
+        elif (
+            env and env.agent_selection and getattr(env.agent_selection, "agents", None)
+        ):
             agent_cli, auto_config_dir, agent_instance_id = (
                 self._select_agent_instance_for_env(
                     env=env,
                     settings=self._settings_data,
-                    advance_round_robin=True,
+                    advance_round_robin=False,
                 )
             )
         else:
@@ -180,8 +549,7 @@ class _MainWindowTasksAgentMixin:
         )
 
         cooldown_mgr = CooldownManager(self._watch_states)
-        selected_cli_flags = ""
-        if env and env.agent_selection and agent_instance_id:
+        if not override and env and env.agent_selection and agent_instance_id:
             inst = next(
                 (
                     a
@@ -251,12 +619,14 @@ class _MainWindowTasksAgentMixin:
                             None,
                         )
                         if fallback_agent:
-                            fallback_name = fallback_agent.agent_cli.capitalize()
+                            fallback_name = format_agent_ui_label(
+                                fallback_agent.agent_cli
+                            )
 
             # Show cooldown modal
             modal = CooldownModal(
                 self,
-                agent_name=agent_cli.capitalize(),
+                agent_name=format_agent_ui_label(agent_cli),
                 watch_state=watch_state,
                 fallback_agent_name=fallback_name,
             )
@@ -320,7 +690,26 @@ class _MainWindowTasksAgentMixin:
         self._settings_data["host_workdir"] = effective_workdir
 
         resolved_agent_selection: AgentSelection | None = None
-        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+        if override:
+            override_id = agent_instance_id or agent_cli
+            override_cli = str(agent_cli or "").strip()
+            resolved_agent_selection = AgentSelection(
+                agents=[
+                    AgentInstance(
+                        agent_id=override_id,
+                        agent_cli=override_cli,
+                        config_dir=auto_config_dir,
+                        cli_flags=selected_cli_flags,
+                    )
+                ],
+                selection_mode="pinned",
+                agent_fallbacks={},
+                pinned_agent_id=override_id,
+            )
+            agent_instance_id = override_id
+        elif (
+            env and env.agent_selection and getattr(env.agent_selection, "agents", None)
+        ):
             selection_mode = str(
                 getattr(env.agent_selection, "selection_mode", "") or "round-robin"
             ).strip()
@@ -358,6 +747,23 @@ class _MainWindowTasksAgentMixin:
                         cli_flags=str(getattr(inst, "cli_flags", "") or "").strip(),
                     )
                 )
+            if (
+                selection_mode.strip().lower() in {"round-robin", "least-used"}
+                and agent_instance_id
+            ):
+                selected_lower = agent_instance_id.lower()
+                selected_index: int | None = None
+                for idx, inst in enumerate(resolved_agents):
+                    inst_id = str(getattr(inst, "agent_id", "") or "").strip()
+                    if (
+                        inst_id == agent_instance_id
+                        or inst_id.lower() == selected_lower
+                    ):
+                        selected_index = idx
+                        break
+                if selected_index is not None and selected_index > 0:
+                    selected_inst = resolved_agents.pop(selected_index)
+                    resolved_agents.insert(0, selected_inst)
             resolved_agent_selection = AgentSelection(
                 agents=resolved_agents,
                 selection_mode=selection_mode,
@@ -369,16 +775,10 @@ class _MainWindowTasksAgentMixin:
                 pinned_agent_id=pinned_agent_id,
             )
 
-        host_codex = os.path.expanduser(str(host_codex or "").strip())
         host_config_dir = auto_config_dir
-        if agent_cli == "codex" and host_codex:
-            host_config_dir = host_codex
-        if not host_config_dir:
-            host_config_dir = auto_config_dir
 
         if not self._ensure_agent_config_dir(agent_cli, host_config_dir):
             return
-        self._settings_data[self._host_config_dir_key(agent_cli)] = host_config_dir
 
         image = PIXELARCH_EMERALD_IMAGE
 
@@ -389,6 +789,11 @@ class _MainWindowTasksAgentMixin:
             except ValueError as exc:
                 QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
                 return
+        if uses_environment_agent_selection:
+            self._commit_round_robin_selection(
+                env=env,
+                selected_agent_id=agent_instance_id,
+            )
 
         settings_preflight_script: str | None = None
         if (
@@ -399,10 +804,6 @@ class _MainWindowTasksAgentMixin:
                 self._settings_data.get("preflight_script") or ""
             )
 
-        environment_preflight_script: str | None = None
-        if env and env.preflight_enabled and (env.preflight_script or "").strip():
-            environment_preflight_script = env.preflight_script
-
         force_headless_desktop = bool(
             self._settings_data.get("headless_desktop_enabled") or False
         )
@@ -410,16 +811,25 @@ class _MainWindowTasksAgentMixin:
             bool(getattr(env, "headless_desktop_enabled", False)) if env else False
         )
         headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
+        gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
         desktop_cache_enabled = (
             bool(getattr(env, "cache_desktop_build", False)) if env else False
         )
         container_caching_enabled = (
             bool(getattr(env, "container_caching_enabled", False)) if env else False
         )
-        cached_preflight_script = (
-            str(getattr(env, "cached_preflight_script", "") or "").strip()
+        cache_system_preflight_enabled = (
+            bool(getattr(env, "cache_system_preflight_enabled", False))
             if env
-            else ""
+            else False
+        )
+        cache_settings_preflight_enabled = (
+            bool(getattr(env, "cache_settings_preflight_enabled", False))
+            if env
+            else False
+        )
+        cache_ide_preflight_enabled = (
+            bool(getattr(env, "cache_ide_preflight_enabled", False)) if env else False
         )
         # Only enable cache if desktop is enabled
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
@@ -441,7 +851,7 @@ class _MainWindowTasksAgentMixin:
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
 
@@ -449,22 +859,54 @@ class _MainWindowTasksAgentMixin:
         use_host_gh = bool(use_host_gh and is_gh_available())
         task.gh_use_host_cli = use_host_gh
 
-        desired_base = str(base_branch or "").strip()
+        selected_base_branch = str(base_branch or "").strip()
+        desired_base = selected_base_branch
+        pr_head_ref = ""
+        pr_base_ref = ""
+        pr_head_repo_owner = ""
+        pr_head_repo_name = ""
+        pr_is_cross_repo = False
+        pr_repo_owner = ""
+        pr_repo_name = ""
+        if pr_context:
+            pr_head_ref = str(pr_context.get("pr_head_ref") or "").strip()
+            pr_base_ref = str(pr_context.get("pr_base_ref") or "").strip()
+            pr_head_repo_owner = str(pr_context.get("pr_head_repo_owner") or "").strip()
+            pr_head_repo_name = str(pr_context.get("pr_head_repo_name") or "").strip()
+            pr_is_cross_repo = bool(pr_context.get("pr_is_cross_repo") or False)
+            pr_repo_owner = str(pr_context.get("repo_owner") or "").strip()
+            pr_repo_name = str(pr_context.get("repo_name") or "").strip()
+        if pr_head_ref:
+            same_repo = True
+            if (
+                pr_head_repo_owner
+                and pr_head_repo_name
+                and pr_repo_owner
+                and pr_repo_name
+            ):
+                same_repo = (
+                    pr_head_repo_owner.lower() == pr_repo_owner.lower()
+                    and pr_head_repo_name.lower() == pr_repo_name.lower()
+                )
+            if pr_is_cross_repo or (
+                pr_head_repo_owner and pr_head_repo_name and not same_repo
+            ):
+                pr_head_ref = ""
+        if pr_head_ref:
+            desired_base = pr_head_ref
+        elif pr_base_ref and not desired_base:
+            desired_base = pr_base_ref
 
         # Save the selected branch for cloned environments
-        if env and env.workspace_type == WORKSPACE_CLONED and desired_base:
-            env.gh_last_base_branch = desired_base
-            save_environment(env)
-            # Update in-memory copy to persist across tab changes and reloads
-            self._environments[env.env_id] = env
+        self._remember_environment_base_branch(env, selected_base_branch)
 
-        runner_prompt = prompt
+        prompt_sections: list[str] = []
         if bool(self._settings_data.get("append_pixelarch_context") or False):
-            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_AGENT_CONTEXT_SUFFIX}"
+            prompt_sections.append(PIXELARCH_AGENT_CONTEXT_SUFFIX)
 
         # Inject git context when cloned workspace is used
         if workspace_type == WORKSPACE_CLONED:
-            runner_prompt = f"{runner_prompt.rstrip()}{PIXELARCH_GIT_CONTEXT_SUFFIX}"
+            prompt_sections.append(PIXELARCH_GIT_CONTEXT_SUFFIX)
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
@@ -475,9 +917,7 @@ class _MainWindowTasksAgentMixin:
                 enabled_env_prompts.append(sanitize_prompt(text))
 
         if enabled_env_prompts:
-            runner_prompt = f"{runner_prompt.rstrip()}\n\n" + "\n\n".join(
-                enabled_env_prompts
-            )
+            prompt_sections.append("\n\n".join(enabled_env_prompts))
             self._on_task_log(
                 task_id,
                 format_log(
@@ -487,6 +927,8 @@ class _MainWindowTasksAgentMixin:
                     f"appended {len(enabled_env_prompts)} environment prompt(s) (non-interactive)",
                 ),
             )
+        prompt_sections.append(prompt)
+        runner_prompt = compose_prompt_sections(prompt_sections)
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
         ports_for_task = list(getattr(env, "ports", []) or []) if env else []
@@ -647,13 +1089,33 @@ class _MainWindowTasksAgentMixin:
                             getattr(env, "workspace_target", "") or ""
                         ).strip()
                         base_branch = str(desired_base or "").strip() or "auto"
-                        task_branch = "(already created by runner)"
+                        if (
+                            env
+                            and str(
+                                getattr(env, "gh_branch_work_mode", "task_branch")
+                                or "task_branch"
+                            ).strip()
+                            == "direct_base"
+                        ):
+                            task_branch = (
+                                "(working directly on the selected base branch)"
+                            )
+                        else:
+                            task_branch = "(created by runner during clone)"
                         head_commit = "(set after clone)"
 
-                    runner_prompt = (
-                        f"{runner_prompt}"
-                        f"{github_context_prompt_instructions(repo_url=repo_url, repo_owner=repo_owner, repo_name=repo_name, base_branch=base_branch, task_branch=task_branch, head_commit=head_commit)}"
-                        f"{pr_metadata_prompt_instructions(pr_container_path)}"
+                    context_prompt = github_context_prompt_instructions(
+                        repo_url=repo_url,
+                        repo_owner=repo_owner,
+                        repo_name=repo_name,
+                        base_branch=base_branch,
+                        task_branch=task_branch,
+                        head_commit=head_commit,
+                    )
+                    pr_prompt = pr_metadata_prompt_instructions(pr_container_path)
+                    runner_prompt = insert_prompt_sections_before_user_prompt(
+                        runner_prompt,
+                        [f"{context_prompt}{pr_prompt}"],
                     )
                     # Clarify two-phase process for cloned repo environments
                     if workspace_type == WORKSPACE_CLONED:
@@ -690,8 +1152,21 @@ class _MainWindowTasksAgentMixin:
         # Get the host GitHub context path if it was created (regardless of mode)
         gh_context_file = getattr(task, "gh_context_path", None)
         gh_repo: str | None = None
+        gh_branch_work_mode = "task_branch"
+        gh_task_branch_naming_style = "standard"
+        gh_task_branch_custom_template = "{task_id}"
         if workspace_type == WORKSPACE_CLONED and env:
             gh_repo = str(env.workspace_target or "").strip() or None
+            gh_branch_work_mode = str(
+                getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch"
+            ).strip()
+            gh_task_branch_naming_style = str(
+                getattr(env, "gh_task_branch_naming_style", "standard") or "standard"
+            ).strip()
+            gh_task_branch_custom_template = str(
+                getattr(env, "gh_task_branch_custom_template", "{task_id}")
+                or "{task_id}"
+            ).strip()
 
         config = DockerRunnerConfig(
             task_id=task_id,
@@ -700,14 +1175,21 @@ class _MainWindowTasksAgentMixin:
             host_workdir=effective_workdir,
             agent_cli=agent_cli,
             environment_id=env_id,
+            workspace_type=workspace_type,
+            workspace_target=str(env.workspace_target or "") if env else "",
             auto_remove=True,
             pull_before_run=True,
             settings_preflight_script=settings_preflight_script,
-            environment_preflight_script=environment_preflight_script,
             headless_desktop_enabled=headless_desktop_enabled,
             desktop_cache_enabled=desktop_cache_enabled,
             container_caching_enabled=container_caching_enabled,
-            cached_preflight_script=cached_preflight_script or None,
+            cache_system_preflight_enabled=cache_system_preflight_enabled,
+            cache_settings_preflight_enabled=cache_settings_preflight_enabled,
+            cache_ide_preflight_enabled=cache_ide_preflight_enabled,
+            gpu_enabled=gpu_enabled,
+            setup_agents_missing_prompt_enabled=bool(
+                env and getattr(env, "setup_agents_missing_prompt_enabled", False)
+            ),
             env_vars=env_vars_for_task,
             extra_mounts=extra_mounts_for_task,
             ports=ports_for_task,
@@ -716,6 +1198,11 @@ class _MainWindowTasksAgentMixin:
             gh_prefer_gh_cli=use_host_gh,
             gh_recreate_if_needed=True,
             gh_base_branch=desired_base or None,
+            gh_branch_work_mode=gh_branch_work_mode,
+            gh_task_branch_naming_style=gh_task_branch_naming_style,
+            gh_task_branch_custom_template=gh_task_branch_custom_template,
+            gh_pr_head_ref=pr_head_ref or None,
+            gh_pr_base_ref=pr_base_ref or None,
             gh_context_file_path=gh_context_file,
         )
         task._runner_config = config
@@ -734,7 +1221,8 @@ class _MainWindowTasksAgentMixin:
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             self._schedule_save()
 
-        self._show_dashboard()
+        self._refresh_new_task_agent_info()
+        self._maybe_auto_navigate_on_task_start(interactive=False)
         self._new_task.reset_for_new_run()
         return task_id
 
@@ -748,12 +1236,15 @@ class _MainWindowTasksAgentMixin:
         task.status = "pulling"
         env = self._environments.get(task.environment_id)
         stain = env.color if env else None
-        spinner = _stain_color(env.color) if env else None
+        spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
         # Clean up any existing bridge/thread for this task to prevent duplicate log emissions
         old_bridge = self._bridges.pop(task.task_id, None)
         old_thread = self._threads.pop(task.task_id, None)
+        remove_proxy = getattr(self, "_remove_task_event_proxy", None)
+        if callable(remove_proxy):
+            remove_proxy(task.task_id)
         if old_bridge is not None:
             try:
                 # Disconnect all signal connections to prevent duplicate log emissions
@@ -787,19 +1278,30 @@ class _MainWindowTasksAgentMixin:
             config=config,
             prompt=prompt,
             agent_selection=agent_selection,
+            use_supervisor=True,
             watch_states=self._watch_states,
         )
         thread = QThread(self)
         bridge.moveToThread(thread)
         thread.started.connect(bridge.run)
 
-        bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
-        bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
-        bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
-        bridge.retry_attempt.connect(self._on_bridge_retry_attempt, Qt.QueuedConnection)
-        bridge.agent_switched.connect(
-            self._on_bridge_agent_switched, Qt.QueuedConnection
-        )
+        connect_events = getattr(self, "_connect_task_bridge_events", None)
+        if callable(connect_events):
+            connect_events(
+                task_id=task.task_id,
+                bridge=bridge,
+                include_supervisor_events=True,
+            )
+        else:
+            bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
+            bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
+            bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
+            bridge.retry_attempt.connect(
+                self._on_bridge_retry_attempt, Qt.QueuedConnection
+            )
+            bridge.agent_switched.connect(
+                self._on_bridge_agent_switched, Qt.QueuedConnection
+            )
 
         bridge.done.connect(thread.quit, Qt.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
