@@ -14,10 +14,6 @@ from agents_runner.agent_cli import available_agents
 from agents_runner.agent_cli import default_host_config_dir
 from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.agent_systems import get_agent_system
-from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
-from agents_runner.ide_systems import get_default_ide_system_name
-from agents_runner.ide_systems import normalize_ide_display_target
-from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import looks_like_agent_help_command
 from agents_runner.environments import Environment
@@ -28,6 +24,14 @@ logger = logging.getLogger(__name__)
 
 
 class MainWindowSettingsMixin:
+    _REMOVED_IDE_SETTINGS_KEYS = (
+        "ide_auto_mounts_enabled",
+        "ide_system_default",
+        "ide_display_target_default",
+        "ide_display_target",
+        "ide_novnc_auto_open_enabled",
+        "ide_novnc_auto_open_mode",
+    )
     _REMOVED_LEGACY_SETTINGS_KEYS = (
         "host_codex_dir",
         "host_claude_dir",
@@ -60,7 +64,8 @@ class MainWindowSettingsMixin:
         merged = dict(self._settings_data)
         merged.update(settings or {})
         merged.pop("stt_mode", None)
-        merged.pop("ide_auto_mounts_enabled", None)
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:
+            merged.pop(key, None)
         merged["use"] = normalize_agent(str(merged.get("use") or "codex"))
         if merged["use"] not in set(available_agents(include_internal=False)):
             merged["use"] = "codex"
@@ -75,19 +80,6 @@ class MainWindowSettingsMixin:
         merged["interactive_terminal_id"] = str(
             merged.get("interactive_terminal_id") or ""
         ).strip()
-        merged["ide_system_default"] = normalize_ide_system_name(
-            str(merged.get("ide_system_default") or get_default_ide_system_name())
-        )
-        merged["ide_display_target_default"] = IDE_DISPLAY_CONTAINER_DESKTOP
-        merged["ide_novnc_auto_open_enabled"] = bool(
-            merged.get("ide_novnc_auto_open_enabled", True)
-        )
-        merged["ide_novnc_auto_open_mode"] = (
-            "always"
-            if str(merged.get("ide_novnc_auto_open_mode") or "").strip().lower()
-            == "always"
-            else "viewing_only"
-        )
         for key in self._REMOVED_LEGACY_SETTINGS_KEYS:
             merged.pop(key, None)
         merged["append_pixelarch_context"] = bool(
@@ -199,19 +191,6 @@ class MainWindowSettingsMixin:
         except Exception:
             merged["max_agents_running"] = -1
         self._settings_data = merged
-        if not self._ide_novnc_auto_open_enabled(settings=merged):
-            task_ids = {
-                *self._ide_novnc_auto_open_timers.keys(),
-                *self._ide_novnc_auto_open_urls.keys(),
-                *self._ide_novnc_auto_open_ready_s.keys(),
-                *self._ide_novnc_auto_open_deferred,
-                *self._ide_novnc_auto_opened_tasks,
-            }
-            for task_id in list(task_ids):
-                self._clear_ide_novnc_auto_open_state(task_id)
-        else:
-            for task in list(self._tasks.values()):
-                self._maybe_schedule_ide_novnc_auto_open(task)
         self._sync_radio_controller_from_settings(
             user_initiated=True,
             previous_enabled=previous_radio_enabled,
@@ -521,76 +500,6 @@ class MainWindowSettingsMixin:
             "mode": str(override.get("mode") or ""),
             "shell": str(override.get("shell") or ""),
         }
-
-    def _coerce_ide_override(self, override: object) -> dict[str, str] | None:
-        if not isinstance(override, dict):
-            return None
-        source = str(override.get("source") or "").strip()
-        ide_system_raw = str(override.get("ide_system") or "").strip()
-        display_target_raw = str(override.get("display_target") or "").strip()
-        ide_system = normalize_ide_system_name(ide_system_raw) if ide_system_raw else ""
-        display_target = (
-            normalize_ide_display_target(display_target_raw)
-            if display_target_raw
-            else ""
-        )
-        if source == "runtime":
-            display_target = ""
-        if not ide_system and not display_target:
-            return None
-        return {
-            "source": source,
-            "env_id": str(override.get("env_id") or ""),
-            "ide_system": ide_system,
-            "display_target": display_target,
-        }
-
-    def _effective_ide_launch_config(
-        self,
-        *,
-        env: Environment | None,
-        override: dict[str, str] | None = None,
-        settings: dict[str, object] | None = None,
-    ) -> tuple[str, str]:
-        settings_data = settings or self._settings_data
-        ide_system = normalize_ide_system_name(
-            str(
-                settings_data.get("ide_system_default") or get_default_ide_system_name()
-            )
-        )
-        display_target = IDE_DISPLAY_CONTAINER_DESKTOP
-
-        if env is not None:
-            env_ide_system_raw = str(
-                getattr(env, "ide_system_override", "") or ""
-            ).strip()
-            if env_ide_system_raw:
-                ide_system = normalize_ide_system_name(env_ide_system_raw)
-
-        coerced_override = self._coerce_ide_override(override)
-        if coerced_override:
-            override_ide = str(coerced_override.get("ide_system") or "").strip()
-            if override_ide:
-                ide_system = normalize_ide_system_name(override_ide)
-
-        return ide_system, display_target
-
-    def _ide_novnc_auto_open_enabled(
-        self, *, settings: dict[str, object] | None = None
-    ) -> bool:
-        settings_data = settings or self._settings_data
-        return bool(settings_data.get("ide_novnc_auto_open_enabled", True))
-
-    def _ide_novnc_auto_open_mode(
-        self, *, settings: dict[str, object] | None = None
-    ) -> str:
-        settings_data = settings or self._settings_data
-        return (
-            "always"
-            if str(settings_data.get("ide_novnc_auto_open_mode") or "").strip().lower()
-            == "always"
-            else "viewing_only"
-        )
 
     def _effective_gpu_enabled(
         self,

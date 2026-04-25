@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from agents_runner.agent_cli import normalize_agent
-from agents_runner.ide_systems import get_default_ide_system_name
-from agents_runner.ide_systems import normalize_ide_display_target
-from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_active_task_payloads
@@ -119,7 +116,10 @@ class MainWindowPersistenceMixin:
     def _save_state(self) -> None:
         from agents_runner.persistence import save_watch_state
 
-        payload = {"settings": dict(self._settings_data)}
+        settings_payload = dict(self._settings_data)
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:
+            settings_payload.pop(key, None)
+        payload = {"settings": settings_payload}
 
         # Save watch states
         save_watch_state(payload, self._watch_states)
@@ -147,7 +147,8 @@ class MainWindowPersistenceMixin:
         if isinstance(settings, dict):
             self._settings_data.update(settings)
         self._settings_data.pop("stt_mode", None)
-        self._settings_data.pop("ide_auto_mounts_enabled", None)
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:
+            self._settings_data.pop(key, None)
         self._settings_data["use"] = normalize_agent(
             str(self._settings_data.get("use") or "codex")
         )
@@ -159,17 +160,6 @@ class MainWindowPersistenceMixin:
             self._settings_data["max_agents_running"] = -1
         for key in self._REMOVED_LEGACY_SETTINGS_KEYS:
             self._settings_data.pop(key, None)
-        self._settings_data.setdefault(
-            "ide_system_default", get_default_ide_system_name()
-        )
-        self._settings_data.setdefault(
-            "ide_display_target_default",
-            normalize_ide_display_target(
-                str(self._settings_data.get("ide_display_target") or "")
-            ),
-        )
-        self._settings_data.setdefault("ide_novnc_auto_open_enabled", True)
-        self._settings_data.setdefault("ide_novnc_auto_open_mode", "viewing_only")
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("gpu_enabled", False)
         self._settings_data.setdefault("auto_navigate_on_run_agent_start", False)
@@ -203,32 +193,6 @@ class MainWindowPersistenceMixin:
         self._settings_data.setdefault("agentsnova_auto_reactions_enabled", True)
         self._settings_data.setdefault("agentsnova_trusted_users_global", [])
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
-        self._settings_data["ide_system_default"] = normalize_ide_system_name(
-            str(
-                self._settings_data.get("ide_system_default")
-                or get_default_ide_system_name()
-            )
-        )
-        self._settings_data["ide_display_target_default"] = (
-            normalize_ide_display_target(
-                str(
-                    self._settings_data.get("ide_display_target_default")
-                    or self._settings_data.get("ide_display_target")
-                    or ""
-                )
-            )
-        )
-        self._settings_data["ide_novnc_auto_open_enabled"] = bool(
-            self._settings_data.get("ide_novnc_auto_open_enabled", True)
-        )
-        self._settings_data["ide_novnc_auto_open_mode"] = (
-            "always"
-            if str(self._settings_data.get("ide_novnc_auto_open_mode") or "")
-            .strip()
-            .lower()
-            == "always"
-            else "viewing_only"
-        )
         self._settings_data["gpu_enabled"] = bool(
             self._settings_data.get("gpu_enabled") or False
         )
@@ -368,7 +332,6 @@ class MainWindowPersistenceMixin:
             stain = env.color if env else None
             spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            self._maybe_schedule_ide_novnc_auto_open(task)
 
         # Run startup reconciliation once
         # Guard prevents accidental re-runs if _load_state() is called multiple times

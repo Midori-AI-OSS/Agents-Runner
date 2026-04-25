@@ -33,10 +33,6 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments.model import AgentInstance
-from agents_runner.ide_systems import available_ide_system_names
-from agents_runner.ide_systems import get_default_ide_system_name
-from agents_runner.ide_systems import get_ide_system
-from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
@@ -62,7 +58,6 @@ class NewTaskPage(QWidget):
 
     requested_run = Signal(str, str, str, str, object, object)
     requested_launch = Signal(str, str, str, str, str, str, object, str)
-    requested_launch_ide = Signal(str, str, str, str, str, object)
     back_requested = Signal()
     environment_changed = Signal(str)
     base_branch_changed = Signal(str, str)
@@ -77,7 +72,6 @@ class NewTaskPage(QWidget):
         ] = {}  # Track workspace types for environments
         self._env_template_injection: dict[str, bool] = {}
         self._env_desktop_enabled: dict[str, bool] = {}
-        self._env_ide_system_overrides: dict[str, str] = {}
         self._env_agents: dict[str, list[AgentInstance]] = {}
         self._repo_controls_visible = False
         self._base_branch_host_active = False
@@ -117,8 +111,6 @@ class NewTaskPage(QWidget):
         )
         self._pending_pr_context: dict[str, object] | None = None
         self._agent_override: dict[str, str] | None = None
-        self._ide_override: dict[str, str] | None = None
-        self._ide_system_default = get_default_ide_system_name()
         self._base_agent_info: tuple[str, str] = ("", "")
 
         layout = QVBoxLayout(self)
@@ -291,23 +283,14 @@ class NewTaskPage(QWidget):
         self._run_agent.set_glass_enabled(False)
         self._run_agent.set_texture_enabled(False)
         self._run_agent.clicked.connect(self._on_run)
-        self._run_ide = StainedGlassButton("Run IDE")
-        self._run_ide.set_glass_enabled(False)
-        self._run_ide.set_texture_enabled(False)
-        self._run_ide.clicked.connect(self._on_run_ide)
         self._run_interactive.setEnabled(False)
         self._run_agent.setEnabled(False)
-        self._run_ide.setEnabled(False)
         self._override_menu = QMenu(self)
         self._override_menu.aboutToShow.connect(self._rebuild_override_menu)
         self._run_interactive.set_context_menu(self._override_menu)
         self._run_agent.set_context_menu(self._override_menu)
-        self._ide_override_menu = QMenu(self)
-        self._ide_override_menu.aboutToShow.connect(self._rebuild_ide_override_menu)
-        self._run_ide.set_context_menu(self._ide_override_menu)
         buttons.addWidget(self._run_interactive)
         buttons.addWidget(self._run_agent)
-        buttons.addWidget(self._run_ide)
 
         card_layout.addLayout(prompt_title_row)
         card_layout.addWidget(prompt_container, 1)
@@ -322,7 +305,6 @@ class NewTaskPage(QWidget):
         self._tint_overlay.raise_()
         self._refresh_terminal_selection("")
         self._update_run_buttons()
-        self._refresh_ide_button_tooltip()
 
     def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
@@ -331,10 +313,9 @@ class NewTaskPage(QWidget):
         self._raise_override_buttons()
 
     def _raise_override_buttons(self) -> None:
-        if not self._agent_override and not self._ide_override:
+        if not self._agent_override:
             return
         self._run_interactive.raise_()
-        self._run_ide.raise_()
         self._run_agent.raise_()
 
     def _confirm_auto_base_branch(self, env_id: str, base_branch: str) -> bool:
@@ -372,10 +353,8 @@ class NewTaskPage(QWidget):
     def _update_run_buttons(self) -> None:
         has_terminal = bool(self._terminal_available and self._terminal_id)
         can_launch = bool(self._workspace_ready and has_terminal)
-        can_launch_ide = bool(self._workspace_ready)
         self._run_agent.setEnabled(self._workspace_ready)
         self._run_interactive.setEnabled(can_launch)
-        self._run_ide.setEnabled(can_launch_ide)
         self._get_agent_help.setEnabled(can_launch)
 
     def _refresh_terminal_selection(self, terminal_id: str) -> None:
@@ -586,56 +565,6 @@ class NewTaskPage(QWidget):
         )
         self._clear_agent_override()
 
-    def _effective_ide_selection(self) -> str:
-        ide_system = normalize_ide_system_name(self._ide_system_default)
-
-        env_id = self._active_env_id
-        env_ide_raw = str(self._env_ide_system_overrides.get(env_id, "") or "").strip()
-        if env_ide_raw:
-            ide_system = normalize_ide_system_name(env_ide_raw)
-
-        if self._ide_override:
-            override_ide = str(self._ide_override.get("ide_system") or "").strip()
-            if override_ide:
-                ide_system = normalize_ide_system_name(override_ide)
-
-        return ide_system
-
-    def _emit_ide_launch(self) -> None:
-        if not self._workspace_ready:
-            QMessageBox.warning(
-                self,
-                "Workspace not configured",
-                self._workspace_error
-                or "Pick an environment with a local folder or GitHub repo configured.",
-            )
-            return
-
-        env_id = self._active_env_id
-        base_branch = str(self._base_branch.currentData() or "")
-
-        if not self._confirm_auto_base_branch(env_id, base_branch):
-            return
-
-        ide_system = self._effective_ide_selection()
-        ide_override_payload: dict[str, str] = {
-            "source": "runtime",
-            "env_id": env_id,
-            "ide_system": ide_system,
-        }
-        self.requested_launch_ide.emit(
-            "",
-            "",
-            env_id,
-            "",
-            base_branch,
-            ide_override_payload,
-        )
-        self._clear_ide_override()
-
-    def _on_run_ide(self) -> None:
-        self._emit_ide_launch()
-
     def _on_launch(self) -> None:
         self._emit_interactive_launch(extra_preflight_script="")
 
@@ -711,13 +640,7 @@ class NewTaskPage(QWidget):
             override_tint if agent_override_active else base_tint
         )
 
-        ide_override_active = bool(self._ide_override)
-        self._run_ide.set_glass_enabled(ide_override_active)
-        self._run_ide.set_tint_color(
-            override_tint if ide_override_active else base_tint
-        )
-
-        if agent_override_active or ide_override_active:
+        if agent_override_active:
             self._raise_override_buttons()
         self._tint_overlay.raise_()
 
@@ -735,7 +658,6 @@ class NewTaskPage(QWidget):
             self._tint_overlay.set_tint_color(base_tint)
             self._get_agent_help.set_tint_color(base_tint)
         self._apply_run_button_tints(base_tint)
-        self._refresh_ide_button_tooltip()
 
     def set_environment_stains(self, stains: dict[str, str]) -> None:
         self._env_stains = {str(k): str(v) for k, v in (stains or {}).items()}
@@ -781,19 +703,6 @@ class NewTaskPage(QWidget):
             str(k): bool(v) for k, v in (desktop_enabled or {}).items()
         }
         self._sync_interactive_options()
-
-    def set_environment_ide_overrides(
-        self,
-        *,
-        ide_system_overrides: dict[str, str],
-    ) -> None:
-        self._env_ide_system_overrides = {
-            str(k): str(v or "").strip()
-            for k, v in (ide_system_overrides or {}).items()
-        }
-        self._clear_ide_override_if_invalid()
-        self._refresh_ide_button_tooltip()
-        self._apply_environment_tints()
 
     def _sync_template_prompt_indicator(self) -> None:
         env_id = self._active_env_id
@@ -858,8 +767,6 @@ class NewTaskPage(QWidget):
         self._update_workspace_visibility()
         self._sync_template_prompt_indicator()
         self._clear_override_if_invalid()
-        self._clear_ide_override_if_invalid()
-        self._refresh_ide_button_tooltip()
         if previous != self._active_env_id:
             self.environment_changed.emit(self._active_env_id)
 
@@ -871,13 +778,6 @@ class NewTaskPage(QWidget):
         if selected == self._BASE_BRANCH_LOADING_SENTINEL:
             return
         self.base_branch_changed.emit(env_id, selected)
-
-    def set_ide_defaults(self, *, ide_system: str) -> None:
-        self._ide_system_default = normalize_ide_system_name(
-            str(ide_system or get_default_ide_system_name())
-        )
-        self._clear_ide_override_if_invalid()
-        self._refresh_ide_button_tooltip()
 
     def set_spellcheck_enabled(self, enabled: bool) -> None:
         """Enable or disable spellcheck in the prompt editor."""
@@ -1472,7 +1372,6 @@ class NewTaskPage(QWidget):
         self._agent_chain.setToolTip(display_text)
         self._run_interactive.setToolTip(display_text)
         self._run_agent.setToolTip(display_text)
-        self._refresh_ide_button_tooltip()
 
     @staticmethod
     def _format_env_agent_entry_label(inst: AgentInstance) -> str:
@@ -1582,83 +1481,12 @@ class NewTaskPage(QWidget):
                 return
         self._set_agent_override(None)
 
-    def _format_ide_menu_label(self, ide_system: str) -> str:
-        normalized = normalize_ide_system_name(ide_system)
-        try:
-            plugin = get_ide_system(normalized)
-            display_name = str(getattr(plugin, "display_name", "") or "").strip()
-            if display_name:
-                return display_name
-        except Exception:
-            pass
-        return self._format_key_label(normalized)
-
     @staticmethod
     def _format_key_label(value: str) -> str:
         words = str(value or "").strip().replace("-", " ").replace("_", " ").split()
         if not words:
             return "Unknown"
         return " ".join(word.capitalize() for word in words)
-
-    def _refresh_ide_button_tooltip(self) -> None:
-        ide_system = self._effective_ide_selection()
-        ide_label = self._format_ide_menu_label(ide_system)
-        tooltip = f"IDE: {ide_label} | Display: In-container desktop"
-        self._run_ide.setToolTip(tooltip)
-
-    def _rebuild_ide_override_menu(self) -> None:
-        self._ide_override_menu.clear()
-
-        ide_names = list(available_ide_system_names())
-        for ide_name in ide_names:
-            normalized = normalize_ide_system_name(ide_name)
-            label = self._format_ide_menu_label(normalized)
-            action = self._ide_override_menu.addAction(label)
-            action.triggered.connect(
-                lambda _checked=False, ide=normalized: self._set_ide_override(
-                    {
-                        "source": "runtime",
-                        "env_id": self._active_env_id,
-                        "ide_system": ide,
-                    }
-                )
-            )
-
-        self._ide_override_menu.addSeparator()
-        clear_action = self._ide_override_menu.addAction("Clear override")
-        clear_action.setEnabled(bool(self._ide_override))
-        clear_action.triggered.connect(self._clear_ide_override)
-
-    def _set_ide_override(self, override: dict[str, str] | None) -> None:
-        if not override:
-            self._ide_override = None
-        else:
-            ide_system_raw = str(override.get("ide_system") or "").strip()
-            ide_system = (
-                normalize_ide_system_name(ide_system_raw) if ide_system_raw else ""
-            )
-            if not ide_system:
-                self._ide_override = None
-            else:
-                self._ide_override = {
-                    "source": str(override.get("source") or ""),
-                    "env_id": str(override.get("env_id") or ""),
-                    "ide_system": ide_system,
-                }
-        self._refresh_ide_button_tooltip()
-        self._apply_environment_tints()
-
-    def _clear_ide_override(self) -> None:
-        if not self._ide_override:
-            return
-        self._set_ide_override(None)
-
-    def _clear_ide_override_if_invalid(self) -> None:
-        if not self._ide_override:
-            return
-        override_env = str(self._ide_override.get("env_id") or "").strip()
-        if override_env and override_env != self._active_env_id:
-            self._set_ide_override(None)
 
     def reset_for_new_run(self) -> None:
         self._prompt.setPlainText("")

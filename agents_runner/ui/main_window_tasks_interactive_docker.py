@@ -104,11 +104,9 @@ def launch_docker_terminal_task(
     container_workdir: str,
     settings_preflight_script: str | None,
     setup_agents_script: str | None,
-    ide_preflight_script: str | None,
     install_preflight_script: str,
     install_phase_name: str,
     extra_preflight_script: str,
-    ide_display_target: str,
     stain: str | None,
     spinner: str | None,
     desired_base: str = "",
@@ -155,11 +153,9 @@ def launch_docker_terminal_task(
         container_workdir: Container workspace directory path
         settings_preflight_script: Global preflight script
         setup_agents_script: Repo setup-agents preflight script
-        ide_preflight_script: Optional IDE install preflight script
         install_preflight_script: Optional install preflight script
         install_phase_name: Optional install phase cache name
         extra_preflight_script: Additional preflight script (help mode, etc.)
-        ide_display_target: IDE runtime display metadata
         stain: Task color stain
         spinner: Task spinner color
         desired_base: Desired base branch for git
@@ -394,7 +390,6 @@ def launch_docker_terminal_task(
     preflight_clause, preflight_mounts, tmp_paths, desktop_start_clause = (
         _prepare_preflight_scripts(
             task_token=task_token,
-            ide_preflight_script=str(ide_preflight_script or ""),
             desktop_preflight_script=desktop_preflight_script,
             settings_preflight_script=settings_preflight_script,
             setup_agents_script=setup_agents_script,
@@ -656,7 +651,6 @@ def launch_docker_terminal_task(
 
 def _prepare_preflight_scripts(
     task_token: str,
-    ide_preflight_script: str,
     desktop_preflight_script: str,
     settings_preflight_script: str | None,
     setup_agents_script: str | None,
@@ -672,7 +666,6 @@ def _prepare_preflight_scripts(
 
     Args:
         task_token: Unique task token for temp file naming
-        ide_preflight_script: IDE install phase script content
         desktop_preflight_script: Desktop phase script content
         settings_preflight_script: Global preflight script
         setup_agents_script: Repo setup-agents script content
@@ -697,14 +690,12 @@ def _prepare_preflight_scripts(
     tmp_paths: dict[str, str] = {
         "system": "",
         "install": "",
-        "ide": "",
         "desktop": "",
         "desktop_start": "",
         "settings": "",
         "setup_agents": "",
     }
 
-    ide_container_path = f"/tmp/agents-runner-preflight-ide-{task_token}.sh"
     desktop_container_path = f"/tmp/agents-runner-preflight-desktop-{task_token}.sh"
     desktop_start_container_path = (
         f"/tmp/agents-runner-preflight-desktop-start-{task_token}.sh"
@@ -890,14 +881,6 @@ def _prepare_preflight_scripts(
             env_var="PREFLIGHT_SETTINGS",
         )
         _append_optional_phase(
-            label="ide",
-            script=ide_preflight_script,
-            container_path=ide_container_path,
-            tmp_key="ide",
-            skip=False,
-            env_var="PREFLIGHT_IDE",
-        )
-        _append_optional_phase(
             label="desktop",
             script=desktop_install_script,
             container_path=desktop_container_path,
@@ -1038,7 +1021,6 @@ def _build_host_shell_script(
     host_script_parts = [
         f"CONTAINER_NAME={shlex.quote(container_name)}",
         f"TMP_SYSTEM={shlex.quote(tmp_paths.get('system', ''))}",
-        f"TMP_IDE={shlex.quote(tmp_paths.get('ide', ''))}",
         f"TMP_DESKTOP={shlex.quote(tmp_paths.get('desktop', ''))}",
         f"TMP_DESKTOP_START={shlex.quote(tmp_paths.get('desktop_start', ''))}",
         f"TMP_SETTINGS={shlex.quote(tmp_paths.get('settings', ''))}",
@@ -1048,7 +1030,6 @@ def _build_host_shell_script(
         'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
         'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
         + 'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
-        + 'if [ -n "$TMP_IDE" ]; then rm -f -- "$TMP_IDE" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_DESKTOP" ]; then rm -f -- "$TMP_DESKTOP" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_DESKTOP_START" ]; then rm -f -- "$TMP_DESKTOP_START" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '

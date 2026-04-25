@@ -364,7 +364,6 @@ class EnvironmentsPage(
                     gpu_mode_idx = 0
                 if gpu_mode_idx >= 0:
                     self._gpu_override_mode.setCurrentIndex(gpu_mode_idx)
-                self._ide_system_override.setCurrentIndex(0)
                 self._cache_desktop_build.setChecked(False)
                 self._cache_desktop_build.setEnabled(False)
                 self._container_caching_enabled.setChecked(False)
@@ -434,7 +433,6 @@ class EnvironmentsPage(
                 self._refresh_setup_agents_preview(None)
                 self._cache_system_preflight_enabled.setChecked(False)
                 self._cache_settings_preflight_enabled.setChecked(False)
-                self._cache_ide_preflight_enabled.setChecked(False)
                 self._on_container_caching_toggled(Qt.CheckState.Unchecked.value)
                 self._env_vars_tab.set_env_vars(
                     {},
@@ -478,11 +476,6 @@ class EnvironmentsPage(
                 gpu_mode_idx = 0
             if gpu_mode_idx >= 0:
                 self._gpu_override_mode.setCurrentIndex(gpu_mode_idx)
-            ide_system_override = str(getattr(env, "ide_system_override", "") or "")
-            ide_system_idx = self._ide_system_override.findData(ide_system_override)
-            if ide_system_idx < 0:
-                ide_system_idx = 0
-            self._ide_system_override.setCurrentIndex(ide_system_idx)
             self._ports_tab.set_desktop_effective_enabled(
                 self._effective_desktop_enabled()
             )
@@ -604,9 +597,6 @@ class EnvironmentsPage(
             self._cache_settings_preflight_enabled.setChecked(
                 bool(getattr(env, "cache_settings_preflight_enabled", False))
             )
-            self._cache_ide_preflight_enabled.setChecked(
-                bool(getattr(env, "cache_ide_preflight_enabled", False))
-            )
             self._on_container_caching_toggled(
                 Qt.CheckState.Checked.value
                 if bool(getattr(env, "container_caching_enabled", False))
@@ -674,7 +664,6 @@ class EnvironmentsPage(
         for checkbox in (
             self._cache_system_preflight_enabled,
             self._cache_settings_preflight_enabled,
-            self._cache_ide_preflight_enabled,
         ):
             checkbox.setEnabled(is_enabled)
 

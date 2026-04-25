@@ -509,8 +509,6 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
                 payload.get("settings_preflight_script") or ""
             ).strip()
             or None,
-            ide_preflight_script=str(payload.get("ide_preflight_script") or "").strip()
-            or None,
             headless_desktop_enabled=bool(
                 payload.get("headless_desktop_enabled") or False
             ),
@@ -523,9 +521,6 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             ),
             cache_settings_preflight_enabled=bool(
                 payload.get("cache_settings_preflight_enabled") or False
-            ),
-            cache_ide_preflight_enabled=bool(
-                payload.get("cache_ide_preflight_enabled") or False
             ),
             gpu_enabled=bool(payload.get("gpu_enabled") or False),
             setup_agents_missing_prompt_enabled=bool(
@@ -541,21 +536,12 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
                 payload.get("container_setup_agents_preflight_path")
                 or "/tmp/agents-runner-preflight-setup-agents-{task_id}.sh"
             ),
-            container_ide_preflight_path=str(
-                payload.get("container_ide_preflight_path")
-                or "/tmp/agents-runner-preflight-ide-{task_id}.sh"
-            ),
             env_vars=env_vars,
             extra_mounts=extra_mounts,
             ports=ports,
             agent_cli_args=agent_cli_args,
             environment_id=str(payload.get("environment_id") or ""),
             launch_mode=str(payload.get("launch_mode") or "agent"),
-            ide_system=str(payload.get("ide_system") or ""),
-            ide_display_target=str(payload.get("ide_display_target") or ""),
-            ide_auto_mounts_enabled=bool(
-                payload.get("ide_auto_mounts_enabled") or False
-            ),
             custom_command_argv=custom_command_argv,
             custom_verify_executable=str(
                 payload.get("custom_verify_executable") or ""

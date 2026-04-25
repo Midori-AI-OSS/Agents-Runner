@@ -129,9 +129,6 @@ class MainWindowPreflightMixin:
             cache_settings_preflight_enabled=bool(
                 getattr(env, "cache_settings_preflight_enabled", False)
             ),
-            cache_ide_preflight_enabled=bool(
-                getattr(env, "cache_ide_preflight_enabled", False)
-            ),
             gpu_enabled=gpu_enabled,
             env_vars=dict(env.env_vars) if env else {},
             extra_mounts=self._get_extra_mounts_with_cache(env),

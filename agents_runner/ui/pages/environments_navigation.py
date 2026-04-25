@@ -23,7 +23,6 @@ class EnvironmentsNavigationMixin:
             self._color,
             self._workspace_type_combo,
             self._gpu_override_mode,
-            self._ide_system_override,
             self._agentsnova_trusted_mode,
             self._agentsnova_auto_review_mode,
             self._agentsnova_auto_reactions_mode,
@@ -47,7 +46,6 @@ class EnvironmentsNavigationMixin:
             self._interactive_pull_before_run_enabled,
             self._cache_system_preflight_enabled,
             self._cache_settings_preflight_enabled,
-            self._cache_ide_preflight_enabled,
         ):
             checkbox.toggled.connect(self._queue_debounced_autosave)
         self._gh_task_branch_custom_template.textChanged.connect(

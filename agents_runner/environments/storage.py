@@ -14,6 +14,11 @@ from .prompt_storage import delete_prompt_file
 
 
 ENVIRONMENTS_FILENAME = "environments.json"
+_DEPRECATED_ENV_KEYS = {
+    "ide_system_override",
+    "cache_ide_preflight_enabled",
+    "ide_safe_mode_by_system",
+}
 
 
 def _state_path_for_data_dir(data_dir: str) -> str:
@@ -79,11 +84,35 @@ def load_environments(data_dir: str | None = None) -> dict[str, Environment]:
     envs_path = _environments_path_for_data_dir(data_dir)
     raw = _load_environments_items(envs_path)
     envs: dict[str, Environment] = {}
+    order: list[str] = []
+    rewrite_needed = False
+    canonical_items: list[dict[str, Any]] = []
     for item in raw:
+        if any(key in item for key in _DEPRECATED_ENV_KEYS):
+            rewrite_needed = True
         env = environment_from_payload(item)
         if env is None:
+            rewrite_needed = True
             continue
+        canonical = serialize_environment(env)
+        canonical_items.append(canonical)
+        if canonical != item:
+            rewrite_needed = True
+        if env.env_id in envs:
+            rewrite_needed = True
+        else:
+            order.append(env.env_id)
         envs[env.env_id] = env
+    if rewrite_needed and raw:
+        ordered_items: list[dict[str, Any]] = []
+        canonical_map = {
+            str(item.get("env_id") or ""): item for item in canonical_items
+        }
+        for env_id in order:
+            item = canonical_map.get(env_id)
+            if item is not None:
+                ordered_items.append(item)
+        _atomic_write_json(envs_path, {"environments": ordered_items})
     return envs
 
 

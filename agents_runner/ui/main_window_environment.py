@@ -15,7 +15,6 @@ from agents_runner.environments import managed_repo_checkout_path
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import git_list_remote_heads
 from agents_runner.gh_management import is_gh_available
-from agents_runner.ide_systems import get_default_ide_system_name
 
 
 class MainWindowEnvironmentMixin:
@@ -292,18 +291,11 @@ class MainWindowEnvironmentMixin:
             )
             for e in envs
         }
-        ide_system_overrides = {
-            e.env_id: str(getattr(e, "ide_system_override", "") or "").strip()
-            for e in envs
-        }
 
         self._new_task.set_environment_stains(stains)
         self._new_task.set_environment_workspace_types(workspace_types)
         self._new_task.set_environment_template_injection_status(template_statuses)
         self._new_task.set_environment_desktop_enabled(desktop_enabled)
-        self._new_task.set_environment_ide_overrides(
-            ide_system_overrides=ide_system_overrides,
-        )
         self._dashboard.set_environment_filter_options(
             [(e.env_id, e.name or e.env_id) for e in envs]
         )
@@ -379,12 +371,6 @@ class MainWindowEnvironmentMixin:
         self._new_task.set_interactive_defaults(
             terminal_id=str(self._settings_data.get("interactive_terminal_id") or ""),
             command=self._default_interactive_command(agent_cli),
-        )
-        self._new_task.set_ide_defaults(
-            ide_system=str(
-                self._settings_data.get("ide_system_default")
-                or get_default_ide_system_name()
-            ),
         )
         self._populate_environment_pickers()
         if hasattr(self, "_radio_controller") and hasattr(

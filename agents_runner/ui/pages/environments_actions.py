@@ -22,7 +22,6 @@ from agents_runner.environments.model import (
     normalize_gh_task_branch_naming_style,
 )
 from agents_runner.gh_management import is_gh_available
-from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
 from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 
@@ -204,14 +203,6 @@ class EnvironmentsPageActionsMixin:
         agentsnova_trusted_mode = normalize_trusted_mode(
             self._agentsnova_trusted_mode.currentData() or "inherit"
         )
-        ide_system_override_raw = str(
-            self._ide_system_override.currentData() or ""
-        ).strip()
-        ide_system_override = (
-            normalize_ide_system_name(ide_system_override_raw)
-            if ide_system_override_raw
-            else ""
-        )
         agentsnova_trusted_users_env = (
             self._agentsnova_trusted_users_env.get_usernames()
         )
@@ -266,9 +257,6 @@ class EnvironmentsPageActionsMixin:
         cache_settings_preflight_enabled = bool(
             self._cache_settings_preflight_enabled.isChecked()
         )
-        cache_ide_preflight_enabled = bool(
-            self._cache_ide_preflight_enabled.isChecked()
-        )
         issue_294_values = self._issue_294_environment_values()
 
         if base_env is None:
@@ -281,14 +269,12 @@ class EnvironmentsPageActionsMixin:
                 headless_desktop_enabled=bool(
                     self._headless_desktop_enabled.isChecked()
                 ),
-                ide_system_override=ide_system_override,
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-                cache_ide_preflight_enabled=cache_ide_preflight_enabled,
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 env_vars_advanced_mode=env_vars_advanced_mode,
@@ -322,14 +308,12 @@ class EnvironmentsPageActionsMixin:
                 headless_desktop_enabled=bool(
                     self._headless_desktop_enabled.isChecked()
                 ),
-                ide_system_override=ide_system_override,
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-                cache_ide_preflight_enabled=cache_ide_preflight_enabled,
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 env_vars_advanced_mode=env_vars_advanced_mode,
@@ -403,14 +387,6 @@ class EnvironmentsPageActionsMixin:
         agentsnova_trusted_mode = normalize_trusted_mode(
             self._agentsnova_trusted_mode.currentData() or "inherit"
         )
-        ide_system_override_raw = str(
-            self._ide_system_override.currentData() or ""
-        ).strip()
-        ide_system_override = (
-            normalize_ide_system_name(ide_system_override_raw)
-            if ide_system_override_raw
-            else ""
-        )
         agentsnova_trusted_users_env = (
             self._agentsnova_trusted_users_env.get_usernames()
         )
@@ -456,9 +432,6 @@ class EnvironmentsPageActionsMixin:
         cache_settings_preflight_enabled = bool(
             self._cache_settings_preflight_enabled.isChecked()
         )
-        cache_ide_preflight_enabled = bool(
-            self._cache_ide_preflight_enabled.isChecked()
-        )
         issue_294_values = self._issue_294_environment_values()
 
         if existing is None:
@@ -471,14 +444,12 @@ class EnvironmentsPageActionsMixin:
                 headless_desktop_enabled=bool(
                     self._headless_desktop_enabled.isChecked()
                 ),
-                ide_system_override=ide_system_override,
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
                 container_caching_enabled=bool(
                     self._container_caching_enabled.isChecked()
                 ),
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-                cache_ide_preflight_enabled=cache_ide_preflight_enabled,
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 env_vars_advanced_mode=env_vars_advanced_mode,
@@ -510,12 +481,10 @@ class EnvironmentsPageActionsMixin:
             color=str(self._color.currentData() or "slate"),
             max_agents_running=max_agents_running,
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
-            ide_system_override=ide_system_override,
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-            cache_ide_preflight_enabled=cache_ide_preflight_enabled,
             env_vars=env_vars,
             extra_mounts=mounts,
             env_vars_advanced_mode=env_vars_advanced_mode,

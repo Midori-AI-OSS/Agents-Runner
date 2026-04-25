@@ -32,7 +32,6 @@ from typing import Any, Callable
 from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
 from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.github_token import resolve_github_token
-from agents_runner.ide_systems import get_ide_system
 from agents_runner.log_format import format_log, wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
 
@@ -110,8 +109,6 @@ class ContainerExecutor:
         self._on_log = on_log
         self._stop = stop_event
         self._container_id: str | None = None
-        self._ide_auto_mounts_cache: list[str] | None = None
-        self._ide_auto_env_cache: dict[str, str] | None = None
 
     @property
     def container_id(self) -> str | None:
@@ -221,51 +218,7 @@ class ContainerExecutor:
 
     def _build_main_command_clause(self, agent_cmd: str) -> str:
         """Build the command execution clause."""
-        if not self._runtime_env.custom_command_argv:
-            return f"exec {agent_cmd}"
-
-        launch_mode = str(self._runtime_env.launch_mode or "").strip().lower()
-        if launch_mode != "ide":
-            return f"exec {agent_cmd}"
-
-        ide_log_path = "/tmp/agents-artifacts/ide-cli.log"
-        signature_pattern = (
-            "MIT-SHM|X_ShmAttach|X Window System error|"
-            "X Error of failed request[^\\n]*BadAccess|"
-            "BadAccess[^\\n]*MIT-SHM"
-        )
-        safe_agent_cmd = f"{agent_cmd} --disable-gpu --disable-dev-shm-usage"
-        return (
-            "mkdir -p /tmp/agents-artifacts; "
-            f"IDE_LOG={shlex.quote(ide_log_path)}; "
-            "SAFE_INITIAL=0; "
-            'if [ "${AGENTS_RUNNER_IDE_SAFE_MODE:-0}" = "1" ]; then SAFE_INITIAL=1; fi; '
-            'if [ "$SAFE_INITIAL" = "1" ]; then '
-            f"{shell_log_statement('ide', 'retry', 'INFO', 'safe-mode-initial')}; "
-            "set +e; "
-            f'QT_X11_NO_MITSHM=1 {safe_agent_cmd} 2>&1 | tee "$IDE_LOG"; '
-            "IDE_EXIT=${PIPESTATUS[0]}; "
-            "set -e; "
-            "else "
-            f"{shell_log_statement('ide', 'retry', 'INFO', 'attempt=1 mode=normal')}; "
-            "set +e; "
-            f'{agent_cmd} 2>&1 | tee "$IDE_LOG"; '
-            "IDE_EXIT=${PIPESTATUS[0]}; "
-            "set -e; "
-            "fi; "
-            "SIGNATURE_MATCH=0; "
-            f'if grep -Eiq {shlex.quote(signature_pattern)} "$IDE_LOG"; then SIGNATURE_MATCH=1; fi; '
-            'if [ "$SAFE_INITIAL" = "0" ] && [ "$SIGNATURE_MATCH" = "1" ]; then '
-            f"{shell_log_statement('ide', 'retry', 'WARN', 'safe-retry-triggered')}; "
-            "set +e; "
-            f'AGENTS_RUNNER_IDE_SAFE_RETRY=1 QT_X11_NO_MITSHM=1 {safe_agent_cmd} 2>&1 | tee -a "$IDE_LOG"; '
-            "IDE_EXIT=${PIPESTATUS[0]}; "
-            "set -e; "
-            'elif [ "$SAFE_INITIAL" = "1" ] && [ "$SIGNATURE_MATCH" = "1" ]; then '
-            f"{shell_log_statement('ide', 'retry', 'INFO', 'safe-retry-skipped-already-safe')}; "
-            "fi; "
-            "exit ${IDE_EXIT}"
-        )
+        return f"exec {agent_cmd}"
 
     def _build_preflight_clause(
         self, desktop_state: dict[str, Any]
@@ -323,30 +276,6 @@ class ContainerExecutor:
             )
             preflight_clause += clause
             preflight_mounts.extend(mounts)
-
-        # IDE preflight
-        if (
-            self._runtime_env.ide_preflight_tmp_path is not None
-            and not self._runtime_env.ide_preflight_cached
-        ):
-            clause, mounts = self._build_ide_preflight(
-                self._runtime_env.ide_preflight_tmp_path,
-                self._runtime_env.ide_container_path,
-            )
-            preflight_clause += clause
-            preflight_mounts.extend(mounts)
-        elif (
-            self._runtime_env.ide_preflight_tmp_path is not None
-            and self._runtime_env.ide_preflight_cached
-        ):
-            self._on_log(
-                format_log(
-                    "phase",
-                    "cache",
-                    "INFO",
-                    "ide setup cached; skipping runtime ide preflight",
-                )
-            )
 
         # Desktop install preflight
         if self._runtime_env.desktop_enabled:
@@ -529,26 +458,6 @@ class ContainerExecutor:
             ["-v", f"{tmp_path}:{container_path}:ro"],
         )
 
-    def _build_ide_preflight(
-        self, tmp_path: str, container_path: str
-    ) -> tuple[str, list[str]]:
-        """Build IDE preflight clause and mounts."""
-        self._on_log(
-            format_log(
-                "host",
-                "none",
-                "INFO",
-                f"ide preflight enabled; mounting -> {container_path} (ro)",
-            )
-        )
-        return (
-            f"PREFLIGHT_IDE={shlex.quote(container_path)}; "
-            f"{shell_log_statement('env', 'setup', 'INFO', 'ide: running')}; "
-            '/bin/bash "${PREFLIGHT_IDE}"; '
-            f"{shell_log_statement('env', 'setup', 'INFO', 'ide: done')}; ",
-            ["-v", f"{tmp_path}:{container_path}:ro"],
-        )
-
     def _build_env_args(self) -> tuple[list[str], dict[str, str] | None]:
         """Build environment variable arguments. Returns (env_args, docker_env)."""
         env_args: list[str] = []
@@ -560,17 +469,6 @@ class ContainerExecutor:
             if k:
                 env_args.extend(["-e", f"{k}={value}"])
         env_args.extend(["-e", "MIDORI_AI_AGENTS_RUNNER_INTERACTIVE=false"])
-
-        configured_env_keys = {
-            str(key).strip()
-            for key in (self._config.env_vars or {}).keys()
-            if str(key).strip()
-        }
-        _auto_mounts, auto_env_vars = self._resolve_ide_auto_mount_data()
-        for key, value in sorted(auto_env_vars.items()):
-            if key in configured_env_keys:
-                continue
-            env_args.extend(["-e", f"{key}={value}"])
 
         # Forward GitHub tokens if needed
         needs_token = (
@@ -672,36 +570,6 @@ class ContainerExecutor:
             if m:
                 all_mounts.append(m)
 
-        auto_mounts, _auto_env_vars = self._resolve_ide_auto_mount_data()
-        conflicting_paths: set[str] = set()
-        existing_container_paths = {
-            self._mount_container_path(mount)
-            for mount in all_mounts
-            if self._mount_container_path(mount)
-        }
-        for auto_mount in auto_mounts:
-            container_path = self._mount_container_path(auto_mount)
-            if container_path and container_path in existing_container_paths:
-                conflicting_paths.add(container_path)
-
-        if conflicting_paths:
-            for container_path in sorted(conflicting_paths):
-                self._on_log(
-                    format_log(
-                        "ide",
-                        "mounts",
-                        "WARN",
-                        f"managed ide mount overrides existing mount at {container_path}",
-                    )
-                )
-
-        filtered_mounts = [
-            mount
-            for mount in all_mounts
-            if self._mount_container_path(mount) not in conflicting_paths
-        ]
-        all_mounts = [*auto_mounts, *filtered_mounts]
-
         # Deduplicate by container path, preserving order
         deduplicated = deduplicate_mounts(all_mounts)
 
@@ -711,125 +579,6 @@ class ContainerExecutor:
             extra_mount_args.extend(["-v", mount])
 
         return extra_mount_args
-
-    @staticmethod
-    def _normalize_mount_mode(mode: str) -> str:
-        normalized = str(mode or "").strip().lower()
-        if normalized == "ro":
-            return "ro"
-        return "rw"
-
-    @staticmethod
-    def _expand_host_path(path: str) -> str:
-        return os.path.abspath(os.path.expanduser(os.path.expandvars(str(path or ""))))
-
-    @staticmethod
-    def _mount_container_path(mount: str) -> str:
-        parts = str(mount or "").strip().split(":")
-        if len(parts) < 2:
-            return ""
-        return str(parts[1] or "").strip()
-
-    def _is_ide_launch_mode(self) -> bool:
-        return str(self._runtime_env.launch_mode or "").strip().lower() == "ide"
-
-    def _resolve_ide_auto_mount_data(self) -> tuple[list[str], dict[str, str]]:
-        if (
-            self._ide_auto_mounts_cache is not None
-            and self._ide_auto_env_cache is not None
-        ):
-            return list(self._ide_auto_mounts_cache), dict(self._ide_auto_env_cache)
-
-        resolved_mounts: list[str] = []
-        resolved_env: dict[str, str] = {}
-        self._ide_auto_mounts_cache = []
-        self._ide_auto_env_cache = {}
-
-        if not self._is_ide_launch_mode():
-            return resolved_mounts, resolved_env
-
-        ide_name = str(self._config.ide_system or "").strip()
-        if not ide_name:
-            self._on_log(
-                format_log(
-                    "ide",
-                    "mounts",
-                    "WARN",
-                    "ide launch requested but ide_system is empty; skipping managed mounts",
-                )
-            )
-            return resolved_mounts, resolved_env
-
-        try:
-            plugin = get_ide_system(ide_name)
-        except Exception as exc:
-            self._on_log(
-                format_log(
-                    "ide",
-                    "mounts",
-                    "WARN",
-                    f"managed mounts skipped for unknown IDE system '{ide_name}': {exc}",
-                )
-            )
-            return resolved_mounts, resolved_env
-
-        mount_specs = tuple(getattr(plugin, "auto_mount_specs", ()) or ())
-        for spec in mount_specs:
-            host_path = self._expand_host_path(
-                str(getattr(spec, "host_path", "") or "")
-            )
-            container_path = str(getattr(spec, "container_path", "") or "").strip()
-            mode = self._normalize_mount_mode(str(getattr(spec, "mode", "rw") or "rw"))
-            if not host_path or not container_path:
-                continue
-            try:
-                os.makedirs(host_path, exist_ok=True)
-            except Exception as exc:
-                self._on_log(
-                    format_log(
-                        "ide",
-                        "mounts",
-                        "WARN",
-                        f"managed ide mount skipped (host path unavailable): {host_path} ({exc})",
-                    )
-                )
-                continue
-            resolved_mounts.append(f"{host_path}:{container_path}:{mode}")
-
-        if bool(getattr(plugin, "auto_mount_host_keyring", False)):
-            host_keyrings = self._expand_host_path("~/.local/share/keyrings")
-            container_keyrings = "/home/midori-ai/.local/share/keyrings"
-            if os.path.exists(host_keyrings):
-                resolved_mounts.append(f"{host_keyrings}:{container_keyrings}:rw")
-            else:
-                self._on_log(
-                    format_log(
-                        "ide",
-                        "mounts",
-                        "WARN",
-                        f"auto-mount skipped (missing host path): {host_keyrings}",
-                    )
-                )
-
-        if bool(getattr(plugin, "auto_mount_session_dbus", False)):
-            uid = str(os.getuid())
-            dbus_bus_path = f"/run/user/{uid}/bus"
-            if os.path.exists(dbus_bus_path):
-                resolved_mounts.append(f"{dbus_bus_path}:{dbus_bus_path}:rw")
-                resolved_env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={dbus_bus_path}"
-            else:
-                self._on_log(
-                    format_log(
-                        "ide",
-                        "mounts",
-                        "WARN",
-                        f"auto-mount skipped (missing host path): {dbus_bus_path}",
-                    )
-                )
-
-        self._ide_auto_mounts_cache = list(resolved_mounts)
-        self._ide_auto_env_cache = dict(resolved_env)
-        return resolved_mounts, resolved_env
 
     def _build_docker_run_args(
         self,

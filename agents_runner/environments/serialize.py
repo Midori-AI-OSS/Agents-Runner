@@ -3,9 +3,6 @@ from __future__ import annotations
 from typing import Any
 from typing import cast
 
-from agents_runner.ide_systems import normalize_ide_system_name
-from agents_runner.ide_systems import available_ide_system_names
-
 from .model import ENVIRONMENT_VERSION
 from .model import Environment
 from .model import GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
@@ -46,20 +43,6 @@ def _normalize_trusted_mode(value: Any) -> str:
     if mode in {"additive", "replace"}:
         return mode
     return "inherit"
-
-
-def _normalize_ide_safe_mode_map(raw: Any) -> dict[str, bool]:
-    if not isinstance(raw, dict):
-        return {}
-    valid_systems = {str(name).strip().lower() for name in available_ide_system_names()}
-    rows = cast(dict[object, object], raw)
-    normalized: dict[str, bool] = {}
-    for key, value in rows.items():
-        ide_system = str(key or "").strip().lower()
-        if not ide_system or ide_system not in valid_systems:
-            continue
-        normalized[ide_system] = bool(value)
-    return normalized
 
 
 def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) -> str:
@@ -228,12 +211,6 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     gpu_override_mode = normalize_gpu_override_mode(
         payload.get("gpu_override_mode", "inherit")
     )
-    ide_system_override_raw = str(payload.get("ide_system_override") or "").strip()
-    ide_system_override = (
-        normalize_ide_system_name(ide_system_override_raw)
-        if ide_system_override_raw
-        else ""
-    )
     cache_desktop_build = bool(payload.get("cache_desktop_build", False))
     container_caching_enabled = bool(payload.get("container_caching_enabled", False))
     cache_system_preflight_enabled = bool(
@@ -241,12 +218,6 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     )
     cache_settings_preflight_enabled = bool(
         payload.get("cache_settings_preflight_enabled", False)
-    )
-    cache_ide_preflight_enabled = bool(
-        payload.get("cache_ide_preflight_enabled", False)
-    )
-    ide_safe_mode_by_system = _normalize_ide_safe_mode_map(
-        payload.get("ide_safe_mode_by_system", {})
     )
 
     env_vars_raw = payload.get("env_vars", {})
@@ -494,13 +465,10 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         max_agents_running=max_agents_running,
         headless_desktop_enabled=headless_desktop_enabled,
         gpu_override_mode=gpu_override_mode,
-        ide_system_override=ide_system_override,
         cache_desktop_build=cache_desktop_build,
         container_caching_enabled=container_caching_enabled,
         cache_system_preflight_enabled=cache_system_preflight_enabled,
         cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-        cache_ide_preflight_enabled=cache_ide_preflight_enabled,
-        ide_safe_mode_by_system=ide_safe_mode_by_system,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
         env_vars_advanced_mode=env_vars_advanced_mode,
@@ -587,13 +555,6 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gpu_override_mode": normalize_gpu_override_mode(
             str(getattr(env, "gpu_override_mode", "inherit") or "inherit")
         ),
-        "ide_system_override": (
-            normalize_ide_system_name(
-                str(getattr(env, "ide_system_override", "") or "")
-            )
-            if str(getattr(env, "ide_system_override", "") or "").strip()
-            else ""
-        ),
         "cache_desktop_build": bool(getattr(env, "cache_desktop_build", False)),
         "container_caching_enabled": bool(
             getattr(env, "container_caching_enabled", False)
@@ -603,12 +564,6 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         ),
         "cache_settings_preflight_enabled": bool(
             getattr(env, "cache_settings_preflight_enabled", False)
-        ),
-        "cache_ide_preflight_enabled": bool(
-            getattr(env, "cache_ide_preflight_enabled", False)
-        ),
-        "ide_safe_mode_by_system": _normalize_ide_safe_mode_map(
-            getattr(env, "ide_safe_mode_by_system", {})
         ),
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),

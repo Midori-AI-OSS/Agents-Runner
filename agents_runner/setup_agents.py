@@ -45,9 +45,6 @@ class SetupAgentsPreviewResult:
 
 
 def missing_setup_agents_instruction(*, launch_mode: str) -> str | None:
-    launch_mode_normalized = str(launch_mode or "agent").strip().lower()
-    if launch_mode_normalized == "ide":
-        return None
     return _missing_instruction()
 
 

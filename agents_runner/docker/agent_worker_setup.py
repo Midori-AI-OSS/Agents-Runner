@@ -68,17 +68,14 @@ class RuntimeEnvironment:
     install_container_path: str
     settings_container_path: str
     setup_agents_container_path: str
-    ide_container_path: str
     install_preflight_tmp_path: str | None
     settings_preflight_tmp_path: str | None
     setup_agents_preflight_tmp_path: str | None
-    ide_preflight_tmp_path: str | None
     preflights_host_dir: str
     system_preflight_enabled: bool
     install_preflight_cached: bool
     system_preflight_cached: bool
     settings_preflight_cached: bool
-    ide_preflight_cached: bool
     runtime_image: str
     desktop_enabled: bool
     desktop_cached: bool
@@ -88,7 +85,6 @@ class RuntimeEnvironment:
     agent_cli: str
     prompt_for_agent: str
     launch_mode: str
-    ide_display_target: str
     custom_command_argv: list[str]
     custom_verify_executable: str
 
@@ -242,17 +238,14 @@ class WorkerSetup:
             install_container_path=preflight_config.install_container_path,
             settings_container_path=preflight_config.settings_container_path,
             setup_agents_container_path=preflight_config.setup_agents_container_path,
-            ide_container_path=preflight_config.ide_container_path,
             install_preflight_tmp_path=preflight_config.install_preflight_tmp_path,
             settings_preflight_tmp_path=preflight_config.settings_preflight_tmp_path,
             setup_agents_preflight_tmp_path=preflight_config.setup_agents_preflight_tmp_path,
-            ide_preflight_tmp_path=preflight_config.ide_preflight_tmp_path,
             preflights_host_dir=str(caching_config.preflights_host_dir),
             system_preflight_enabled=caching_config.system_preflight_enabled,
             install_preflight_cached=caching_config.install_preflight_cached,
             system_preflight_cached=caching_config.system_preflight_cached,
             settings_preflight_cached=caching_config.settings_preflight_cached,
-            ide_preflight_cached=caching_config.ide_preflight_cached,
             runtime_image=caching_config.runtime_image,
             desktop_enabled=caching_config.desktop_enabled,
             desktop_cached=caching_config.desktop_cached,
@@ -262,7 +255,6 @@ class WorkerSetup:
             agent_cli=platform_config.agent_cli,
             prompt_for_agent=final_prompt,
             launch_mode=str(self._config.launch_mode or "agent"),
-            ide_display_target=str(self._config.ide_display_target or ""),
             custom_command_argv=[
                 str(part) for part in self._config.custom_command_argv
             ],
@@ -430,11 +422,9 @@ class WorkerSetup:
         install_container_path: str
         settings_container_path: str
         setup_agents_container_path: str
-        ide_container_path: str
         install_preflight_tmp_path: str | None
         settings_preflight_tmp_path: str | None
         setup_agents_preflight_tmp_path: str | None
-        ide_preflight_tmp_path: str | None
 
     def _prepare_preflight_scripts(
         self,
@@ -448,7 +438,6 @@ class WorkerSetup:
         install_preflight_tmp_path = None
         settings_preflight_tmp_path = None
         setup_agents_preflight_tmp_path = None
-        ide_preflight_tmp_path = None
 
         if install_script.strip():
             install_preflight_tmp_path = write_preflight_script(
@@ -482,14 +471,6 @@ class WorkerSetup:
                     )
                 )
                 setup_agents_preflight_tmp_path = None
-        if (self._config.ide_preflight_script or "").strip():
-            ide_preflight_tmp_path = write_preflight_script(
-                str(self._config.ide_preflight_script),
-                "ide",
-                self._config.task_id,
-                preflight_tmp_paths,
-            )
-
         return self._PreflightConfig(
             install_container_path=INSTALL_PREFLIGHT_PATH_TEMPLATE.replace(
                 "{task_id}", task_token
@@ -500,13 +481,9 @@ class WorkerSetup:
             setup_agents_container_path=self._config.container_setup_agents_preflight_path.replace(
                 "{task_id}", task_token
             ),
-            ide_container_path=self._config.container_ide_preflight_path.replace(
-                "{task_id}", task_token
-            ),
             install_preflight_tmp_path=install_preflight_tmp_path,
             settings_preflight_tmp_path=settings_preflight_tmp_path,
             setup_agents_preflight_tmp_path=setup_agents_preflight_tmp_path,
-            ide_preflight_tmp_path=ide_preflight_tmp_path,
         )
 
     def pull_image_if_needed(
@@ -540,7 +517,6 @@ class WorkerSetup:
         install_preflight_cached: bool
         system_preflight_cached: bool
         settings_preflight_cached: bool
-        ide_preflight_cached: bool
         runtime_image: str
         desktop_enabled: bool
         desktop_cached: bool
@@ -585,7 +561,6 @@ class WorkerSetup:
         install_preflight_cached = False
         system_preflight_cached = False
         settings_preflight_cached = False
-        ide_preflight_cached = False
         container_caching_enabled = bool(self._config.container_caching_enabled)
 
         # install agent CLI
@@ -678,50 +653,6 @@ class WorkerSetup:
                 )
             )
 
-        # ide
-        ide_preflight_script = str(self._config.ide_preflight_script or "")
-        launch_mode = str(self._config.launch_mode or "").strip().lower()
-        cache_ide_enabled = (
-            container_caching_enabled
-            and self._config.cache_ide_preflight_enabled
-            and launch_mode == "ide"
-        )
-        if cache_ide_enabled and ide_preflight_script.strip():
-            ide_name = "".join(
-                ch
-                for ch in str(self._config.ide_system or "").strip().lower()
-                if ch.isalnum() or ch in {"-", "_"}
-            )
-            if not ide_name:
-                ide_name = "default"
-            phase_name = f"ide-{ide_name}"
-            self._on_log(
-                format_log(
-                    "phase",
-                    "cache",
-                    "INFO",
-                    f"{phase_name} caching enabled; checking cached layer",
-                )
-            )
-            next_image = ensure_phase_image(
-                base_image=runtime_image,
-                phase_name=phase_name,
-                script_content=ide_preflight_script,
-                preflights_dir=preflights_host_dir,
-                on_log=self._on_log,
-            )
-            ide_preflight_cached = next_image != runtime_image
-            runtime_image = next_image
-        elif cache_ide_enabled:
-            self._on_log(
-                format_log(
-                    "phase",
-                    "cache",
-                    "WARN",
-                    "ide caching enabled but ide script is empty",
-                )
-            )
-
         # desktop
         if desktop_enabled and bool(self._config.desktop_cache_enabled):
             desktop_base_image = runtime_image
@@ -774,7 +705,6 @@ class WorkerSetup:
             install_preflight_cached=install_preflight_cached,
             system_preflight_cached=system_preflight_cached,
             settings_preflight_cached=settings_preflight_cached,
-            ide_preflight_cached=ide_preflight_cached,
             runtime_image=runtime_image,
             desktop_enabled=desktop_enabled,
             desktop_cached=desktop_cached,

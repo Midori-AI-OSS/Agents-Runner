@@ -129,10 +129,6 @@ class MainWindowTasksInteractiveMixin:
 
         self._remember_environment_base_branch(env, desired_base)
 
-        ide_system = ""
-        ide_display_target = ""
-        ide_preflight_script: str | None = None
-
         agent_instance_id = ""
         agent_cli_args: list[str] = []
         gh_use_host_cli = bool(getattr(env, "gh_use_host_cli", True)) if env else True
@@ -316,8 +312,6 @@ class MainWindowTasksInteractiveMixin:
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
             launch_mode="interactive_agent",
-            ide_system=ide_system,
-            ide_display_target=ide_display_target,
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -413,10 +407,7 @@ class MainWindowTasksInteractiveMixin:
             "container_agent_dir": container_agent_dir,
             "container_workdir": container_workdir,
             "settings_preflight_script": settings_preflight_script,
-            "ide_preflight_script": ide_preflight_script,
             "extra_preflight_script": extra_preflight_script,
-            "ide_system": ide_system,
-            "ide_display_target": ide_display_target,
             "stain": stain,
             "spinner": spinner,
             "desired_base": desired_base,
@@ -675,11 +666,9 @@ class MainWindowTasksInteractiveMixin:
                 container_workdir=context.get("container_workdir") or "",
                 settings_preflight_script=context.get("settings_preflight_script"),
                 setup_agents_script=str(payload.get("setup_agents_script") or ""),
-                ide_preflight_script=context.get("ide_preflight_script"),
                 install_preflight_script=resolved_install_preflight_script,
                 install_phase_name=resolved_install_phase_name,
                 extra_preflight_script=resolved_extra_preflight_script,
-                ide_display_target=str(context.get("ide_display_target") or ""),
                 stain=context.get("stain"),
                 spinner=context.get("spinner"),
                 desired_base=context.get("desired_base") or "",

@@ -19,8 +19,6 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import Environment
-from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
-from agents_runner.ide_systems import get_default_ide_system_name
 from agents_runner.persistence import default_state_path
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import APP_TITLE
@@ -97,10 +95,6 @@ class MainWindow(
             "host_workdir": os.environ.get("CODEX_HOST_WORKDIR", os.getcwd()),
             "active_environment_id": "default",
             "interactive_terminal_id": "",
-            "ide_system_default": get_default_ide_system_name(),
-            "ide_display_target_default": IDE_DISPLAY_CONTAINER_DESKTOP,
-            "ide_novnc_auto_open_enabled": True,
-            "ide_novnc_auto_open_mode": "viewing_only",
             "window_w": 1280,
             "window_h": 720,
             "max_agents_running": -1,
@@ -142,11 +136,6 @@ class MainWindow(
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}
-        self._ide_novnc_auto_open_timers: dict[str, QTimer] = {}
-        self._ide_novnc_auto_open_urls: dict[str, str] = {}
-        self._ide_novnc_auto_open_ready_s: dict[str, float] = {}
-        self._ide_novnc_auto_open_deferred: set[str] = set()
-        self._ide_novnc_auto_opened_tasks: set[str] = set()
         self._repo_branches_request_id: int = 0
         self._repo_branches_request_meta: dict[int, dict[str, object]] = {}
         self._repo_branches_cache: dict[str, list[str]] = {}
@@ -260,7 +249,6 @@ class MainWindow(
         self._new_task = NewTaskPage()
         self._new_task.requested_run.connect(self._start_task_from_ui)
         self._new_task.requested_launch.connect(self._start_interactive_task_from_ui)
-        self._new_task.requested_launch_ide.connect(self._start_ide_task_from_ui)
         self._new_task.environment_changed.connect(self._on_new_task_env_changed)
         self._new_task.base_branch_changed.connect(
             self._on_new_task_base_branch_changed
@@ -338,13 +326,6 @@ class MainWindow(
         # Clean up external viewer process
         if hasattr(self, "_details"):
             self._details.cleanup()
-        for timer in list(getattr(self, "_ide_novnc_auto_open_timers", {}).values()):
-            try:
-                timer.stop()
-                timer.deleteLater()
-            except Exception:
-                pass
-        self._ide_novnc_auto_open_timers.clear()
         super().closeEvent(event)
 
     def _sync_radio_controller_from_settings(
