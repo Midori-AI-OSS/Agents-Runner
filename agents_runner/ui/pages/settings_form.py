@@ -26,10 +26,6 @@ from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_default_agent_system_name
-from agents_runner.ide_systems import available_ide_system_names
-from agents_runner.ide_systems import get_default_ide_system_name
-from agents_runner.ide_systems import get_ide_system
-from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.environments import load_environments
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.pages.github_trust import (
@@ -67,13 +63,6 @@ class _SettingsPaneSpec:
 class SettingsFormMixin:
     _PREFLIGHT_PRESETS_DIRNAME = "preflight-scripts"
     _PREFLIGHT_PRESET_SUFFIXES = {".sh", ".bash", ".zsh"}
-
-    @staticmethod
-    def _normalize_novnc_auto_open_mode(value: object) -> str:
-        mode = str(value or "").strip().lower()
-        if mode in {"always", "viewing_only"}:
-            return mode
-        return "viewing_only"
 
     def _default_pane_specs(self) -> list[_SettingsPaneSpec]:
         specs = [
@@ -150,8 +139,6 @@ class SettingsFormMixin:
             "Default terminal used by Run Interactive and Get Agent Help."
         )
         self._refresh_terminal_options(selected_terminal_id="")
-        self._ide_system_default = QComboBox()
-        self._populate_ide_combo(self._ide_system_default)
 
         self._refresh_interactive_terminal = QToolButton()
         self._refresh_interactive_terminal.setText("Refresh")
@@ -199,7 +186,7 @@ class SettingsFormMixin:
         self._gpu_enabled = QCheckBox("Enabled")
         self._gpu_enabled.setToolTip(
             "When enabled, task containers request GPU runtime access (`--gpus all`) "
-            "for Agent, Interactive, and IDE runs."
+            "for Agent and Interactive runs."
         )
         self._auto_navigate_on_run_agent_start = QCheckBox("Enabled")
         self._auto_navigate_on_run_agent_start.setToolTip(
@@ -223,16 +210,6 @@ class SettingsFormMixin:
         self._mount_host_cache = QCheckBox("Enabled")
         self._mount_host_cache.setToolTip(
             "Mounts ~/.cache to speed up package manager installs across environments."
-        )
-        self._ide_novnc_auto_open_enabled = QCheckBox("Enabled")
-        self._ide_novnc_auto_open_enabled.setToolTip(
-            "When enabled, Run IDE opens the desktop viewer automatically after noVNC is ready."
-        )
-        self._ide_novnc_auto_open_mode = QComboBox()
-        self._ide_novnc_auto_open_mode.addItem("Only if viewing task", "viewing_only")
-        self._ide_novnc_auto_open_mode.addItem("Always", "always")
-        self._ide_novnc_auto_open_mode.setToolTip(
-            "Choose whether auto-open waits until the task details page is open."
         )
 
         self._github_workroom_prefer_browser = QCheckBox("Enabled")
@@ -541,52 +518,39 @@ class SettingsFormMixin:
         self._register_page("github_trusted_users", github_trusted_page)
 
         runtime_page, runtime_body = self._create_page(specs_by_key["runtime_behavior"])
-        ide_grid = QGridLayout()
-        configure_form_grid(ide_grid)
+        runtime_grid = QGridLayout()
+        configure_form_grid(runtime_grid)
         add_grid_row(
-            ide_grid,
+            runtime_grid,
             0,
-            QLabel("Auto-open noVNC viewer"),
-            self._ide_novnc_auto_open_enabled,
-        )
-        add_grid_row(
-            ide_grid,
-            1,
             QLabel("Force headless desktop"),
             self._headless_desktop_enabled,
         )
         add_grid_row(
-            ide_grid,
-            2,
+            runtime_grid,
+            1,
             QLabel("Enable GPU"),
             self._gpu_enabled,
         )
         add_grid_row(
-            ide_grid,
-            3,
+            runtime_grid,
+            2,
             QLabel("Navigate Home on Run Agent start"),
             self._auto_navigate_on_run_agent_start,
         )
         add_grid_row(
-            ide_grid,
-            4,
+            runtime_grid,
+            3,
             QLabel("Navigate Home on Run Interactive start"),
             self._auto_navigate_on_run_interactive_start,
         )
         add_grid_row(
-            ide_grid,
-            5,
+            runtime_grid,
+            4,
             QLabel("Mount host cache"),
             self._mount_host_cache,
         )
-        add_grid_row(ide_grid, 6, QLabel("Default IDE"), self._ide_system_default)
-        add_grid_row(
-            ide_grid,
-            7,
-            QLabel("Run IDE auto-open mode"),
-            self._ide_novnc_auto_open_mode,
-        )
-        runtime_body.addLayout(ide_grid)
+        runtime_body.addLayout(runtime_grid)
         runtime_body.addStretch(1)
         self._register_page("runtime_behavior", runtime_page)
 
@@ -720,32 +684,6 @@ class SettingsFormMixin:
 
         preferred = normalize_agent(selected or str(self._use.itemData(0) or ""))
         self._set_combo_value(self._use, preferred, fallback=preferred)
-
-    def _populate_ide_combo(self, combo: QComboBox) -> None:
-        selected = str(combo.currentData() or "") if combo.count() > 0 else ""
-        with QSignalBlocker(combo):
-            combo.clear()
-            for ide_name in available_ide_system_names():
-                label = self._format_key_label(ide_name)
-                try:
-                    plugin = get_ide_system(ide_name)
-                    display_name = str(
-                        getattr(plugin, "display_name", "") or ""
-                    ).strip()
-                    if display_name:
-                        label = display_name
-                except Exception:
-                    pass
-                combo.addItem(label, ide_name)
-
-            if combo.count() == 0:
-                default_name = get_default_ide_system_name()
-                combo.addItem(self._format_key_label(default_name), default_name)
-
-        preferred = normalize_ide_system_name(
-            selected or str(combo.itemData(0) or get_default_ide_system_name())
-        )
-        self._set_combo_value(combo, preferred, fallback=preferred)
 
     def _refresh_theme_options(self, selected: str | None) -> None:
         normalized_selected = normalize_ui_theme_name(selected, allow_auto=True)
@@ -935,16 +873,6 @@ class SettingsFormMixin:
                     settings.get("interactive_terminal_id") or ""
                 ).strip()
             )
-            self._populate_ide_combo(self._ide_system_default)
-            ide_system_default = normalize_ide_system_name(
-                str(settings.get("ide_system_default") or get_default_ide_system_name())
-            )
-            self._set_combo_value(
-                self._ide_system_default,
-                ide_system_default,
-                fallback=get_default_ide_system_name(),
-            )
-
             enabled = bool(settings.get("preflight_enabled") or False)
             self._preflight_enabled.setChecked(enabled)
             self._preflight_script.setEnabled(enabled)
@@ -1020,17 +948,6 @@ class SettingsFormMixin:
             self._mount_host_cache.setChecked(
                 bool(settings.get("mount_host_cache", False))
             )
-            self._ide_novnc_auto_open_enabled.setChecked(
-                bool(settings.get("ide_novnc_auto_open_enabled", True))
-            )
-            self._set_combo_value(
-                self._ide_novnc_auto_open_mode,
-                self._normalize_novnc_auto_open_mode(
-                    settings.get("ide_novnc_auto_open_mode")
-                ),
-                fallback="viewing_only",
-            )
-
             theme_value = normalize_ui_theme_name(
                 settings.get("ui_theme"), allow_auto=True
             )
@@ -1180,12 +1097,6 @@ class SettingsFormMixin:
             "interactive_terminal_id": str(
                 self._interactive_terminal.currentData() or ""
             ),
-            "ide_system_default": normalize_ide_system_name(
-                str(
-                    self._ide_system_default.currentData()
-                    or get_default_ide_system_name()
-                )
-            ),
             "ui_theme": normalize_ui_theme_name(
                 str(self._ui_theme.currentData() or "auto"), allow_auto=True
             ),
@@ -1230,12 +1141,6 @@ class SettingsFormMixin:
             "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
             "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),
             "mount_host_cache": bool(self._mount_host_cache.isChecked()),
-            "ide_novnc_auto_open_enabled": bool(
-                self._ide_novnc_auto_open_enabled.isChecked()
-            ),
-            "ide_novnc_auto_open_mode": self._normalize_novnc_auto_open_mode(
-                self._ide_novnc_auto_open_mode.currentData()
-            ),
             "radio_enabled": bool(self._radio_enabled.isChecked()),
             "radio_autostart": bool(self._radio_autostart.isChecked()),
             "radio_channel": RadioController.normalize_channel(

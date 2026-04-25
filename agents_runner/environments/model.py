@@ -195,13 +195,10 @@ class Environment:
     max_agents_running: int = -1
     headless_desktop_enabled: bool = False
     gpu_override_mode: str = GPU_OVERRIDE_MODE_INHERIT
-    ide_system_override: str = ""
     cache_desktop_build: bool = False
     container_caching_enabled: bool = False
     cache_system_preflight_enabled: bool = False
     cache_settings_preflight_enabled: bool = False
-    cache_ide_preflight_enabled: bool = False
-    ide_safe_mode_by_system: dict[str, bool] = field(default_factory=dict)
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
     env_vars_advanced_mode: bool = False

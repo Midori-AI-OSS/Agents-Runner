@@ -29,8 +29,6 @@ from agents_runner.environments.model import (
     INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE,
     INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW,
 )
-from agents_runner.ide_systems import available_ide_system_names
-from agents_runner.ide_systems import get_ide_system
 from agents_runner.ui.constants import (
     BUTTON_ROW_SPACING,
     GRID_VERTICAL_SPACING,
@@ -155,18 +153,6 @@ class EnvironmentsFormMixin:
         self._gpu_override_mode.setToolTip(
             "Override the global GPU runtime setting for this environment."
         )
-        self._ide_system_override = QComboBox()
-        self._ide_system_override.addItem("Inherit setting default", "")
-        for ide_name in available_ide_system_names():
-            label = str(ide_name or "").strip()
-            try:
-                plugin = get_ide_system(ide_name)
-                display_name = str(getattr(plugin, "display_name", "") or "").strip()
-                if display_name:
-                    label = display_name
-            except Exception:
-                pass
-            self._ide_system_override.addItem(label, ide_name)
 
         self._cache_desktop_build = QCheckBox("Cache desktop build")
         self._cache_desktop_build.setToolTip(
@@ -387,13 +373,6 @@ class EnvironmentsFormMixin:
         )
         self._cache_settings_preflight_enabled.setEnabled(False)
 
-        self._cache_ide_preflight_enabled = QCheckBox("Cache IDE setup phase")
-        self._cache_ide_preflight_enabled.setToolTip(
-            "When enabled, the IDE install/setup preflight is cached as an image layer.\n"
-            "Cache key is chained from base image + IDE setup script content."
-        )
-        self._cache_ide_preflight_enabled.setEnabled(False)
-
         self._env_vars_tab = EnvVarsTabWidget()
         self._env_vars_tab.env_vars_changed.connect(self._queue_advanced_autosave)
 
@@ -429,8 +408,7 @@ class EnvironmentsFormMixin:
         add_grid_row(grid, 3, QLabel("Max agents running"), max_agents_row)
         add_grid_row(grid, 4, self._headless_desktop_label, self._headless_desktop_row)
         add_grid_row(grid, 5, QLabel("GPU runtime"), self._gpu_override_mode)
-        add_grid_row(grid, 6, QLabel("IDE override"), self._ide_system_override)
-        add_grid_row(grid, 7, QLabel("Cross agents"), cross_agents_row)
+        add_grid_row(grid, 6, QLabel("Cross agents"), cross_agents_row)
 
         general_body.addLayout(grid)
         general_body.addStretch(1)
@@ -592,10 +570,6 @@ class EnvironmentsFormMixin:
             self._cache_settings_preflight_enabled,
             stretch_index=1,
         )
-        ide_setup_phase_cache_row = create_stretch_row(
-            self._cache_ide_preflight_enabled,
-            stretch_index=1,
-        )
 
         add_grid_row(
             caching_grid, 0, QLabel("Container caching"), container_caching_row
@@ -611,12 +585,6 @@ class EnvironmentsFormMixin:
             3,
             QLabel("Settings phase cache"),
             settings_phase_cache_row,
-        )
-        add_grid_row(
-            caching_grid,
-            4,
-            QLabel("IDE setup phase cache"),
-            ide_setup_phase_cache_row,
         )
 
         caching_body.addLayout(caching_grid)
