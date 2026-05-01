@@ -122,6 +122,7 @@ def launch_docker_terminal_task(
     shell_mode: bool = False,
     shell: str = "bash",
     gpu_enabled: bool = False,
+    ports_for_task: list[str] | None = None,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
 
@@ -171,6 +172,7 @@ def launch_docker_terminal_task(
         shell_mode: If True, run shell instead of agent command
         shell: Shell to use when shell_mode is True (bash, sh, zsh, fish, tmux)
         gpu_enabled: If True, request Docker GPU runtime (`--gpus all`)
+        ports_for_task: Runtime publish specs for this launch (defaults to env.ports)
     """
     # Apply desktop preflight script override if provided, before desktop detection
     desktop_preflight_script = str(extra_preflight_script or "")
@@ -453,8 +455,13 @@ def launch_docker_terminal_task(
             main_window._details.update_task(task)
             main_window._schedule_save()
 
-        # Apply environment-specified ports (if any)
-        for port_spec in (getattr(env, "ports", None) or []) if env else []:
+        # Apply environment-specified ports (or task runtime overrides)
+        ports_source = (
+            list(ports_for_task or [])
+            if ports_for_task is not None
+            else list((getattr(env, "ports", None) or []) if env else [])
+        )
+        for port_spec in ports_source:
             spec = str(port_spec or "").strip()
             if not spec:
                 continue

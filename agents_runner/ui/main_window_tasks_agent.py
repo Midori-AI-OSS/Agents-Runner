@@ -38,6 +38,7 @@ from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import PIXELARCH_AGENT_CONTEXT_SUFFIX
 from agents_runner.ui.constants import PIXELARCH_EMERALD_IMAGE
 from agents_runner.ui.constants import PIXELARCH_GIT_CONTEXT_SUFFIX
+from agents_runner.ui.launch_port_guard import resolve_launch_port_decision
 from agents_runner.environments.model import AgentInstance
 from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.task_model import Task
@@ -491,6 +492,15 @@ class MainWindowTasksAgentMixin:
         # Only enable cache if desktop is enabled
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
 
+        port_decision = resolve_launch_port_decision(
+            parent=self,
+            port_specs=(getattr(env, "ports", []) if env else []),
+        )
+        if port_decision.outcome == "conflict_cancel":
+            return None
+        ports_for_task = list(port_decision.ports_for_task)
+        port_remaps_for_log = list(port_decision.remaps)
+
         task = Task(
             task_id=task_id,
             prompt=prompt,
@@ -511,6 +521,17 @@ class MainWindowTasksAgentMixin:
         spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._schedule_save()
+
+        for remap in port_remaps_for_log:
+            self._on_task_log(
+                task_id,
+                format_log(
+                    "docker",
+                    "ports",
+                    "INFO",
+                    f"runtime port remap: {remap.original_publish} -> {remap.remapped_publish}",
+                ),
+            )
 
         use_host_gh = bool(getattr(env, "gh_use_host_cli", True)) if env else True
         use_host_gh = bool(use_host_gh and is_gh_available())
@@ -588,7 +609,6 @@ class MainWindowTasksAgentMixin:
         runner_prompt = compose_prompt_sections(prompt_sections)
         env_vars_for_task = dict(env.env_vars) if env else {}
         extra_mounts_for_task = list(env.extra_mounts) if env else []
-        ports_for_task = list(getattr(env, "ports", []) or []) if env else []
 
         # Add host cache mount if enabled in settings
         if self._settings_data.get("mount_host_cache", False):
