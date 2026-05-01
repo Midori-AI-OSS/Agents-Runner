@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
+from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.port_launch_guard import PortConflict
@@ -12,8 +13,6 @@ from agents_runner.port_launch_guard import apply_port_remaps
 from agents_runner.port_launch_guard import build_random_host_remaps
 from agents_runner.port_launch_guard import detect_port_conflicts
 from agents_runner.port_launch_guard import normalize_port_specs
-from agents_runner.ui.dialogs.port_conflict_dialog import PortConflictDialog
-from agents_runner.ui.dialogs.port_conflict_dialog import PORT_CONFLICT_CANCEL
 
 
 LaunchPortDecisionKind = Literal[
@@ -49,24 +48,34 @@ def resolve_launch_port_decision(
             remaps=[],
         )
 
-    remaps = build_random_host_remaps(normalized, conflicts)
-    preview_lines = [
-        f"{remap.original_publish} -> {remap.remapped_publish}" for remap in remaps
-    ]
-
-    dialog = PortConflictDialog(parent, preview_lines=preview_lines)
-    dialog.exec()
-    if dialog.choice() == PORT_CONFLICT_CANCEL:
-        return LaunchPortDecision(
-            outcome="conflict_cancel",
-            ports_for_task=normalized,
-            conflicts=conflicts,
-            remaps=remaps,
+    ports_for_task = list(normalized)
+    accepted_remaps: list[PortRemap] = []
+    for conflict in conflicts:
+        remaps = build_random_host_remaps(ports_for_task, [conflict])
+        if not remaps:
+            continue
+        remap = remaps[0]
+        reply = QMessageBox.question(
+            parent,
+            "Host port conflict",
+            (
+                f"`{remap.original_publish}` is already in use.\n\n"
+                "Use random free host ports for this conflict?"
+            ),
         )
+        if reply != QMessageBox.StandardButton.Yes:
+            return LaunchPortDecision(
+                outcome="conflict_cancel",
+                ports_for_task=normalized,
+                conflicts=conflicts,
+                remaps=accepted_remaps,
+            )
+        ports_for_task = apply_port_remaps(ports_for_task, [remap])
+        accepted_remaps.append(remap)
 
     return LaunchPortDecision(
         outcome="conflict_remap",
-        ports_for_task=apply_port_remaps(normalized, remaps),
+        ports_for_task=ports_for_task,
         conflicts=conflicts,
-        remaps=remaps,
+        remaps=accepted_remaps,
     )
