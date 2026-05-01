@@ -54,6 +54,7 @@ class TaskDetailsPage(QWidget):
         self._desktop_viewer_process: QProcess | None = None
         self._desktop_viewer_url: str = ""
         self._desktop_viewer_output_lines: list[str] = []
+        self._pending_log_lines: list[str] = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -283,6 +284,11 @@ class TaskDetailsPage(QWidget):
         self._ticker.setInterval(1000)
         self._ticker.timeout.connect(self._tick_uptime)
         self._ticker.start()
+
+        self._log_flush_timer = QTimer(self)
+        self._log_flush_timer.setSingleShot(True)
+        self._log_flush_timer.setInterval(20)
+        self._log_flush_timer.timeout.connect(self._flush_pending_logs)
 
         self._last_task: Task | None = None
 
@@ -564,6 +570,8 @@ class TaskDetailsPage(QWidget):
         self._sync_desktop_button(task)
         self._sync_artifacts(task)
         self._sync_container_actions(task)
+        self._pending_log_lines.clear()
+        self._log_flush_timer.stop()
         self._logs.setPlainText("\n".join(task.logs[-5000:]))
         QTimer.singleShot(0, self._scroll_logs_to_bottom)
         self._apply_status(task)
@@ -571,10 +579,28 @@ class TaskDetailsPage(QWidget):
         self._sync_review_menu(task)
 
     def append_log(self, task_id: str, line: str) -> None:
+        self.append_logs(task_id, [line])
+
+    def append_logs(self, task_id: str, lines: list[str]) -> None:
         if self._current_task_id != task_id:
             return
+        appendable = [line for line in lines if line]
+        if not appendable:
+            return
+        self._pending_log_lines.extend(appendable)
+        if len(self._pending_log_lines) >= 120:
+            self._flush_pending_logs()
+            return
+        if not self._log_flush_timer.isActive():
+            self._log_flush_timer.start()
+
+    def _flush_pending_logs(self) -> None:
+        if not self._pending_log_lines:
+            return
         should_follow = self._logs_is_at_bottom()
-        self._logs.appendPlainText(line)
+        batch = self._pending_log_lines
+        self._pending_log_lines = []
+        self._logs.appendPlainText("\n".join(batch))
         if should_follow:
             QTimer.singleShot(0, self._scroll_logs_to_bottom)
 

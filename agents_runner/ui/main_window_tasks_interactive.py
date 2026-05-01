@@ -40,6 +40,7 @@ from agents_runner.ui.interactive_prep_bridge import InteractivePrepBridge
 from agents_runner.ui.main_window_tasks_interactive_docker import (
     launch_docker_terminal_task,
 )
+from agents_runner.ui.launch_port_guard import resolve_launch_port_decision
 from agents_runner.ui.interactive_prep_worker import InteractivePrepWorker
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import stain_color
@@ -87,6 +88,15 @@ class MainWindowTasksInteractiveMixin:
             return
         env = self._environments.get(env_id)
         gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
+
+        port_decision = resolve_launch_port_decision(
+            parent=self,
+            port_specs=(getattr(env, "ports", []) if env else []),
+        )
+        if port_decision.outcome == "conflict_cancel":
+            return
+        ports_for_task = list(port_decision.ports_for_task)
+        port_remaps_for_log = list(port_decision.remaps)
 
         task_id = uuid4().hex[:10]
         task_token = f"interactive-{task_id}"
@@ -320,6 +330,17 @@ class MainWindowTasksInteractiveMixin:
         self._refresh_new_task_agent_info()
         self._schedule_save()
 
+        for remap in port_remaps_for_log:
+            self._on_task_log(
+                task_id,
+                format_log(
+                    "docker",
+                    "ports",
+                    "INFO",
+                    f"runtime port remap: {remap.original_publish} -> {remap.remapped_publish}",
+                ),
+            )
+
         if env:
             task.workspace_type = env.workspace_type
 
@@ -415,6 +436,7 @@ class MainWindowTasksInteractiveMixin:
             "shell_mode": shell_mode,
             "shell": shell,
             "gpu_enabled": gpu_enabled,
+            "ports_for_task": list(ports_for_task),
         }
         prep_bridge = InteractivePrepBridge(
             on_stage=self._on_interactive_prep_stage,
@@ -704,6 +726,7 @@ class MainWindowTasksInteractiveMixin:
                 shell_mode=bool(context.get("shell_mode")),
                 shell=str(context.get("shell") or "bash"),
                 gpu_enabled=bool(context.get("gpu_enabled") or False),
+                ports_for_task=list(context.get("ports_for_task") or []),
             )
         except Exception as exc:
             self._on_interactive_prep_failed(task_id, str(exc))

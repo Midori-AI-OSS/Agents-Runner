@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.log_format import prettify_log_line
+from agents_runner.log_stream import normalize_log_stream_chunk
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_active_task_payloads
 from agents_runner.persistence import load_state
@@ -282,11 +283,15 @@ class MainWindowPersistenceMixin:
             if not task.task_id:
                 continue
             if task.logs:
-                task.logs = [
-                    prettify_log_line(line)
-                    for line in task.logs
-                    if isinstance(line, str)
-                ]
+                normalized_logs: list[str] = []
+                for line in task.logs:
+                    if not isinstance(line, str):
+                        continue
+                    for normalized_line in normalize_log_stream_chunk(line):
+                        cleaned = prettify_log_line(normalized_line)
+                        if cleaned:
+                            normalized_logs.append(cleaned)
+                task.logs = normalized_logs[-5000:]
             synced = False
             status = (task.status or "").lower()
             if status != "queued":

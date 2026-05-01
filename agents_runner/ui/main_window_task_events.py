@@ -17,6 +17,7 @@ from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.log_format import format_log
 from agents_runner.log_format import format_log_display
 from agents_runner.log_format import prettify_log_line
+from agents_runner.log_stream import normalize_log_stream_chunk
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_task_payload
 from agents_runner.persistence import save_task_payload
@@ -44,10 +45,16 @@ class MainWindowTaskEventsMixin:
                 return
             task = deserialize_task(Task, payload)
             if task.logs:
+                normalized_logs: list[str] = []
+                for line in task.logs:
+                    if not isinstance(line, str):
+                        continue
+                    normalized_logs.extend(normalize_log_stream_chunk(line))
+                    if len(normalized_logs) > 6000:
+                        normalized_logs = normalized_logs[-5000:]
                 task.logs = [
                     format_log_display(prettify_log_line(line))
-                    for line in task.logs
-                    if isinstance(line, str)
+                    for line in normalized_logs
                 ]
 
         self._details.show_task(task)
@@ -621,14 +628,31 @@ class MainWindowTaskEventsMixin:
         task = self._tasks.get(task_id)
         if task is None:
             return
-        cleaned = prettify_log_line(line)
-        task.logs.append(cleaned)  # Store raw canonical format
+
+        display_lines: list[str] = []
+        saw_non_empty_log = False
+        saw_docker_pull = False
+
+        for normalized_line in normalize_log_stream_chunk(line):
+            cleaned = prettify_log_line(normalized_line)
+            if not cleaned:
+                continue
+            saw_non_empty_log = True
+            task.logs.append(cleaned)  # Persist normalized canonical/legacy lines
+            display_lines.append(format_log_display(cleaned))
+            if "docker pull" in cleaned:
+                saw_docker_pull = True
+
+        if not display_lines and not saw_docker_pull:
+            return
+
         if len(task.logs) > 6000:
             task.logs = task.logs[-5000:]
-        display_line = format_log_display(cleaned)  # Format for display
-        self._details.append_log(task_id, display_line)
-        self._schedule_save()
-        if cleaned and self._dashboard.isVisible() and task.is_active():
+
+        if display_lines:
+            self._details.append_logs(task_id, display_lines)
+
+        if saw_non_empty_log and self._dashboard.isVisible() and task.is_active():
             now_s = time.time()
             last_s = float(self._dashboard_log_refresh_s.get(task_id) or 0.0)
             if now_s - last_s >= 0.25:
@@ -637,13 +661,15 @@ class MainWindowTaskEventsMixin:
                 stain = env.color if env else None
                 spinner = stain_color(env.color) if env else None
                 self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-        if "docker pull" in cleaned and (task.status or "").lower() != "pulling":
+
+        if saw_docker_pull and (task.status or "").lower() != "pulling":
             task.status = "pulling"
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
             spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            self._schedule_save()
+
+        self._schedule_save()
 
     def _on_task_state(self, task_id: str, state: dict[str, Any]) -> None:
         task = self._tasks.get(task_id)
