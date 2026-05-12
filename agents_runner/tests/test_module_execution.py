@@ -11,14 +11,14 @@ def test_python_dash_m_agents_runner_delegates_to_cli_main(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
-    fake_cli = types.ModuleType("agents_runner.cli")
+    mock_cli_module = types.ModuleType("agents_runner.cli")
 
-    def _fake_main() -> None:
+    def _record_call() -> None:
         calls.append("called")
 
-    fake_cli.main = _fake_main
+    mock_cli_module.main = _record_call
 
-    monkeypatch.setitem(sys.modules, "agents_runner.cli", fake_cli)
+    monkeypatch.setitem(sys.modules, "agents_runner.cli", mock_cli_module)
     monkeypatch.delitem(sys.modules, "agents_runner.__main__", raising=False)
 
     runpy.run_module("agents_runner", run_name="__main__", alter_sys=True)
