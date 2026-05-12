@@ -14,7 +14,7 @@ def test_python_dash_m_agents_runner_delegates_to_cli_main(
     mock_cli_module = types.ModuleType("agents_runner.cli")
 
     def _record_call() -> None:
-        calls.append("called")
+        calls.append("cli.main")
 
     mock_cli_module.main = _record_call
 
@@ -23,4 +23,4 @@ def test_python_dash_m_agents_runner_delegates_to_cli_main(
 
     runpy.run_module("agents_runner", run_name="__main__", alter_sys=True)
 
-    assert calls == ["called"]
+    assert calls == ["cli.main"]
