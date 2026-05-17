@@ -153,6 +153,13 @@ class EnvironmentsFormMixin:
         self._gpu_override_mode.setToolTip(
             "Override the global GPU runtime setting for this environment."
         )
+        self._opencode_interactive_mode = QComboBox()
+        self._opencode_interactive_mode.addItem("Inherit global setting", "inherit")
+        self._opencode_interactive_mode.addItem("Terminal", "terminal")
+        self._opencode_interactive_mode.addItem("Web", "web")
+        self._opencode_interactive_mode.setToolTip(
+            "Override the global OpenCode Run Interactive launch mode."
+        )
 
         self._cache_desktop_build = QCheckBox("Cache desktop build")
         self._cache_desktop_build.setToolTip(
@@ -408,7 +415,13 @@ class EnvironmentsFormMixin:
         add_grid_row(grid, 3, QLabel("Max agents running"), max_agents_row)
         add_grid_row(grid, 4, self._headless_desktop_label, self._headless_desktop_row)
         add_grid_row(grid, 5, QLabel("GPU runtime"), self._gpu_override_mode)
-        add_grid_row(grid, 6, QLabel("Cross agents"), cross_agents_row)
+        add_grid_row(
+            grid,
+            6,
+            QLabel("OpenCode interactive"),
+            self._opencode_interactive_mode,
+        )
+        add_grid_row(grid, 7, QLabel("Cross agents"), cross_agents_row)
 
         general_body.addLayout(grid)
         general_body.addStretch(1)

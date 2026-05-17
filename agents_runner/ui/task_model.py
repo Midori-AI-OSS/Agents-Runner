@@ -43,8 +43,8 @@ class Task:
     ide_display_target: str = ""
     headless_desktop_enabled: bool = False
     novnc_url: str = ""
+    opencode_web_url: str = ""
     vnc_password: str = ""
-    desktop_display: str = ""
     artifacts: list[str] = field(default_factory=list)
     attempt_history: list[dict[str, object]] = field(default_factory=list)
     finalization_state: str = "pending"
@@ -79,9 +79,18 @@ class Task:
             end_s = float(now_s if now_s is not None else time.time())
         return max(0.0, end_s - created_s)
 
+    def is_opencode_web_run(self) -> bool:
+        launch_mode = str(self.launch_mode or "").strip().lower()
+        if launch_mode == "opencode_web":
+            return True
+        agent_cli = str(self.agent_cli or "").strip().lower()
+        return bool(
+            agent_cli == "opencode" and str(self.opencode_web_url or "").strip()
+        )
+
     def is_interactive_run(self) -> bool:
         launch_mode = str(self.launch_mode or "").strip().lower()
-        if launch_mode in {"interactive_agent", "interactive"}:
+        if launch_mode in {"interactive_agent", "interactive", "opencode_web"}:
             return True
         container_id = str(self.container_id or "")
         if container_id.startswith("agents-runner-tui-it-"):
@@ -91,11 +100,14 @@ class Task:
         return False
 
     def prompt_one_line(self) -> str:
-        line = (self.prompt or "").strip().splitlines()[0] if self.prompt else ""
+        prompt_lines = (self.prompt or "").strip().splitlines()
+        line = prompt_lines[0] if prompt_lines else ""
         if line:
             return line
         if str(self.launch_mode or "").strip().lower() == "ide":
             return "Run IDE"
+        if self.is_opencode_web_run():
+            return "OpenCode Web"
         if self.is_interactive_run():
             return "Interactive"
         return "(empty prompt)"

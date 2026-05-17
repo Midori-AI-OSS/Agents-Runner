@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
+from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -24,10 +25,12 @@ from PySide6.QtWidgets import QWidget
 from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
 
 from agents_runner.artifacts import get_artifact_info
+from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import task_display_status
+from agents_runner.ui.url_open import open_external_url
 from agents_runner.ui.utils import format_duration
 from agents_runner.ui.utils import rgba
 from agents_runner.ui.utils import status_color
@@ -86,9 +89,16 @@ class TaskDetailsPage(QWidget):
         self._desktop_btn.clicked.connect(self._launch_desktop_viewer)
         self._desktop_btn.setVisible(False)
 
+        self._opencode_web_btn = QToolButton()
+        self._opencode_web_btn.setText("OpenCode Web")
+        self._opencode_web_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._opencode_web_btn.clicked.connect(self._launch_opencode_web)
+        self._opencode_web_btn.setVisible(False)
+
         header_layout.addWidget(self._title)
         header_layout.addWidget(self._subtitle, 1)
         header_layout.addWidget(self._review, 0, Qt.AlignRight)
+        header_layout.addWidget(self._opencode_web_btn, 0, Qt.AlignRight)
         header_layout.addWidget(self._desktop_btn, 0, Qt.AlignRight)
         layout.addWidget(header)
 
@@ -127,6 +137,7 @@ class TaskDetailsPage(QWidget):
         # Right side: Container state + Prompt cards stacked vertically
         right_column = QVBoxLayout()
         right_column.setSpacing(14)
+        self._right_column = right_column
 
         # Container state card (top-right)
         state_card = GlassCard()
@@ -209,15 +220,16 @@ class TaskDetailsPage(QWidget):
 
         # Prompt card (bottom-right)
         prompt_card = GlassCard()
+        self._prompt_card = prompt_card
         prompt_layout = QVBoxLayout(prompt_card)
         prompt_layout.setContentsMargins(18, 16, 18, 16)
         prompt_layout.setSpacing(10)
 
         prompt_title_row = QHBoxLayout()
         prompt_title_row.setSpacing(8)
-        prompt_title = QLabel("Prompt")
-        prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
-        prompt_title_row.addWidget(prompt_title)
+        self._prompt_title = QLabel("Prompt")
+        self._prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
+        prompt_title_row.addWidget(self._prompt_title)
         prompt_title_row.addStretch(1)
 
         self._btn_copy_prompt = QToolButton()
@@ -230,6 +242,10 @@ class TaskDetailsPage(QWidget):
         self._prompt = QPlainTextEdit()
         self._prompt.setReadOnly(True)
         self._prompt.setMaximumBlockCount(2000)
+        self._prompt.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
 
         cfg = QGridLayout()
         cfg.setHorizontalSpacing(10)
@@ -241,10 +257,14 @@ class TaskDetailsPage(QWidget):
         self._container.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self._workdir.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
+        self._novnc_label = QLabel("noVNC URL")
         self._novnc_url = QLabel("—")
         self._novnc_url.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._desktop_display = QLabel("—")
-        self._desktop_display.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._opencode_web_url_label = QLabel("OpenCode Web URL")
+        self._opencode_web_url = QLabel("—")
+        self._opencode_web_url.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._agent_system = QLabel("—")
+        self._agent_system.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self._workdir_row = 0
         cfg.addWidget(self._workdir_label, self._workdir_row, 0)
@@ -253,16 +273,19 @@ class TaskDetailsPage(QWidget):
         cfg.addWidget(QLabel("Container ID"), self._container_row, 0)
         cfg.addWidget(self._container, self._container_row, 1)
         self._novnc_row = 2
-        cfg.addWidget(QLabel("noVNC URL"), self._novnc_row, 0)
+        cfg.addWidget(self._novnc_label, self._novnc_row, 0)
         cfg.addWidget(self._novnc_url, self._novnc_row, 1)
-        self._display_row = 3
-        cfg.addWidget(QLabel("DISPLAY"), self._display_row, 0)
-        cfg.addWidget(self._desktop_display, self._display_row, 1)
+        self._opencode_web_url_row = 3
+        cfg.addWidget(self._opencode_web_url_label, self._opencode_web_url_row, 0)
+        cfg.addWidget(self._opencode_web_url, self._opencode_web_url_row, 1)
+        self._agent_system_row = 4
+        cfg.addWidget(QLabel("Agent System"), self._agent_system_row, 0)
+        cfg.addWidget(self._agent_system, self._agent_system_row, 1)
 
         prompt_layout.addLayout(prompt_title_row)
         prompt_layout.addWidget(self._prompt, 1)
         prompt_layout.addLayout(cfg)
-        right_column.addWidget(prompt_card, 1)
+        right_column.addWidget(prompt_card)
 
         mid.addLayout(right_column, 2)
 
@@ -386,6 +409,14 @@ class TaskDetailsPage(QWidget):
         url = str(self._last_task.novnc_url or "").strip()
         task_id = str(self._last_task.task_id or self._current_task_id or "")
         self.launch_desktop_viewer_for_task(task_id=task_id, url=url)
+
+    def _launch_opencode_web(self) -> None:
+        """Open the stored OpenCode Web URL for the current task."""
+        if not self._last_task:
+            return
+        url = str(self._last_task.opencode_web_url or "").strip()
+        if url:
+            open_external_url(url)
 
     def launch_desktop_viewer_for_task(self, *, task_id: str, url: str) -> bool:
         """Launch viewer for a specific task noVNC URL."""
@@ -557,6 +588,8 @@ class TaskDetailsPage(QWidget):
         self._title.setText(f"Task {task.task_id}")
         self._subtitle.setText(task.prompt_one_line())
         self._prompt.setPlainText(task.prompt)
+        has_prompt = bool(str(task.prompt or "").strip())
+        self._sync_prompt_runtime_layout(has_prompt=has_prompt)
 
         # Show/hide Host Workdir based on workspace type
         is_cloned = task.workspace_type == WORKSPACE_CLONED
@@ -566,8 +599,10 @@ class TaskDetailsPage(QWidget):
             self._workdir.setText(task.host_workdir)
 
         self._container.setText(task.container_id or "—")
+        self._agent_system.setText(self._agent_system_label(task))
         self._tabs.setCurrentIndex(self._task_tab_index)
         self._sync_desktop_button(task)
+        self._sync_opencode_web_button(task)
         self._sync_artifacts(task)
         self._sync_container_actions(task)
         self._pending_log_lines.clear()
@@ -609,7 +644,9 @@ class TaskDetailsPage(QWidget):
             return
         self._last_task = task
         self._container.setText(task.container_id or "—")
+        self._agent_system.setText(self._agent_system_label(task))
         self._sync_desktop_button(task)
+        self._sync_opencode_web_button(task)
         self._sync_artifacts(task)
         self._sync_container_actions(task)
         self._exit.setText("—" if task.exit_code is None else str(task.exit_code))
@@ -630,7 +667,39 @@ class TaskDetailsPage(QWidget):
 
         self._desktop_btn.setVisible(should_show)
         self._novnc_url.setText(url if url else "—")
-        self._desktop_display.setText(str(task.desktop_display or ":1") if url else "—")
+        self._novnc_label.setVisible(bool(url))
+        self._novnc_url.setVisible(bool(url))
+
+    def _sync_opencode_web_button(self, task: Task) -> None:
+        url = str(task.opencode_web_url or "").strip()
+        self._opencode_web_btn.setVisible(bool(task.is_active() and url))
+        self._opencode_web_url.setText(url if url else "—")
+        self._opencode_web_url_label.setVisible(bool(url))
+        self._opencode_web_url.setVisible(bool(url))
+
+    def _sync_prompt_runtime_layout(self, *, has_prompt: bool) -> None:
+        self._prompt_title.setText("Prompt" if has_prompt else "Runtime Details")
+        self._btn_copy_prompt.setVisible(has_prompt)
+        self._prompt.setVisible(has_prompt)
+        if has_prompt:
+            self._prompt_card.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Expanding,
+            )
+            self._right_column.setStretch(1, 1)
+        else:
+            self._prompt_card.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Preferred,
+            )
+            self._right_column.setStretch(1, 0)
+        self._prompt_card.updateGeometry()
+
+    def _agent_system_label(self, task: Task) -> str:
+        if task.is_opencode_web_run():
+            return "OpenCode Web"
+        agent_label = get_agent_display_name(str(task.agent_cli or "").strip())
+        return agent_label if agent_label.strip() else "—"
 
     def _sync_artifacts(self, task: Task) -> None:
         """

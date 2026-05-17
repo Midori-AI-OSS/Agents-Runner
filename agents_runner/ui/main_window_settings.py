@@ -18,6 +18,8 @@ from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import looks_like_agent_help_command
 from agents_runner.environments import Environment
 from agents_runner.environments.model import normalize_gpu_override_mode
+from agents_runner.environments.model import normalize_opencode_interactive_mode
+from agents_runner.environments.model import normalize_opencode_interactive_override
 from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 logger = logging.getLogger(__name__)
@@ -147,6 +149,9 @@ class MainWindowSettingsMixin:
             merged.get("headless_desktop_enabled") or False
         )
         merged["gpu_enabled"] = bool(merged.get("gpu_enabled") or False)
+        merged["opencode_interactive_mode"] = normalize_opencode_interactive_mode(
+            str(merged.get("opencode_interactive_mode") or "terminal")
+        )
         merged["popup_theme_animation_enabled"] = bool(
             merged.get("popup_theme_animation_enabled", True)
         )
@@ -519,6 +524,25 @@ class MainWindowSettingsMixin:
         if mode == "disabled":
             return False
         return global_enabled
+
+    def _effective_opencode_interactive_mode(
+        self,
+        *,
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+    ) -> str:
+        settings_data = settings or self._settings_data
+        global_mode = normalize_opencode_interactive_mode(
+            str(settings_data.get("opencode_interactive_mode") or "terminal")
+        )
+        if env is None:
+            return global_mode
+        override = normalize_opencode_interactive_override(
+            str(getattr(env, "opencode_interactive_mode", "inherit") or "inherit")
+        )
+        if override == "inherit":
+            return global_mode
+        return override
 
     def _resolve_override_config_dir(
         self,

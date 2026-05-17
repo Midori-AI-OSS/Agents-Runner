@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import shlex
-import socket
 import tempfile
 from datetime import datetime
 from datetime import timezone
@@ -35,28 +34,14 @@ from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.core.shell_templates import git_identity_clause
 from agents_runner.core.shell_templates import shell_log_statement
+from agents_runner.ui.opencode_web import OPENCODE_WEB_CONTAINER_PORT
+from agents_runner.ui.opencode_web import OPENCODE_WEB_HOST
+from agents_runner.ui.opencode_web import allocate_localhost_port
+from agents_runner.ui.opencode_web import publishes_container_port
+from agents_runner.ui.opencode_web import schedule_open_opencode_web_url
+from agents_runner.ui.opencode_web import select_opencode_web_container_port
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import safe_str
-
-
-def _publishes_container_port(spec: str, port: int) -> bool:
-    base = str(spec or "").strip()
-    if not base:
-        return False
-    base = base.split("/", 1)[0]
-    container_part = base.rsplit(":", 1)[-1].strip()
-    if not container_part:
-        return False
-    if container_part.isdigit():
-        return int(container_part) == int(port)
-    if "-" in container_part:
-        left, right = (p.strip() for p in container_part.split("-", 1))
-        if left.isdigit() and right.isdigit():
-            start = int(left)
-            end = int(right)
-            p = int(port)
-            return start <= p <= end
-    return False
 
 
 def _redact_env_assignment(value: str) -> str:
@@ -121,6 +106,7 @@ def launch_docker_terminal_task(
     desktop_preflight_script_override: str | None = None,
     shell_mode: bool = False,
     shell: str = "bash",
+    opencode_web_mode: bool = False,
     gpu_enabled: bool = False,
     ports_for_task: list[str] | None = None,
 ) -> None:
@@ -171,6 +157,7 @@ def launch_docker_terminal_task(
         desktop_preflight_script_override: Optional precomputed desktop script
         shell_mode: If True, run shell instead of agent command
         shell: Shell to use when shell_mode is True (bash, sh, zsh, fish, tmux)
+        opencode_web_mode: If True, run OpenCode Web and open its host URL
         gpu_enabled: If True, request Docker GPU runtime (`--gpus all`)
         ports_for_task: Runtime publish specs for this launch (defaults to env.ports)
     """
@@ -437,35 +424,70 @@ def launch_docker_terminal_task(
                     ["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"]
                 )
 
-        # Allocate port for desktop mode
+        ports_source = (
+            list(ports_for_task or [])
+            if ports_for_task is not None
+            else list((getattr(env, "ports", None) or []) if env else [])
+        )
+
+        # Allocate ports for managed local services.
         port_args: list[str] = []
+        opencode_web_url = ""
+        opencode_web_host_port = 0
+        opencode_web_container_port = OPENCODE_WEB_CONTAINER_PORT
+        if opencode_web_mode:
+            opencode_web_container_port = select_opencode_web_container_port(
+                ports_source
+            )
+            opencode_web_host_port = allocate_localhost_port()
+            port_args.extend(
+                [
+                    "-p",
+                    (
+                        f"{OPENCODE_WEB_HOST}:{opencode_web_host_port}:"
+                        f"{opencode_web_container_port}"
+                    ),
+                ]
+            )
+            opencode_web_url = f"http://{OPENCODE_WEB_HOST}:{opencode_web_host_port}"
+            task.opencode_web_url = opencode_web_url
+            main_window._on_task_log(
+                task_id,
+                format_log(
+                    "opencode",
+                    "web",
+                    "INFO",
+                    (
+                        "mapped web ui: "
+                        f"{OPENCODE_WEB_HOST}:{opencode_web_host_port} -> "
+                        f"container port {opencode_web_container_port}"
+                    ),
+                ),
+            )
+            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+            main_window._details.update_task(task)
+            main_window._schedule_save()
+
         if desktop_enabled:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                s.bind(("127.0.0.1", 0))
-                host_port = int(s.getsockname()[1])
-            finally:
-                s.close()
-            port_args = ["-p", f"127.0.0.1:{host_port}:6080"]
+            host_port = allocate_localhost_port()
+            port_args.extend(["-p", f"127.0.0.1:{host_port}:6080"])
             env_args.extend(["-e", f"AGENTS_RUNNER_TASK_ID={task_token}"])
             task.headless_desktop_enabled = True
-            task.desktop_display = ":1"
             task.novnc_url = f"http://127.0.0.1:{host_port}/vnc.html"
             main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
             main_window._details.update_task(task)
             main_window._schedule_save()
 
         # Apply environment-specified ports (or task runtime overrides)
-        ports_source = (
-            list(ports_for_task or [])
-            if ports_for_task is not None
-            else list((getattr(env, "ports", None) or []) if env else [])
-        )
         for port_spec in ports_source:
             spec = str(port_spec or "").strip()
             if not spec:
                 continue
-            if desktop_enabled and _publishes_container_port(spec, 6080):
+            if desktop_enabled and publishes_container_port(spec, 6080):
+                continue
+            if opencode_web_mode and publishes_container_port(
+                spec, opencode_web_container_port
+            ):
                 continue
             port_args.extend(["-p", spec])
 
@@ -509,6 +531,11 @@ def launch_docker_terminal_task(
             else:
                 target_cmd = f"/bin/{shell}"
             verify_clause = ""
+        elif opencode_web_mode:
+            target_cmd = (
+                f"opencode web --port {opencode_web_container_port} --hostname 0.0.0.0"
+            )
+            verify_clause = verify_cli_clause("opencode")
         else:
             target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
             verify_clause = ""
@@ -646,9 +673,21 @@ def launch_docker_terminal_task(
                 f"launched in {safe_str(getattr(terminal_opt, 'label', 'Terminal'))}",
             ),
         )
+        if opencode_web_url:
+            main_window._on_task_log(
+                task_id,
+                format_log("opencode", "web", "INFO", f"web url: {opencode_web_url}"),
+            )
 
         # Launch terminal
         launch_in_terminal(terminal_opt, host_script, cwd=host_workdir)
+        if opencode_web_url and opencode_web_host_port:
+            schedule_open_opencode_web_url(
+                main_window=main_window,
+                task_id=task_id,
+                url=opencode_web_url,
+                host_port=opencode_web_host_port,
+            )
         main_window._maybe_auto_navigate_on_task_start(interactive=True)
         main_window._new_task.reset_for_new_run()
 

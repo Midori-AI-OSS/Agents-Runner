@@ -14,6 +14,7 @@ from .model import normalize_agentsnova_marker_comment_mode
 from .model import normalize_gh_branch_work_mode
 from .model import normalize_gh_task_branch_custom_template
 from .model import normalize_gh_task_branch_naming_style
+from .model import normalize_opencode_interactive_override
 from .model import PromptConfig
 from .model import AgentSelection
 from .model import AgentInstance
@@ -210,6 +211,9 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     headless_desktop_enabled = bool(payload.get("headless_desktop_enabled", False))
     gpu_override_mode = normalize_gpu_override_mode(
         payload.get("gpu_override_mode", "inherit")
+    )
+    opencode_interactive_mode = normalize_opencode_interactive_override(
+        payload.get("opencode_interactive_mode", "inherit")
     )
     cache_desktop_build = bool(payload.get("cache_desktop_build", False))
     container_caching_enabled = bool(payload.get("container_caching_enabled", False))
@@ -465,6 +469,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         max_agents_running=max_agents_running,
         headless_desktop_enabled=headless_desktop_enabled,
         gpu_override_mode=gpu_override_mode,
+        opencode_interactive_mode=opencode_interactive_mode,
         cache_desktop_build=cache_desktop_build,
         container_caching_enabled=container_caching_enabled,
         cache_system_preflight_enabled=cache_system_preflight_enabled,
@@ -554,6 +559,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         ),
         "gpu_override_mode": normalize_gpu_override_mode(
             str(getattr(env, "gpu_override_mode", "inherit") or "inherit")
+        ),
+        "opencode_interactive_mode": normalize_opencode_interactive_override(
+            str(getattr(env, "opencode_interactive_mode", "inherit") or "inherit")
         ),
         "cache_desktop_build": bool(getattr(env, "cache_desktop_build", False)),
         "container_caching_enabled": bool(

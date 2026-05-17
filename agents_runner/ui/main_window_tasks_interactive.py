@@ -245,6 +245,20 @@ class MainWindowTasksInteractiveMixin:
                 return
 
         command = self._default_interactive_command(agent_cli)
+        opencode_web_mode = bool(
+            not shell_mode
+            and str(agent_cli or "").strip().lower() == "opencode"
+            and self._effective_opencode_interactive_mode(
+                env=env,
+                settings=self._settings_data,
+            )
+            == "web"
+        )
+        if opencode_web_mode:
+            command = "opencode web"
+            agent_cli_args = []
+        launch_mode = "opencode_web" if opencode_web_mode else "interactive_agent"
+
         extra_preflight_script = str(extra_preflight_script or "")
         is_help_launch = self._is_agent_help_interactive_launch(
             prompt=prompt, command=command
@@ -260,8 +274,10 @@ class MainWindowTasksInteractiveMixin:
                 ]
             ).strip()
 
-        apply_full_prompting = bool(has_typed_prompt and not is_help_launch)
-        prompt_for_agent = str(prompt or "")
+        apply_full_prompting = bool(
+            has_typed_prompt and not is_help_launch and not opencode_web_mode
+        )
+        prompt_for_agent = "" if opencode_web_mode else str(prompt or "")
         if apply_full_prompting:
             prompt_for_agent = self._build_interactive_base_prompt(
                 prompt=prompt_for_agent,
@@ -321,7 +337,7 @@ class MainWindowTasksInteractiveMixin:
             agent_cli=agent_cli,
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
-            launch_mode="interactive_agent",
+            launch_mode=launch_mode,
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -370,7 +386,7 @@ class MainWindowTasksInteractiveMixin:
             desktop_enabled=desktop_enabled,
             settings_preflight_script=settings_preflight_script,
             extra_preflight_script=extra_preflight_script,
-            launch_mode="interactive_agent",
+            launch_mode=launch_mode,
             container_caching_enabled=bool(
                 env and getattr(env, "container_caching_enabled", False)
             ),
@@ -435,6 +451,7 @@ class MainWindowTasksInteractiveMixin:
             "prep_id": prep_id,
             "shell_mode": shell_mode,
             "shell": shell,
+            "opencode_web_mode": opencode_web_mode,
             "gpu_enabled": gpu_enabled,
             "ports_for_task": list(ports_for_task),
         }
@@ -725,6 +742,7 @@ class MainWindowTasksInteractiveMixin:
                 else None,
                 shell_mode=bool(context.get("shell_mode")),
                 shell=str(context.get("shell") or "bash"),
+                opencode_web_mode=bool(context.get("opencode_web_mode")),
                 gpu_enabled=bool(context.get("gpu_enabled") or False),
                 ports_for_task=list(context.get("ports_for_task") or []),
             )

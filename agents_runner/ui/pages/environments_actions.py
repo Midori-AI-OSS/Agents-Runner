@@ -20,6 +20,7 @@ from agents_runner.environments.model import (
     normalize_gh_branch_work_mode,
     normalize_gh_task_branch_custom_template,
     normalize_gh_task_branch_naming_style,
+    normalize_opencode_interactive_override,
 )
 from agents_runner.gh_management import is_gh_available
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
@@ -136,6 +137,9 @@ class EnvironmentsPageActionsMixin:
             ),
             "gpu_override_mode": normalize_gpu_override_mode(
                 str(self._gpu_override_mode.currentData() or "inherit")
+            ),
+            "opencode_interactive_mode": normalize_opencode_interactive_override(
+                str(self._opencode_interactive_mode.currentData() or "inherit")
             ),
         }
 
