@@ -718,9 +718,6 @@ class MainWindowTaskEventsMixin:
         novnc_url = str(state.get("NoVncUrl") or "").strip()
         if novnc_url:
             task.novnc_url = novnc_url
-        desktop_display = str(state.get("DesktopDisplay") or "").strip()
-        if desktop_display:
-            task.desktop_display = desktop_display
 
         if current not in {"done", "failed"}:
             if incoming in {"exited", "dead"} and task.exit_code is not None:

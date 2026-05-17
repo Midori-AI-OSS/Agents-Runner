@@ -95,6 +95,7 @@ class MainWindow(
             "host_workdir": os.environ.get("CODEX_HOST_WORKDIR", os.getcwd()),
             "active_environment_id": "default",
             "interactive_terminal_id": "",
+            "opencode_interactive_mode": "terminal",
             "window_w": 1280,
             "window_h": 720,
             "max_agents_running": -1,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from agents_runner.agent_cli import normalize_agent
+from agents_runner.environments import normalize_opencode_interactive_mode
 from agents_runner.log_format import prettify_log_line
 from agents_runner.log_stream import normalize_log_stream_chunk
 from agents_runner.persistence import deserialize_task
@@ -163,6 +164,7 @@ class MainWindowPersistenceMixin:
             self._settings_data.pop(key, None)
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("gpu_enabled", False)
+        self._settings_data.setdefault("opencode_interactive_mode", "terminal")
         self._settings_data.setdefault("auto_navigate_on_run_agent_start", False)
         self._settings_data.setdefault("auto_navigate_on_run_interactive_start", False)
         self._settings_data.setdefault("spellcheck_enabled", True)
@@ -196,6 +198,11 @@ class MainWindowPersistenceMixin:
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
         self._settings_data["gpu_enabled"] = bool(
             self._settings_data.get("gpu_enabled") or False
+        )
+        self._settings_data["opencode_interactive_mode"] = (
+            normalize_opencode_interactive_mode(
+                str(self._settings_data.get("opencode_interactive_mode") or "terminal")
+            )
         )
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name

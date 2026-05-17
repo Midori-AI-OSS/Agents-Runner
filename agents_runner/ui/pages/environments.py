@@ -30,6 +30,7 @@ from agents_runner.environments.model import (
     normalize_gh_branch_work_mode,
     normalize_gh_task_branch_custom_template,
     normalize_gh_task_branch_naming_style,
+    normalize_opencode_interactive_override,
 )
 from agents_runner.gh_management import is_gh_available
 from agents_runner.persistence import default_state_path
@@ -364,6 +365,11 @@ class EnvironmentsPage(
                     gpu_mode_idx = 0
                 if gpu_mode_idx >= 0:
                     self._gpu_override_mode.setCurrentIndex(gpu_mode_idx)
+                opencode_mode_idx = self._opencode_interactive_mode.findData("inherit")
+                if opencode_mode_idx < 0:
+                    opencode_mode_idx = 0
+                if opencode_mode_idx >= 0:
+                    self._opencode_interactive_mode.setCurrentIndex(opencode_mode_idx)
                 self._cache_desktop_build.setChecked(False)
                 self._cache_desktop_build.setEnabled(False)
                 self._container_caching_enabled.setChecked(False)
@@ -476,6 +482,16 @@ class EnvironmentsPage(
                 gpu_mode_idx = 0
             if gpu_mode_idx >= 0:
                 self._gpu_override_mode.setCurrentIndex(gpu_mode_idx)
+            opencode_mode = normalize_opencode_interactive_override(
+                getattr(env, "opencode_interactive_mode", "inherit")
+            )
+            opencode_mode_idx = self._opencode_interactive_mode.findData(opencode_mode)
+            if opencode_mode_idx < 0:
+                opencode_mode_idx = self._opencode_interactive_mode.findData("inherit")
+            if opencode_mode_idx < 0:
+                opencode_mode_idx = 0
+            if opencode_mode_idx >= 0:
+                self._opencode_interactive_mode.setCurrentIndex(opencode_mode_idx)
             self._ports_tab.set_desktop_effective_enabled(
                 self._effective_desktop_enabled()
             )

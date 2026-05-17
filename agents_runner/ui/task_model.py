@@ -44,7 +44,6 @@ class Task:
     headless_desktop_enabled: bool = False
     novnc_url: str = ""
     vnc_password: str = ""
-    desktop_display: str = ""
     artifacts: list[str] = field(default_factory=list)
     attempt_history: list[dict[str, object]] = field(default_factory=list)
     finalization_state: str = "pending"
@@ -91,7 +90,8 @@ class Task:
         return False
 
     def prompt_one_line(self) -> str:
-        line = (self.prompt or "").strip().splitlines()[0] if self.prompt else ""
+        prompt_lines = (self.prompt or "").strip().splitlines()
+        line = prompt_lines[0] if prompt_lines else ""
         if line:
             return line
         if str(self.launch_mode or "").strip().lower() == "ide":

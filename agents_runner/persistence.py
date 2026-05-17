@@ -347,7 +347,6 @@ def serialize_task(task: Any) -> dict[str, Any]:
             getattr(task, "headless_desktop_enabled", False)
         ),
         "novnc_url": getattr(task, "novnc_url", ""),
-        "desktop_display": getattr(task, "desktop_display", ""),
         "artifacts": list(getattr(task, "artifacts", [])),
         "attempt_history": list(getattr(task, "attempt_history", [])),
         "finalization_state": str(
@@ -413,7 +412,6 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         headless_desktop_enabled=bool(data.get("headless_desktop_enabled") or False),
         novnc_url=str(data.get("novnc_url") or ""),
         vnc_password="",
-        desktop_display=str(data.get("desktop_display") or ""),
         artifacts=list(data.get("artifacts") or []),
         attempt_history=list(data.get("attempt_history") or []),
         finalization_state=str(data.get("finalization_state") or "pending"),

@@ -24,6 +24,7 @@ from PySide6.QtWidgets import QWidget
 from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
 
 from agents_runner.artifacts import get_artifact_info
+from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.task_model import Task
@@ -215,9 +216,9 @@ class TaskDetailsPage(QWidget):
 
         prompt_title_row = QHBoxLayout()
         prompt_title_row.setSpacing(8)
-        prompt_title = QLabel("Prompt")
-        prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
-        prompt_title_row.addWidget(prompt_title)
+        self._prompt_title = QLabel("Prompt")
+        self._prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
+        prompt_title_row.addWidget(self._prompt_title)
         prompt_title_row.addStretch(1)
 
         self._btn_copy_prompt = QToolButton()
@@ -243,8 +244,8 @@ class TaskDetailsPage(QWidget):
 
         self._novnc_url = QLabel("—")
         self._novnc_url.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._desktop_display = QLabel("—")
-        self._desktop_display.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._agent_system = QLabel("—")
+        self._agent_system.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self._workdir_row = 0
         cfg.addWidget(self._workdir_label, self._workdir_row, 0)
@@ -255,9 +256,9 @@ class TaskDetailsPage(QWidget):
         self._novnc_row = 2
         cfg.addWidget(QLabel("noVNC URL"), self._novnc_row, 0)
         cfg.addWidget(self._novnc_url, self._novnc_row, 1)
-        self._display_row = 3
-        cfg.addWidget(QLabel("DISPLAY"), self._display_row, 0)
-        cfg.addWidget(self._desktop_display, self._display_row, 1)
+        self._agent_system_row = 3
+        cfg.addWidget(QLabel("Agent System"), self._agent_system_row, 0)
+        cfg.addWidget(self._agent_system, self._agent_system_row, 1)
 
         prompt_layout.addLayout(prompt_title_row)
         prompt_layout.addWidget(self._prompt, 1)
@@ -557,6 +558,10 @@ class TaskDetailsPage(QWidget):
         self._title.setText(f"Task {task.task_id}")
         self._subtitle.setText(task.prompt_one_line())
         self._prompt.setPlainText(task.prompt)
+        has_prompt = bool(str(task.prompt or "").strip())
+        self._prompt_title.setText("Prompt" if has_prompt else "Runtime Details")
+        self._btn_copy_prompt.setVisible(has_prompt)
+        self._prompt.setVisible(has_prompt)
 
         # Show/hide Host Workdir based on workspace type
         is_cloned = task.workspace_type == WORKSPACE_CLONED
@@ -566,6 +571,8 @@ class TaskDetailsPage(QWidget):
             self._workdir.setText(task.host_workdir)
 
         self._container.setText(task.container_id or "—")
+        agent_label = get_agent_display_name(str(task.agent_cli or "").strip())
+        self._agent_system.setText(agent_label if agent_label.strip() else "—")
         self._tabs.setCurrentIndex(self._task_tab_index)
         self._sync_desktop_button(task)
         self._sync_artifacts(task)
@@ -609,6 +616,8 @@ class TaskDetailsPage(QWidget):
             return
         self._last_task = task
         self._container.setText(task.container_id or "—")
+        agent_label = get_agent_display_name(str(task.agent_cli or "").strip())
+        self._agent_system.setText(agent_label if agent_label.strip() else "—")
         self._sync_desktop_button(task)
         self._sync_artifacts(task)
         self._sync_container_actions(task)
@@ -630,7 +639,6 @@ class TaskDetailsPage(QWidget):
 
         self._desktop_btn.setVisible(should_show)
         self._novnc_url.setText(url if url else "—")
-        self._desktop_display.setText(str(task.desktop_display or ":1") if url else "—")
 
     def _sync_artifacts(self, task: Task) -> None:
         """

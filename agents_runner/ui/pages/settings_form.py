@@ -27,6 +27,7 @@ from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_default_agent_system_name
 from agents_runner.environments import load_environments
+from agents_runner.environments import normalize_opencode_interactive_mode
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.pages.github_trust import (
     collect_seed_usernames_for_cloned_environments,
@@ -145,6 +146,13 @@ class SettingsFormMixin:
         self._refresh_interactive_terminal.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self._refresh_interactive_terminal.clicked.connect(
             self._on_refresh_terminal_options_clicked
+        )
+
+        self._opencode_interactive_mode = QComboBox()
+        self._opencode_interactive_mode.addItem("Terminal", "terminal")
+        self._opencode_interactive_mode.addItem("Web", "web")
+        self._opencode_interactive_mode.setToolTip(
+            "Default OpenCode launch mode for Run Interactive."
         )
 
         self._ui_theme = QComboBox()
@@ -449,6 +457,12 @@ class SettingsFormMixin:
         configure_form_grid(agent_grid)
         add_grid_row(agent_grid, 0, QLabel("Agent CLI"), self._use)
         add_grid_row(agent_grid, 1, QLabel("Agent Shell"), self._shell)
+        add_grid_row(
+            agent_grid,
+            2,
+            QLabel("OpenCode interactive"),
+            self._opencode_interactive_mode,
+        )
         agent_body.addLayout(agent_grid)
         agent_body.addStretch(1)
         self._register_page("agent_defaults", agent_page)
@@ -868,6 +882,13 @@ class SettingsFormMixin:
 
             shell_value = str(settings.get("shell") or "bash").strip().lower()
             self._set_combo_value(self._shell, shell_value, fallback="bash")
+            self._set_combo_value(
+                self._opencode_interactive_mode,
+                normalize_opencode_interactive_mode(
+                    str(settings.get("opencode_interactive_mode") or "terminal")
+                ),
+                fallback="terminal",
+            )
             self._refresh_terminal_options(
                 selected_terminal_id=str(
                     settings.get("interactive_terminal_id") or ""
@@ -1094,6 +1115,9 @@ class SettingsFormMixin:
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
+            "opencode_interactive_mode": normalize_opencode_interactive_mode(
+                str(self._opencode_interactive_mode.currentData() or "terminal")
+            ),
             "interactive_terminal_id": str(
                 self._interactive_terminal.currentData() or ""
             ),
