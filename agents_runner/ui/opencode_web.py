@@ -3,6 +3,8 @@ from __future__ import annotations
 import random
 import socket
 import time
+import urllib.error
+import urllib.request
 
 from PySide6.QtCore import QTimer
 
@@ -13,8 +15,9 @@ OPENCODE_WEB_CONTAINER_PORT = 4096
 OPENCODE_WEB_ALT_CONTAINER_PORT_MIN = 20_000
 OPENCODE_WEB_ALT_CONTAINER_PORT_MAX = 60_999
 OPENCODE_WEB_HOST = "127.0.0.1"
-OPENCODE_WEB_RETRY_INTERVAL_MS = 15_000
+OPENCODE_WEB_RETRY_INTERVAL_MS = 500
 OPENCODE_WEB_TIMEOUT_MS = 10 * 60 * 1000
+OPENCODE_WEB_HTTP_TIMEOUT_S = 0.75
 
 
 def publishes_container_port(spec: str, port: int) -> bool:
@@ -74,12 +77,32 @@ def schedule_open_opencode_web_url(
 ) -> None:
     state = {"done": False}
     deadline_s = time.monotonic() + (OPENCODE_WEB_TIMEOUT_MS / 1000.0)
+    readiness_url = f"http://{OPENCODE_WEB_HOST}:{int(host_port)}/"
+    main_window._on_task_log(
+        task_id,
+        format_log(
+            "opencode",
+            "web",
+            "INFO",
+            f"waiting for HTTP readiness: {readiness_url}",
+        ),
+    )
 
     def _attempt_open() -> None:
         if bool(state.get("done", False)):
             return
-        if _can_connect_to_local_port(host_port):
+        status_code = _http_status_code(readiness_url)
+        if status_code is not None:
             state["done"] = True
+            main_window._on_task_log(
+                task_id,
+                format_log(
+                    "opencode",
+                    "web",
+                    "INFO",
+                    f"HTTP readiness returned {status_code}: {readiness_url}",
+                ),
+            )
             opened = open_external_url(url)
             log_level = "INFO" if opened else "WARN"
             log_message = (
@@ -101,7 +124,7 @@ def schedule_open_opencode_web_url(
                     "opencode",
                     "web",
                     "WARN",
-                    "web server was not ready after 10 minutes; "
+                    "web server never returned an HTTP status after 10 minutes; "
                     f"stopped browser open retry: {url}",
                 ),
             )
@@ -116,9 +139,23 @@ def _port_specs_publish_container_port(port_specs: list[str], port: int) -> bool
     return any(publishes_container_port(spec, port) for spec in port_specs)
 
 
-def _can_connect_to_local_port(port: int) -> bool:
+def _http_status_code(url: str) -> int | None:
+    request = urllib.request.Request(
+        str(url),
+        method="GET",
+        headers={"User-Agent": "agents-runner-opencode-readiness"},
+    )
     try:
-        with socket.create_connection((OPENCODE_WEB_HOST, int(port)), timeout=0.25):
-            return True
-    except OSError:
-        return False
+        with urllib.request.urlopen(  # noqa: S310
+            request,
+            timeout=OPENCODE_WEB_HTTP_TIMEOUT_S,
+        ) as response:
+            status = int(response.status)
+    except urllib.error.HTTPError as exc:
+        status = int(exc.code)
+    except (OSError, ValueError):
+        return None
+
+    if 100 <= status <= 599:
+        return status
+    return None

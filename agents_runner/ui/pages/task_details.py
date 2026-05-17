@@ -91,9 +91,7 @@ class TaskDetailsPage(QWidget):
 
         self._opencode_web_btn = QToolButton()
         self._opencode_web_btn.setText("OpenCode Web")
-        self._opencode_web_btn.setIcon(lucide_icon("globe"))
-        self._opencode_web_btn.setIconSize(QSize(16, 16))
-        self._opencode_web_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._opencode_web_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
         self._opencode_web_btn.clicked.connect(self._launch_opencode_web)
         self._opencode_web_btn.setVisible(False)
 
