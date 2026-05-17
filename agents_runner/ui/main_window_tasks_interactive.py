@@ -255,8 +255,9 @@ class MainWindowTasksInteractiveMixin:
             == "web"
         )
         if opencode_web_mode:
-            command = "opencode web --port 4096 --hostname 0.0.0.0"
+            command = "opencode web"
             agent_cli_args = []
+        launch_mode = "opencode_web" if opencode_web_mode else "interactive_agent"
 
         extra_preflight_script = str(extra_preflight_script or "")
         is_help_launch = self._is_agent_help_interactive_launch(
@@ -336,7 +337,7 @@ class MainWindowTasksInteractiveMixin:
             agent_cli=agent_cli,
             agent_instance_id=agent_instance_id,
             agent_cli_args=" ".join(agent_cli_args),
-            launch_mode="interactive_agent",
+            launch_mode=launch_mode,
         )
         self._tasks[task_id] = task
         stain = env.color if env else None
@@ -385,7 +386,7 @@ class MainWindowTasksInteractiveMixin:
             desktop_enabled=desktop_enabled,
             settings_preflight_script=settings_preflight_script,
             extra_preflight_script=extra_preflight_script,
-            launch_mode="interactive_agent",
+            launch_mode=launch_mode,
             container_caching_enabled=bool(
                 env and getattr(env, "container_caching_enabled", False)
             ),

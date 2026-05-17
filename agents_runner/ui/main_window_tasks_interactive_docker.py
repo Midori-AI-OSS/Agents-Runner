@@ -8,16 +8,11 @@ from __future__ import annotations
 
 import os
 import shlex
-import socket
 import tempfile
-import webbrowser
 from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 
-from PySide6.QtCore import QTimer
-from PySide6.QtCore import QUrl
-from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_install import probe_agent_executable_in_image
@@ -39,33 +34,14 @@ from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.core.shell_templates import git_identity_clause
 from agents_runner.core.shell_templates import shell_log_statement
+from agents_runner.ui.opencode_web import OPENCODE_WEB_CONTAINER_PORT
+from agents_runner.ui.opencode_web import OPENCODE_WEB_HOST
+from agents_runner.ui.opencode_web import allocate_localhost_port
+from agents_runner.ui.opencode_web import publishes_container_port
+from agents_runner.ui.opencode_web import schedule_open_opencode_web_url
+from agents_runner.ui.opencode_web import select_opencode_web_container_port
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import safe_str
-
-_OPENCODE_WEB_CONTAINER_PORT = 4096
-_OPENCODE_WEB_HOST = "127.0.0.1"
-_OPENCODE_WEB_RETRY_INTERVAL_MS = 15_000
-_OPENCODE_WEB_TIMEOUT_MS = 10 * 60 * 1000
-
-
-def _publishes_container_port(spec: str, port: int) -> bool:
-    base = str(spec or "").strip()
-    if not base:
-        return False
-    base = base.split("/", 1)[0]
-    container_part = base.rsplit(":", 1)[-1].strip()
-    if not container_part:
-        return False
-    if container_part.isdigit():
-        return int(container_part) == int(port)
-    if "-" in container_part:
-        left, right = (p.strip() for p in container_part.split("-", 1))
-        if left.isdigit() and right.isdigit():
-            start = int(left)
-            end = int(right)
-            p = int(port)
-            return start <= p <= end
-    return False
 
 
 def _redact_env_assignment(value: str) -> str:
@@ -448,36 +424,53 @@ def launch_docker_terminal_task(
                     ["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"]
                 )
 
+        ports_source = (
+            list(ports_for_task or [])
+            if ports_for_task is not None
+            else list((getattr(env, "ports", None) or []) if env else [])
+        )
+
         # Allocate ports for managed local services.
         port_args: list[str] = []
         opencode_web_url = ""
         opencode_web_host_port = 0
+        opencode_web_container_port = OPENCODE_WEB_CONTAINER_PORT
         if opencode_web_mode:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                s.bind((_OPENCODE_WEB_HOST, 0))
-                opencode_web_host_port = int(s.getsockname()[1])
-            finally:
-                s.close()
+            opencode_web_container_port = select_opencode_web_container_port(
+                ports_source
+            )
+            opencode_web_host_port = allocate_localhost_port()
             port_args.extend(
                 [
                     "-p",
                     (
-                        f"{_OPENCODE_WEB_HOST}:{opencode_web_host_port}:"
-                        f"{_OPENCODE_WEB_CONTAINER_PORT}"
+                        f"{OPENCODE_WEB_HOST}:{opencode_web_host_port}:"
+                        f"{opencode_web_container_port}"
                     ),
                 ]
             )
-            opencode_web_url = f"http://{_OPENCODE_WEB_HOST}:{opencode_web_host_port}"
+            opencode_web_url = f"http://{OPENCODE_WEB_HOST}:{opencode_web_host_port}"
+            task.opencode_web_url = opencode_web_url
+            main_window._on_task_log(
+                task_id,
+                format_log(
+                    "opencode",
+                    "web",
+                    "INFO",
+                    (
+                        "mapped web ui: "
+                        f"{OPENCODE_WEB_HOST}:{opencode_web_host_port} -> "
+                        f"container port {opencode_web_container_port}"
+                    ),
+                ),
+            )
+            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
+            main_window._details.update_task(task)
+            main_window._schedule_save()
 
         if desktop_enabled:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                s.bind(("127.0.0.1", 0))
-                host_port = int(s.getsockname()[1])
-            finally:
-                s.close()
-            port_args = ["-p", f"127.0.0.1:{host_port}:6080"]
+            host_port = allocate_localhost_port()
+            port_args.extend(["-p", f"127.0.0.1:{host_port}:6080"])
             env_args.extend(["-e", f"AGENTS_RUNNER_TASK_ID={task_token}"])
             task.headless_desktop_enabled = True
             task.novnc_url = f"http://127.0.0.1:{host_port}/vnc.html"
@@ -486,19 +479,14 @@ def launch_docker_terminal_task(
             main_window._schedule_save()
 
         # Apply environment-specified ports (or task runtime overrides)
-        ports_source = (
-            list(ports_for_task or [])
-            if ports_for_task is not None
-            else list((getattr(env, "ports", None) or []) if env else [])
-        )
         for port_spec in ports_source:
             spec = str(port_spec or "").strip()
             if not spec:
                 continue
-            if desktop_enabled and _publishes_container_port(spec, 6080):
+            if desktop_enabled and publishes_container_port(spec, 6080):
                 continue
-            if opencode_web_mode and _publishes_container_port(
-                spec, _OPENCODE_WEB_CONTAINER_PORT
+            if opencode_web_mode and publishes_container_port(
+                spec, opencode_web_container_port
             ):
                 continue
             port_args.extend(["-p", spec])
@@ -545,7 +533,7 @@ def launch_docker_terminal_task(
             verify_clause = ""
         elif opencode_web_mode:
             target_cmd = (
-                f"opencode web --port {_OPENCODE_WEB_CONTAINER_PORT} --hostname 0.0.0.0"
+                f"opencode web --port {opencode_web_container_port} --hostname 0.0.0.0"
             )
             verify_clause = verify_cli_clause("opencode")
         else:
@@ -694,7 +682,7 @@ def launch_docker_terminal_task(
         # Launch terminal
         launch_in_terminal(terminal_opt, host_script, cwd=host_workdir)
         if opencode_web_url and opencode_web_host_port:
-            _schedule_open_opencode_web_url(
+            schedule_open_opencode_web_url(
                 main_window=main_window,
                 task_id=task_id,
                 url=opencode_web_url,
@@ -1109,68 +1097,6 @@ def _build_host_shell_script(
     )
 
     return " ; ".join(host_script_parts)
-
-
-def _schedule_open_opencode_web_url(
-    *,
-    main_window: object,
-    task_id: str,
-    url: str,
-    host_port: int,
-) -> None:
-    state = {"done": False, "elapsed_ms": 0}
-
-    def _attempt_open() -> None:
-        if bool(state.get("done", False)):
-            return
-        if _can_connect_to_local_port(host_port):
-            state["done"] = True
-            _open_url_from_host(url)
-            main_window._on_task_log(
-                task_id,
-                format_log("opencode", "web", "INFO", f"opened browser: {url}"),
-            )
-            return
-
-        state["elapsed_ms"] = int(state.get("elapsed_ms", 0)) + int(
-            _OPENCODE_WEB_RETRY_INTERVAL_MS
-        )
-        if int(state.get("elapsed_ms", 0)) >= _OPENCODE_WEB_TIMEOUT_MS:
-            state["done"] = True
-            main_window._on_task_log(
-                task_id,
-                format_log(
-                    "opencode",
-                    "web",
-                    "WARN",
-                    "web server was not ready after 10 minutes; "
-                    f"stopped browser open retry: {url}",
-                ),
-            )
-            return
-
-        QTimer.singleShot(_OPENCODE_WEB_RETRY_INTERVAL_MS, _attempt_open)
-
-    QTimer.singleShot(_OPENCODE_WEB_RETRY_INTERVAL_MS, _attempt_open)
-
-
-def _can_connect_to_local_port(port: int) -> bool:
-    try:
-        with socket.create_connection((_OPENCODE_WEB_HOST, int(port)), timeout=0.25):
-            return True
-    except OSError:
-        return False
-
-
-def _open_url_from_host(url: str) -> None:
-    qurl = QUrl(str(url or "").strip())
-    opened = False
-    try:
-        opened = bool(QDesktopServices.openUrl(qurl))
-    except Exception:
-        opened = False
-    if not opened:
-        webbrowser.open(str(url or "").strip())
 
 
 def _cleanup_temp_files(tmp_paths: dict[str, str]) -> None:
