@@ -157,6 +157,7 @@ class EnvironmentsFormMixin:
         self._opencode_interactive_mode.addItem("Inherit global setting", "inherit")
         self._opencode_interactive_mode.addItem("Terminal", "terminal")
         self._opencode_interactive_mode.addItem("Web", "web")
+        self._opencode_interactive_mode.addItem("Ask", "ask")
         self._opencode_interactive_mode.setToolTip(
             "Override the global OpenCode Run Interactive launch mode."
         )

@@ -52,6 +52,30 @@ logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class MainWindowTasksInteractiveMixin:
+    def _ask_opencode_interactive_launch_mode(self) -> str | None:
+        dialog = QMessageBox(self)
+        dialog.setIcon(QMessageBox.Icon.Question)
+        dialog.setWindowTitle("OpenCode launch mode")
+        dialog.setText("How would you like to launch OpenCode?")
+        dialog.setInformativeText(
+            "Choose Terminal for the TUI or Web for the browser UI."
+        )
+        terminal_button = dialog.addButton(
+            "Terminal", QMessageBox.ButtonRole.AcceptRole
+        )
+        web_button = dialog.addButton("Web", QMessageBox.ButtonRole.AcceptRole)
+        cancel_button = dialog.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
+        dialog.setDefaultButton(terminal_button)
+        dialog.setEscapeButton(cancel_button)
+        dialog.exec()
+
+        clicked = dialog.clickedButton()
+        if clicked == terminal_button:
+            return "terminal"
+        if clicked == web_button:
+            return "web"
+        return None
+
     def _start_interactive_task_from_ui(
         self,
         prompt: str,
@@ -266,14 +290,24 @@ class MainWindowTasksInteractiveMixin:
                 return
 
         command = self._default_interactive_command(agent_cli)
+        opencode_interactive_mode = self._effective_opencode_interactive_mode(
+            env=env,
+            settings=self._settings_data,
+        )
+        if (
+            not shell_mode
+            and str(agent_cli or "").strip().lower() == "opencode"
+            and opencode_interactive_mode == "ask"
+        ):
+            selected_mode = self._ask_opencode_interactive_launch_mode()
+            if selected_mode is None:
+                return
+            opencode_interactive_mode = selected_mode
+
         opencode_web_mode = bool(
             not shell_mode
             and str(agent_cli or "").strip().lower() == "opencode"
-            and self._effective_opencode_interactive_mode(
-                env=env,
-                settings=self._settings_data,
-            )
-            == "web"
+            and opencode_interactive_mode == "web"
         )
         if opencode_web_mode:
             command = "opencode web"
