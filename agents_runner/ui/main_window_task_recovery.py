@@ -471,6 +471,17 @@ class MainWindowTaskRecoveryMixin:
                         f"Task {task_id}: skipping PR creation (reason={skip_reason}, state={task.status})",
                     ),
                 )
+            elif str(getattr(task, "gh_pr_unavailable_reason", "") or "").strip():
+                skip_reason = str(task.gh_pr_unavailable_reason or "").strip()
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "host",
+                        "finalize",
+                        "INFO",
+                        f"Task {task_id}: skipping PR creation (reason={skip_reason}, state={task.status})",
+                    ),
+                )
             else:
                 should_create_pr = True
                 self.host_log.emit(

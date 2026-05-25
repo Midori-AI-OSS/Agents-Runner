@@ -16,6 +16,8 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.model import INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW
 from agents_runner.environments.model import normalize_interactive_pr_no_prompt_mode
 from agents_runner.environments.cleanup import cleanup_task_workspace
+from agents_runner.gh.git_ops import git_remote_url
+from agents_runner.gh.permissions import check_pr_creation_capability_for_repo_ref
 from agents_runner.gh_management import commit_push_and_pr
 from agents_runner.gh_management import GhManagementError
 from agents_runner.log_format import format_log
@@ -98,6 +100,7 @@ class MainWindowTasksInteractiveFinalizeMixin:
             and str(task.gh_branch or "").strip()
             != str(task.gh_base_branch or "").strip()
             and not task.gh_pr_url
+            and not str(getattr(task, "gh_pr_unavailable_reason", "") or "").strip()
         ):
             base = str(task.gh_base_branch or "").strip()
             base_display = base or "auto"
@@ -178,6 +181,19 @@ class MainWindowTasksInteractiveFinalizeMixin:
                     ),
                 )
                 _queue_interactive_pr_creation()
+        elif str(getattr(task, "gh_pr_unavailable_reason", "") or "").strip():
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "gh",
+                    "pr",
+                    "INFO",
+                    (
+                        "Interactive PR creation skipped: "
+                        f"{task.gh_pr_unavailable_reason}"
+                    ),
+                ),
+            )
 
         # Mark finalization done for interactive tasks (PR handling selected above).
         self.host_log.emit(
@@ -308,6 +324,29 @@ class MainWindowTasksInteractiveFinalizeMixin:
                             "gh", "pr", "ERROR", f"validation failed: {name}: {msg}"
                         ),
                     )
+                if task and any(name == "gh_cli" for name, _msg in failed_checks):
+                    task.gh_pr_unavailable_status = "unavailable"
+                    task.gh_pr_unavailable_reason = "; ".join(
+                        msg for name, msg in failed_checks if name == "gh_cli"
+                    )
+                    self._schedule_save()
+                return
+
+            existing_skip_reason = (
+                str(getattr(task, "gh_pr_unavailable_reason", "") or "").strip()
+                if task
+                else ""
+            )
+            if existing_skip_reason:
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "gh",
+                        "pr",
+                        "INFO",
+                        f"[2/6] PR creation skipped: {existing_skip_reason}",
+                    ),
+                )
                 return
 
             # Check for existing PR (informational)
@@ -334,6 +373,27 @@ class MainWindowTasksInteractiveFinalizeMixin:
                     "gh", "pr", "INFO", "[2/6] No existing PR found, proceeding..."
                 ),
             )
+
+            remote_url = git_remote_url(repo_root) or ""
+            capability = check_pr_creation_capability_for_repo_ref(
+                remote_url,
+                use_gh=bool(use_gh),
+            )
+            if not capability.can_create_pr:
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "gh",
+                        "pr",
+                        "WARN",
+                        f"[3/6] PR creation unavailable: {capability.reason}",
+                    ),
+                )
+                if task:
+                    task.gh_pr_unavailable_status = capability.status
+                    task.gh_pr_unavailable_reason = capability.reason
+                    self._schedule_save()
+                return
 
             self.host_log.emit(
                 task_id,

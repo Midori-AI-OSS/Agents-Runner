@@ -16,10 +16,18 @@ from .task_plan import (
     plan_repo_task,
     prepare_branch_for_task,
 )
+from .permissions import (
+    GitHubPrCapability,
+    check_pr_creation_capability,
+    check_pr_creation_capability_for_repo_ref,
+)
 
 __all__ = [
+    "GitHubPrCapability",
     "GhManagementError",
     "RepoPlan",
+    "check_pr_creation_capability",
+    "check_pr_creation_capability_for_repo_ref",
     "commit_push_and_pr",
     "ensure_github_clone",
     "git_current_branch",
