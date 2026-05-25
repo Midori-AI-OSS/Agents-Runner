@@ -151,6 +151,7 @@ class SettingsFormMixin:
         self._opencode_interactive_mode = QComboBox()
         self._opencode_interactive_mode.addItem("Terminal", "terminal")
         self._opencode_interactive_mode.addItem("Web", "web")
+        self._opencode_interactive_mode.addItem("Ask", "ask")
         self._opencode_interactive_mode.setToolTip(
             "Default OpenCode launch mode for Run Interactive."
         )

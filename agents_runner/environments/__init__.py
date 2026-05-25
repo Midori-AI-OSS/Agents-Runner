@@ -9,6 +9,7 @@ from agents_runner.environments.model import WORKSPACE_NONE
 from agents_runner.environments.model import GPU_OVERRIDE_MODE_DISABLED
 from agents_runner.environments.model import GPU_OVERRIDE_MODE_ENABLED
 from agents_runner.environments.model import GPU_OVERRIDE_MODE_INHERIT
+from agents_runner.environments.model import OPENCODE_INTERACTIVE_MODE_ASK
 from agents_runner.environments.model import OPENCODE_INTERACTIVE_MODE_TERMINAL
 from agents_runner.environments.model import OPENCODE_INTERACTIVE_MODE_WEB
 from agents_runner.environments.model import OPENCODE_INTERACTIVE_OVERRIDE_INHERIT
@@ -42,6 +43,7 @@ __all__ = [
     "GPU_OVERRIDE_MODE_DISABLED",
     "GPU_OVERRIDE_MODE_ENABLED",
     "GPU_OVERRIDE_MODE_INHERIT",
+    "OPENCODE_INTERACTIVE_MODE_ASK",
     "OPENCODE_INTERACTIVE_MODE_TERMINAL",
     "OPENCODE_INTERACTIVE_MODE_WEB",
     "OPENCODE_INTERACTIVE_OVERRIDE_INHERIT",
