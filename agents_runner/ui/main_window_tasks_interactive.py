@@ -26,8 +26,10 @@ from agents_runner.agent_cli import container_config_dir
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import is_gh_available
+from agents_runner.gh.permissions import check_pr_creation_capability_for_repo_ref
 from agents_runner.log_format import format_log
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.prompts import load_prompt
 from agents_runner.prompts.sections import compose_prompt_sections
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.constants import PIXELARCH_AGENT_CONTEXT_SUFFIX
@@ -148,6 +150,25 @@ class MainWindowTasksInteractiveMixin:
             if workspace_type == WORKSPACE_CLONED and env
             else ""
         )
+        branch_work_mode = (
+            str(getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch")
+            if env
+            else "task_branch"
+        ).strip()
+        gh_pr_unavailable_reason = ""
+        gh_pr_unavailable_status = ""
+        if (
+            workspace_type == WORKSPACE_CLONED
+            and gh_repo
+            and branch_work_mode != "direct_base"
+        ):
+            capability = check_pr_creation_capability_for_repo_ref(
+                gh_repo,
+                use_gh=gh_use_host_cli,
+            )
+            if not capability.can_create_pr:
+                gh_pr_unavailable_reason = capability.reason
+                gh_pr_unavailable_status = capability.status
 
         override = self._coerce_agent_override(agent_override)
         shell_mode = bool(
@@ -284,6 +305,7 @@ class MainWindowTasksInteractiveMixin:
                 workspace_type=workspace_type,
                 env=env,
                 task_id=task_id,
+                gh_pr_unavailable_reason=gh_pr_unavailable_reason,
             )
         if uses_environment_agent_selection:
             self._commit_round_robin_selection(
@@ -359,6 +381,21 @@ class MainWindowTasksInteractiveMixin:
 
         if env:
             task.workspace_type = env.workspace_type
+        task.gh_pr_unavailable_reason = gh_pr_unavailable_reason
+        task.gh_pr_unavailable_status = gh_pr_unavailable_status
+        if gh_pr_unavailable_reason:
+            self._on_task_log(
+                task_id,
+                format_log(
+                    "gh",
+                    "pr",
+                    "WARN",
+                    (
+                        "PR creation unavailable; running in recommendation-only "
+                        f"mode: {gh_pr_unavailable_reason}"
+                    ),
+                ),
+            )
 
         prep_id = uuid4().hex[:8]
         self._maybe_auto_navigate_on_task_start(interactive=True)
@@ -374,6 +411,8 @@ class MainWindowTasksInteractiveMixin:
             desired_base=desired_base,
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=bool(env and env.gh_context_enabled),
+            gh_pr_unavailable_reason=gh_pr_unavailable_reason,
+            gh_pr_unavailable_status=gh_pr_unavailable_status,
             data_dir=os.path.dirname(self._state_path),
             image=image,
             command=command,
@@ -487,6 +526,7 @@ class MainWindowTasksInteractiveMixin:
         workspace_type: str,
         env: object | None,
         task_id: str,
+        gh_pr_unavailable_reason: str = "",
     ) -> str:
         prompt_sections: list[str] = []
 
@@ -494,7 +534,15 @@ class MainWindowTasksInteractiveMixin:
             prompt_sections.append(PIXELARCH_AGENT_CONTEXT_SUFFIX)
 
         if workspace_type == WORKSPACE_CLONED:
-            prompt_sections.append(PIXELARCH_GIT_CONTEXT_SUFFIX)
+            if gh_pr_unavailable_reason:
+                prompt_sections.append(
+                    load_prompt(
+                        "github_recommendation_only",
+                        REASON=gh_pr_unavailable_reason,
+                    )
+                )
+            else:
+                prompt_sections.append(PIXELARCH_GIT_CONTEXT_SUFFIX)
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
@@ -635,6 +683,12 @@ class MainWindowTasksInteractiveMixin:
         task.gh_base_branch = str(payload.get("gh_base_branch") or "").strip()
         task.gh_branch = str(payload.get("gh_branch") or "").strip()
         task.gh_pr_metadata_path = str(payload.get("gh_pr_metadata_path") or "").strip()
+        task.gh_pr_unavailable_reason = str(
+            payload.get("gh_pr_unavailable_reason") or ""
+        ).strip()
+        task.gh_pr_unavailable_status = str(
+            payload.get("gh_pr_unavailable_status") or ""
+        ).strip()
         task.error = None
 
         context = self._interactive_prep_context.get(task_id)

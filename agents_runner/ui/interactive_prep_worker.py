@@ -60,6 +60,8 @@ class InteractivePrepWorker(QObject):
         desired_base: str,
         gh_use_host_cli: bool,
         gh_context_enabled: bool,
+        gh_pr_unavailable_reason: str,
+        gh_pr_unavailable_status: str,
         data_dir: str,
         image: str,
         command: str,
@@ -94,6 +96,8 @@ class InteractivePrepWorker(QObject):
         self._desired_base = str(desired_base or "").strip()
         self._gh_use_host_cli = bool(gh_use_host_cli)
         self._gh_context_enabled = bool(gh_context_enabled)
+        self._gh_pr_unavailable_reason = str(gh_pr_unavailable_reason or "").strip()
+        self._gh_pr_unavailable_status = str(gh_pr_unavailable_status or "").strip()
         self._data_dir = str(data_dir or "").strip()
         self._image = str(image or PIXELARCH_EMERALD_IMAGE).strip()
         self._command = str(command or "").strip()
@@ -317,12 +321,21 @@ class InteractivePrepWorker(QObject):
         task_branch: str,
         head_commit: str,
     ) -> str:
+        if self._gh_pr_unavailable_reason and self._apply_full_prompting:
+            pr_instruction = ""
+        elif self._gh_pr_unavailable_reason:
+            pr_instruction = load_prompt(
+                "github_recommendation_only",
+                REASON=self._gh_pr_unavailable_reason,
+            )
+        else:
+            pr_instruction = pr_metadata_prompt_instructions(pr_container_path)
         return insert_prompt_sections_before_user_prompt(
             prompt_for_agent,
             [
                 (
                     f"{github_context_prompt_instructions(repo_url=repo_url, repo_owner=repo_owner, repo_name=repo_name, base_branch=base_branch, task_branch=task_branch, head_commit=head_commit)}"
-                    f"{pr_metadata_prompt_instructions(pr_container_path)}"
+                    f"{pr_instruction}"
                 )
             ],
         )
@@ -449,14 +462,15 @@ class InteractivePrepWorker(QObject):
 
                 if self._gh_context_enabled:
                     self._check_stop()
-                    self._emit_stage("starting", "Preparing PR metadata file")
+                    self._emit_stage("starting", "Preparing GitHub context")
                     metadata_started_s = time.monotonic()
                     self._diag("INFO", "phase=pr_metadata_prepare begin")
-                    (
-                        pr_host_path,
-                        pr_container_path,
-                        pr_metadata_mount,
-                    ) = self._prepare_pr_metadata_file()
+                    if not self._gh_pr_unavailable_reason:
+                        (
+                            pr_host_path,
+                            pr_container_path,
+                            pr_metadata_mount,
+                        ) = self._prepare_pr_metadata_file()
                     if self._apply_full_prompting:
                         git_info = get_git_info(gh_repo_root)
                         if git_info:
@@ -482,9 +496,17 @@ class InteractivePrepWorker(QObject):
                                 head_commit="(unknown)",
                             )
                     elif self._is_help_launch and self._has_typed_prompt:
+                        prompt_instruction = (
+                            load_prompt(
+                                "github_recommendation_only",
+                                REASON=self._gh_pr_unavailable_reason,
+                            )
+                            if self._gh_pr_unavailable_reason
+                            else pr_metadata_prompt_instructions(pr_container_path)
+                        )
                         prompt_for_agent = insert_prompt_sections_before_user_prompt(
                             prompt_for_agent,
-                            [pr_metadata_prompt_instructions(pr_container_path)],
+                            [prompt_instruction],
                         )
                     metadata_elapsed_ms = (
                         time.monotonic() - metadata_started_s
@@ -629,6 +651,8 @@ class InteractivePrepWorker(QObject):
                     "gh_base_branch": gh_base_branch or self._desired_base,
                     "gh_branch": gh_branch,
                     "gh_pr_metadata_path": pr_host_path,
+                    "gh_pr_unavailable_reason": self._gh_pr_unavailable_reason,
+                    "gh_pr_unavailable_status": self._gh_pr_unavailable_status,
                     "pr_metadata_mount": pr_metadata_mount,
                     "cmd_parts": cmd_parts,
                     "runtime_image": cache_resolution.get("runtime_image"),

@@ -18,6 +18,7 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
+from agents_runner.gh.permissions import check_pr_creation_capability_for_repo_ref
 from agents_runner.gh_management import is_gh_available
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.log_format import format_log
@@ -30,6 +31,7 @@ from agents_runner.pr_metadata import pr_metadata_container_path
 from agents_runner.pr_metadata import pr_metadata_host_path
 from agents_runner.pr_metadata import pr_metadata_prompt_instructions
 from agents_runner.prompt_sanitizer import sanitize_prompt
+from agents_runner.prompts import load_prompt
 from agents_runner.prompts.sections import compose_prompt_sections
 from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
 from agents_runner.persistence import save_task_payload
@@ -575,6 +577,41 @@ class MainWindowTasksAgentMixin:
         elif pr_base_ref and not desired_base:
             desired_base = pr_base_ref
 
+        gh_branch_work_mode = "task_branch"
+        if workspace_type == WORKSPACE_CLONED and env:
+            gh_branch_work_mode = str(
+                getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch"
+            ).strip()
+        expects_pr_creation = bool(
+            workspace_type == WORKSPACE_CLONED
+            and env
+            and gh_branch_work_mode != "direct_base"
+        )
+        gh_pr_unavailable_reason = ""
+        gh_pr_unavailable_status = ""
+        if expects_pr_creation and env:
+            capability = check_pr_creation_capability_for_repo_ref(
+                str(env.workspace_target or "").strip(),
+                use_gh=use_host_gh,
+            )
+            if not capability.can_create_pr:
+                gh_pr_unavailable_reason = capability.reason
+                gh_pr_unavailable_status = capability.status
+                task.gh_pr_unavailable_reason = gh_pr_unavailable_reason
+                task.gh_pr_unavailable_status = gh_pr_unavailable_status
+                self._on_task_log(
+                    task_id,
+                    format_log(
+                        "gh",
+                        "pr",
+                        "WARN",
+                        (
+                            "PR creation unavailable; running in recommendation-only "
+                            f"mode: {gh_pr_unavailable_reason}"
+                        ),
+                    ),
+                )
+
         # Save the selected branch for cloned environments
         self._remember_environment_base_branch(env, selected_base_branch)
 
@@ -584,7 +621,15 @@ class MainWindowTasksAgentMixin:
 
         # Inject git context when cloned workspace is used
         if workspace_type == WORKSPACE_CLONED:
-            prompt_sections.append(PIXELARCH_GIT_CONTEXT_SUFFIX)
+            if gh_pr_unavailable_reason:
+                prompt_sections.append(
+                    load_prompt(
+                        "github_recommendation_only",
+                        REASON=gh_pr_unavailable_reason,
+                    )
+                )
+            else:
+                prompt_sections.append(PIXELARCH_GIT_CONTEXT_SUFFIX)
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
@@ -705,20 +750,23 @@ class MainWindowTasksAgentMixin:
                 host_context_path = github_context_host_path(
                     os.path.dirname(self._state_path), task_id
                 )
-                pr_host_path = pr_metadata_host_path(
-                    os.path.dirname(self._state_path), task_id
-                )
-                pr_container_path = pr_metadata_container_path(task_id)
+                pr_host_path = ""
+                pr_container_path = ""
                 try:
                     ensure_github_context_file(
                         host_context_path,
                         task_id=task_id,
                         github_context=github_context,
                     )
-                    ensure_pr_metadata_file(
-                        pr_host_path,
-                        task_id=task_id,
-                    )
+                    if not gh_pr_unavailable_reason:
+                        pr_host_path = pr_metadata_host_path(
+                            os.path.dirname(self._state_path), task_id
+                        )
+                        pr_container_path = pr_metadata_container_path(task_id)
+                        ensure_pr_metadata_file(
+                            pr_host_path,
+                            task_id=task_id,
+                        )
                 except Exception as exc:
                     logger.error(
                         format_log(
@@ -739,12 +787,14 @@ class MainWindowTasksAgentMixin:
                     )
                 else:
                     task.gh_context_path = host_context_path
-                    task.gh_pr_metadata_path = pr_host_path
+                    if pr_host_path:
+                        task.gh_pr_metadata_path = pr_host_path
 
                     # Only mount the PR title/body TOML into the container (agents edit this).
-                    extra_mounts_for_task.append(
-                        f"{pr_host_path}:{pr_container_path}:rw"
-                    )
+                    if pr_host_path and pr_container_path:
+                        extra_mounts_for_task.append(
+                            f"{pr_host_path}:{pr_container_path}:rw"
+                        )
 
                     # Provide read-only repo context inline; do not mount the repo metadata file.
                     repo_url = ""
@@ -789,12 +839,21 @@ class MainWindowTasksAgentMixin:
                         task_branch=task_branch,
                         head_commit=head_commit,
                     )
-                    pr_prompt = pr_metadata_prompt_instructions(pr_container_path)
+                    pr_prompt = (
+                        pr_metadata_prompt_instructions(pr_container_path)
+                        if pr_container_path
+                        else ""
+                    )
                     runner_prompt = insert_prompt_sections_before_user_prompt(
                         runner_prompt,
                         [f"{context_prompt}{pr_prompt}"],
                     )
                     # Clarify two-phase process for cloned repo environments
+                    context_log = (
+                        "GitHub context enabled (host-only); PR metadata skipped"
+                        if gh_pr_unavailable_reason
+                        else "GitHub context enabled (host-only) and PR metadata file mounted"
+                    )
                     if workspace_type == WORKSPACE_CLONED:
                         self._on_task_log(
                             task_id,
@@ -802,7 +861,7 @@ class MainWindowTasksAgentMixin:
                                 "gh",
                                 "context",
                                 "INFO",
-                                "GitHub context enabled (host-only) and PR metadata file mounted",
+                                context_log,
                             ),
                         )
                         self._on_task_log(
@@ -821,7 +880,7 @@ class MainWindowTasksAgentMixin:
                                 "gh",
                                 "context",
                                 "INFO",
-                                "GitHub context enabled (host-only) and PR metadata file mounted",
+                                context_log,
                             ),
                         )
 
@@ -829,14 +888,10 @@ class MainWindowTasksAgentMixin:
         # Get the host GitHub context path if it was created (regardless of mode)
         gh_context_file = getattr(task, "gh_context_path", None)
         gh_repo: str | None = None
-        gh_branch_work_mode = "task_branch"
         gh_task_branch_naming_style = "standard"
         gh_task_branch_custom_template = "{task_id}"
         if workspace_type == WORKSPACE_CLONED and env:
             gh_repo = str(env.workspace_target or "").strip() or None
-            gh_branch_work_mode = str(
-                getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch"
-            ).strip()
             gh_task_branch_naming_style = str(
                 getattr(env, "gh_task_branch_naming_style", "standard") or "standard"
             ).strip()
