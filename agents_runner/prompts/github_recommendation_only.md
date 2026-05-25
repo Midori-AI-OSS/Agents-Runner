@@ -17,4 +17,3 @@ READ-ONLY GITHUB WORKFLOW
   - the minimal fix to make
   - verification steps to run
 - If this task came from a GitHub issue, pull request, or comment and `gh` can post a comment, reply there with the recommendation and current outcome.
-*** End Patch
