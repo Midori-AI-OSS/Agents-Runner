@@ -9,6 +9,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
+from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QHBoxLayout
@@ -39,6 +40,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
     back_requested = Signal()
     saved = Signal(dict)
     test_preflight_requested = Signal(dict)
+    move_task_workspaces_requested = Signal(bool)
 
     def __init__(
         self,
@@ -130,6 +132,9 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._build_pages()
         self._build_navigation(nav_layout)
         self._connect_autosave_signals()
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
 
         if self._pane_specs:
             first_key = self._pane_specs[0].key
@@ -149,6 +154,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
             self._radio_quality,
             self._github_write_confirmation_mode,
             self._agentsnova_auto_marker_comments_mode,
+            self._task_workspace_location,
         ):
             combo.currentIndexChanged.connect(self._queue_debounced_autosave)
 
@@ -175,6 +181,15 @@ class SettingsPage(QWidget, SettingsFormMixin):
 
         self._radio_volume.valueChanged.connect(self._queue_debounced_autosave)
         self._radio_loudness_boost_factor.valueChanged.connect(
+            self._queue_debounced_autosave
+        )
+        self._task_workspace_cleanup_retention_days.valueChanged.connect(
+            self._queue_debounced_autosave
+        )
+        self._task_workspace_cleanup_interval_minutes.valueChanged.connect(
+            self._queue_debounced_autosave
+        )
+        self._task_workspace_cleanup_scan_delay_seconds.valueChanged.connect(
             self._queue_debounced_autosave
         )
         self._github_poll_startup_delay_s.textChanged.connect(

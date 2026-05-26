@@ -15,7 +15,6 @@ from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.model import INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW
 from agents_runner.environments.model import normalize_interactive_pr_no_prompt_mode
-from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.gh.git_ops import git_remote_url
 from agents_runner.gh.permissions import check_pr_creation_capability_for_repo_ref
 from agents_runner.gh_management import commit_push_and_pr
@@ -292,11 +291,7 @@ class MainWindowTasksInteractiveFinalizeMixin:
 
         start_s = time.monotonic()
 
-        # Get task info for cleanup - extract environment_id safely (needed even on early-return paths)
         task = self._tasks.get(task_id)
-        env_id = ""
-        if task and hasattr(task, "environment_id"):
-            env_id = str(task.environment_id or "").strip()
 
         try:
             # Step 1: Pre-flight validation
@@ -535,50 +530,6 @@ class MainWindowTasksInteractiveFinalizeMixin:
                 task.gh_pr_url = pr_url
                 self._schedule_save()
         finally:
-            # Clean up task-specific repo after PR creation (or failure)
-            # This ensures each task gets a fresh clone and prevents git conflicts
-            if env_id and task_id:
-                try:
-                    # Validate state_path before using
-                    state_path = getattr(self, "_state_path", "")
-                    if not state_path:
-                        self.host_log.emit(
-                            task_id,
-                            format_log(
-                                "gh",
-                                "cleanup",
-                                "WARN",
-                                "cleanup skipped: state path not available",
-                            ),
-                        )
-                    else:
-                        self.host_log.emit(
-                            task_id,
-                            format_log(
-                                "gh", "cleanup", "INFO", "cleaning up task workspace"
-                            ),
-                        )
-                        data_dir = os.path.dirname(state_path)
-                        cleanup_success = cleanup_task_workspace(
-                            env_id=env_id,
-                            task_id=task_id,
-                            data_dir=data_dir,
-                            on_log=lambda msg: self.host_log.emit(task_id, msg),
-                        )
-                        if cleanup_success:
-                            self.host_log.emit(
-                                task_id,
-                                format_log(
-                                    "gh", "cleanup", "INFO", "task workspace cleaned"
-                                ),
-                            )
-                except Exception as cleanup_exc:
-                    self.host_log.emit(
-                        task_id,
-                        format_log(
-                            "gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}"
-                        ),
-                    )
             elapsed_s = time.monotonic() - start_s
             self.host_log.emit(
                 task_id,

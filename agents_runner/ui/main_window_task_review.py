@@ -47,21 +47,37 @@ class MainWindowTaskReviewMixin:
         repo_root = str(task.gh_repo_root or "").strip()
         branch = str(task.gh_branch or "").strip()
 
-        if not repo_root and env:
+        if not repo_root:
+            repo_root = str(task.host_workdir or "").strip()
+            if repo_root:
+                task.gh_repo_root = repo_root
+
+        if (not repo_root or not os.path.isdir(repo_root)) and env:
             from agents_runner.environments.paths import managed_repo_checkout_path
+            from agents_runner.environments.task_workspaces import (
+                task_workspace_candidates,
+            )
 
             repo_root = managed_repo_checkout_path(
                 env.env_id,
                 data_dir=os.path.dirname(self._state_path),
                 task_id=task_id,
+                workspace_location=self._settings_data.get("task_workspace_location"),
             )
+            if not os.path.isdir(repo_root):
+                repo_root = next(
+                    (
+                        candidate
+                        for candidate in task_workspace_candidates(
+                            env.env_id,
+                            task_id,
+                            data_dir=os.path.dirname(self._state_path),
+                        )
+                        if os.path.isdir(candidate)
+                    ),
+                    repo_root,
+                )
             # Persist the repo_root to the task for future use
-            if repo_root:
-                task.gh_repo_root = repo_root
-
-        # If still missing, try to get from task's host_workdir
-        if not repo_root:
-            repo_root = str(task.host_workdir or "").strip()
             if repo_root:
                 task.gh_repo_root = repo_root
 

@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 
 from typing import Any
 
+from PySide6.QtCore import Qt
+from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QProgressDialog
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import container_config_dir
@@ -20,7 +24,18 @@ from agents_runner.environments import Environment
 from agents_runner.environments.model import normalize_gpu_override_mode
 from agents_runner.environments.model import normalize_opencode_interactive_mode
 from agents_runner.environments.model import normalize_opencode_interactive_override
+from agents_runner.environments.task_workspaces import TASK_WORKSPACE_LOCATION_APP_DATA
+from agents_runner.environments.task_workspaces import (
+    TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE,
+)
+from agents_runner.environments.task_workspaces import normalize_task_workspace_settings
+from agents_runner.environments.task_workspaces import task_workspace_path
+from agents_runner.persistence import load_all_done_task_payloads
+from agents_runner.persistence import save_task_payload
+from agents_runner.persistence import serialize_task
 from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
+from agents_runner.ui.task_workspace_migration import TaskWorkspaceMigrationRecord
+from agents_runner.ui.task_workspace_migration import TaskWorkspaceMigrationWorker
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +64,10 @@ class MainWindowSettingsMixin:
     def _apply_settings_to_pages(self) -> None:
         if not self._settings.isVisible():
             self._settings.set_settings(self._settings_data)
+        if hasattr(self._settings, "set_task_workspace_migration_blocked"):
+            self._settings.set_task_workspace_migration_blocked(
+                self._has_active_cloned_task_workspaces()
+            )
         self._envs_page.set_settings_data(
             self._settings_data
         )  # Pass settings to environments page
@@ -60,6 +79,257 @@ class MainWindowSettingsMixin:
         spellcheck_enabled = bool(self._settings_data.get("spellcheck_enabled", True))
         self._new_task.set_spellcheck_enabled(spellcheck_enabled)
         self._new_task.set_stt_mode("offline")
+
+    def _has_active_cloned_task_workspaces(self) -> bool:
+        for task in getattr(self, "_tasks", {}).values():
+            if str(getattr(task, "workspace_type", "") or "") != "cloned":
+                continue
+            status = str(getattr(task, "status", "") or "").strip().lower()
+            finalization = (
+                str(getattr(task, "finalization_state", "") or "").strip().lower()
+            )
+            if task.is_active() or status in {"queued", "running", "finalizing"}:
+                return True
+            if finalization in {"pending", "running"} and not (
+                task.is_done() or task.is_failed()
+            ):
+                return True
+        return False
+
+    def _on_move_task_workspaces_requested(self, force: bool) -> None:
+        if self._has_active_cloned_task_workspaces() and not force:
+            QMessageBox.information(
+                self,
+                "Active tasks",
+                "Active tasks must finish before task workspaces can be moved.",
+            )
+            self._apply_settings_to_pages()
+            return
+
+        if force and self._has_active_cloned_task_workspaces():
+            if (
+                QMessageBox.question(
+                    self,
+                    "Force migration?",
+                    "Force migration will stop active cloned tasks before moving workspaces.",
+                )
+                != QMessageBox.StandardButton.Yes
+            ):
+                return
+            self._force_stop_cloned_tasks_for_migration()
+
+        target_location = str(
+            self._settings_data.get("task_workspace_location") or "app_data"
+        )
+        target_location = (
+            TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
+            if target_location == TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
+            else TASK_WORKSPACE_LOCATION_APP_DATA
+        )
+        source_location = (
+            TASK_WORKSPACE_LOCATION_APP_DATA
+            if target_location == TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
+            else TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
+        )
+        records = self._migration_records()
+        if not records:
+            QMessageBox.information(
+                self,
+                "No workspaces",
+                "No cloned task workspaces were found to move.",
+            )
+            return
+        self._start_task_workspace_migration(
+            records=records,
+            source_location=source_location,
+            target_location=target_location,
+        )
+
+    def _force_stop_cloned_tasks_for_migration(self) -> None:
+        for task_id, task in list(getattr(self, "_tasks", {}).items()):
+            if str(getattr(task, "workspace_type", "") or "") != "cloned":
+                continue
+            if not task.is_active():
+                continue
+            bridge = getattr(self, "_bridges", {}).get(task_id)
+            if bridge is not None:
+                try:
+                    bridge.request_user_cancel()
+                except Exception:
+                    pass
+            prep_worker = getattr(self, "_interactive_prep_workers", {}).get(task_id)
+            if prep_worker is not None:
+                try:
+                    prep_worker.request_stop()
+                except Exception:
+                    pass
+            watch = getattr(self, "_interactive_watch", {}).get(task_id)
+            if watch is not None:
+                try:
+                    _label, stop = watch
+                    stop.set()
+                except Exception:
+                    pass
+            container_id = str(getattr(task, "container_id", "") or "").strip()
+            if container_id:
+                threading.Thread(
+                    target=self._force_remove_container,
+                    args=(container_id,),
+                    daemon=True,
+                ).start()
+            task.status = "cancelled"
+            task.finalization_state = "done"
+            task.finalization_error = ""
+            self._update_task_ui(task)
+        self._schedule_save()
+
+    def _migration_records(self) -> list[TaskWorkspaceMigrationRecord]:
+        records: list[TaskWorkspaceMigrationRecord] = []
+        seen: set[tuple[str, str]] = set()
+
+        def _add(payload: dict[str, object]) -> None:
+            if str(payload.get("workspace_type") or "").strip() != "cloned":
+                return
+            task_id = str(payload.get("task_id") or "").strip()
+            env_id = str(payload.get("environment_id") or "").strip()
+            if not task_id or not env_id:
+                return
+            key = (env_id, task_id)
+            if key in seen:
+                return
+            seen.add(key)
+            records.append(
+                TaskWorkspaceMigrationRecord(
+                    task_id=task_id,
+                    environment_id=env_id,
+                )
+            )
+
+        for task in getattr(self, "_tasks", {}).values():
+            _add(
+                {
+                    "task_id": getattr(task, "task_id", ""),
+                    "environment_id": getattr(task, "environment_id", ""),
+                    "workspace_type": getattr(task, "workspace_type", ""),
+                }
+            )
+        for payload in load_all_done_task_payloads(self._state_path):
+            _add(payload)
+        return records
+
+    def _start_task_workspace_migration(
+        self,
+        *,
+        records: list[TaskWorkspaceMigrationRecord],
+        source_location: str,
+        target_location: str,
+    ) -> None:
+        progress = QProgressDialog(
+            "Preparing migration...", "Close", 0, len(records), self
+        )
+        progress.setWindowTitle("Move all tasks")
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        progress.show()
+
+        thread = QThread(self)
+        worker = TaskWorkspaceMigrationWorker(
+            records=records,
+            data_dir=os.path.dirname(self._state_path),
+            source_location=source_location,
+            destination_location=target_location,
+        )
+        worker.moveToThread(thread)
+
+        def _on_progress(done: int, total: int, task_id: str, eta: str) -> None:
+            progress.setMaximum(max(1, int(total)))
+            progress.setValue(max(0, int(done)))
+            progress.setLabelText(
+                f"Moving {done}/{total}\nCurrent task: {task_id or 'Preparing'}\n{eta}"
+            )
+
+        def _on_finished(
+            moved: int,
+            skipped: int,
+            failed: int,
+            failures: object,
+            moved_records: object,
+        ) -> None:
+            progress.setValue(progress.maximum())
+            self._apply_migrated_workspace_paths(moved_records, target_location)
+            detail = f"Moved: {moved}\nSkipped: {skipped}\nFailed: {failed}"
+            if failed and isinstance(failures, list):
+                detail = f"{detail}\n\n" + "\n".join(str(item) for item in failures[:5])
+            progress.setLabelText(detail)
+            QMessageBox.information(self, "Move all tasks", detail)
+            thread.quit()
+            worker.deleteLater()
+            thread.deleteLater()
+            self._task_workspace_migration_thread = None
+            self._task_workspace_migration_worker = None
+            self._apply_settings_to_pages()
+
+        worker.progress.connect(_on_progress)
+        worker.finished.connect(_on_finished)
+        thread.started.connect(worker.run)
+        self._task_workspace_migration_thread = thread
+        self._task_workspace_migration_worker = worker
+        thread.start()
+
+    def _apply_migrated_workspace_paths(
+        self, moved_records: object, target_location: str
+    ) -> None:
+        records = moved_records if isinstance(moved_records, list) else []
+        moved_by_task = {
+            str(getattr(record, "task_id", "") or ""): str(
+                getattr(record, "destination", "") or ""
+            )
+            for record in records
+        }
+        if not moved_by_task:
+            return
+        for task_id, destination in moved_by_task.items():
+            task = self._tasks.get(task_id)
+            if task is None:
+                continue
+            task.host_workdir = destination
+            if str(getattr(task, "workspace_type", "") or "") == "cloned":
+                task.gh_repo_root = destination
+            save_task_payload(
+                self._state_path,
+                serialize_task(task),
+                archived=self._should_archive_task(task),
+            )
+
+        for payload in load_all_done_task_payloads(self._state_path):
+            task_id = str(payload.get("task_id") or "").strip()
+            destination = moved_by_task.get(task_id)
+            if not destination:
+                continue
+            payload["host_workdir"] = destination
+            payload["gh_repo_root"] = destination
+            save_task_payload(self._state_path, payload, archived=True)
+
+        for payload in load_all_done_task_payloads(self._state_path):
+            task_id = str(payload.get("task_id") or "").strip()
+            if task_id in moved_by_task:
+                continue
+            env_id = str(payload.get("environment_id") or "").strip()
+            if not task_id or not env_id:
+                continue
+            destination = task_workspace_path(
+                env_id,
+                task_id=task_id,
+                data_dir=os.path.dirname(self._state_path),
+                location=target_location,
+            )
+            if os.path.isdir(destination):
+                payload["host_workdir"] = destination
+                payload["gh_repo_root"] = destination
+                save_task_payload(self._state_path, payload, archived=True)
+        self._schedule_save()
 
     def _apply_settings(self, settings: dict[str, Any]) -> None:
         previous_radio_enabled = bool(self._settings_data.get("radio_enabled") or False)
@@ -180,6 +450,7 @@ class MainWindowSettingsMixin:
                 merged.get("radio_loudness_boost_factor")
             )
         )
+        merged = normalize_task_workspace_settings(merged)
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
 

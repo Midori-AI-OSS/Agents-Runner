@@ -10,6 +10,7 @@ from agents_runner.persistence import load_state
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import save_state
 from agents_runner.persistence import serialize_task
+from agents_runner.environments.task_workspaces import normalize_task_workspace_settings
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import parse_docker_time
@@ -196,6 +197,7 @@ class MainWindowPersistenceMixin:
         self._settings_data.setdefault("agentsnova_auto_reactions_enabled", True)
         self._settings_data.setdefault("agentsnova_trusted_users_global", [])
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
+        self._settings_data = normalize_task_workspace_settings(self._settings_data)
         self._settings_data["gpu_enabled"] = bool(
             self._settings_data.get("gpu_enabled") or False
         )

@@ -4,8 +4,9 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Any
 
-from PySide6.QtCore import QSignalBlocker, Qt
-from PySide6.QtGui import QIntValidator
+from PySide6.QtCore import QEvent, QSignalBlocker, Qt
+from PySide6.QtGui import QIntValidator, QKeyEvent
+from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QDoubleSpinBox
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QSlider
+from PySide6.QtWidgets import QSpinBox
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -28,6 +30,14 @@ from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_default_agent_system_name
 from agents_runner.environments import load_environments
 from agents_runner.environments import normalize_opencode_interactive_mode
+from agents_runner.environments.task_workspaces import (
+    TASK_WORKSPACE_LOCATION_APP_DATA,
+)
+from agents_runner.environments.task_workspaces import (
+    TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE,
+)
+from agents_runner.environments.task_workspaces import normalize_task_workspace_location
+from agents_runner.environments.task_workspaces import scratch_drive_status
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.pages.github_trust import (
     collect_seed_usernames_for_cloned_environments,
@@ -71,6 +81,18 @@ class SettingsFormMixin:
                 key="general_preferences",
                 title="General Preferences",
                 subtitle="Global editor and default behavior toggles.",
+                section="General",
+            ),
+            _SettingsPaneSpec(
+                key="storage",
+                title="Storage",
+                subtitle="Local task workspace storage and migration.",
+                section="General",
+            ),
+            _SettingsPaneSpec(
+                key="cleanup",
+                title="Cleanup",
+                subtitle="Finished workspace retention and scan cadence.",
                 section="General",
             ),
             _SettingsPaneSpec(
@@ -220,6 +242,56 @@ class SettingsFormMixin:
         self._mount_host_cache.setToolTip(
             "Mounts ~/.cache to speed up package manager installs across environments."
         )
+
+        self._task_workspace_location = QComboBox()
+        self._task_workspace_location.addItem(
+            "App data", TASK_WORKSPACE_LOCATION_APP_DATA
+        )
+        self._task_workspace_location.addItem(
+            "Scratch drive", TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
+        )
+        self._task_workspace_location.setToolTip(
+            "Controls where cloned task workspaces are stored on the host."
+        )
+        self._task_workspace_location.currentIndexChanged.connect(
+            self._refresh_task_workspace_controls
+        )
+
+        self._scratch_drive_status = QLabel("")
+        self._scratch_drive_status.setObjectName("SettingsPaneSubtitle")
+        self._scratch_drive_status.setWordWrap(True)
+
+        self._move_task_workspaces = QToolButton()
+        self._move_task_workspaces.setText("Move all tasks")
+        self._move_task_workspaces.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._move_task_workspaces.clicked.connect(self._on_move_task_workspaces)
+        self._move_task_workspaces.installEventFilter(self)
+        self._task_workspace_migration_blocked = False
+        self._move_task_workspaces_shift_pressed = False
+
+        self._task_workspace_cleanup_retention_days = QSpinBox()
+        self._task_workspace_cleanup_retention_days.setRange(1, 365)
+        self._task_workspace_cleanup_retention_days.setSuffix(" days")
+        self._task_workspace_cleanup_retention_days.setValue(30)
+
+        self._task_workspace_cleanup_interval_minutes = QSpinBox()
+        self._task_workspace_cleanup_interval_minutes.setRange(5, 1440)
+        self._task_workspace_cleanup_interval_minutes.setSuffix(" minutes")
+        self._task_workspace_cleanup_interval_minutes.setValue(60)
+
+        self._task_workspace_cleanup_scan_delay_seconds = QSpinBox()
+        self._task_workspace_cleanup_scan_delay_seconds.setRange(0, 60)
+        self._task_workspace_cleanup_scan_delay_seconds.setSuffix(" seconds")
+        self._task_workspace_cleanup_scan_delay_seconds.setValue(5)
+
+        self._task_workspace_cleanup_note = QLabel("")
+        self._task_workspace_cleanup_note.setObjectName("SettingsPaneSubtitle")
+        self._task_workspace_cleanup_note.setWordWrap(True)
+        self._task_workspace_cleanup_controls: list[QWidget] = [
+            self._task_workspace_cleanup_retention_days,
+            self._task_workspace_cleanup_interval_minutes,
+            self._task_workspace_cleanup_scan_delay_seconds,
+        ]
 
         self._github_workroom_prefer_browser = QCheckBox("Enabled")
         self._github_workroom_prefer_browser.setToolTip(
@@ -426,6 +498,55 @@ class SettingsFormMixin:
         general_body.addLayout(terminal_layout)
         general_body.addStretch(1)
         self._register_page("general_preferences", general_page)
+
+        storage_page, storage_body = self._create_page(specs_by_key["storage"])
+        workspaces_grid = QGridLayout()
+        configure_form_grid(workspaces_grid)
+        add_grid_row(
+            workspaces_grid,
+            0,
+            QLabel("Task workspace location"),
+            self._task_workspace_location,
+        )
+        self._scratch_drive_status_label = QLabel("Scratch drive")
+        add_grid_row(
+            workspaces_grid,
+            1,
+            self._scratch_drive_status_label,
+            self._scratch_drive_status,
+        )
+        add_grid_row(
+            workspaces_grid, 2, QLabel("Move all tasks"), self._move_task_workspaces
+        )
+        storage_body.addLayout(workspaces_grid)
+        storage_body.addStretch(1)
+        self._register_page("storage", storage_page)
+
+        cleanup_page, cleanup_body = self._create_page(specs_by_key["cleanup"])
+        cleanup_grid = QGridLayout()
+        configure_form_grid(cleanup_grid)
+        add_grid_row(
+            cleanup_grid,
+            0,
+            QLabel("Keep finished workspaces"),
+            self._task_workspace_cleanup_retention_days,
+        )
+        add_grid_row(
+            cleanup_grid,
+            1,
+            QLabel("Check for cleanup every"),
+            self._task_workspace_cleanup_interval_minutes,
+        )
+        add_grid_row(
+            cleanup_grid,
+            2,
+            QLabel("Wait between scans"),
+            self._task_workspace_cleanup_scan_delay_seconds,
+        )
+        cleanup_body.addLayout(cleanup_grid)
+        cleanup_body.addWidget(self._task_workspace_cleanup_note)
+        cleanup_body.addStretch(1)
+        self._register_page("cleanup", cleanup_page)
 
         themes_page, themes_body = self._create_page(specs_by_key["themes"])
         themes_grid = QGridLayout()
@@ -668,12 +789,17 @@ class SettingsFormMixin:
         title = QLabel(spec.title)
         title.setObjectName("SettingsPaneTitle")
 
+        subtitle = QLabel(spec.subtitle)
+        subtitle.setObjectName("SettingsPaneSubtitle")
+        subtitle.setWordWrap(True)
+
         body = QWidget(content)
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(GRID_VERTICAL_SPACING)
 
         content_layout.addWidget(title)
+        content_layout.addWidget(subtitle)
         content_layout.addWidget(body)
 
         scroll.setWidget(content)
@@ -970,6 +1096,39 @@ class SettingsFormMixin:
             self._mount_host_cache.setChecked(
                 bool(settings.get("mount_host_cache", False))
             )
+            workspace_location = normalize_task_workspace_location(
+                settings.get("task_workspace_location")
+            )
+            self._set_combo_value(
+                self._task_workspace_location,
+                workspace_location,
+                fallback=TASK_WORKSPACE_LOCATION_APP_DATA,
+            )
+            self._task_workspace_cleanup_retention_days.setValue(
+                self._clamp_spin_value(
+                    settings.get("task_workspace_cleanup_retention_days"),
+                    minimum=1,
+                    maximum=365,
+                    default=30,
+                )
+            )
+            self._task_workspace_cleanup_interval_minutes.setValue(
+                self._clamp_spin_value(
+                    settings.get("task_workspace_cleanup_interval_minutes"),
+                    minimum=5,
+                    maximum=1440,
+                    default=60,
+                )
+            )
+            self._task_workspace_cleanup_scan_delay_seconds.setValue(
+                self._clamp_spin_value(
+                    settings.get("task_workspace_cleanup_scan_delay_seconds"),
+                    minimum=0,
+                    maximum=60,
+                    default=5,
+                )
+            )
+            self._refresh_task_workspace_controls()
             theme_value = normalize_ui_theme_name(
                 settings.get("ui_theme"), allow_auto=True
             )
@@ -1166,6 +1325,18 @@ class SettingsFormMixin:
             "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
             "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),
             "mount_host_cache": bool(self._mount_host_cache.isChecked()),
+            "task_workspace_location": normalize_task_workspace_location(
+                self._task_workspace_location.currentData()
+            ),
+            "task_workspace_cleanup_retention_days": int(
+                self._task_workspace_cleanup_retention_days.value()
+            ),
+            "task_workspace_cleanup_interval_minutes": int(
+                self._task_workspace_cleanup_interval_minutes.value()
+            ),
+            "task_workspace_cleanup_scan_delay_seconds": int(
+                self._task_workspace_cleanup_scan_delay_seconds.value()
+            ),
             "radio_enabled": bool(self._radio_enabled.isChecked()),
             "radio_autostart": bool(self._radio_autostart.isChecked()),
             "radio_channel": RadioController.normalize_channel(
@@ -1184,6 +1355,141 @@ class SettingsFormMixin:
                 )
             ),
         }
+
+    @staticmethod
+    def _clamp_spin_value(
+        value: object, *, minimum: int, maximum: int, default: int
+    ) -> int:
+        try:
+            parsed = int(str(value).strip())
+        except Exception:
+            parsed = default
+        return max(minimum, min(maximum, parsed))
+
+    def _refresh_task_workspace_controls(self, *_args: object) -> None:
+        location = normalize_task_workspace_location(
+            self._task_workspace_location.currentData()
+        )
+        status = scratch_drive_status()
+        scratch_selected = location == TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
+        self._scratch_drive_status.setVisible(scratch_selected)
+        if hasattr(self, "_scratch_drive_status_label"):
+            self._scratch_drive_status_label.setVisible(scratch_selected)
+
+        if not status.exists_or_creatable:
+            scratch_text = "Scratch drive is not ready."
+        elif not status.is_ram_drive:
+            scratch_text = "Scratch drive is not a RAM drive."
+        elif not status.has_recommended_space:
+            scratch_text = "Scratch drive has less than 16 GiB free."
+        elif status.is_ram_drive:
+            scratch_text = "Scratch drive may use too much memory."
+        else:
+            scratch_text = "Scratch drive is ready."
+        self._scratch_drive_status.setText(scratch_text)
+        self._scratch_drive_status.setToolTip(
+            f"{status.path}\n"
+            f"RAM drive (tmpfs): {'yes' if status.is_ram_drive else 'no'}\n"
+            f"Free: {status.free_gib:.1f} GiB"
+        )
+
+        cleanup_disabled = bool(scratch_selected and status.is_ram_drive)
+        for widget in self._task_workspace_cleanup_controls:
+            widget.setEnabled(not cleanup_disabled)
+        if cleanup_disabled:
+            self._task_workspace_cleanup_note.setText(
+                "Cleanup is not needed while Scratch drive is using a RAM drive."
+            )
+            self._task_workspace_cleanup_note.setVisible(True)
+        elif scratch_selected:
+            self._task_workspace_cleanup_note.setText(
+                "Scratch drive is not a RAM drive, so cleanup settings still apply."
+            )
+            self._task_workspace_cleanup_note.setVisible(True)
+        else:
+            self._task_workspace_cleanup_note.setText("")
+            self._task_workspace_cleanup_note.setVisible(False)
+        self._refresh_move_task_workspaces_button()
+
+    def _refresh_move_task_workspaces_button(self) -> None:
+        blocked = bool(getattr(self, "_task_workspace_migration_blocked", False))
+        self._move_task_workspaces.setEnabled(not blocked)
+        if blocked:
+            self._move_task_workspaces.setToolTip("Active tasks must finish first.")
+        else:
+            self._move_task_workspaces.setToolTip(
+                "Moves cloned task workspaces to the selected location."
+            )
+        force_tint = bool(
+            getattr(self, "_move_task_workspaces_shift_pressed", False)
+            and self._move_task_workspaces.isEnabled()
+        )
+        self._move_task_workspaces.setStyleSheet(
+            (
+                "QToolButton { border: 1px solid rgba(244, 63, 94, 130); "
+                "background-color: rgba(244, 63, 94, 62); }"
+                "QToolButton:hover { background-color: rgba(244, 63, 94, 76); }"
+            )
+            if force_tint
+            else ""
+        )
+
+    def set_task_workspace_migration_blocked(self, blocked: bool) -> None:
+        self._task_workspace_migration_blocked = bool(blocked)
+        if hasattr(self, "_move_task_workspaces"):
+            self._refresh_move_task_workspaces_button()
+
+    def _on_move_task_workspaces(self) -> None:
+        modifiers = QApplication.keyboardModifiers()
+        force = bool(
+            getattr(self, "_move_task_workspaces_shift_pressed", False)
+            or modifiers & Qt.KeyboardModifier.ShiftModifier
+        )
+        self.move_task_workspaces_requested.emit(force)
+
+    def eventFilter(self, watched: object, event: QEvent) -> bool:
+        if not self.isVisible():
+            self._set_move_task_workspaces_shift_pressed(False)
+            return super().eventFilter(watched, event)
+        if event.type() in {QEvent.Type.KeyPress, QEvent.Type.KeyRelease}:
+            self._update_move_task_workspaces_shift_state(event)
+        elif event.type() in {
+            QEvent.Type.ApplicationDeactivate,
+            QEvent.Type.WindowDeactivate,
+        }:
+            self._set_move_task_workspaces_shift_pressed(False)
+        if watched is getattr(self, "_move_task_workspaces", None):
+            if event.type() in {
+                QEvent.Type.Enter,
+                QEvent.Type.Leave,
+                QEvent.Type.MouseMove,
+            }:
+                self._refresh_move_task_workspaces_button()
+        return super().eventFilter(watched, event)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        super().keyPressEvent(event)
+        self._update_move_task_workspaces_shift_state(event)
+
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        super().keyReleaseEvent(event)
+        self._update_move_task_workspaces_shift_state(event)
+
+    def _update_move_task_workspaces_shift_state(self, event: QEvent) -> None:
+        if not isinstance(event, QKeyEvent):
+            return
+        if event.key() != Qt.Key.Key_Shift:
+            return
+        self._set_move_task_workspaces_shift_pressed(
+            event.type() == QEvent.Type.KeyPress
+        )
+
+    def _set_move_task_workspaces_shift_pressed(self, pressed: bool) -> None:
+        pressed = bool(pressed)
+        if getattr(self, "_move_task_workspaces_shift_pressed", False) == pressed:
+            return
+        self._move_task_workspaces_shift_pressed = pressed
+        self._refresh_move_task_workspaces_button()
 
     def _on_setup_global_github_defaults(self) -> None:
         environments = load_environments().values()

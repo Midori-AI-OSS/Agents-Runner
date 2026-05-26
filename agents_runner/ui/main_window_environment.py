@@ -49,7 +49,9 @@ class MainWindowEnvironmentMixin:
             return os.path.expanduser(str(env.workspace_target or "").strip())
         if workspace_type == WORKSPACE_CLONED:
             workdir = managed_repo_checkout_path(
-                env.env_id, data_dir=os.path.dirname(self._state_path)
+                env.env_id,
+                data_dir=os.path.dirname(self._state_path),
+                workspace_location=self._settings_data.get("task_workspace_location"),
             )
             try:
                 os.makedirs(workdir, exist_ok=True)
@@ -78,6 +80,7 @@ class MainWindowEnvironmentMixin:
                 env.env_id,
                 data_dir=os.path.dirname(self._state_path),
                 task_id=task_id,
+                workspace_location=self._settings_data.get("task_workspace_location"),
             )
             target = str(env.workspace_target or "").strip()
             if not target:

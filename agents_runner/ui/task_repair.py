@@ -160,25 +160,40 @@ def _repair_from_environment(
     if not env:
         return (False, "environment not found")
 
-    repo_path = ""
+    repo_path = str(getattr(task, "host_workdir", "") or "").strip()
     if task.requires_git_metadata():
         try:
             from agents_runner.environments.paths import managed_repo_checkout_path
+            from agents_runner.environments.task_workspaces import (
+                task_workspace_candidates,
+            )
 
-            repo_path = managed_repo_checkout_path(
+            candidate = managed_repo_checkout_path(
                 str(getattr(env, "env_id", "") or env_id),
                 data_dir=os.path.dirname(state_path),
                 task_id=str(task_id),
             )
+            if os.path.isdir(candidate):
+                repo_path = candidate
+            elif not os.path.isdir(repo_path):
+                repo_path = next(
+                    (
+                        path
+                        for path in task_workspace_candidates(
+                            str(getattr(env, "env_id", "") or env_id),
+                            str(task_id),
+                            data_dir=os.path.dirname(state_path),
+                        )
+                        if os.path.isdir(path)
+                    ),
+                    repo_path,
+                )
         except Exception:
-            repo_path = ""
+            pass
     if not repo_path:
         repo_path = str(getattr(env, "workspace_target", "") or "").strip()
     if not repo_path:
         repo_path = str(getattr(env, "host_workdir", "") or "").strip()
-    if not repo_path:
-        repo_path = str(getattr(task, "host_workdir", "") or "").strip()
-
     if not repo_path or not os.path.isdir(repo_path):
         return (False, "environment has no accessible repository")
 

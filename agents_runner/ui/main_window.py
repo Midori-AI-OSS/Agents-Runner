@@ -123,6 +123,10 @@ class MainWindow(
             "agentsnova_auto_reactions_enabled": True,
             "agentsnova_trusted_users_global": [],
             "agentsnova_review_guard_mode": "reaction",
+            "task_workspace_location": "app_data",
+            "task_workspace_cleanup_retention_days": 30,
+            "task_workspace_cleanup_interval_minutes": 60,
+            "task_workspace_cleanup_scan_delay_seconds": 5,
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False
@@ -140,6 +144,10 @@ class MainWindow(
         self._repo_branches_request_id: int = 0
         self._repo_branches_request_meta: dict[int, dict[str, object]] = {}
         self._repo_branches_cache: dict[str, list[str]] = {}
+        self._task_workspace_cleanup_last_check_s = 0.0
+        self._task_workspace_cleanup_running = False
+        self._task_workspace_migration_thread: QThread | None = None
+        self._task_workspace_migration_worker: object | None = None
         self._state_path = default_state_path()
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -275,6 +283,9 @@ class MainWindow(
         self._settings.saved.connect(self._apply_settings, Qt.QueuedConnection)
         self._settings.test_preflight_requested.connect(
             self._on_settings_test_preflight, Qt.QueuedConnection
+        )
+        self._settings.move_task_workspaces_requested.connect(
+            self._on_move_task_workspaces_requested, Qt.QueuedConnection
         )
 
         self._stack = QWidget()

@@ -16,7 +16,6 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
-from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh.permissions import check_pr_creation_capability_for_repo_ref
 from agents_runner.gh_management import is_gh_available
@@ -65,28 +64,14 @@ class MainWindowTasksAgentMixin:
         if not to_remove:
             return
 
-        # Archive tasks and clean up workspaces
+        # Archive tasks; retained cloned workspaces are cleaned by the host policy.
         archived_tasks: list[Task] = []
-        data_dir = os.path.dirname(self._state_path)
         for task_id in sorted(to_remove):
             task = self._tasks.get(task_id)
             if task is None:
                 continue
-            status = (task.status or "").lower()
             save_task_payload(self._state_path, serialize_task(task), archived=True)
             archived_tasks.append(task)
-
-            # Clean up task workspace (if using cloned GitHub repo)
-            if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
-                # Keep failed task repos for debugging (unless status is "done")
-                keep_on_error = status in {"failed", "error"}
-                if not keep_on_error:
-                    cleanup_task_workspace(
-                        env_id=task.environment_id,
-                        task_id=task_id,
-                        data_dir=data_dir,
-                        on_log=None,  # Silent cleanup
-                    )
 
         self._dashboard.remove_tasks(to_remove)
         for task_id in to_remove:

@@ -299,6 +299,29 @@ def load_done_task_payloads(
     return payloads
 
 
+def load_all_done_task_payloads(state_path: str) -> list[dict[str, Any]]:
+    done = tasks_done_dir(state_path)
+    if not os.path.isdir(done):
+        return []
+    payloads: list[dict[str, Any]] = []
+    try:
+        names = sorted(name for name in os.listdir(done) if name.endswith(".toml"))
+    except OSError:
+        return []
+    for name in names:
+        path = os.path.join(done, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "rb") as f:
+                payload = tomli.load(f)
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            payloads.append(payload)
+    return payloads
+
+
 def serialize_task(task: Any) -> dict[str, Any]:
     runner_config = getattr(task, "_runner_config", None)
     runner_config_payload: dict[str, Any] | None = None
