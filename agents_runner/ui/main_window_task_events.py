@@ -870,50 +870,6 @@ class MainWindowTaskEventsMixin:
         finally:
             pass
 
-    def _cleanup_cloned_repo_workspace_async(self, task_id: str, env_id: str) -> None:
-        """Clean up cloned repo workspace for a task asynchronously.
-
-        This is used when PR creation is skipped (otherwise the PR worker
-        performs cleanup after finishing).
-        """
-        import os
-
-        try:
-            state_path = getattr(self, "_state_path", "")
-            if not state_path:
-                self._on_task_log(
-                    task_id,
-                    format_log(
-                        "gh",
-                        "cleanup",
-                        "WARN",
-                        "cleanup skipped: state path not available",
-                    ),
-                )
-                return
-
-            self._on_task_log(
-                task_id,
-                format_log("gh", "cleanup", "INFO", "cleaning up task workspace"),
-            )
-            data_dir = os.path.dirname(state_path)
-            cleanup_success = cleanup_task_workspace(
-                env_id=env_id,
-                task_id=task_id,
-                data_dir=data_dir,
-                on_log=lambda msg: self._on_task_log(task_id, msg),
-            )
-            if cleanup_success:
-                self._on_task_log(
-                    task_id,
-                    format_log("gh", "cleanup", "INFO", "task workspace cleaned"),
-                )
-        except Exception as cleanup_exc:
-            self._on_task_log(
-                task_id,
-                format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}"),
-            )
-
     def _start_artifact_finalization(self, task: Task) -> None:
         if getattr(task, "_artifact_finalization_started", False):
             return
