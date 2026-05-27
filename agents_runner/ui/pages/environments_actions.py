@@ -3,6 +3,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _EnvironmentsPageHints
+else:
+    _EnvironmentsPageHints = object
+
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import Environment
@@ -27,7 +34,7 @@ from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
 from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 
 
-class EnvironmentsPageActionsMixin:
+class EnvironmentsPageActionsMixin(_EnvironmentsPageHints):
     def _sync_workspace_controls(
         self, *_: object, env: Environment | None = None
     ) -> None:

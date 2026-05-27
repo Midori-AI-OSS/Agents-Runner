@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _EnvironmentsPageHints
+else:
+    _EnvironmentsPageHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator
@@ -57,7 +63,7 @@ class _EnvironmentPaneSpec:
     section: str
 
 
-class EnvironmentsFormMixin:
+class EnvironmentsFormMixin(_EnvironmentsPageHints):
     def _default_pane_specs(self) -> list[_EnvironmentPaneSpec]:
         return [
             _EnvironmentPaneSpec(

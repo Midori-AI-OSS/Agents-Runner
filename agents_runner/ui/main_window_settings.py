@@ -4,7 +4,12 @@ import logging
 import os
 import threading
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -40,7 +45,7 @@ from agents_runner.ui.task_workspace_migration import TaskWorkspaceMigrationWork
 logger = logging.getLogger(__name__)
 
 
-class MainWindowSettingsMixin:
+class MainWindowSettingsMixin(_MainWindowHints):
     _REMOVED_IDE_SETTINGS_KEYS = (
         "ide_auto_mounts_enabled",
         "ide_system_default",

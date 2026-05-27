@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
+
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.environments import normalize_opencode_interactive_mode
 from agents_runner.log_format import prettify_log_line
@@ -18,7 +25,7 @@ from agents_runner.ui.utils import stain_color
 from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 
-class MainWindowPersistenceMixin:
+class MainWindowPersistenceMixin(_MainWindowHints):
     @staticmethod
     def _is_missing_container_error(exc: Exception) -> bool:
         text = str(exc or "").lower()

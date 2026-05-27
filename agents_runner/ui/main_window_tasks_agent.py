@@ -6,7 +6,13 @@ import shlex
 import shutil
 import time
 
+from typing import TYPE_CHECKING
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -48,7 +54,7 @@ from agents_runner.ui.utils import stain_color
 logger = logging.getLogger(__name__)
 
 
-class MainWindowTasksAgentMixin:
+class MainWindowTasksAgentMixin(_MainWindowHints):
     def _clean_old_tasks(self) -> None:
         to_remove: set[str] = set()
         for task_id, task in self._tasks.items():
