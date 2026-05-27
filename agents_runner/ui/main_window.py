@@ -236,7 +236,11 @@ class MainWindow(
         top_layout.addStretch(1)
         self._radio_control = RadioControlWidget(top)
         self._radio_control.setVisible(self._radio_controller.qt_available)
-        top_layout.addWidget(self._radio_control, 0, Qt.AlignRight | Qt.AlignVCenter)
+        top_layout.addWidget(
+            self._radio_control,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
 
         self._radio_control.play_requested.connect(
             self._on_radio_control_play_requested

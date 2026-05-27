@@ -170,7 +170,7 @@ def paint_gemini_background(
     orbs: list[_GeminiChromaOrb],
 ) -> None:
     painter.save()
-    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
     w = max(1, rect.width())
     h = max(1, rect.height())
@@ -183,7 +183,7 @@ def paint_gemini_background(
 
     if orbs:
         palette = gemini_palette()
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Screen)
         for orb in orbs:
             c = palette[int(orb.color_idx) % len(palette)]

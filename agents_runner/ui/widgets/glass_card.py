@@ -40,7 +40,7 @@ class GlassCard(QFrame):
         rect = self.rect().adjusted(1, 1, -1, -1)
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         path = QPainterPath()
         path.addRect(rect)

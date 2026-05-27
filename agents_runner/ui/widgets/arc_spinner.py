@@ -30,7 +30,7 @@ class ArcSpinner(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         center = self.rect().center()
         ring_r = min(self.width(), self.height()) * 0.36
@@ -41,7 +41,7 @@ class ArcSpinner(QWidget):
             alpha = int(22 + (i / 12.0) * 190)
 
             color = QColor(56, 189, 248, alpha)
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(color)
 
             x = center.x() + math.cos(math.radians(angle_deg)) * ring_r

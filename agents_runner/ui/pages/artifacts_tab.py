@@ -190,7 +190,7 @@ class ArtifactsTab(QWidget):
         preview_layout.setSpacing(8)
 
         self._preview_label = QLabel()
-        self._preview_label.setAlignment(Qt.AlignCenter)
+        self._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
         self._preview_label.setWordWrap(True)
         self._preview_label.setSizePolicy(
@@ -198,7 +198,7 @@ class ArtifactsTab(QWidget):
         )
 
         self._thumbnail = QLabel()
-        self._thumbnail.setAlignment(Qt.AlignCenter)
+        self._thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._thumbnail.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -237,7 +237,7 @@ class ArtifactsTab(QWidget):
         preview_layout.addWidget(self._text_preview, 1)
 
         self._empty_state = QLabel("No artifacts collected for this task")
-        self._empty_state.setAlignment(Qt.AlignCenter)
+        self._empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty_state.setStyleSheet(
             "color: rgba(237, 239, 245, 120); font-size: 13px;"
         )
@@ -419,7 +419,9 @@ class ArtifactsTab(QWidget):
         )
 
         self._preview_area.show()
-        self._preview_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self._preview_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
         self._preview_label.setText(summary)
         self._preview_label.show()
         self._thumbnail.hide()
@@ -750,7 +752,7 @@ class ArtifactsTab(QWidget):
         self._thumbnail.hide()
         self._text_preview.hide()
         self._preview_label.show()
-        self._preview_label.setAlignment(Qt.AlignCenter)
+        self._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         if self._preview_loader:
             self._preview_loader.thumbnail_original = None
 

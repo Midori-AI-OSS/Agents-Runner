@@ -195,10 +195,16 @@ class NewTaskPage(QWidget):
         prompt_container_layout.setSpacing(0)
         prompt_container_layout.addWidget(self._prompt, 0, 0)
         prompt_container_layout.addWidget(
-            self._template_prompt_indicator, 0, 0, Qt.AlignRight | Qt.AlignTop
+            self._template_prompt_indicator,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
         )
         prompt_container_layout.addWidget(
-            self._voice_btn, 0, 0, Qt.AlignRight | Qt.AlignBottom
+            self._voice_btn,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
         )
 
         interactive_hint = QLabel(

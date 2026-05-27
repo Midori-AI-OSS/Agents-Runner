@@ -97,9 +97,9 @@ class TaskDetailsPage(QWidget):
 
         header_layout.addWidget(self._title)
         header_layout.addWidget(self._subtitle, 1)
-        header_layout.addWidget(self._review, 0, Qt.AlignRight)
-        header_layout.addWidget(self._opencode_web_btn, 0, Qt.AlignRight)
-        header_layout.addWidget(self._desktop_btn, 0, Qt.AlignRight)
+        header_layout.addWidget(self._review, 0, Qt.AlignmentFlag.AlignRight)
+        header_layout.addWidget(self._opencode_web_btn, 0, Qt.AlignmentFlag.AlignRight)
+        header_layout.addWidget(self._desktop_btn, 0, Qt.AlignmentFlag.AlignRight)
         layout.addWidget(header)
 
         self._tabs = QTabWidget()
@@ -196,7 +196,7 @@ class TaskDetailsPage(QWidget):
         self._glyph = StatusGlyph(size=44)
         self._status = QLabel("idle")
         self._status.setStyleSheet("font-size: 16px; font-weight: 750;")
-        state_row.addWidget(self._glyph, 0, Qt.AlignLeft)
+        state_row.addWidget(self._glyph, 0, Qt.AlignmentFlag.AlignLeft)
         state_row.addWidget(self._status, 1)
 
         details = QGridLayout()

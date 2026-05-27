@@ -357,7 +357,7 @@ class AgentsTabWidget(QWidget):
     def _agent_cli_widget(self, row_index: int, inst: AgentInstance) -> QWidget:
         del row_index
         label = QLabel(format_agent_ui_label(normalize_agent(inst.agent_cli)))
-        label.setAlignment(Qt.AlignCenter)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setStyleSheet("color: rgba(237, 239, 245, 200);")
         return label
 

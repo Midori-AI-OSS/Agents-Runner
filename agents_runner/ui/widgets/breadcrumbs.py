@@ -45,7 +45,7 @@ class BreadcrumbBar(QWidget):
         self._segments_layout.addWidget(self._ellipsis)
         self._segment_buttons: list[QToolButton] = []
 
-        layout.addWidget(self._back_btn, 0, Qt.AlignLeft)
+        layout.addWidget(self._back_btn, 0, Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(self._segments_wrap, 1)
 
     def set_segments(self, segments: list[tuple[str, str]]) -> None:

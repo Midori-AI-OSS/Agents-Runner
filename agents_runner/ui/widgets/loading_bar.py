@@ -131,7 +131,7 @@ class BouncingLoadingBar(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
         outer = self.rect().adjusted(0, 0, -1, -1)
         inner = outer.adjusted(1, 1, -1, -1)
@@ -141,7 +141,7 @@ class BouncingLoadingBar(QWidget):
         border = QColor(255, 255, 255, 22)
         bg = QColor(self._color.red(), self._color.green(), self._color.blue(), 22)
 
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(bg)
         painter.drawRect(inner)
 
@@ -155,7 +155,7 @@ class BouncingLoadingBar(QWidget):
             chunk = QColor(
                 self._color.red(), self._color.green(), self._color.blue(), alpha
             )
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(chunk)
             painter.drawRect(inner)
             return
@@ -170,7 +170,7 @@ class BouncingLoadingBar(QWidget):
             travel_w = float(inner.width()) + 2.0 * travel_margin
 
             r, g, b = self._color.red(), self._color.green(), self._color.blue()
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             for line in self._dotted_lines:
                 phase = (
                     self._dotted_time_s / max(0.25, line.duration_s) + line.phase_offset
@@ -191,7 +191,7 @@ class BouncingLoadingBar(QWidget):
 
         if self._mode == "shimmer_sweep":
             r, g, b = self._color.red(), self._color.green(), self._color.blue()
-            painter.setPen(Qt.NoPen)
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(QColor(r, g, b, 14))
             painter.drawRect(inner)
 
@@ -220,6 +220,6 @@ class BouncingLoadingBar(QWidget):
         chunk_w = max(2, int(inner.width() * self._chunk_fraction))
         max_offset = max(0.0, float(inner.width() - chunk_w))
         x = int(inner.left() + (0.0 if max_offset <= 0.0 else self._offset))
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(chunk)
         painter.drawRect(x, int(inner.top()), int(chunk_w), int(inner.height()))

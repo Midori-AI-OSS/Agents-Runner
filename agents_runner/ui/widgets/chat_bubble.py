@@ -135,7 +135,7 @@ class _BubbleSurface(QWidget):
         self._tone = resolve_chat_bubble_tone(
             role="other", env_stain="slate", username="unknown"
         )
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
 
     def set_tail_side(self, side: str) -> None:
@@ -179,7 +179,7 @@ class _BubbleSurface(QWidget):
         path = path.united(tail_path)
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.setPen(self._tone.border)
         painter.setBrush(self._tone.fill)
         painter.drawPath(path)
@@ -255,23 +255,35 @@ class ChatBubbleWidget(QWidget):
         _clear_layout(self._root)
 
         if self._flipped:
-            self._root.addWidget(self._hover_timestamp, 0, Qt.AlignLeft | Qt.AlignTop)
+            self._root.addWidget(
+                self._hover_timestamp,
+                0,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+            )
             self._root.addStretch(1)
             self._root.addWidget(self._surface, 0)
             self._surface.set_tail_side("right")
         else:
             self._root.addWidget(self._surface, 0)
             self._root.addStretch(1)
-            self._root.addWidget(self._hover_timestamp, 0, Qt.AlignRight | Qt.AlignTop)
+            self._root.addWidget(
+                self._hover_timestamp,
+                0,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
+            )
             self._surface.set_tail_side("left")
 
         _clear_layout(self._header_layout)
         if self._flipped:
             self._header_layout.addWidget(self._author, 0)
             self._header_layout.addStretch(1)
-            self._header_layout.addWidget(self._actions_host, 0, Qt.AlignRight)
+            self._header_layout.addWidget(
+                self._actions_host, 0, Qt.AlignmentFlag.AlignRight
+            )
         else:
-            self._header_layout.addWidget(self._actions_host, 0, Qt.AlignLeft)
+            self._header_layout.addWidget(
+                self._actions_host, 0, Qt.AlignmentFlag.AlignLeft
+            )
             self._header_layout.addWidget(self._author, 0)
             self._header_layout.addStretch(1)
 

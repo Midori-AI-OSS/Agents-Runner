@@ -47,7 +47,7 @@ class _DashboardScrim(QWidget):
         alpha = int(min(max(self._alpha, 0), 255))
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
         if feather <= 0 or alpha <= 0:
             return
@@ -139,8 +139,8 @@ class DashboardPage(QWidget):
         filters_layout.addWidget(self._filter_text, 1)
         filters_layout.addWidget(self._filter_environment)
         filters_layout.addWidget(self._filter_state)
-        filters_layout.addWidget(clear_filters, 0, Qt.AlignRight)
-        filters_layout.addWidget(self._btn_clean_old, 0, Qt.AlignRight)
+        filters_layout.addWidget(clear_filters, 0, Qt.AlignmentFlag.AlignRight)
+        filters_layout.addWidget(self._btn_clean_old, 0, Qt.AlignmentFlag.AlignRight)
 
         columns = QWidget()
         columns_layout = QHBoxLayout(columns)
@@ -175,7 +175,7 @@ class DashboardPage(QWidget):
 
         pane = QFrame()
         pane.setObjectName("TaskTabPane")
-        pane.setAttribute(Qt.WA_StyledBackground, True)
+        pane.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         pane_layout = QVBoxLayout(pane)
         pane_layout.setContentsMargins(0, 8, 0, 0)
         pane_layout.setSpacing(10)
@@ -228,7 +228,9 @@ class DashboardPage(QWidget):
         self._past_loading_indicator.hide()
 
         past_layout.addWidget(self._scroll_past, 1)
-        past_layout.addWidget(self._past_loading_indicator, 0, Qt.AlignCenter)
+        past_layout.addWidget(
+            self._past_loading_indicator, 0, Qt.AlignmentFlag.AlignCenter
+        )
 
         self._stack.addWidget(active_page)
         self._stack.addWidget(past_page)

@@ -52,7 +52,7 @@ class _GitHubWorkRow(QWidget):
         self._item_type = str(item_type or "issue").strip().lower()
 
         self.setObjectName("TaskRow")
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("stain", "slate")
         self.setCursor(Qt.PointingHandCursor)
         self.setFixedHeight(56)
@@ -89,8 +89,8 @@ class _GitHubWorkRow(QWidget):
         self._btn_open.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self._btn_open.clicked.connect(lambda: self.open_requested.emit(self._item))
 
-        actions_layout.addWidget(self._btn_primary, 0, Qt.AlignRight)
-        actions_layout.addWidget(self._btn_open, 0, Qt.AlignRight)
+        actions_layout.addWidget(self._btn_primary, 0, Qt.AlignmentFlag.AlignRight)
+        actions_layout.addWidget(self._btn_open, 0, Qt.AlignmentFlag.AlignRight)
 
         layout.addWidget(self._title, 6)
         layout.addWidget(self._meta, 5)
@@ -141,7 +141,7 @@ class _GitHubWorkRow(QWidget):
         target_opacity = 1.0 if target_visible else 0.0
 
         self._actions_panel.setAttribute(
-            Qt.WA_TransparentForMouseEvents, not target_visible
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, not target_visible
         )
 
         if not animate:
@@ -175,7 +175,9 @@ class _GitHubWorkRow(QWidget):
         def _on_finished() -> None:
             self._actions_animation = None
             if not self._actions_visible:
-                self._actions_panel.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+                self._actions_panel.setAttribute(
+                    Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+                )
 
         group.finished.connect(_on_finished)
         group.start()
@@ -225,7 +227,7 @@ class _GitHubWorkSkeletonRow(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("TaskRow")
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("stain", "slate")
         self.setFixedHeight(56)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -313,7 +315,7 @@ class GitHubWorkListPage(QWidget):
 
         columns_layout.addWidget(c1, 6)
         columns_layout.addWidget(c3, 5)
-        columns_layout.addWidget(self._refresh, 0, Qt.AlignRight)
+        columns_layout.addWidget(self._refresh, 0, Qt.AlignmentFlag.AlignRight)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)

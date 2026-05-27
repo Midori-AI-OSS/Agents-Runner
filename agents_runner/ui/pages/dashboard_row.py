@@ -83,7 +83,7 @@ class TaskRow(QWidget):
         self._content_offset = 0.0
         self._entrance_anim: QParallelAnimationGroup | None = None
         self.setObjectName("TaskRow")
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("selected", False)
 
         self._content = QWidget(self)
@@ -96,30 +96,32 @@ class TaskRow(QWidget):
         self._task.setStyleSheet("font-weight: 650; color: rgba(237, 239, 245, 235);")
         self._task.setMinimumWidth(260)
         self._task.setTextInteractionFlags(Qt.NoTextInteraction)
-        self._task.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._task.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         state_wrap = QWidget()
         state_layout = QHBoxLayout(state_wrap)
         state_layout.setContentsMargins(0, 0, 0, 0)
         state_layout.setSpacing(8)
         self._glyph = StatusGlyph(size=18)
-        self._glyph.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._glyph.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._busy_bar = BouncingLoadingBar(width=72, height=8)
-        self._busy_bar.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._busy_bar.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         self._busy_bar.hide()
         self._status = QLabel("idle")
         self._status.setStyleSheet("color: rgba(237, 239, 245, 190);")
-        self._status.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        state_layout.addWidget(self._glyph, 0, Qt.AlignLeft)
-        state_layout.addWidget(self._busy_bar, 0, Qt.AlignLeft)
-        state_layout.addWidget(self._status, 0, Qt.AlignLeft)
+        self._status.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        state_layout.addWidget(self._glyph, 0, Qt.AlignmentFlag.AlignLeft)
+        state_layout.addWidget(self._busy_bar, 0, Qt.AlignmentFlag.AlignLeft)
+        state_layout.addWidget(self._status, 0, Qt.AlignmentFlag.AlignLeft)
         state_wrap.setMinimumWidth(180)
-        state_wrap.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        state_wrap.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         self._info = ElidedLabel("")
         self._info.setStyleSheet("color: rgba(237, 239, 245, 150);")
         self._info.setTextInteractionFlags(Qt.NoTextInteraction)
-        self._info.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._info.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         self._btn_discard = QToolButton()
         self._btn_discard.setObjectName("RowTrash")
@@ -137,7 +139,7 @@ class TaskRow(QWidget):
         layout.addWidget(self._task, 5)
         layout.addWidget(state_wrap, 0)
         layout.addWidget(self._info, 4)
-        layout.addWidget(self._btn_discard, 0, Qt.AlignRight)
+        layout.addWidget(self._btn_discard, 0, Qt.AlignmentFlag.AlignRight)
 
         self.setCursor(Qt.PointingHandCursor)
         self.set_stain("slate")
