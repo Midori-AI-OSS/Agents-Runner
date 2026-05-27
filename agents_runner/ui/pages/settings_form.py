@@ -1509,7 +1509,7 @@ class SettingsFormMixin:
         elif not status.has_recommended_space:
             scratch_text = "Scratch drive has less than 16 GiB free."
         elif status.is_ram_drive:
-            scratch_text = "Scratch drive may use too much memory."
+            scratch_text = "Scratch data is ready. Storage clears on reboot."
         else:
             scratch_text = "Scratch drive is ready."
         self._scratch_drive_status.setText(scratch_text)

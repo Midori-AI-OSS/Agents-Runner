@@ -5,13 +5,15 @@ import subprocess
 import threading
 import time
 
+from itertools import chain
+from typing import Any
 
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import cleanup_retained_task_workspaces
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
-from agents_runner.persistence import load_all_done_task_payloads
+from agents_runner.persistence import iter_done_task_payloads
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import stain_color
@@ -125,9 +127,9 @@ class MainWindowTaskRecoveryMixin:
             scan_delay_seconds = 5
         active_task_ids: set[str] = set()
         finalizing_task_ids: set[str] = set()
-        payloads: list[dict[str, object]] = []
+        active_payloads: list[dict[str, Any]] = []
         for task in list(self._tasks.values()):
-            payloads.append(serialize_task(task))
+            active_payloads.append(serialize_task(task))
             task_id = str(getattr(task, "task_id", "") or "").strip()
             if not task_id:
                 continue
@@ -138,9 +140,8 @@ class MainWindowTaskRecoveryMixin:
             )
             if finalization_state in {"pending", "running"}:
                 finalizing_task_ids.add(task_id)
-        payloads.extend(load_all_done_task_payloads(self._state_path))
         removed = cleanup_retained_task_workspaces(
-            payloads,
+            chain(active_payloads, iter_done_task_payloads(self._state_path)),
             data_dir=os.path.dirname(self._state_path),
             retention_days=retention_days,
             scan_delay_seconds=scan_delay_seconds,
