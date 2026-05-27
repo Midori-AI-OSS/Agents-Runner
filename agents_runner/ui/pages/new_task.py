@@ -12,6 +12,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import QThread
 from PySide6.QtGui import QColor
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QGridLayout
@@ -320,7 +321,7 @@ class NewTaskPage(QWidget):
         self._refresh_terminal_selection("")
         self._update_run_buttons()
 
-    def resizeEvent(self, event: object) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()

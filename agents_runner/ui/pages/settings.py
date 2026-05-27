@@ -9,6 +9,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
+from PySide6.QtGui import QHideEvent, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QGraphicsOpacityEffect
@@ -323,15 +324,15 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._emit_saved()
         return True
 
-    def resizeEvent(self, event: object) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
 
-    def showEvent(self, event: object) -> None:
+    def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self._start_move_task_workspaces_shift_polling()
 
-    def hideEvent(self, event: object) -> None:
+    def hideEvent(self, event: QHideEvent) -> None:
         super().hideEvent(event)
         self._stop_move_task_workspaces_shift_polling()
 

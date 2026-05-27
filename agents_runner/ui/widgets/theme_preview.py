@@ -3,7 +3,14 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPaintEvent, QPainter
+from PySide6.QtGui import (
+    QColor,
+    QKeyEvent,
+    QMouseEvent,
+    QPaintEvent,
+    QPainter,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from agents_runner.ui.graphics import load_background
@@ -54,7 +61,7 @@ class ThemePreviewWidget(QWidget):
         self._notify_resize()
         self.update()
 
-    def resizeEvent(self, event: object) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._notify_resize()
 
