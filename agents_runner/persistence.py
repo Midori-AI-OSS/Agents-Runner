@@ -6,6 +6,7 @@ import tomli
 import tomli_w
 
 from datetime import datetime
+from collections.abc import Iterator
 from typing import Any
 
 from agents_runner.prompt_sanitizer import sanitize_prompt
@@ -320,6 +321,29 @@ def load_all_done_task_payloads(state_path: str) -> list[dict[str, Any]]:
         if isinstance(payload, dict):
             payloads.append(payload)
     return payloads
+
+
+def iter_done_task_payloads(state_path: str) -> Iterator[dict[str, Any]]:
+    done = tasks_done_dir(state_path)
+    if not os.path.isdir(done):
+        return
+    try:
+        entries = os.scandir(done)
+    except OSError:
+        return
+    with entries:
+        for entry in entries:
+            if not entry.name.endswith(".toml"):
+                continue
+            try:
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                with open(entry.path, "rb") as f:
+                    payload = tomli.load(f)
+            except Exception:
+                continue
+            if isinstance(payload, dict):
+                yield payload
 
 
 def serialize_task(task: Any) -> dict[str, Any]:

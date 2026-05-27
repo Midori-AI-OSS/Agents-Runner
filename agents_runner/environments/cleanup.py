@@ -10,6 +10,7 @@ import shutil
 import time
 
 from datetime import datetime
+from collections.abc import Iterable
 from typing import Any, Callable
 
 from agents_runner.log_format import format_log
@@ -47,7 +48,7 @@ def _payload_finished_at_s(payload: dict[str, Any]) -> float | None:
 
 
 def cleanup_retained_task_workspaces(
-    task_payloads: list[dict[str, Any]],
+    task_payloads: Iterable[dict[str, Any]],
     *,
     data_dir: str | None,
     retention_days: int,

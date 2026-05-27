@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 
 from typing import TYPE_CHECKING
 
@@ -144,7 +145,7 @@ class MainWindow(
         self._repo_branches_request_id: int = 0
         self._repo_branches_request_meta: dict[int, dict[str, object]] = {}
         self._repo_branches_cache: dict[str, list[str]] = {}
-        self._task_workspace_cleanup_last_check_s = 0.0
+        self._task_workspace_cleanup_last_check_s = time.time()
         self._task_workspace_cleanup_running = False
         self._task_workspace_migration_thread: QThread | None = None
         self._task_workspace_migration_worker: object | None = None
