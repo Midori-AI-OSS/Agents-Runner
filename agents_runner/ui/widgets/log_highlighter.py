@@ -80,7 +80,7 @@ class LogHighlighter(QSyntaxHighlighter):
         }
         self._default_text_color = QColor(209, 213, 219)  # Default for message body
 
-        self._rules: list[tuple[object, QTextCharFormat]] = [
+        self._rules: list[tuple[str, QTextCharFormat]] = [
             (r"\[host\]", fmt(cyan, True)),
             (r"\[preflight\]", fmt(emerald, True)),
             (r"\[gh\]", fmt(violet, True)),

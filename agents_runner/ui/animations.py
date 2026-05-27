@@ -7,7 +7,6 @@ from PySide6.QtCore import (
     QPropertyAnimation,
     QPoint,
     QSequentialAnimationGroup,
-    Qt,
 )
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
 
