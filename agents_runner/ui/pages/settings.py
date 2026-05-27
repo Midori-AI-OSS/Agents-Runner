@@ -134,7 +134,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._connect_autosave_signals()
         app = QApplication.instance()
         if app is not None:
-            app.installEventFilter(self)
+            app.applicationStateChanged.connect(self._on_application_state_changed)
 
         if self._pane_specs:
             first_key = self._pane_specs[0].key
@@ -326,6 +326,14 @@ class SettingsPage(QWidget, SettingsFormMixin):
     def resizeEvent(self, event: object) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
+
+    def showEvent(self, event: object) -> None:
+        super().showEvent(event)
+        self._start_move_task_workspaces_shift_polling()
+
+    def hideEvent(self, event: object) -> None:
+        super().hideEvent(event)
+        self._stop_move_task_workspaces_shift_polling()
 
     def _update_navigation_mode(self) -> None:
         compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD
