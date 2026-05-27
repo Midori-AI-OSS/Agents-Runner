@@ -6,7 +6,12 @@ import time
 
 from datetime import datetime
 from datetime import timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
@@ -32,7 +37,7 @@ from agents_runner.ui.utils import parse_docker_time
 from agents_runner.ui.utils import stain_color
 
 
-class MainWindowTaskEventsMixin:
+class MainWindowTaskEventsMixin(_MainWindowHints):
     def _open_task_details(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:

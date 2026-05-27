@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _EnvironmentsPageHints
+else:
+    _EnvironmentsPageHints = object
+
 from PySide6.QtCore import (
     QEasingCurve,
     QParallelAnimationGroup,
@@ -12,7 +19,7 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect
 from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 
 
-class EnvironmentsNavigationMixin:
+class EnvironmentsNavigationMixin(_EnvironmentsPageHints):
     def _on_back(self) -> None:
         if not self.try_autosave():
             return

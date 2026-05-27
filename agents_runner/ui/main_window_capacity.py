@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
-class MainWindowCapacityMixin:
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
+
+
+class MainWindowCapacityMixin(_MainWindowHints):
     def _count_running_agents(self, env_id: str | None = None) -> int:
         count = 0
         env_id = str(env_id or "").strip() or None

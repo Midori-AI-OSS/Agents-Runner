@@ -3,6 +3,13 @@ from __future__ import annotations
 import os
 import threading
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
+
 
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
@@ -17,7 +24,7 @@ from agents_runner.gh_management import git_list_remote_heads
 from agents_runner.gh_management import is_gh_available
 
 
-class MainWindowEnvironmentMixin:
+class MainWindowEnvironmentMixin(_MainWindowHints):
     @staticmethod
     def _is_internal_environment_id(env_id: str) -> bool:
         return str(env_id or "").strip() == SYSTEM_ENV_ID

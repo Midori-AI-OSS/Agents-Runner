@@ -6,7 +6,12 @@ import threading
 import time
 
 from itertools import chain
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
 
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.environments import WORKSPACE_CLONED
@@ -19,7 +24,7 @@ from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import stain_color
 
 
-class MainWindowTaskRecoveryMixin:
+class MainWindowTaskRecoveryMixin(_MainWindowHints):
     def _reconcile_tasks_after_restart(self) -> None:
         """Reconcile tasks after app restart.
 
