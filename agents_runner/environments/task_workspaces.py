@@ -201,7 +201,7 @@ def scratch_drive_status() -> ScratchDriveStatus:
     if not has_space:
         warnings.append("Scratch drive has less than 16 GiB free.")
     if is_ram and has_space:
-        warnings.append("Scratch drive may use too much memory.")
+        warnings.append("Scratch drive storage is temporary and clears on reboot.")
 
     return ScratchDriveStatus(
         path=path,
