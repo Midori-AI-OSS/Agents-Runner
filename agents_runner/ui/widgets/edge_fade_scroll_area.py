@@ -87,8 +87,8 @@ class EdgeFadeScrollArea(QScrollArea):
 
         self.setWidgetResizable(True)
         self.setFrameShape(QScrollArea.NoFrame)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self._overlay = _ScrollEdgeFadeOverlay(self.viewport())
         self._overlay.hide()

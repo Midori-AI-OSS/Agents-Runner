@@ -211,7 +211,9 @@ class ChatBubbleWidget(QWidget):
 
         self._hover_timestamp = QLabel("")
         self._hover_timestamp.setVisible(False)
-        self._hover_timestamp.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._hover_timestamp.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
 
         self._surface = _BubbleSurface()
         self._surface.setMaximumWidth(self._MAX_BUBBLE_WIDTH)
@@ -227,7 +229,9 @@ class ChatBubbleWidget(QWidget):
         self._header_layout.setSpacing(8)
 
         self._author = QLabel("unknown")
-        self._author.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._author.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
 
         self._actions_host = QWidget()
         self._actions_layout = QHBoxLayout(self._actions_host)
@@ -238,10 +242,11 @@ class ChatBubbleWidget(QWidget):
 
         self._body = QLabel("")
         self._body.setWordWrap(True)
-        self._body.setTextFormat(Qt.RichText)
+        self._body.setTextFormat(Qt.TextFormat.RichText)
         self._body.setOpenExternalLinks(True)
         self._body.setTextInteractionFlags(
-            Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
         self._content_layout.addWidget(self._body)
 
@@ -390,7 +395,7 @@ class ChatBubbleWidget(QWidget):
                 if not action_id:
                     continue
                 button = QToolButton()
-                button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
                 button.setFixedSize(24, 24)
                 icon_name = str(action.icon_name or "").strip()
                 if icon_name:

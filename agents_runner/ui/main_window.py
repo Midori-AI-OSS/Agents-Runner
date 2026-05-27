@@ -163,14 +163,18 @@ class MainWindow(
 
         self._watch_states: dict[str, AgentWatchState] = {}
 
-        self.host_log.connect(self._on_host_log, Qt.QueuedConnection)
-        self.host_pr_url.connect(self._on_host_pr_url, Qt.QueuedConnection)
-        self.host_artifacts.connect(self._on_host_artifacts, Qt.QueuedConnection)
+        self.host_log.connect(self._on_host_log, Qt.ConnectionType.QueuedConnection)
+        self.host_pr_url.connect(
+            self._on_host_pr_url, Qt.ConnectionType.QueuedConnection
+        )
+        self.host_artifacts.connect(
+            self._on_host_artifacts, Qt.ConnectionType.QueuedConnection
+        )
         self.interactive_finished.connect(
-            self._on_interactive_finished, Qt.QueuedConnection
+            self._on_interactive_finished, Qt.ConnectionType.QueuedConnection
         )
         self.repo_branches_ready.connect(
-            self._on_repo_branches_ready, Qt.QueuedConnection
+            self._on_repo_branches_ready, Qt.ConnectionType.QueuedConnection
         )
 
         self._dashboard_ticker = QTimer(self)
@@ -207,25 +211,27 @@ class MainWindow(
 
         self._btn_home = QToolButton()
         self._btn_home.setText("Home")
-        self._btn_home.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_home.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_home.setIcon(lucide_icon("house"))
         self._btn_home.clicked.connect(self._show_dashboard)
 
         self._btn_new = QToolButton()
         self._btn_new.setText("Tasks")
-        self._btn_new.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_new.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_new.setIcon(lucide_icon("folder-plus"))
         self._btn_new.clicked.connect(self._show_tasks)
 
         self._btn_envs = QToolButton()
         self._btn_envs.setText("Environments")
-        self._btn_envs.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_envs.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_envs.setIcon(lucide_icon("folder"))
         self._btn_envs.clicked.connect(self._show_environments)
 
         self._btn_settings = QToolButton()
         self._btn_settings.setText("Settings")
-        self._btn_settings.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_settings.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
         self._btn_settings.setIcon(lucide_icon("settings"))
         self._btn_settings.clicked.connect(self._show_settings)
 
@@ -249,7 +255,7 @@ class MainWindow(
             self._on_radio_control_volume_changed
         )
         self._radio_controller.state_changed.connect(
-            self._on_radio_state_changed, Qt.QueuedConnection
+            self._on_radio_state_changed, Qt.ConnectionType.QueuedConnection
         )
 
         outer.addWidget(top)
@@ -277,20 +283,24 @@ class MainWindow(
         self._details.container_action_requested.connect(self._on_task_container_action)
         self._envs_page = EnvironmentsPage()
         self._envs_page.back_requested.connect(self._show_dashboard)
-        self._envs_page.updated.connect(self._reload_environments, Qt.QueuedConnection)
+        self._envs_page.updated.connect(
+            self._reload_environments, Qt.ConnectionType.QueuedConnection
+        )
         self._envs_page.test_preflight_requested.connect(
-            self._on_environment_test_preflight, Qt.QueuedConnection
+            self._on_environment_test_preflight, Qt.ConnectionType.QueuedConnection
         )
         self._settings = SettingsPage(
             radio_supported=self._radio_controller.qt_available
         )
         self._settings.back_requested.connect(self._show_dashboard)
-        self._settings.saved.connect(self._apply_settings, Qt.QueuedConnection)
+        self._settings.saved.connect(
+            self._apply_settings, Qt.ConnectionType.QueuedConnection
+        )
         self._settings.test_preflight_requested.connect(
-            self._on_settings_test_preflight, Qt.QueuedConnection
+            self._on_settings_test_preflight, Qt.ConnectionType.QueuedConnection
         )
         self._settings.move_task_workspaces_requested.connect(
-            self._on_move_task_workspaces_requested, Qt.QueuedConnection
+            self._on_move_task_workspaces_requested, Qt.ConnectionType.QueuedConnection
         )
 
         self._stack = QWidget()

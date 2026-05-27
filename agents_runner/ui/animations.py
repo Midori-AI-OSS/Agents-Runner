@@ -5,6 +5,7 @@ from PySide6.QtCore import (
     QEvent,
     QParallelAnimationGroup,
     QPropertyAnimation,
+    QPoint,
     QSequentialAnimationGroup,
     Qt,
 )
@@ -111,13 +112,13 @@ def slide_fade_in(
 
     start_pos = widget.pos()
     if direction == "up":
-        offset_pos = start_pos + Qt.QPoint(0, distance)
+        offset_pos = start_pos + QPoint(0, distance)
     elif direction == "down":
-        offset_pos = start_pos - Qt.QPoint(0, distance)
+        offset_pos = start_pos - QPoint(0, distance)
     elif direction == "left":
-        offset_pos = start_pos + Qt.QPoint(distance, 0)
+        offset_pos = start_pos + QPoint(distance, 0)
     else:
-        offset_pos = start_pos - Qt.QPoint(distance, 0)
+        offset_pos = start_pos - QPoint(distance, 0)
 
     widget.move(offset_pos)
 

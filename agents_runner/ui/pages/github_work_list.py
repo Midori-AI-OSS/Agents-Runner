@@ -54,7 +54,7 @@ class _GitHubWorkRow(QWidget):
         self.setObjectName("TaskRow")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("stain", "slate")
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(56)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
@@ -79,14 +79,14 @@ class _GitHubWorkRow(QWidget):
 
         self._btn_primary = QToolButton()
         self._btn_primary.setObjectName("RowTrash")
-        self._btn_primary.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_primary.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_primary.clicked.connect(
             lambda: self.primary_requested.emit(self._item)
         )
 
         self._btn_open = QToolButton()
         self._btn_open.setObjectName("RowTrash")
-        self._btn_open.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_open.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_open.clicked.connect(lambda: self.open_requested.emit(self._item))
 
         actions_layout.addWidget(self._btn_primary, 0, Qt.AlignmentFlag.AlignRight)
@@ -200,7 +200,7 @@ class _GitHubWorkRow(QWidget):
         self._meta.setText(meta_text)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self._item)
             event.accept()
             return
@@ -292,7 +292,7 @@ class GitHubWorkListPage(QWidget):
 
         self._refresh = QToolButton()
         self._refresh.setIcon(lucide_icon("refresh-cw"))
-        self._refresh.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._refresh.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._refresh.setToolTip("Refresh")
         self._refresh.clicked.connect(self.refresh)
 
@@ -320,7 +320,7 @@ class GitHubWorkListPage(QWidget):
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QScrollArea.NoFrame)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setObjectName("TaskScroll")
 
         self._list = QWidget()

@@ -128,7 +128,7 @@ class ArtifactsTab(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(14)
 
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
 
         left_panel = GlassCard()
@@ -248,19 +248,19 @@ class ArtifactsTab(QWidget):
 
         self._btn_open = QToolButton()
         self._btn_open.setText("Open")
-        self._btn_open.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._btn_open.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._btn_open.setEnabled(False)
         self._btn_open.clicked.connect(self._on_open_clicked)
 
         self._btn_edit = QToolButton()
         self._btn_edit.setText("Edit")
-        self._btn_edit.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._btn_edit.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._btn_edit.setEnabled(False)
         self._btn_edit.clicked.connect(self._on_edit_clicked)
 
         self._btn_download = QToolButton()
         self._btn_download.setText("Download")
-        self._btn_download.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._btn_download.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._btn_download.setEnabled(False)
         self._btn_download.clicked.connect(self._on_download_clicked)
 
@@ -454,12 +454,12 @@ class ArtifactsTab(QWidget):
         self._update_artifact_list()
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
-        data = item.data(Qt.UserRole)
+        data = item.data(Qt.ItemDataRole.UserRole)
         if isinstance(data, FolderListItem):
             self._show_folder_preview(data.path)
 
     def _on_item_double_clicked(self, item: QListWidgetItem) -> None:
-        data = item.data(Qt.UserRole)
+        data = item.data(Qt.ItemDataRole.UserRole)
         if isinstance(data, FolderListItem):
             self._current_folder_path = data.path
             self._update_artifact_list()
@@ -653,7 +653,7 @@ class ArtifactsTab(QWidget):
                 path=folder_entry.path,
                 item_count=len(folder_entry.folders) + len(folder_entry.files),
             )
-            item.setData(Qt.UserRole, item_data)
+            item.setData(Qt.ItemDataRole.UserRole, item_data)
 
             info_text = (
                 f"{item_data.item_count} items"
@@ -672,7 +672,7 @@ class ArtifactsTab(QWidget):
 
         for artifact in files:
             item = QListWidgetItem()
-            item.setData(Qt.UserRole, artifact)
+            item.setData(Qt.ItemDataRole.UserRole, artifact)
 
             display_name = Path(self._artifact_relative_path(artifact)).name
             if isinstance(artifact, StagingArtifactMeta):
@@ -733,7 +733,7 @@ class ArtifactsTab(QWidget):
             self._btn_download.setEnabled(False)
             return
 
-        item_data = item.data(Qt.UserRole)
+        item_data = item.data(Qt.ItemDataRole.UserRole)
         if isinstance(item_data, FolderListItem):
             self._show_folder_preview(item_data.path)
             return
@@ -841,7 +841,7 @@ class ArtifactsTab(QWidget):
         if item is None or not self._current_task:
             return
 
-        artifact = item.data(Qt.UserRole)
+        artifact = item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(artifact, (ArtifactMeta, StagingArtifactMeta)):
             return
 
@@ -861,7 +861,7 @@ class ArtifactsTab(QWidget):
         if item is None or not self._current_task:
             return
 
-        artifact = item.data(Qt.UserRole)
+        artifact = item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(artifact, (ArtifactMeta, StagingArtifactMeta)):
             return
 
@@ -884,7 +884,7 @@ class ArtifactsTab(QWidget):
         if item is None or not self._current_task:
             return
 
-        artifact = item.data(Qt.UserRole)
+        artifact = item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(artifact, ArtifactMeta):
             return
         dest_path, _ = QFileDialog.getSaveFileName(

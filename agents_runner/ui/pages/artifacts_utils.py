@@ -75,7 +75,9 @@ class PreviewLoader:
         from PySide6.QtCore import Qt
 
         scaled = self.thumbnail_original.scaled(
-            target_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            target_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
         )
         self.thumbnail_widget.setPixmap(scaled)
 

@@ -382,13 +382,15 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
         include_supervisor_events: bool,
     ) -> None:
         proxy = self._ensure_task_event_proxy(task_id)
-        bridge.state.connect(proxy.enqueue_state, Qt.DirectConnection)
-        bridge.log.connect(proxy.enqueue_log, Qt.DirectConnection)
-        bridge.done.connect(proxy.enqueue_done, Qt.DirectConnection)
+        bridge.state.connect(proxy.enqueue_state, Qt.ConnectionType.DirectConnection)
+        bridge.log.connect(proxy.enqueue_log, Qt.ConnectionType.DirectConnection)
+        bridge.done.connect(proxy.enqueue_done, Qt.ConnectionType.DirectConnection)
         if include_supervisor_events:
-            bridge.retry_attempt.connect(proxy.enqueue_retry, Qt.DirectConnection)
+            bridge.retry_attempt.connect(
+                proxy.enqueue_retry, Qt.ConnectionType.DirectConnection
+            )
             bridge.agent_switched.connect(
-                proxy.enqueue_agent_switched, Qt.DirectConnection
+                proxy.enqueue_agent_switched, Qt.ConnectionType.DirectConnection
             )
 
     def _drain_task_event_proxies(self) -> None:

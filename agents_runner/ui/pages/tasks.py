@@ -235,7 +235,7 @@ class TasksPage(QWidget):
             button = QToolButton()
             button.setObjectName("SettingsNavButton")
             button.setText(spec.title)
-            button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             button.setCheckable(True)
             button.setSizePolicy(
                 QSizePolicy.Policy.Expanding,

@@ -123,7 +123,7 @@ class DashboardPage(QWidget):
         clear_filters = QToolButton()
         clear_filters.setObjectName("RowTrash")
         clear_filters.setIcon(lucide_icon("rotate-ccw"))
-        clear_filters.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        clear_filters.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         clear_filters.setToolTip("Clear filters")
         clear_filters.setAccessibleName("Clear filters")
         clear_filters.clicked.connect(self._clear_filters)
@@ -133,7 +133,7 @@ class DashboardPage(QWidget):
         self._btn_clean_old.setIcon(lucide_icon("trash-2"))
         self._btn_clean_old.setToolTip("Clean finished tasks")
         self._btn_clean_old.setAccessibleName("Clean finished tasks")
-        self._btn_clean_old.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_clean_old.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_clean_old.clicked.connect(self.clean_old_requested.emit)
 
         filters_layout.addWidget(self._filter_text, 1)
@@ -190,7 +190,9 @@ class DashboardPage(QWidget):
         self._scroll_active = QScrollArea()
         self._scroll_active.setWidgetResizable(True)
         self._scroll_active.setFrameShape(QScrollArea.NoFrame)
-        self._scroll_active.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll_active.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self._scroll_active.setObjectName("TaskScroll")
 
         self._list_active = QWidget()
@@ -210,7 +212,9 @@ class DashboardPage(QWidget):
         self._scroll_past = QScrollArea()
         self._scroll_past.setWidgetResizable(True)
         self._scroll_past.setFrameShape(QScrollArea.NoFrame)
-        self._scroll_past.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll_past.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self._scroll_past.setObjectName("TaskScroll")
 
         self._list_past = QWidget()

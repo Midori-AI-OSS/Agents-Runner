@@ -545,16 +545,30 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
         self._interactive_prep_threads[task_id] = prep_thread
         self._interactive_prep_bridges[task_id] = prep_bridge
 
-        prep_worker.stage.connect(prep_bridge.on_stage, Qt.QueuedConnection)
-        prep_worker.log.connect(prep_bridge.on_log, Qt.QueuedConnection)
-        prep_worker.succeeded.connect(prep_bridge.on_succeeded, Qt.QueuedConnection)
-        prep_worker.failed.connect(prep_bridge.on_failed, Qt.QueuedConnection)
-        prep_worker.succeeded.connect(prep_thread.quit, Qt.QueuedConnection)
-        prep_worker.failed.connect(prep_thread.quit, Qt.QueuedConnection)
-        prep_worker.succeeded.connect(prep_worker.deleteLater, Qt.QueuedConnection)
-        prep_worker.failed.connect(prep_worker.deleteLater, Qt.QueuedConnection)
+        prep_worker.stage.connect(
+            prep_bridge.on_stage, Qt.ConnectionType.QueuedConnection
+        )
+        prep_worker.log.connect(prep_bridge.on_log, Qt.ConnectionType.QueuedConnection)
+        prep_worker.succeeded.connect(
+            prep_bridge.on_succeeded, Qt.ConnectionType.QueuedConnection
+        )
+        prep_worker.failed.connect(
+            prep_bridge.on_failed, Qt.ConnectionType.QueuedConnection
+        )
+        prep_worker.succeeded.connect(
+            prep_thread.quit, Qt.ConnectionType.QueuedConnection
+        )
+        prep_worker.failed.connect(prep_thread.quit, Qt.ConnectionType.QueuedConnection)
+        prep_worker.succeeded.connect(
+            prep_worker.deleteLater, Qt.ConnectionType.QueuedConnection
+        )
+        prep_worker.failed.connect(
+            prep_worker.deleteLater, Qt.ConnectionType.QueuedConnection
+        )
         prep_thread.finished.connect(prep_thread.deleteLater)
-        prep_thread.finished.connect(prep_bridge.deleteLater, Qt.QueuedConnection)
+        prep_thread.finished.connect(
+            prep_bridge.deleteLater, Qt.ConnectionType.QueuedConnection
+        )
 
         prep_thread.start()
 

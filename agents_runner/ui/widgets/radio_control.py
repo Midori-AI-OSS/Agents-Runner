@@ -78,7 +78,7 @@ class RadioControlWidget(QWidget):
         slider_layout.setContentsMargins(0, 0, 0, 0)
         slider_layout.setSpacing(0)
 
-        self._volume_slider = QSlider(Qt.Horizontal, self._slider_wrap)
+        self._volume_slider = QSlider(Qt.Orientation.Horizontal, self._slider_wrap)
         self._volume_slider.setObjectName("RadioControlVolumeSlider")
         self._volume_slider.setRange(0, 100)
         self._volume_slider.setValue(70)
@@ -97,7 +97,7 @@ class RadioControlWidget(QWidget):
         self._play_button = QToolButton(self._play_section)
         self._play_button.setObjectName("RadioControlButton")
         self._play_button.setIconSize(QSize(18, 18))
-        self._play_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._play_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._play_button.setAutoRaise(False)
         self._play_button.setCheckable(True)
         self._play_button.setFixedSize(self.PLAY_BUTTON_WIDTH, self.PLAY_BUTTON_HEIGHT)

@@ -146,7 +146,7 @@ class BouncingLoadingBar(QWidget):
         painter.drawRect(inner)
 
         painter.setPen(border)
-        painter.setBrush(Qt.NoBrush)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(outer)
 
         if self._mode == "pulse_full":

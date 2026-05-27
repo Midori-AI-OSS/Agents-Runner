@@ -113,7 +113,7 @@ class AgentsTabWidget(QWidget):
         self._agent_table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
         self._agent_table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
         self._agent_table.setSelectionMode(QTableWidget.NoSelection)
-        self._agent_table.setFocusPolicy(Qt.NoFocus)
+        self._agent_table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._agent_table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self._agent_table, 1)
 
@@ -133,7 +133,7 @@ class AgentsTabWidget(QWidget):
 
         add_btn = QToolButton()
         add_btn.setText("Add")
-        add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        add_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         add_btn.clicked.connect(self._on_add_agent)
         controls_row.addWidget(add_btn)
 
@@ -175,7 +175,7 @@ class AgentsTabWidget(QWidget):
         # Test Chain button
         test_chain_btn = QToolButton()
         test_chain_btn.setText("Test Chain")
-        test_chain_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        test_chain_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         test_chain_btn.clicked.connect(self._on_test_chain)
         controls_row.addWidget(test_chain_btn)
 
@@ -318,8 +318,8 @@ class AgentsTabWidget(QWidget):
 
         up_btn = QToolButton()
         up_btn.setText("Up")
-        up_btn.setArrowType(Qt.UpArrow)
-        up_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        up_btn.setArrowType(Qt.ArrowType.UpArrow)
+        up_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         up_btn.setMinimumWidth(68)
         up_btn.setEnabled(row_index > 0)
         up_btn.setToolTip("Move up (higher priority)")
@@ -327,8 +327,8 @@ class AgentsTabWidget(QWidget):
 
         down_btn = QToolButton()
         down_btn.setText("Down")
-        down_btn.setArrowType(Qt.DownArrow)
-        down_btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        down_btn.setArrowType(Qt.ArrowType.DownArrow)
+        down_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         down_btn.setMinimumWidth(68)
         down_btn.setEnabled(row_index < len(self._rows) - 1)
         down_btn.setToolTip("Move down (lower priority)")
@@ -436,7 +436,7 @@ class AgentsTabWidget(QWidget):
 
         browse = QToolButton()
         browse.setText("Browse…")
-        browse.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        browse.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         browse.clicked.connect(lambda: self._browse_row_config_dir(row_index, line))
 
         layout.addWidget(line, 1)
@@ -537,7 +537,7 @@ class AgentsTabWidget(QWidget):
         btn = QToolButton()
         btn.setObjectName("RowTrash")
         btn.setText("✕")
-        btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         btn.clicked.connect(lambda: self._remove_row(row_index))
         return btn
 

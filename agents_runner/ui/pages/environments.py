@@ -117,17 +117,17 @@ class EnvironmentsPage(
 
         new_btn = QToolButton()
         new_btn.setText("New")
-        new_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        new_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         new_btn.clicked.connect(self._on_new)
 
         delete_btn = QToolButton()
         delete_btn.setText("Delete")
-        delete_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        delete_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         delete_btn.clicked.connect(self._on_delete)
 
         test_btn = QToolButton()
         test_btn.setText("Test preflight")
-        test_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        test_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         test_btn.clicked.connect(self._on_test_preflight)
 
         header_layout.addWidget(title)
