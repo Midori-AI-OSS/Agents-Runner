@@ -192,7 +192,10 @@ class WorkerSetup:
 
         # Assemble final prompt
         prompt_assembler = PromptAssembler(
-            self._prompt, self._config.environment_id, self._on_log
+            self._prompt,
+            self._config.environment_id,
+            self._on_log,
+            state_path=self._config.state_path,
         )
         final_prompt = prompt_assembler.assemble_prompt(
             platform_config.agent_cli,

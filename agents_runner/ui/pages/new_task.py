@@ -27,6 +27,9 @@ from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
+from agents_runner.agent_configs.model import AgentConfig
+from agents_runner.agent_configs.storage import load_agent_configs
+from agents_runner.agent_configs.storage import resolve_agent_config
 from agents_runner.agent_cli import available_agents
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_display import get_agent_display_name
@@ -34,6 +37,7 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments.model import AgentInstance
+from agents_runner.persistence import default_state_path
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
@@ -1388,10 +1392,48 @@ class NewTaskPage(QWidget):
         self._run_interactive.setToolTip(display_text)
         self._run_agent.setToolTip(display_text)
 
-    @staticmethod
-    def _format_env_agent_entry_label(inst: AgentInstance) -> str:
+    def _resolve_state_path(self) -> str:
+        window = self.window()
+        state_path = str(getattr(window, "_state_path", "") or "").strip()
+        if state_path:
+            return state_path
+        return default_state_path()
+
+    def _agent_configs_by_id(self) -> dict[str, AgentConfig]:
+        try:
+            return {
+                config_id: config
+                for config in load_agent_configs(self._resolve_state_path())
+                if (config_id := str(getattr(config, "config_id", "") or "").strip())
+            }
+        except Exception:
+            return {}
+
+    def _resolve_env_agent_cli(self, inst: AgentInstance) -> str:
+        config = resolve_agent_config(
+            str(getattr(inst, "config_id", "") or "").strip(),
+            self._agent_configs_by_id(),
+        )
+        agent_cli = str(getattr(config, "agent_cli", "") or "").strip()
+        return normalize_agent(agent_cli) if agent_cli else ""
+
+    def _resolve_env_agent_cli_flags(self, inst: AgentInstance) -> str:
+        config = resolve_agent_config(
+            str(getattr(inst, "config_id", "") or "").strip(),
+            self._agent_configs_by_id(),
+        )
+        return str(getattr(config, "cli_flags", "") or "").strip()
+
+    def _resolve_env_agent_config_dir(self, inst: AgentInstance) -> str:
+        config = resolve_agent_config(
+            str(getattr(inst, "config_id", "") or "").strip(),
+            self._agent_configs_by_id(),
+        )
+        return str(getattr(config, "config_dir", "") or "").strip()
+
+    def _format_env_agent_entry_label(self, inst: AgentInstance) -> str:
         agent_id = str(getattr(inst, "agent_id", "") or "").strip()
-        agent_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or ""))
+        agent_cli = self._resolve_env_agent_cli(inst)
         display_name = str(get_agent_display_name(agent_cli) or "").strip()
         agent_id_label = ""
         if agent_id:
@@ -1408,14 +1450,15 @@ class NewTaskPage(QWidget):
     def _build_env_override(
         self, *, inst: AgentInstance, env_id: str
     ) -> dict[str, str]:
-        agent_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or ""))
+        agent_cli = self._resolve_env_agent_cli(inst)
         return {
             "source": "env",
             "env_id": str(env_id or ""),
             "agent_cli": agent_cli,
             "agent_id": str(getattr(inst, "agent_id", "") or "").strip(),
-            "config_dir": str(getattr(inst, "config_dir", "") or "").strip(),
-            "cli_flags": str(getattr(inst, "cli_flags", "") or "").strip(),
+            "config_id": str(getattr(inst, "config_id", "") or "").strip(),
+            "config_dir": self._resolve_env_agent_config_dir(inst),
+            "cli_flags": self._resolve_env_agent_cli_flags(inst),
             "label": self._format_env_agent_entry_label(inst),
         }
 
@@ -1426,6 +1469,7 @@ class NewTaskPage(QWidget):
             "env_id": "",
             "agent_cli": normalized,
             "agent_id": "",
+            "config_id": "",
             "config_dir": "",
             "cli_flags": "",
             "label": self._format_agent_menu_label(normalized),

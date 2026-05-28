@@ -250,14 +250,16 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
 
         selected_cli_flags = ""
         if override:
-            agent_cli = override.get("agent_cli", "")
-            auto_config_dir = self._resolve_override_config_dir(
+            (
+                agent_cli,
+                auto_config_dir,
+                selected_cli_flags,
+                agent_instance_id,
+            ) = self._resolve_override_agent_runtime(
                 override=override,
                 env=env,
                 settings=self._settings_data,
             )
-            agent_instance_id = str(override.get("agent_id") or "").strip()
-            selected_cli_flags = str(override.get("cli_flags") or "").strip()
             host_config_dir = auto_config_dir
         elif (
             env and env.agent_selection and getattr(env.agent_selection, "agents", None)
@@ -270,25 +272,15 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                 )
             )
             if agent_instance_id:
-                selected_lower = agent_instance_id.lower()
-                selected_inst = next(
-                    (
-                        inst
-                        for inst in list(
-                            getattr(env.agent_selection, "agents", []) or []
+                selected_inst = self._find_agent_instance_by_id(env, agent_instance_id)
+                if selected_inst is not None:
+                    _resolved_cli, _resolved_dir, selected_cli_flags = (
+                        self._resolve_agent_instance_runtime(
+                            selected_inst,
+                            env=env,
+                            settings=self._settings_data,
                         )
-                        if str(getattr(inst, "agent_id", "") or "").strip()
-                        == agent_instance_id
-                        or str(getattr(inst, "agent_id", "") or "").strip().lower()
-                        == selected_lower
-                    ),
-                    None,
-                )
-                selected_cli_flags = (
-                    str(getattr(selected_inst, "cli_flags", "") or "").strip()
-                    if selected_inst is not None
-                    else ""
-                )
+                    )
         else:
             agent_cli, auto_config_dir = self._effective_agent_and_config(
                 env=env, advance_round_robin=True
@@ -552,7 +544,11 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
             "opencode_web_mode": opencode_web_mode,
             "gpu_enabled": gpu_enabled,
             "ports_for_task": list(ports_for_task),
+            "selected_cli_flags": selected_cli_flags,
         }
+
+        if selected_cli_flags:
+            task.agent_cli_args = selected_cli_flags
         prep_bridge = InteractivePrepBridge(
             on_stage=self._on_interactive_prep_stage,
             on_log=self._on_interactive_prep_log,

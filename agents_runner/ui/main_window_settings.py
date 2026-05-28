@@ -16,6 +16,9 @@ from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QProgressDialog
 
+from agents_runner.agent_configs.model import AgentConfig
+from agents_runner.agent_configs.storage import load_agent_configs
+from agents_runner.agent_configs.storage import resolve_agent_config
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.agent_cli import container_config_dir
 from agents_runner.agent_cli import additional_config_mounts
@@ -524,6 +527,139 @@ class MainWindowSettingsMixin(_MainWindowHints):
             return ""
         return os.path.expanduser(default_host_config_dir(agent_cli))
 
+    def _load_agent_configs_by_id(self) -> dict[str, AgentConfig]:
+        try:
+            configs = load_agent_configs(self._state_path)
+        except Exception:
+            return {}
+        return {
+            config_id: config
+            for config in configs
+            if (config_id := str(getattr(config, "config_id", "") or "").strip())
+        }
+
+    @staticmethod
+    def _find_agent_instance_by_id(
+        env: Environment | None, agent_id: str
+    ) -> object | None:
+        if (
+            env is None
+            or env.agent_selection is None
+            or not getattr(env.agent_selection, "agents", None)
+        ):
+            return None
+
+        target = str(agent_id or "").strip()
+        if not target:
+            return None
+        target_lower = target.lower()
+
+        for inst in list(env.agent_selection.agents or []):
+            inst_id = str(getattr(inst, "agent_id", "") or "").strip()
+            if inst_id == target or inst_id.lower() == target_lower:
+                return inst
+        return None
+
+    def _resolve_agent_instance_runtime(
+        self,
+        inst: object | None,
+        *,
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+        agent_configs: dict[str, AgentConfig] | None = None,
+        fallback_agent_cli: str = "",
+        fallback_config_dir: str = "",
+        fallback_cli_flags: str = "",
+    ) -> tuple[str, str, str]:
+        settings_data = settings or self._settings_data
+        configs = agent_configs or self._load_agent_configs_by_id()
+        config_id = str(getattr(inst, "config_id", "") or "").strip()
+        config = resolve_agent_config(config_id, configs)
+
+        agent_cli_raw = str(
+            getattr(config, "agent_cli", "")
+            or fallback_agent_cli
+            or settings_data.get("use")
+            or "codex"
+        ).strip()
+        agent_cli = normalize_agent(agent_cli_raw) if agent_cli_raw else ""
+
+        if config is not None:
+            config_dir = os.path.expanduser(
+                str(getattr(config, "config_dir", "") or "").strip()
+            )
+        else:
+            config_dir = os.path.expanduser(str(fallback_config_dir or "").strip())
+        if not config_dir and agent_cli:
+            config_dir = self._resolve_config_dir_for_agent(
+                agent_cli=agent_cli,
+                env=env,
+                settings=settings_data,
+            )
+
+        cli_flags = str(
+            getattr(config, "cli_flags", "")
+            if config is not None
+            else fallback_cli_flags or ""
+        ).strip()
+        return agent_cli, config_dir, cli_flags
+
+    def _resolve_override_agent_runtime(
+        self,
+        *,
+        override: dict[str, str],
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+    ) -> tuple[str, str, str, str]:
+        settings_data = settings or self._settings_data
+        agent_id = str(override.get("agent_id") or "").strip()
+        fallback_agent_cli = str(override.get("agent_cli") or "").strip()
+        fallback_config_dir = str(override.get("config_dir") or "").strip()
+        fallback_cli_flags = str(override.get("cli_flags") or "").strip()
+        source = str(override.get("source") or "")
+        agent_configs = self._load_agent_configs_by_id()
+
+        inst = self._find_agent_instance_by_id(env, agent_id)
+        if inst is not None:
+            agent_cli, config_dir, cli_flags = self._resolve_agent_instance_runtime(
+                inst,
+                env=env,
+                settings=settings_data,
+                agent_configs=agent_configs,
+                fallback_agent_cli=fallback_agent_cli,
+                fallback_config_dir=fallback_config_dir,
+                fallback_cli_flags=fallback_cli_flags,
+            )
+            return agent_cli, config_dir, cli_flags, agent_id
+
+        config = resolve_agent_config(
+            str(override.get("config_id") or "").strip(), agent_configs
+        )
+        agent_cli_raw = str(
+            getattr(config, "agent_cli", "")
+            or fallback_agent_cli
+            or settings_data.get("use")
+            or "codex"
+        ).strip()
+        agent_cli = normalize_agent(agent_cli_raw) if agent_cli_raw else ""
+        config_dir = (
+            os.path.expanduser(str(getattr(config, "config_dir", "") or "").strip())
+            if config is not None
+            else os.path.expanduser(fallback_config_dir)
+        )
+        if not config_dir and agent_cli:
+            config_dir = self._resolve_config_dir_for_agent(
+                agent_cli=agent_cli,
+                env=None if source == "env" else env,
+                settings=settings_data,
+            )
+        cli_flags = str(
+            getattr(config, "cli_flags", "")
+            if config is not None
+            else fallback_cli_flags or ""
+        ).strip()
+        return agent_cli, config_dir, cli_flags, agent_id
+
     def _select_agent_instance_for_env(
         self,
         *,
@@ -548,6 +684,8 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
         if not hasattr(self, "_agent_selection_round_robin_cursor"):
             self._agent_selection_round_robin_cursor = {}
+
+        agent_configs = self._load_agent_configs_by_id()
 
         chosen = agents[0]
         if mode == "round-robin":
@@ -605,16 +743,15 @@ class MainWindowSettingsMixin(_MainWindowHints):
                 if pinned_inst is not None:
                     chosen = pinned_inst
 
-        agent_cli = normalize_agent(str(getattr(chosen, "agent_cli", "") or "codex"))
         agent_id = str(getattr(chosen, "agent_id", "") or "").strip()
 
-        config_dir = os.path.expanduser(
-            str(getattr(chosen, "config_dir", "") or "").strip()
+        agent_cli, config_dir, _cli_flags = self._resolve_agent_instance_runtime(
+            chosen,
+            env=env,
+            settings=settings,
+            agent_configs=agent_configs,
+            fallback_agent_cli=str(settings.get("use") or "codex"),
         )
-        if not config_dir:
-            config_dir = self._resolve_config_dir_for_agent(
-                agent_cli=agent_cli, env=env, settings=settings
-            )
 
         return agent_cli, config_dir, agent_id
 
@@ -758,6 +895,20 @@ class MainWindowSettingsMixin(_MainWindowHints):
             return ""
         settings = settings or self._settings_data
 
+        if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            agent_configs = self._load_agent_configs_by_id()
+            for inst in list(env.agent_selection.agents or []):
+                resolved_cli, resolved_dir, _cli_flags = (
+                    self._resolve_agent_instance_runtime(
+                        inst,
+                        env=env,
+                        settings=settings,
+                        agent_configs=agent_configs,
+                    )
+                )
+                if resolved_cli == agent_cli and resolved_dir:
+                    return resolved_dir
+
         # Use helper method to resolve config directory
         return self._resolve_config_dir_for_agent(
             agent_cli=agent_cli,
@@ -776,6 +927,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             "env_id": str(override.get("env_id") or ""),
             "agent_cli": agent_cli,
             "agent_id": str(override.get("agent_id") or ""),
+            "config_id": str(override.get("config_id") or ""),
             "config_dir": str(override.get("config_dir") or ""),
             "cli_flags": str(override.get("cli_flags") or ""),
             "mode": str(override.get("mode") or ""),
@@ -827,28 +979,14 @@ class MainWindowSettingsMixin(_MainWindowHints):
         env: Environment | None,
         settings: dict[str, object] | None = None,
     ) -> str:
-        config_dir = str(override.get("config_dir") or "").strip()
-        if config_dir:
-            return os.path.expanduser(config_dir)
-
-        agent_cli = str(override.get("agent_cli") or "").strip().lower()
-        if agent_cli not in set(available_agents(include_internal=False)):
-            return ""
-        if not agent_cli:
-            return ""
-
-        source = str(override.get("source") or "")
-        if source == "env":
-            return self._resolve_config_dir_for_agent(
-                agent_cli=agent_cli,
-                env=None,
+        _agent_cli, config_dir, _cli_flags, _agent_id = (
+            self._resolve_override_agent_runtime(
+                override=override,
+                env=env,
                 settings=settings or self._settings_data,
             )
-        return self._resolve_config_dir_for_agent(
-            agent_cli=agent_cli,
-            env=env,
-            settings=settings or self._settings_data,
         )
+        return config_dir
 
     def _ensure_agent_config_dir(self, agent_cli: str, host_config_dir: str) -> bool:
         agent_cli = str(agent_cli or "").strip().lower()
@@ -901,7 +1039,8 @@ class MainWindowSettingsMixin(_MainWindowHints):
             inst = agents[0] if agents else None
             if inst is None:
                 return agent_cli, ""
-            return self._format_agent_label(inst), ""
+            agent_configs = self._load_agent_configs_by_id()
+            return self._format_agent_label(inst, agent_configs=agent_configs), ""
 
         mode = (
             str(getattr(env.agent_selection, "selection_mode", "") or "round-robin")
@@ -909,6 +1048,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             .lower()
         )
         env_id = str(getattr(env, "env_id", "") or "")
+        agent_configs = self._load_agent_configs_by_id()
 
         if mode == "pinned":
             pinned_id = str(
@@ -933,9 +1073,12 @@ class MainWindowSettingsMixin(_MainWindowHints):
                     None,
                 )
                 if pinned_inst is not None:
-                    return self._format_agent_label(pinned_inst), ""
+                    return self._format_agent_label(
+                        pinned_inst,
+                        agent_configs=agent_configs,
+                    ), ""
             current = agents[0]
-            return self._format_agent_label(current), ""
+            return self._format_agent_label(current, agent_configs=agent_configs), ""
 
         cursor_map = (
             getattr(self, "_agent_selection_round_robin_cursor", {})
@@ -960,10 +1103,17 @@ class MainWindowSettingsMixin(_MainWindowHints):
                 ),
                 None,
             )
-            next_label = self._format_agent_label(next_inst) if next_inst else ""
+            next_label = (
+                self._format_agent_label(next_inst, agent_configs=agent_configs)
+                if next_inst
+                else ""
+            )
             if next_label:
                 next_label = f"Fallback: {next_label}"
-            return self._format_agent_label(current), next_label
+            return self._format_agent_label(
+                current,
+                agent_configs=agent_configs,
+            ), next_label
 
         if mode == "least-used":
             tasks = getattr(self, "_tasks", {}) or {}
@@ -985,21 +1135,37 @@ class MainWindowSettingsMixin(_MainWindowHints):
             )
             now = ordered[0] if ordered else current
             nxt = ordered[1] if len(ordered) > 1 else None
-            return self._format_agent_label(now), (
-                self._format_agent_label(nxt) if nxt else ""
+            return self._format_agent_label(now, agent_configs=agent_configs), (
+                self._format_agent_label(nxt, agent_configs=agent_configs)
+                if nxt
+                else ""
             )
 
         # round-robin (default)
         next_idx = (current_idx + 1) % len(agents)
-        return self._format_agent_label(current), self._format_agent_label(
-            agents[next_idx]
+        return self._format_agent_label(
+            current,
+            agent_configs=agent_configs,
+        ), self._format_agent_label(
+            agents[next_idx],
+            agent_configs=agent_configs,
         )
 
-    @staticmethod
-    def _format_agent_label(inst: object | None) -> str:
+    def _format_agent_label(
+        self,
+        inst: object | None,
+        *,
+        agent_configs: dict[str, AgentConfig] | None = None,
+    ) -> str:
         if inst is None:
             return ""
-        agent_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or "codex"))
+        agent_cli, _config_dir, _cli_flags = self._resolve_agent_instance_runtime(
+            inst,
+            env=None,
+            settings=self._settings_data,
+            agent_configs=agent_configs,
+            fallback_agent_cli="codex",
+        )
         agent_id = str(getattr(inst, "agent_id", "") or "").strip()
         display_name = format_agent_ui_label(agent_cli)
         if agent_id and agent_id != agent_cli:
@@ -1047,6 +1213,8 @@ class MainWindowSettingsMixin(_MainWindowHints):
         if not agents:
             return []
 
+        agent_configs = self._load_agent_configs_by_id()
+
         # Build map of agent_id -> AgentInstance
         agents_by_id = {
             str(getattr(inst, "agent_id", "") or "").strip(): inst
@@ -1076,8 +1244,17 @@ class MainWindowSettingsMixin(_MainWindowHints):
                 )
                 continue
 
-            # Get agent CLI and normalize
-            inst_cli = normalize_agent(str(getattr(inst, "agent_cli", "") or ""))
+            inst_cli, inst_dir, _cli_flags = self._resolve_agent_instance_runtime(
+                inst,
+                env=env,
+                settings=settings,
+                agent_configs=agent_configs,
+            )
+            if not inst_cli:
+                logger.warning(
+                    f"Cross-agent allowlist references unresolved agent config: {agent_id}"
+                )
+                continue
 
             # Enforce one-per-CLI constraint
             if inst_cli in mounted_clis:
@@ -1086,17 +1263,6 @@ class MainWindowSettingsMixin(_MainWindowHints):
                     f"already mounted config for this CLI"
                 )
                 continue
-
-            # Resolve config directory
-            inst_dir = os.path.expanduser(
-                str(getattr(inst, "config_dir", "") or "").strip()
-            )
-            if not inst_dir:
-                inst_dir = self._resolve_config_dir_for_agent(
-                    agent_cli=inst_cli,
-                    env=env,
-                    settings=settings,
-                )
 
             # Validate config directory exists
             if not self._ensure_agent_config_dir(inst_cli, inst_dir):

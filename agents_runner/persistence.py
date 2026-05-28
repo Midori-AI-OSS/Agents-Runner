@@ -551,6 +551,7 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             image=str(payload.get("image") or ""),
             host_config_dir=str(payload.get("host_config_dir") or ""),
             host_workdir=str(payload.get("host_workdir") or ""),
+            state_path=str(payload.get("state_path") or ""),
             agent_cli=agent_cli,
             container_config_dir=container_config_dir,
             container_workdir=str(

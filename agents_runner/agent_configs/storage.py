@@ -110,6 +110,23 @@ def load_agent_configs(state_path: str) -> list[AgentConfig]:
     return configs
 
 
+def resolve_agent_config(
+    config_id: str, agent_configs: dict[str, AgentConfig]
+) -> AgentConfig | None:
+    """Look up an AgentConfig by config_id.
+
+    Returns ``None`` when ``config_id`` is empty or missing from ``agent_configs``.
+    """
+
+    target = str(config_id or "").strip()
+    if not target:
+        return None
+    config = agent_configs.get(target)
+    if not isinstance(config, AgentConfig):
+        return None
+    return config
+
+
 def save_agent_config(state_path: str, config: AgentConfig) -> None:
     config_id = str(getattr(config, "config_id", "") or "").strip()
     if not config_id:

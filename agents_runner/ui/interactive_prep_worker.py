@@ -357,6 +357,7 @@ class InteractivePrepWorker(QObject):
             prompt_for_agent,
             self._env_id or None,
             lambda line: self.log.emit(self._task_id, str(line or "")),
+            state_path=os.path.join(self._data_dir, "state.toml"),
         )
         prompt_for_agent = assembler.assemble_prompt(
             self._agent_cli,
