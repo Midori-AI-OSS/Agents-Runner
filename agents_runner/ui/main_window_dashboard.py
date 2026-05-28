@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
+
 
 from agents_runner.log_format import prettify_log_line
 from agents_runner.persistence import deserialize_task
@@ -11,7 +18,7 @@ from agents_runner.ui.utils import stain_color
 PAST_TASK_PAGE_SIZE = 10
 
 
-class MainWindowDashboardMixin:
+class MainWindowDashboardMixin(_MainWindowHints):
     def _refresh_task_rows(self) -> None:
         for task in self._tasks.values():
             env = self._environments.get(task.environment_id)

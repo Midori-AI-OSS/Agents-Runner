@@ -12,6 +12,7 @@ from PySide6.QtCore import Signal
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import QThread
 from PySide6.QtGui import QColor
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtGui import QTextCursor
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QGridLayout
@@ -152,7 +153,9 @@ class NewTaskPage(QWidget):
 
         # Agent chain display - inline with prompt label
         self._agent_chain = QLabel("—")
-        self._agent_chain.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._agent_chain.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self._agent_chain.setStyleSheet("color: rgba(237, 239, 245, 200);")
         self._agent_chain.setToolTip(
             "Agents will be used in this order for new tasks in this environment."
@@ -183,7 +186,7 @@ class NewTaskPage(QWidget):
         self._voice_btn = QToolButton()
         self._voice_btn.setIcon(mic_icon(size=18))
         self._voice_btn.setIconSize(QSize(18, 18))
-        self._voice_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._voice_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._voice_btn.setCheckable(True)
         self._voice_btn.setToolTip("Speech-to-text into the prompt editor.")
         self._voice_btn.setStyleSheet("margin: 8px;")
@@ -195,10 +198,16 @@ class NewTaskPage(QWidget):
         prompt_container_layout.setSpacing(0)
         prompt_container_layout.addWidget(self._prompt, 0, 0)
         prompt_container_layout.addWidget(
-            self._template_prompt_indicator, 0, 0, Qt.AlignRight | Qt.AlignTop
+            self._template_prompt_indicator,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
         )
         prompt_container_layout.addWidget(
-            self._voice_btn, 0, 0, Qt.AlignRight | Qt.AlignBottom
+            self._voice_btn,
+            0,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
         )
 
         interactive_hint = QLabel(
@@ -207,7 +216,9 @@ class NewTaskPage(QWidget):
         interactive_hint.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
         self._terminal_display = QLabel("No terminals detected")
-        self._terminal_display.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._terminal_display.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self._terminal_display.setStyleSheet("color: rgba(237, 239, 245, 200);")
 
         self._command = QLineEdit("--sandbox danger-full-access")
@@ -229,7 +240,9 @@ class NewTaskPage(QWidget):
         # Workspace display for mounted folder environments (shown on terminal line)
         self._terminal_workspace_label = QLabel("Workspace")
         self._terminal_workspace = QLabel("—")
-        self._terminal_workspace.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._terminal_workspace.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self._terminal_workspace.setStyleSheet("color: rgba(237, 239, 245, 200);")
         interactive_grid.addWidget(self._terminal_workspace_label, 0, 2)
         interactive_grid.addWidget(self._terminal_workspace, 0, 3)
@@ -241,7 +254,9 @@ class NewTaskPage(QWidget):
         cfg_grid.setHorizontalSpacing(10)
         cfg_grid.setVerticalSpacing(10)
         self._workspace = QLabel("—")
-        self._workspace.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._workspace.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self._workspace_hint = QLabel("")
         self._workspace_hint.setStyleSheet("color: rgba(237, 239, 245, 160);")
         self._workspace_hint.setWordWrap(True)
@@ -306,7 +321,7 @@ class NewTaskPage(QWidget):
         self._refresh_terminal_selection("")
         self._update_run_buttons()
 
-    def resizeEvent(self, event: object) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
@@ -1490,7 +1505,7 @@ class NewTaskPage(QWidget):
 
     def reset_for_new_run(self) -> None:
         self._prompt.setPlainText("")
-        self._prompt.setFocus(Qt.OtherFocusReason)
+        self._prompt.setFocus(Qt.FocusReason.OtherFocusReason)
         self._pending_pr_context = None
 
     def append_prompt_text(self, text: str) -> None:
@@ -1507,10 +1522,10 @@ class NewTaskPage(QWidget):
         cursor = self._prompt.textCursor()
         cursor.movePosition(QTextCursor.End)
         self._prompt.setTextCursor(cursor)
-        self._prompt.setFocus(Qt.OtherFocusReason)
+        self._prompt.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def set_pending_pr_context(self, context: dict[str, object] | None) -> None:
         self._pending_pr_context = context if isinstance(context, dict) else None
 
     def focus_prompt(self) -> None:
-        self._prompt.setFocus(Qt.OtherFocusReason)
+        self._prompt.setFocus(Qt.FocusReason.OtherFocusReason)

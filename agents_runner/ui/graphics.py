@@ -171,9 +171,9 @@ class EnvironmentTintOverlay(QWidget):
         super().__init__(parent)
         self._alpha = int(min(max(alpha, 0), 255))
         self._color = QColor(0, 0, 0, 0)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.setAttribute(Qt.WA_NoSystemBackground, True)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(False)
 
     def set_tint_color(self, color: QColor | None) -> None:
@@ -407,7 +407,7 @@ class GlassRoot(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         alpha = self._paint_theme(painter, self._theme_name)
         painter.fillRect(self.rect(), QColor(0, 0, 0, int(alpha)))

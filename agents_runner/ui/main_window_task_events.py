@@ -6,7 +6,12 @@ import time
 
 from datetime import datetime
 from datetime import timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
@@ -32,7 +37,7 @@ from agents_runner.ui.utils import parse_docker_time
 from agents_runner.ui.utils import stain_color
 
 
-class MainWindowTaskEventsMixin:
+class MainWindowTaskEventsMixin(_MainWindowHints):
     def _open_task_details(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
@@ -377,13 +382,15 @@ class MainWindowTaskEventsMixin:
         include_supervisor_events: bool,
     ) -> None:
         proxy = self._ensure_task_event_proxy(task_id)
-        bridge.state.connect(proxy.enqueue_state, Qt.DirectConnection)
-        bridge.log.connect(proxy.enqueue_log, Qt.DirectConnection)
-        bridge.done.connect(proxy.enqueue_done, Qt.DirectConnection)
+        bridge.state.connect(proxy.enqueue_state, Qt.ConnectionType.DirectConnection)
+        bridge.log.connect(proxy.enqueue_log, Qt.ConnectionType.DirectConnection)
+        bridge.done.connect(proxy.enqueue_done, Qt.ConnectionType.DirectConnection)
         if include_supervisor_events:
-            bridge.retry_attempt.connect(proxy.enqueue_retry, Qt.DirectConnection)
+            bridge.retry_attempt.connect(
+                proxy.enqueue_retry, Qt.ConnectionType.DirectConnection
+            )
             bridge.agent_switched.connect(
-                proxy.enqueue_agent_switched, Qt.DirectConnection
+                proxy.enqueue_agent_switched, Qt.ConnectionType.DirectConnection
             )
 
     def _drain_task_event_proxies(self) -> None:
@@ -869,50 +876,6 @@ class MainWindowTaskEventsMixin:
             self._queue_task_finalization(task_id, reason="task_done")
         finally:
             pass
-
-    def _cleanup_cloned_repo_workspace_async(self, task_id: str, env_id: str) -> None:
-        """Clean up cloned repo workspace for a task asynchronously.
-
-        This is used when PR creation is skipped (otherwise the PR worker
-        performs cleanup after finishing).
-        """
-        import os
-
-        try:
-            state_path = getattr(self, "_state_path", "")
-            if not state_path:
-                self._on_task_log(
-                    task_id,
-                    format_log(
-                        "gh",
-                        "cleanup",
-                        "WARN",
-                        "cleanup skipped: state path not available",
-                    ),
-                )
-                return
-
-            self._on_task_log(
-                task_id,
-                format_log("gh", "cleanup", "INFO", "cleaning up task workspace"),
-            )
-            data_dir = os.path.dirname(state_path)
-            cleanup_success = cleanup_task_workspace(
-                env_id=env_id,
-                task_id=task_id,
-                data_dir=data_dir,
-                on_log=lambda msg: self._on_task_log(task_id, msg),
-            )
-            if cleanup_success:
-                self._on_task_log(
-                    task_id,
-                    format_log("gh", "cleanup", "INFO", "task workspace cleaned"),
-                )
-        except Exception as cleanup_exc:
-            self._on_task_log(
-                task_id,
-                format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}"),
-            )
 
     def _start_artifact_finalization(self, task: Task) -> None:
         if getattr(task, "_artifact_finalization_started", False):

@@ -273,7 +273,7 @@ def paint_claude_background(
         return claude_tips, next_reset_s
 
     painter.save()
-    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
     max_age_s = float(_CLAUDE_SEGMENT_LIFETIME_S)
     for seg in claude_segments:
@@ -303,7 +303,7 @@ def paint_claude_background(
             pen = QPen(
                 QColor(base_color.red(), base_color.green(), base_color.blue(), alpha),
                 max(1.0, float(seg.thickness) * width_scale),
-                Qt.SolidLine,
+                Qt.PenStyle.SolidLine,
                 Qt.PenCapStyle.FlatCap,
                 Qt.PenJoinStyle.MiterJoin,
             )

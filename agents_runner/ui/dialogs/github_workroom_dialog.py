@@ -97,23 +97,31 @@ class GitHubWorkroomDialog(ThemedDialog):
         self._subtitle.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
         self._btn_primary = QToolButton()
-        self._btn_primary.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_primary.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
         self._btn_primary.clicked.connect(self._on_primary)
 
         self._btn_toggle_state = QToolButton()
-        self._btn_toggle_state.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_toggle_state.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
         self._btn_toggle_state.clicked.connect(self._on_toggle_open_state)
 
         self._btn_refresh = QToolButton()
         self._btn_refresh.setText("Refresh")
         self._btn_refresh.setIcon(lucide_icon("refresh-cw"))
-        self._btn_refresh.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_refresh.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
         self._btn_refresh.clicked.connect(self.refresh)
 
         self._btn_browser = QToolButton()
         self._btn_browser.setText("Browser")
         self._btn_browser.setIcon(lucide_icon("external-link"))
-        self._btn_browser.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_browser.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
         self._btn_browser.clicked.connect(self._open_in_browser)
 
         header_layout.addWidget(self._title)
@@ -135,7 +143,9 @@ class GitHubWorkroomDialog(ThemedDialog):
         self._timeline_scroll = QScrollArea()
         self._timeline_scroll.setWidgetResizable(True)
         self._timeline_scroll.setFrameShape(QScrollArea.NoFrame)
-        self._timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._timeline_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         self._timeline_scroll.setObjectName("TaskScroll")
 
         self._timeline_list = QWidget()
@@ -201,7 +211,7 @@ class GitHubWorkroomDialog(ThemedDialog):
         self._voice_btn.setCheckable(True)
         self._voice_btn.setIcon(mic_icon(size=18))
         self._voice_btn.setIconSize(self._voice_btn.iconSize())
-        self._voice_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._voice_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._voice_btn.setToolTip("Speech-to-text into the comment input.")
         self._voice_btn.toggled.connect(self._on_voice_toggled)
 
@@ -212,7 +222,7 @@ class GitHubWorkroomDialog(ThemedDialog):
 
         self._btn_send = QToolButton()
         self._btn_send.setIcon(lucide_icon("arrow-up"))
-        self._btn_send.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_send.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_send.setToolTip("Post comment")
         self._btn_send.clicked.connect(self._on_send_comment)
 
@@ -255,7 +265,7 @@ class GitHubWorkroomDialog(ThemedDialog):
         self._timeline_layout.insertWidget(index, bubble)
 
     def _focus_comment_composer(self) -> None:
-        self._comment.setFocus(Qt.OtherFocusReason)
+        self._comment.setFocus(Qt.FocusReason.OtherFocusReason)
         self._comment.setCursorPosition(len(str(self._comment.text() or "")))
 
     def _scroll_timeline_to_bottom(self) -> None:
@@ -572,7 +582,7 @@ class GitHubWorkroomDialog(ThemedDialog):
             self._focus_comment_on_show = False
 
     def _with_wait_cursor(self, fn: Callable[[], None]) -> None:
-        QApplication.setOverrideCursor(Qt.WaitCursor)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             fn()
         finally:

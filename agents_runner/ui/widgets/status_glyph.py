@@ -36,7 +36,7 @@ class StatusGlyph(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         rect = self.rect()
         center = rect.center()
@@ -51,7 +51,7 @@ class StatusGlyph(QWidget):
                 color = QColor(
                     self._color.red(), self._color.green(), self._color.blue(), alpha
                 )
-                painter.setPen(Qt.NoPen)
+                painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(color)
 
                 x = center.x() + math.cos(math.radians(angle_deg)) * ring_r
@@ -60,7 +60,7 @@ class StatusGlyph(QWidget):
                 painter.drawEllipse(int(x - r), int(y - r), int(r * 2), int(r * 2))
             return
 
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(
             QColor(self._color.red(), self._color.green(), self._color.blue(), 45)
         )
@@ -71,8 +71,8 @@ class StatusGlyph(QWidget):
         pen.setColor(
             QColor(self._color.red(), self._color.green(), self._color.blue(), 220)
         )
-        pen.setCapStyle(Qt.RoundCap)
-        pen.setJoinStyle(Qt.RoundJoin)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
 
         if self._mode == "check":

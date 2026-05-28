@@ -449,7 +449,7 @@ def paint_copilot_background(
 ) -> None:
     """Render Copilot theme background with animated code panes."""
     painter.save()
-    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
     w = int(rect.width())
     h = int(rect.height())
@@ -480,7 +480,7 @@ def paint_copilot_background(
         glow.setColorAt(1.0, QColor(255, 255, 255, 0))
         painter.fillRect(pane_rect, glow)
 
-    painter.setRenderHint(QPainter.TextAntialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
     fade_in_s = 0.22
 
     for pane, pane_rect in zip(panes, pane_rects, strict=False):

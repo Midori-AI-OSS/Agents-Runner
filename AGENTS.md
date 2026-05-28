@@ -12,7 +12,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
 - **Code style:** Python 3.13+, type hints, minimal diffs (avoid drive-by refactors)
 - **Docs:** Do not update `README.md`; prefer code and docstrings as the source of truth and keep notes minimal and task-scoped
 - **Commits:** Commit early and often — prefer many small, focused commits with clear `[TYPE]` messages and concise descriptions.
-- **Test:** Do not add/build tests unless explicitly requested. When requested, run via `uv sync --group ci && uv run pytest`.
+- **Test:** Do not add/build tests unless explicitly requested. When requested, run via `uv sync --group ci && .agents/scripts/test`.
 
 ---
 
@@ -87,7 +87,7 @@ This project uses the Codex contributor coordination system. Follow these guidel
   - If you believe a test is really needed to prevent regressions, ask first (keep it minimal).
   - When tests are requested/approved, prefer package-scoped tests in that package’s `tests/` folder (for example `agents_runner/<subsystem>/tests/`).
   - `agents_runner/tests/` is reserved for full package or full-program/integration tests, and should only be used when explicitly requested.
-  - Run via `uv sync --group ci && uv run pytest`.
+  - Run via `uv sync --group ci && .agents/scripts/test`.
 
 ---
 

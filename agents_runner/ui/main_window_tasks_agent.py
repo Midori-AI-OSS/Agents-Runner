@@ -6,7 +6,13 @@ import shlex
 import shutil
 import time
 
+from typing import TYPE_CHECKING
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -16,7 +22,6 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
-from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh.permissions import check_pr_creation_capability_for_repo_ref
 from agents_runner.gh_management import is_gh_available
@@ -49,7 +54,7 @@ from agents_runner.ui.utils import stain_color
 logger = logging.getLogger(__name__)
 
 
-class MainWindowTasksAgentMixin:
+class MainWindowTasksAgentMixin(_MainWindowHints):
     def _clean_old_tasks(self) -> None:
         to_remove: set[str] = set()
         for task_id, task in self._tasks.items():
@@ -65,28 +70,14 @@ class MainWindowTasksAgentMixin:
         if not to_remove:
             return
 
-        # Archive tasks and clean up workspaces
+        # Archive tasks; retained cloned workspaces are cleaned by the host policy.
         archived_tasks: list[Task] = []
-        data_dir = os.path.dirname(self._state_path)
         for task_id in sorted(to_remove):
             task = self._tasks.get(task_id)
             if task is None:
                 continue
-            status = (task.status or "").lower()
             save_task_payload(self._state_path, serialize_task(task), archived=True)
             archived_tasks.append(task)
-
-            # Clean up task workspace (if using cloned GitHub repo)
-            if task.workspace_type == WORKSPACE_CLONED and task.environment_id:
-                # Keep failed task repos for debugging (unless status is "done")
-                keep_on_error = status in {"failed", "error"}
-                if not keep_on_error:
-                    cleanup_task_workspace(
-                        env_id=task.environment_id,
-                        task_id=task_id,
-                        data_dir=data_dir,
-                        on_log=None,  # Silent cleanup
-                    )
 
         self._dashboard.remove_tasks(to_remove)
         for task_id in to_remove:
@@ -1024,18 +1015,22 @@ class MainWindowTasksAgentMixin:
                 include_supervisor_events=True,
             )
         else:
-            bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
-            bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
-            bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
+            bridge.state.connect(
+                self._on_bridge_state, Qt.ConnectionType.QueuedConnection
+            )
+            bridge.log.connect(self._on_bridge_log, Qt.ConnectionType.QueuedConnection)
+            bridge.done.connect(
+                self._on_bridge_done, Qt.ConnectionType.QueuedConnection
+            )
             bridge.retry_attempt.connect(
-                self._on_bridge_retry_attempt, Qt.QueuedConnection
+                self._on_bridge_retry_attempt, Qt.ConnectionType.QueuedConnection
             )
             bridge.agent_switched.connect(
-                self._on_bridge_agent_switched, Qt.QueuedConnection
+                self._on_bridge_agent_switched, Qt.ConnectionType.QueuedConnection
             )
 
-        bridge.done.connect(thread.quit, Qt.QueuedConnection)
-        bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
+        bridge.done.connect(thread.quit, Qt.ConnectionType.QueuedConnection)
+        bridge.done.connect(bridge.deleteLater, Qt.ConnectionType.QueuedConnection)
         thread.finished.connect(thread.deleteLater)
 
         self._bridges[task.task_id] = bridge

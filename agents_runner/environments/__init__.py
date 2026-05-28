@@ -28,6 +28,15 @@ from agents_runner.environments.paths import default_data_dir
 from agents_runner.environments.paths import environment_path
 from agents_runner.environments.paths import managed_repo_checkout_path
 from agents_runner.environments.paths import managed_repos_dir
+from agents_runner.environments.task_workspaces import SCRATCH_TASK_WORKSPACES_ROOT
+from agents_runner.environments.task_workspaces import TASK_WORKSPACE_LOCATION_APP_DATA
+from agents_runner.environments.task_workspaces import (
+    TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE,
+)
+from agents_runner.environments.task_workspaces import normalize_task_workspace_location
+from agents_runner.environments.task_workspaces import normalize_task_workspace_settings
+from agents_runner.environments.task_workspaces import scratch_drive_status
+from agents_runner.environments.task_workspaces import task_workspaces_root
 from agents_runner.environments.serialize import serialize_environment
 from agents_runner.environments.storage import delete_environment
 from agents_runner.environments.storage import load_environments
@@ -56,6 +65,8 @@ __all__ = [
     "load_environments",
     "managed_repo_checkout_path",
     "managed_repos_dir",
+    "normalize_task_workspace_location",
+    "normalize_task_workspace_settings",
     "normalize_gpu_override_mode",
     "normalize_opencode_interactive_mode",
     "normalize_opencode_interactive_override",
@@ -66,6 +77,11 @@ __all__ = [
     "save_environment",
     "serialize_environment",
     "resolve_environment_github_repo",
+    "scratch_drive_status",
+    "task_workspaces_root",
+    "SCRATCH_TASK_WORKSPACES_ROOT",
+    "TASK_WORKSPACE_LOCATION_APP_DATA",
+    "TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE",
     "SYSTEM_ENV_ID",
     "SYSTEM_ENV_NAME",
 ]

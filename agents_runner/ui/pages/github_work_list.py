@@ -52,9 +52,9 @@ class _GitHubWorkRow(QWidget):
         self._item_type = str(item_type or "issue").strip().lower()
 
         self.setObjectName("TaskRow")
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("stain", "slate")
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(56)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
@@ -79,18 +79,18 @@ class _GitHubWorkRow(QWidget):
 
         self._btn_primary = QToolButton()
         self._btn_primary.setObjectName("RowTrash")
-        self._btn_primary.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_primary.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_primary.clicked.connect(
             lambda: self.primary_requested.emit(self._item)
         )
 
         self._btn_open = QToolButton()
         self._btn_open.setObjectName("RowTrash")
-        self._btn_open.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_open.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_open.clicked.connect(lambda: self.open_requested.emit(self._item))
 
-        actions_layout.addWidget(self._btn_primary, 0, Qt.AlignRight)
-        actions_layout.addWidget(self._btn_open, 0, Qt.AlignRight)
+        actions_layout.addWidget(self._btn_primary, 0, Qt.AlignmentFlag.AlignRight)
+        actions_layout.addWidget(self._btn_open, 0, Qt.AlignmentFlag.AlignRight)
 
         layout.addWidget(self._title, 6)
         layout.addWidget(self._meta, 5)
@@ -141,7 +141,7 @@ class _GitHubWorkRow(QWidget):
         target_opacity = 1.0 if target_visible else 0.0
 
         self._actions_panel.setAttribute(
-            Qt.WA_TransparentForMouseEvents, not target_visible
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, not target_visible
         )
 
         if not animate:
@@ -175,7 +175,9 @@ class _GitHubWorkRow(QWidget):
         def _on_finished() -> None:
             self._actions_animation = None
             if not self._actions_visible:
-                self._actions_panel.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+                self._actions_panel.setAttribute(
+                    Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+                )
 
         group.finished.connect(_on_finished)
         group.start()
@@ -198,7 +200,7 @@ class _GitHubWorkRow(QWidget):
         self._meta.setText(meta_text)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self._item)
             event.accept()
             return
@@ -225,7 +227,7 @@ class _GitHubWorkSkeletonRow(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("TaskRow")
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("stain", "slate")
         self.setFixedHeight(56)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -290,7 +292,7 @@ class GitHubWorkListPage(QWidget):
 
         self._refresh = QToolButton()
         self._refresh.setIcon(lucide_icon("refresh-cw"))
-        self._refresh.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._refresh.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._refresh.setToolTip("Refresh")
         self._refresh.clicked.connect(self.refresh)
 
@@ -313,12 +315,12 @@ class GitHubWorkListPage(QWidget):
 
         columns_layout.addWidget(c1, 6)
         columns_layout.addWidget(c3, 5)
-        columns_layout.addWidget(self._refresh, 0, Qt.AlignRight)
+        columns_layout.addWidget(self._refresh, 0, Qt.AlignmentFlag.AlignRight)
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
         self._scroll.setFrameShape(QScrollArea.NoFrame)
-        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setObjectName("TaskScroll")
 
         self._list = QWidget()

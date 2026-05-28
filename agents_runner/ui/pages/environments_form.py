@@ -2,6 +2,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _EnvironmentsPageHints
+else:
+    _EnvironmentsPageHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator
@@ -57,7 +63,7 @@ class _EnvironmentPaneSpec:
     section: str
 
 
-class EnvironmentsFormMixin:
+class EnvironmentsFormMixin(_EnvironmentsPageHints):
     def _default_pane_specs(self) -> list[_EnvironmentPaneSpec]:
         return [
             _EnvironmentPaneSpec(
@@ -320,7 +326,9 @@ class EnvironmentsFormMixin:
         )
         self._setup_github_defaults_env = QToolButton()
         self._setup_github_defaults_env.setText("Setup Defaults")
-        self._setup_github_defaults_env.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._setup_github_defaults_env.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         self._setup_github_defaults_env.setToolTip(
             "Seed trusted users from this environment's repo owner/org members and current gh login."
         )
@@ -622,7 +630,7 @@ class EnvironmentsFormMixin:
                 button.setToolTip(spec.subtitle)
                 button.setCheckable(True)
                 button.setAutoExclusive(True)
-                button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
                 button.setFixedHeight(40)
                 button.setSizePolicy(
                     QSizePolicy.Policy.Expanding,

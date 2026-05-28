@@ -165,8 +165,8 @@ def _paint_blobs(
 
     size = float(min(w, h))
     painter.save()
-    painter.setRenderHint(QPainter.Antialiasing, True)
-    painter.setPen(Qt.NoPen)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(Qt.PenStyle.NoPen)
 
     if spec.light_mode:
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)

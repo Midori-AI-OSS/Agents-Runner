@@ -51,7 +51,7 @@ class GitHubUsernameListWidget(QWidget):
         self._table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
         self._table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
         self._table.setSelectionMode(QTableWidget.NoSelection)
-        self._table.setFocusPolicy(Qt.NoFocus)
+        self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout.addWidget(self._table, 1)
 
@@ -109,7 +109,7 @@ class GitHubUsernameListWidget(QWidget):
     def _build_add_button(self, parent: QWidget | None = None) -> QToolButton:
         add_btn = QToolButton(parent)
         add_btn.setText("Add")
-        add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        add_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         add_btn.clicked.connect(self._on_add_row)
         return add_btn
 
@@ -130,7 +130,7 @@ class GitHubUsernameListWidget(QWidget):
                 remove_btn = QToolButton()
                 remove_btn.setObjectName("RowTrash")
                 remove_btn.setIcon(lucide_icon("trash-2"))
-                remove_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+                remove_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
                 remove_btn.setToolTip("Remove user")
                 remove_btn.clicked.connect(
                     lambda _=False, i=row_index: self._on_remove_row(i)

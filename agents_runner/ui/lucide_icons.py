@@ -72,7 +72,7 @@ def _render_lucide_icon(
     if not icon_path.exists():
         # Return empty pixmap if icon not found
         pixmap = QPixmap(int(size * dpr), int(size * dpr))
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         pixmap.setDevicePixelRatio(dpr)
         return pixmap
 
@@ -92,14 +92,14 @@ def _render_lucide_icon(
     if not renderer.isValid():
         # Return empty pixmap if SVG is invalid
         pixmap = QPixmap(int(size * dpr), int(size * dpr))
-        pixmap.fill(Qt.transparent)
+        pixmap.fill(Qt.GlobalColor.transparent)
         pixmap.setDevicePixelRatio(dpr)
         return pixmap
 
     # Create HiDPI pixmap
     physical_size = int(size * dpr)
     pixmap = QPixmap(physical_size, physical_size)
-    pixmap.fill(Qt.transparent)
+    pixmap.fill(Qt.GlobalColor.transparent)
     pixmap.setDevicePixelRatio(dpr)
 
     # Render SVG into pixmap

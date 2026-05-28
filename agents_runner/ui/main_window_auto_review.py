@@ -3,6 +3,13 @@ from __future__ import annotations
 import threading
 import time
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
+
 from PySide6.QtWidgets import QDialog
 
 from agents_runner.agent_display import format_agent_markdown_link
@@ -26,7 +33,7 @@ from midori_ai_logger import MidoriAiLogger
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class MainWindowAutoReviewMixin:
+class MainWindowAutoReviewMixin(_MainWindowHints):
     def _on_auto_review_requested(self, env_id: str, payload: object) -> None:
         payload_dict = payload if isinstance(payload, dict) else {}
         prompt = str(payload_dict.get("prompt") or "").strip()

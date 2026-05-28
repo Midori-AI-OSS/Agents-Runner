@@ -78,28 +78,28 @@ class TaskDetailsPage(QWidget):
         self._review_pr.triggered.connect(self._on_pr_triggered)
         self._review = QToolButton()
         self._review.setText("Review")
-        self._review.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._review.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._review.setMenu(self._review_menu)
         self._review.setPopupMode(QToolButton.InstantPopup)
         self._review.setVisible(False)
 
         self._desktop_btn = QToolButton()
         self._desktop_btn.setText("Desktop")
-        self._desktop_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._desktop_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._desktop_btn.clicked.connect(self._launch_desktop_viewer)
         self._desktop_btn.setVisible(False)
 
         self._opencode_web_btn = QToolButton()
         self._opencode_web_btn.setText("OpenCode Web")
-        self._opencode_web_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._opencode_web_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._opencode_web_btn.clicked.connect(self._launch_opencode_web)
         self._opencode_web_btn.setVisible(False)
 
         header_layout.addWidget(self._title)
         header_layout.addWidget(self._subtitle, 1)
-        header_layout.addWidget(self._review, 0, Qt.AlignRight)
-        header_layout.addWidget(self._opencode_web_btn, 0, Qt.AlignRight)
-        header_layout.addWidget(self._desktop_btn, 0, Qt.AlignRight)
+        header_layout.addWidget(self._review, 0, Qt.AlignmentFlag.AlignRight)
+        header_layout.addWidget(self._opencode_web_btn, 0, Qt.AlignmentFlag.AlignRight)
+        header_layout.addWidget(self._desktop_btn, 0, Qt.AlignmentFlag.AlignRight)
         layout.addWidget(header)
 
         self._tabs = QTabWidget()
@@ -149,7 +149,7 @@ class TaskDetailsPage(QWidget):
         stitle.setStyleSheet("font-size: 14px; font-weight: 650;")
 
         self._btn_freeze = QToolButton()
-        self._btn_freeze.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_freeze.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_freeze.setAutoRaise(True)
         self._btn_freeze.setIcon(lucide_icon("pause"))
         self._btn_freeze.setIconSize(QSize(16, 16))
@@ -157,7 +157,7 @@ class TaskDetailsPage(QWidget):
         self._btn_freeze.clicked.connect(lambda: self._emit_container_action("freeze"))
 
         self._btn_unfreeze = QToolButton()
-        self._btn_unfreeze.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_unfreeze.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_unfreeze.setAutoRaise(True)
         self._btn_unfreeze.setIcon(lucide_icon("play"))
         self._btn_unfreeze.setIconSize(QSize(16, 16))
@@ -167,7 +167,7 @@ class TaskDetailsPage(QWidget):
         )
 
         self._btn_stop = QToolButton()
-        self._btn_stop.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_stop.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_stop.setAutoRaise(True)
         self._btn_stop.setIcon(lucide_icon("square"))
         self._btn_stop.setIconSize(QSize(16, 16))
@@ -175,7 +175,7 @@ class TaskDetailsPage(QWidget):
         self._btn_stop.clicked.connect(lambda: self._emit_container_action("stop"))
 
         self._btn_kill = QToolButton()
-        self._btn_kill.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_kill.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_kill.setAutoRaise(True)
         self._btn_kill.setIcon(lucide_icon("circle-x"))
         self._btn_kill.setIconSize(QSize(16, 16))
@@ -196,7 +196,7 @@ class TaskDetailsPage(QWidget):
         self._glyph = StatusGlyph(size=44)
         self._status = QLabel("idle")
         self._status.setStyleSheet("font-size: 16px; font-weight: 750;")
-        state_row.addWidget(self._glyph, 0, Qt.AlignLeft)
+        state_row.addWidget(self._glyph, 0, Qt.AlignmentFlag.AlignLeft)
         state_row.addWidget(self._status, 1)
 
         details = QGridLayout()
@@ -234,7 +234,7 @@ class TaskDetailsPage(QWidget):
 
         self._btn_copy_prompt = QToolButton()
         self._btn_copy_prompt.setText("Copy")
-        self._btn_copy_prompt.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._btn_copy_prompt.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._btn_copy_prompt.setToolTip("Copy prompt to clipboard")
         self._btn_copy_prompt.clicked.connect(self._copy_prompt_to_clipboard)
         prompt_title_row.addWidget(self._btn_copy_prompt)
@@ -254,17 +254,27 @@ class TaskDetailsPage(QWidget):
         self._workdir = QLabel("—")
         self._workdir_label = QLabel("Host Workdir")
         self._container = QLabel("—")
-        self._container.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._workdir.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._container.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self._workdir.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
 
         self._novnc_label = QLabel("noVNC URL")
         self._novnc_url = QLabel("—")
-        self._novnc_url.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._novnc_url.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self._opencode_web_url_label = QLabel("OpenCode Web URL")
         self._opencode_web_url = QLabel("—")
-        self._opencode_web_url.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._opencode_web_url.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
         self._agent_system = QLabel("—")
-        self._agent_system.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._agent_system.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
 
         self._workdir_row = 0
         cfg.addWidget(self._workdir_label, self._workdir_row, 0)

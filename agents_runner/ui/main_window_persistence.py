@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
+
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.environments import normalize_opencode_interactive_mode
 from agents_runner.log_format import prettify_log_line
@@ -10,6 +17,7 @@ from agents_runner.persistence import load_state
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import save_state
 from agents_runner.persistence import serialize_task
+from agents_runner.environments.task_workspaces import normalize_task_workspace_settings
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import parse_docker_time
@@ -17,7 +25,7 @@ from agents_runner.ui.utils import stain_color
 from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
 
-class MainWindowPersistenceMixin:
+class MainWindowPersistenceMixin(_MainWindowHints):
     @staticmethod
     def _is_missing_container_error(exc: Exception) -> bool:
         text = str(exc or "").lower()
@@ -196,6 +204,7 @@ class MainWindowPersistenceMixin:
         self._settings_data.setdefault("agentsnova_auto_reactions_enabled", True)
         self._settings_data.setdefault("agentsnova_trusted_users_global", [])
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
+        self._settings_data = normalize_task_workspace_settings(self._settings_data)
         self._settings_data["gpu_enabled"] = bool(
             self._settings_data.get("gpu_enabled") or False
         )

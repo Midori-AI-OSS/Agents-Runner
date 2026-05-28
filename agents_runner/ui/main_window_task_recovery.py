@@ -5,17 +5,26 @@ import subprocess
 import threading
 import time
 
+from itertools import chain
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
 
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.environments import WORKSPACE_CLONED
-from agents_runner.environments.cleanup import cleanup_task_workspace
+from agents_runner.environments.cleanup import cleanup_retained_task_workspaces
 from agents_runner.log_format import format_log
 from agents_runner.log_format import wrap_container_log
+from agents_runner.persistence import iter_done_task_payloads
+from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import stain_color
 
 
-class MainWindowTaskRecoveryMixin:
+class MainWindowTaskRecoveryMixin(_MainWindowHints):
     def _reconcile_tasks_after_restart(self) -> None:
         """Reconcile tasks after app restart.
 
@@ -79,6 +88,81 @@ class MainWindowTaskRecoveryMixin:
             if (task.finalization_state or "").lower().strip() == "done":
                 continue
             self._tick_recovery_task(task)
+        self._maybe_schedule_task_workspace_cleanup()
+
+    def _maybe_schedule_task_workspace_cleanup(self) -> None:
+        if bool(getattr(self, "_task_workspace_cleanup_running", False)):
+            return
+        try:
+            interval_minutes = int(
+                self._settings_data.get("task_workspace_cleanup_interval_minutes", 60)
+            )
+        except Exception:
+            interval_minutes = 60
+        interval_s = max(5, interval_minutes) * 60.0
+        now_s = time.time()
+        last_s = float(
+            getattr(self, "_task_workspace_cleanup_last_check_s", 0.0) or 0.0
+        )
+        if now_s - last_s < interval_s:
+            return
+        self._task_workspace_cleanup_last_check_s = now_s
+        self._task_workspace_cleanup_running = True
+
+        def _worker() -> None:
+            try:
+                self._run_task_workspace_cleanup()
+            finally:
+                self._task_workspace_cleanup_running = False
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _run_task_workspace_cleanup(self) -> None:
+        try:
+            retention_days = int(
+                self._settings_data.get("task_workspace_cleanup_retention_days", 30)
+            )
+        except Exception:
+            retention_days = 30
+        try:
+            scan_delay_seconds = int(
+                self._settings_data.get("task_workspace_cleanup_scan_delay_seconds", 5)
+            )
+        except Exception:
+            scan_delay_seconds = 5
+        active_task_ids: set[str] = set()
+        finalizing_task_ids: set[str] = set()
+        active_payloads: list[dict[str, Any]] = []
+        for task in list(self._tasks.values()):
+            active_payloads.append(serialize_task(task))
+            task_id = str(getattr(task, "task_id", "") or "").strip()
+            if not task_id:
+                continue
+            if task.is_active():
+                active_task_ids.add(task_id)
+            finalization_state = (
+                str(getattr(task, "finalization_state", "") or "").strip().lower()
+            )
+            if finalization_state in {"pending", "running"}:
+                finalizing_task_ids.add(task_id)
+        removed = cleanup_retained_task_workspaces(
+            chain(active_payloads, iter_done_task_payloads(self._state_path)),
+            data_dir=os.path.dirname(self._state_path),
+            retention_days=retention_days,
+            scan_delay_seconds=scan_delay_seconds,
+            active_task_ids=active_task_ids,
+            finalizing_task_ids=finalizing_task_ids,
+        )
+        if removed:
+            self.host_log.emit(
+                "",
+                format_log(
+                    "cleanup",
+                    "retention",
+                    "INFO",
+                    f"Removed {removed} retained task workspace(s)",
+                ),
+            )
 
     def _tick_recovery_task(self, task: Task) -> None:
         """Process a single task for recovery/finalization.
@@ -494,9 +578,7 @@ class MainWindowTaskRecoveryMixin:
                     ),
                 )
 
-            pr_worker_ran = False
             if should_create_pr:
-                pr_worker_ran = True
                 self._finalize_gh_management_worker(
                     task_id,
                     str(task.gh_repo_root or "").strip(),
@@ -515,29 +597,6 @@ class MainWindowTaskRecoveryMixin:
                     format_log(
                         "gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"
                     ),
-                )
-
-            # WORKSPACE CLEANUP LOGIC:
-            # Cleanup happens here ONLY if:
-            # 1. PR worker did NOT run (PR worker cleans in its finally block)
-            # 2. reason != "recovery_tick" (recovery_tick is monitoring, not modifying)
-            # 3. workspace is cloned (non-cloned workspaces don't need cleanup)
-            #
-            # Why recovery_tick skips cleanup:
-            # - recovery_tick is a safety net that runs every 5 seconds
-            # - It should verify finalization state but not modify workspaces
-            # - Cleanup is handled by the primary paths (task_done, user_stop, startup_reconcile)
-            # - This prevents recovery_tick from accidentally removing resources still in use
-            if (
-                not pr_worker_ran
-                and reason != "recovery_tick"  # Skip cleanup during recovery
-                and task.workspace_type == WORKSPACE_CLONED
-                and str(task.environment_id or "").strip()
-                and str(task.task_id or "").strip()
-            ):
-                self._cleanup_task_workspace_for_finalization(
-                    task_id,
-                    str(task.environment_id or "").strip(),
                 )
 
             task.finalization_state = "done"
@@ -572,42 +631,4 @@ class MainWindowTaskRecoveryMixin:
             self.host_log.emit(
                 task_id,
                 format_log("host", "finalize", "ERROR", f"finalization failed: {exc}"),
-            )
-
-    def _cleanup_task_workspace_for_finalization(
-        self, task_id: str, env_id: str
-    ) -> None:
-        env_id = str(env_id or "").strip()
-        if not env_id:
-            return
-        state_path = str(getattr(self, "_state_path", "") or "").strip()
-        if not state_path:
-            self.host_log.emit(
-                task_id,
-                format_log(
-                    "gh", "cleanup", "WARN", "cleanup skipped: state path not available"
-                ),
-            )
-            return
-        data_dir = os.path.dirname(state_path)
-        self.host_log.emit(
-            task_id,
-            format_log("gh", "cleanup", "INFO", "cleaning up task workspace"),
-        )
-        try:
-            cleanup_success = cleanup_task_workspace(
-                env_id=env_id,
-                task_id=task_id,
-                data_dir=data_dir,
-                on_log=lambda msg: self.host_log.emit(task_id, msg),
-            )
-            if cleanup_success:
-                self.host_log.emit(
-                    task_id,
-                    format_log("gh", "cleanup", "INFO", "task workspace cleaned"),
-                )
-        except Exception as cleanup_exc:
-            self.host_log.emit(
-                task_id,
-                format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}"),
             )

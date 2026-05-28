@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QWidget
 
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
 
-class MainWindowNavigationMixin:
+
+class MainWindowNavigationMixin(_MainWindowHints):
     def _apply_window_prefs(self) -> None:
         try:
             w = int(self._settings_data.get("window_w") or 1280)

@@ -11,12 +11,11 @@ if TYPE_CHECKING:
     from PySide6.QtGui import QTextDocument
 
 try:
-    from spellchecker import SpellChecker
+    from spellchecker import SpellChecker  # type: ignore[reportMissingTypeStubs]
 
-    _SPELLCHECK_AVAILABLE = True
+    _spellcheck_available = True
 except ImportError:
-    _SPELLCHECK_AVAILABLE = False
-    SpellChecker = None  # type: ignore
+    _spellcheck_available = False
 
 
 class SpellHighlighter(QSyntaxHighlighter):
@@ -36,9 +35,9 @@ class SpellHighlighter(QSyntaxHighlighter):
         self._enabled = enabled
         self._spell_checker: SpellChecker | None = None
 
-        if _SPELLCHECK_AVAILABLE and enabled:
+        if _spellcheck_available and enabled:
             try:
-                self._spell_checker = SpellChecker()
+                self._spell_checker = SpellChecker()  # type: ignore[reportPossiblyUnboundVariable]
             except Exception:
                 # Silently fail if spell checker initialization fails
                 self._spell_checker = None
@@ -57,9 +56,9 @@ class SpellHighlighter(QSyntaxHighlighter):
 
         self._enabled = enabled
 
-        if enabled and self._spell_checker is None and _SPELLCHECK_AVAILABLE:
+        if enabled and self._spell_checker is None and _spellcheck_available:
             try:
-                self._spell_checker = SpellChecker()
+                self._spell_checker = SpellChecker()  # type: ignore[reportPossiblyUnboundVariable]
             except Exception:
                 self._spell_checker = None
 

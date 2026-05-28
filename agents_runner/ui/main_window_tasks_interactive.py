@@ -14,8 +14,13 @@ import threading
 import time
 from datetime import datetime
 from datetime import timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -51,7 +56,7 @@ from midori_ai_logger import MidoriAiLogger
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class MainWindowTasksInteractiveMixin:
+class MainWindowTasksInteractiveMixin(_MainWindowHints):
     def _ask_opencode_interactive_launch_mode(self) -> str | None:
         dialog = QMessageBox(self)
         dialog.setIcon(QMessageBox.Icon.Question)
@@ -540,16 +545,30 @@ class MainWindowTasksInteractiveMixin:
         self._interactive_prep_threads[task_id] = prep_thread
         self._interactive_prep_bridges[task_id] = prep_bridge
 
-        prep_worker.stage.connect(prep_bridge.on_stage, Qt.QueuedConnection)
-        prep_worker.log.connect(prep_bridge.on_log, Qt.QueuedConnection)
-        prep_worker.succeeded.connect(prep_bridge.on_succeeded, Qt.QueuedConnection)
-        prep_worker.failed.connect(prep_bridge.on_failed, Qt.QueuedConnection)
-        prep_worker.succeeded.connect(prep_thread.quit, Qt.QueuedConnection)
-        prep_worker.failed.connect(prep_thread.quit, Qt.QueuedConnection)
-        prep_worker.succeeded.connect(prep_worker.deleteLater, Qt.QueuedConnection)
-        prep_worker.failed.connect(prep_worker.deleteLater, Qt.QueuedConnection)
+        prep_worker.stage.connect(
+            prep_bridge.on_stage, Qt.ConnectionType.QueuedConnection
+        )
+        prep_worker.log.connect(prep_bridge.on_log, Qt.ConnectionType.QueuedConnection)
+        prep_worker.succeeded.connect(
+            prep_bridge.on_succeeded, Qt.ConnectionType.QueuedConnection
+        )
+        prep_worker.failed.connect(
+            prep_bridge.on_failed, Qt.ConnectionType.QueuedConnection
+        )
+        prep_worker.succeeded.connect(
+            prep_thread.quit, Qt.ConnectionType.QueuedConnection
+        )
+        prep_worker.failed.connect(prep_thread.quit, Qt.ConnectionType.QueuedConnection)
+        prep_worker.succeeded.connect(
+            prep_worker.deleteLater, Qt.ConnectionType.QueuedConnection
+        )
+        prep_worker.failed.connect(
+            prep_worker.deleteLater, Qt.ConnectionType.QueuedConnection
+        )
         prep_thread.finished.connect(prep_thread.deleteLater)
-        prep_thread.finished.connect(prep_bridge.deleteLater, Qt.QueuedConnection)
+        prep_thread.finished.connect(
+            prep_bridge.deleteLater, Qt.ConnectionType.QueuedConnection
+        )
 
         prep_thread.start()
 

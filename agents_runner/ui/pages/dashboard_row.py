@@ -42,7 +42,7 @@ class ElidedLabel(QLabel):
         super().__init__(text, parent)
         self._full_text = text
         self.setWordWrap(False)
-        self.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
     def setFullText(self, text: str) -> None:
         """Set the full text, which will be elided if necessary."""
@@ -57,7 +57,7 @@ class ElidedLabel(QLabel):
         """Update the displayed text with elision if necessary."""
         metrics = QFontMetrics(self.font())
         elided = metrics.elidedText(
-            self._full_text, Qt.ElideRight, max(10, self.width() - 4)
+            self._full_text, Qt.TextElideMode.ElideRight, max(10, self.width() - 4)
         )
         super().setText(elided)
 
@@ -83,7 +83,7 @@ class TaskRow(QWidget):
         self._content_offset = 0.0
         self._entrance_anim: QParallelAnimationGroup | None = None
         self.setObjectName("TaskRow")
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("selected", False)
 
         self._content = QWidget(self)
@@ -95,38 +95,40 @@ class TaskRow(QWidget):
         self._task = ElidedLabel("—")
         self._task.setStyleSheet("font-weight: 650; color: rgba(237, 239, 245, 235);")
         self._task.setMinimumWidth(260)
-        self._task.setTextInteractionFlags(Qt.NoTextInteraction)
-        self._task.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._task.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self._task.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         state_wrap = QWidget()
         state_layout = QHBoxLayout(state_wrap)
         state_layout.setContentsMargins(0, 0, 0, 0)
         state_layout.setSpacing(8)
         self._glyph = StatusGlyph(size=18)
-        self._glyph.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._glyph.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._busy_bar = BouncingLoadingBar(width=72, height=8)
-        self._busy_bar.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._busy_bar.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
         self._busy_bar.hide()
         self._status = QLabel("idle")
         self._status.setStyleSheet("color: rgba(237, 239, 245, 190);")
-        self._status.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        state_layout.addWidget(self._glyph, 0, Qt.AlignLeft)
-        state_layout.addWidget(self._busy_bar, 0, Qt.AlignLeft)
-        state_layout.addWidget(self._status, 0, Qt.AlignLeft)
+        self._status.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        state_layout.addWidget(self._glyph, 0, Qt.AlignmentFlag.AlignLeft)
+        state_layout.addWidget(self._busy_bar, 0, Qt.AlignmentFlag.AlignLeft)
+        state_layout.addWidget(self._status, 0, Qt.AlignmentFlag.AlignLeft)
         state_wrap.setMinimumWidth(180)
-        state_wrap.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        state_wrap.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         self._info = ElidedLabel("")
         self._info.setStyleSheet("color: rgba(237, 239, 245, 150);")
-        self._info.setTextInteractionFlags(Qt.NoTextInteraction)
-        self._info.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._info.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self._info.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         self._btn_discard = QToolButton()
         self._btn_discard.setObjectName("RowTrash")
         self._btn_discard.setIcon(lucide_icon("trash-2"))
-        self._btn_discard.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_discard.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_discard.setToolTip("Discard task")
-        self._btn_discard.setCursor(Qt.PointingHandCursor)
+        self._btn_discard.setCursor(Qt.CursorShape.PointingHandCursor)
         self._btn_discard.setIconSize(
             self._btn_discard.iconSize().expandedTo(self._glyph.size())
         )
@@ -137,9 +139,9 @@ class TaskRow(QWidget):
         layout.addWidget(self._task, 5)
         layout.addWidget(state_wrap, 0)
         layout.addWidget(self._info, 4)
-        layout.addWidget(self._btn_discard, 0, Qt.AlignRight)
+        layout.addWidget(self._btn_discard, 0, Qt.AlignmentFlag.AlignRight)
 
-        self.setCursor(Qt.PointingHandCursor)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.set_stain("slate")
 
     @property
@@ -269,7 +271,7 @@ class TaskRow(QWidget):
         self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit()
         super().mousePressEvent(event)
 

@@ -3,6 +3,13 @@ from __future__ import annotations
 import os
 import threading
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
+
 
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
@@ -17,7 +24,7 @@ from agents_runner.gh_management import git_list_remote_heads
 from agents_runner.gh_management import is_gh_available
 
 
-class MainWindowEnvironmentMixin:
+class MainWindowEnvironmentMixin(_MainWindowHints):
     @staticmethod
     def _is_internal_environment_id(env_id: str) -> bool:
         return str(env_id or "").strip() == SYSTEM_ENV_ID
@@ -49,7 +56,9 @@ class MainWindowEnvironmentMixin:
             return os.path.expanduser(str(env.workspace_target or "").strip())
         if workspace_type == WORKSPACE_CLONED:
             workdir = managed_repo_checkout_path(
-                env.env_id, data_dir=os.path.dirname(self._state_path)
+                env.env_id,
+                data_dir=os.path.dirname(self._state_path),
+                workspace_location=self._settings_data.get("task_workspace_location"),
             )
             try:
                 os.makedirs(workdir, exist_ok=True)
@@ -78,6 +87,7 @@ class MainWindowEnvironmentMixin:
                 env.env_id,
                 data_dir=os.path.dirname(self._state_path),
                 task_id=task_id,
+                workspace_location=self._settings_data.get("task_workspace_location"),
             )
             target = str(env.workspace_target or "").strip()
             if not target:

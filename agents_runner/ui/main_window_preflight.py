@@ -4,8 +4,13 @@ import os
 import shutil
 import time
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import _MainWindowHints
+else:
+    _MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -24,7 +29,7 @@ from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import stain_color
 
 
-class MainWindowPreflightMixin:
+class MainWindowPreflightMixin(_MainWindowHints):
     def _start_preflight_task(
         self,
         *,
@@ -196,12 +201,16 @@ class MainWindowPreflightMixin:
                 include_supervisor_events=False,
             )
         else:
-            bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
-            bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
-            bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
+            bridge.state.connect(
+                self._on_bridge_state, Qt.ConnectionType.QueuedConnection
+            )
+            bridge.log.connect(self._on_bridge_log, Qt.ConnectionType.QueuedConnection)
+            bridge.done.connect(
+                self._on_bridge_done, Qt.ConnectionType.QueuedConnection
+            )
 
-        bridge.done.connect(thread.quit, Qt.QueuedConnection)
-        bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
+        bridge.done.connect(thread.quit, Qt.ConnectionType.QueuedConnection)
+        bridge.done.connect(bridge.deleteLater, Qt.ConnectionType.QueuedConnection)
         thread.finished.connect(thread.deleteLater)
 
         self._bridges[task_id] = bridge
