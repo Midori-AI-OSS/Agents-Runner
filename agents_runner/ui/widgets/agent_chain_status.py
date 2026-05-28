@@ -162,7 +162,7 @@ class AgentChainStatusWidget(QWidget):
         # Test Chain button
         self._test_btn = QToolButton()
         self._test_btn.setText("Test Chain")
-        self._test_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._test_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._test_btn.clicked.connect(self.test_chain_requested.emit)
         header_layout.addWidget(self._test_btn)
 

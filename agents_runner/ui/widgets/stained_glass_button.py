@@ -54,7 +54,7 @@ class StainedGlassButton(QPushButton):
     def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
         super().__init__(text, parent)
         self.setObjectName("StainedGlassButton")
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(False)
         self._tint_color: QColor | None = None
         self._glass_enabled = True
@@ -180,7 +180,7 @@ class StainedGlassButton(QPushButton):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         rect = self.rect().adjusted(1, 1, -1, -1)
         if rect.width() <= 4 or rect.height() <= 4:
@@ -216,9 +216,9 @@ class StainedGlassButton(QPushButton):
             text_rect = rect.adjusted(10, 0, -10, 0)
             if not menu_rect.isNull():
                 text_rect = text_rect.adjusted(0, 0, -menu_rect.width(), 0)
-            painter.drawText(text_rect, Qt.AlignCenter, self.text())
+            painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, self.text())
             if not menu_rect.isNull():
-                painter.drawText(menu_rect, Qt.AlignCenter, "▾")
+                painter.drawText(menu_rect, Qt.AlignmentFlag.AlignCenter, "▾")
             return
 
         base = QColor(18, 20, 28)
@@ -319,6 +319,6 @@ class StainedGlassButton(QPushButton):
         text_rect = rect.adjusted(10, 0, -10, 0)
         if not menu_rect.isNull():
             text_rect = text_rect.adjusted(0, 0, -menu_rect.width(), 0)
-        painter.drawText(text_rect, Qt.AlignCenter, self.text())
+        painter.drawText(text_rect, Qt.AlignmentFlag.AlignCenter, self.text())
         if not menu_rect.isNull():
-            painter.drawText(menu_rect, Qt.AlignCenter, "▾")
+            painter.drawText(menu_rect, Qt.AlignmentFlag.AlignCenter, "▾")

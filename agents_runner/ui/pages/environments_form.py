@@ -326,7 +326,9 @@ class EnvironmentsFormMixin(_EnvironmentsPageHints):
         )
         self._setup_github_defaults_env = QToolButton()
         self._setup_github_defaults_env.setText("Setup Defaults")
-        self._setup_github_defaults_env.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._setup_github_defaults_env.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         self._setup_github_defaults_env.setToolTip(
             "Seed trusted users from this environment's repo owner/org members and current gh login."
         )
@@ -628,7 +630,7 @@ class EnvironmentsFormMixin(_EnvironmentsPageHints):
                 button.setToolTip(spec.subtitle)
                 button.setCheckable(True)
                 button.setAutoExclusive(True)
-                button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
                 button.setFixedHeight(40)
                 button.setSizePolicy(
                     QSizePolicy.Policy.Expanding,

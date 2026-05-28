@@ -78,7 +78,7 @@ class RadioControlWidget(QWidget):
         slider_layout.setContentsMargins(0, 0, 0, 0)
         slider_layout.setSpacing(0)
 
-        self._volume_slider = QSlider(Qt.Horizontal, self._slider_wrap)
+        self._volume_slider = QSlider(Qt.Orientation.Horizontal, self._slider_wrap)
         self._volume_slider.setObjectName("RadioControlVolumeSlider")
         self._volume_slider.setRange(0, 100)
         self._volume_slider.setValue(70)
@@ -97,16 +97,18 @@ class RadioControlWidget(QWidget):
         self._play_button = QToolButton(self._play_section)
         self._play_button.setObjectName("RadioControlButton")
         self._play_button.setIconSize(QSize(18, 18))
-        self._play_button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._play_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._play_button.setAutoRaise(False)
         self._play_button.setCheckable(True)
         self._play_button.setFixedSize(self.PLAY_BUTTON_WIDTH, self.PLAY_BUTTON_HEIGHT)
         self._play_button.clicked.connect(self.play_requested.emit)
-        play_section_layout.addWidget(self._play_button, 0, Qt.AlignCenter)
+        play_section_layout.addWidget(
+            self._play_button, 0, Qt.AlignmentFlag.AlignCenter
+        )
 
         root.addStretch(1)
-        root.addWidget(self._volume_section, 0, Qt.AlignVCenter)
-        root.addWidget(self._play_section, 0, Qt.AlignVCenter)
+        root.addWidget(self._volume_section, 0, Qt.AlignmentFlag.AlignVCenter)
+        root.addWidget(self._play_section, 0, Qt.AlignmentFlag.AlignVCenter)
 
         self._slider_opacity_effect = QGraphicsOpacityEffect(self._slider_wrap)
         self._slider_wrap.setGraphicsEffect(self._slider_opacity_effect)

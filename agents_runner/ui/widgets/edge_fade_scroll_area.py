@@ -13,8 +13,8 @@ class _ScrollEdgeFadeOverlay(QWidget):
         self._bottom_visible = False
         self._fade_px = 24
         self._fade_alpha = 48
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAutoFillBackground(False)
 
     def set_state(
@@ -55,7 +55,7 @@ class _ScrollEdgeFadeOverlay(QWidget):
             return
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         color = QColor(0, 0, 0, self._fade_alpha)
 
         if self._top_visible:
@@ -87,8 +87,8 @@ class EdgeFadeScrollArea(QScrollArea):
 
         self.setWidgetResizable(True)
         self.setFrameShape(QScrollArea.NoFrame)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self._overlay = _ScrollEdgeFadeOverlay(self.viewport())
         self._overlay.hide()

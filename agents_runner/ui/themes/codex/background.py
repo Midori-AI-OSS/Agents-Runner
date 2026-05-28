@@ -330,8 +330,8 @@ def paint_codex_blobs(painter: QPainter, rect: QRect) -> None:
     )
 
     painter.save()
-    painter.setRenderHint(QPainter.Antialiasing, True)
-    painter.setPen(Qt.NoPen)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(Qt.PenStyle.NoPen)
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Screen)
 
     for nx, ny, rx_s, ry_s, c in blobs:

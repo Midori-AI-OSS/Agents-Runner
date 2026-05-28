@@ -201,7 +201,9 @@ class SettingsFormMixin:
 
         self._refresh_interactive_terminal = QToolButton()
         self._refresh_interactive_terminal.setText("Refresh")
-        self._refresh_interactive_terminal.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._refresh_interactive_terminal.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         self._refresh_interactive_terminal.clicked.connect(
             self._on_refresh_terminal_options_clicked
         )
@@ -234,7 +236,9 @@ class SettingsFormMixin:
 
         self._preflight_enabled = QToolButton()
         self._preflight_enabled.setCheckable(True)
-        self._preflight_enabled.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._preflight_enabled.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         self._preflight_enabled.setToolTip(
             "Run global preflight before setup-agents.sh."
         )
@@ -302,7 +306,9 @@ class SettingsFormMixin:
 
         self._move_task_workspaces = QToolButton()
         self._move_task_workspaces.setText("Move all tasks")
-        self._move_task_workspaces.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._move_task_workspaces.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         self._move_task_workspaces.clicked.connect(self._on_move_task_workspaces)
         self._move_task_workspaces.installEventFilter(self)
         self._task_workspace_migration_blocked = False
@@ -408,7 +414,9 @@ class SettingsFormMixin:
         )
         self._setup_github_defaults_global = QToolButton()
         self._setup_github_defaults_global.setText("Setup Defaults")
-        self._setup_github_defaults_global.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._setup_github_defaults_global.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
         self._setup_github_defaults_global.setToolTip(
             "Seed trusted users from cloned environment owners/org members and current gh login."
         )
@@ -447,7 +455,7 @@ class SettingsFormMixin:
 
         self._test_preflights = QToolButton()
         self._test_preflights.setText("Run preflight checks")
-        self._test_preflights.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._test_preflights.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._test_preflights.setToolTip(
             "Run preflight smoke test for all environments."
         )
@@ -477,7 +485,7 @@ class SettingsFormMixin:
         self._radio_quality.addItem("Medium (160 kbps)", "medium")
         self._radio_quality.addItem("High (320 kbps)", "high")
 
-        self._radio_volume = QSlider(Qt.Horizontal)
+        self._radio_volume = QSlider(Qt.Orientation.Horizontal)
         self._radio_volume.setObjectName("SettingsVolumeSlider")
         self._radio_volume.setRange(0, 100)
         self._radio_volume.setValue(70)
@@ -814,7 +822,7 @@ class SettingsFormMixin:
                 button.setToolTip(spec.subtitle)
                 button.setCheckable(True)
                 button.setAutoExclusive(True)
-                button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
                 button.setFixedHeight(40)
                 button.setSizePolicy(
                     QSizePolicy.Policy.Expanding,

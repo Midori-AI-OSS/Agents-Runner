@@ -201,12 +201,16 @@ class MainWindowPreflightMixin(_MainWindowHints):
                 include_supervisor_events=False,
             )
         else:
-            bridge.state.connect(self._on_bridge_state, Qt.QueuedConnection)
-            bridge.log.connect(self._on_bridge_log, Qt.QueuedConnection)
-            bridge.done.connect(self._on_bridge_done, Qt.QueuedConnection)
+            bridge.state.connect(
+                self._on_bridge_state, Qt.ConnectionType.QueuedConnection
+            )
+            bridge.log.connect(self._on_bridge_log, Qt.ConnectionType.QueuedConnection)
+            bridge.done.connect(
+                self._on_bridge_done, Qt.ConnectionType.QueuedConnection
+            )
 
-        bridge.done.connect(thread.quit, Qt.QueuedConnection)
-        bridge.done.connect(bridge.deleteLater, Qt.QueuedConnection)
+        bridge.done.connect(thread.quit, Qt.ConnectionType.QueuedConnection)
+        bridge.done.connect(bridge.deleteLater, Qt.ConnectionType.QueuedConnection)
         thread.finished.connect(thread.deleteLater)
 
         self._bridges[task_id] = bridge
