@@ -312,24 +312,20 @@ class AgentsTabWidget(QWidget):
 
     def _priority_widget(self, row_index: int) -> QWidget:
         w = QWidget()
-        layout = QHBoxLayout(w)
+        layout = QVBoxLayout(w)
         layout.setContentsMargins(4, 2, 4, 2)
-        layout.setSpacing(8)
+        layout.setSpacing(2)
 
         up_btn = QToolButton()
-        up_btn.setText("Up")
         up_btn.setArrowType(Qt.ArrowType.UpArrow)
-        up_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        up_btn.setMinimumWidth(68)
+        up_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         up_btn.setEnabled(row_index > 0)
         up_btn.setToolTip("Move up (higher priority)")
         up_btn.clicked.connect(lambda: self._move_row(row_index, -1))
 
         down_btn = QToolButton()
-        down_btn.setText("Down")
         down_btn.setArrowType(Qt.ArrowType.DownArrow)
-        down_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        down_btn.setMinimumWidth(68)
+        down_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         down_btn.setEnabled(row_index < len(self._rows) - 1)
         down_btn.setToolTip("Move down (lower priority)")
         down_btn.clicked.connect(lambda: self._move_row(row_index, 1))
