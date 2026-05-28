@@ -341,8 +341,10 @@ class AgentsTabWidget(QWidget):
         down_btn.setToolTip("Move down (lower priority)")
         down_btn.clicked.connect(lambda: self._move_row(row_index, 1))
 
-        layout.addWidget(up_btn)
-        layout.addWidget(down_btn)
+        layout.addStretch(1)
+        layout.addWidget(up_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(down_btn, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addStretch(1)
         return w
 
     def _move_row(self, row_index: int, delta: int) -> None:
