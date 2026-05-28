@@ -81,6 +81,7 @@ def load_state(path: str) -> dict[str, Any]:
             "tasks": [],
             "settings": {},
             "environments": [],
+            "agent_configs": [],
         }
     with open(path, "rb") as f:
         payload = tomli.load(f)
@@ -90,6 +91,7 @@ def load_state(path: str) -> dict[str, Any]:
             "tasks": [],
             "settings": {},
             "environments": [],
+            "agent_configs": [],
         }
     version = payload.get("version")
     if version != STATE_VERSION:
@@ -98,17 +100,21 @@ def load_state(path: str) -> dict[str, Any]:
             "tasks": [],
             "settings": {},
             "environments": [],
+            "agent_configs": [],
         }
     payload.setdefault("version", STATE_VERSION)
     payload.setdefault("tasks", [])
     payload.setdefault("settings", {})
     payload.setdefault("environments", [])
+    payload.setdefault("agent_configs", [])
     if not isinstance(payload["tasks"], list):
         payload["tasks"] = []
     if not isinstance(payload["settings"], dict):
         payload["settings"] = {}
     if not isinstance(payload["environments"], list):
         payload["environments"] = []
+    if not isinstance(payload["agent_configs"], list):
+        payload["agent_configs"] = []
     return payload
 
 
