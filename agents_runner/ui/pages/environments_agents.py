@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 
+from PySide6.QtCore import QSize
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QCheckBox
@@ -314,19 +315,28 @@ class AgentsTabWidget(QWidget):
     def _priority_widget(self, row_index: int) -> QWidget:
         w = QWidget()
         layout = QVBoxLayout(w)
-        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setContentsMargins(4, 1, 4, 1)
         layout.setSpacing(2)
 
+        btn_size = QSize(28, 26)
+        icon_size = QSize(18, 18)
+
         up_btn = QToolButton()
-        up_btn.setIcon(lucide_icon("arrow-up"))
+        up_btn.setIcon(lucide_icon("arrow-up", size=18))
         up_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        up_btn.setFixedSize(btn_size)
+        up_btn.setIconSize(icon_size)
+        up_btn.setStyleSheet("padding: 0px;")
         up_btn.setEnabled(row_index > 0)
         up_btn.setToolTip("Move up (higher priority)")
         up_btn.clicked.connect(lambda: self._move_row(row_index, -1))
 
         down_btn = QToolButton()
-        down_btn.setIcon(lucide_icon("arrow-down"))
+        down_btn.setIcon(lucide_icon("arrow-down", size=18))
         down_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        down_btn.setFixedSize(btn_size)
+        down_btn.setIconSize(icon_size)
+        down_btn.setStyleSheet("padding: 0px;")
         down_btn.setEnabled(row_index < len(self._rows) - 1)
         down_btn.setToolTip("Move down (lower priority)")
         down_btn.clicked.connect(lambda: self._move_row(row_index, 1))
