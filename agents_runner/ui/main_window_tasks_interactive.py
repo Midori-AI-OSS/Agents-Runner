@@ -269,6 +269,26 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                     advance_round_robin=False,
                 )
             )
+            if agent_instance_id:
+                selected_lower = agent_instance_id.lower()
+                selected_inst = next(
+                    (
+                        inst
+                        for inst in list(
+                            getattr(env.agent_selection, "agents", []) or []
+                        )
+                        if str(getattr(inst, "agent_id", "") or "").strip()
+                        == agent_instance_id
+                        or str(getattr(inst, "agent_id", "") or "").strip().lower()
+                        == selected_lower
+                    ),
+                    None,
+                )
+                selected_cli_flags = (
+                    str(getattr(selected_inst, "cli_flags", "") or "").strip()
+                    if selected_inst is not None
+                    else ""
+                )
         else:
             agent_cli, auto_config_dir = self._effective_agent_and_config(
                 env=env, advance_round_robin=True
@@ -281,7 +301,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
         if override and not agent_instance_id:
             agent_instance_id = str(agent_cli or "").strip()
 
-        if override and selected_cli_flags:
+        if selected_cli_flags:
             try:
                 agent_cli_args = shlex.split(selected_cli_flags)
             except ValueError as exc:
