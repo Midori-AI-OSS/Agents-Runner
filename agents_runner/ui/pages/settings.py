@@ -35,6 +35,7 @@ from agents_runner.ui.constants import (
     LEFT_NAV_PANEL_WIDTH,
 )
 from agents_runner.ui.pages.settings_form import SettingsFormMixin
+from agents_runner.persistence import default_state_path
 
 
 class SettingsPage(QWidget, SettingsFormMixin):
@@ -52,6 +53,8 @@ class SettingsPage(QWidget, SettingsFormMixin):
         super().__init__(parent)
         self.setObjectName("SettingsPageRoot")
         self._radio_supported = bool(radio_supported)
+
+        self._state_path = default_state_path()
 
         self._suppress_autosave = False
         self._autosave_timer = QTimer(self)

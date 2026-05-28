@@ -19,6 +19,8 @@ from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QListWidget
+from PySide6.QtWidgets import QListWidgetItem
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QSlider
@@ -28,6 +30,11 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
+from agents_runner.agent_configs.model import AgentConfig
+from agents_runner.agent_configs.storage import delete_agent_config
+from agents_runner.agent_configs.storage import find_envs_referencing_config
+from agents_runner.agent_configs.storage import load_agent_configs
+from agents_runner.agent_configs.storage import save_agent_config
 from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_default_agent_system_name
@@ -53,6 +60,7 @@ from agents_runner.ui.pages.github_trust import (
 )
 from agents_runner.ui.pages.github_username_list import GitHubUsernameListWidget
 from agents_runner.ui.radio import RadioController
+from agents_runner.ui.dialogs.agent_config_dialog import AgentConfigDialog
 from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
 from agents_runner.ui.graphics import normalize_ui_theme_name
@@ -71,6 +79,7 @@ from agents_runner.ui.utils.form_helpers import (
     create_stretch_row,
 )
 from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
+from agents_runner.persistence import default_state_path
 
 
 @dataclass(frozen=True)
@@ -141,6 +150,12 @@ class SettingsFormMixin:
                 key="agent_defaults",
                 title="Agent Defaults",
                 subtitle="Default agent and shell behavior.",
+                section="Agent Setup",
+            ),
+            _SettingsPaneSpec(
+                key="agent_configs",
+                title="Agent Configs",
+                subtitle="Named agent configurations shared across environments.",
                 section="Agent Setup",
             ),
             _SettingsPaneSpec(
@@ -215,6 +230,45 @@ class SettingsFormMixin:
         self._opencode_interactive_mode.setToolTip(
             "Default OpenCode launch mode for Run Interactive."
         )
+
+        self._agent_configs: list[AgentConfig] = []
+        self._agent_configs_by_id: dict[str, AgentConfig] = {}
+        self._agent_configs_list = QListWidget()
+        self._agent_configs_list.setToolTip("Saved agent configurations.")
+        self._agent_configs_list.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self._agent_configs_list.currentRowChanged.connect(
+            lambda _row=0: self._sync_agent_configs_actions()
+        )
+        self._agent_configs_list.itemDoubleClicked.connect(
+            lambda _item=None: self._on_agent_configs_edit_clicked()
+        )
+
+        self._agent_configs_add = QToolButton()
+        self._agent_configs_add.setText("Add")
+        self._agent_configs_add.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self._agent_configs_add.clicked.connect(self._on_agent_configs_add_clicked)
+
+        self._agent_configs_edit = QToolButton()
+        self._agent_configs_edit.setText("Edit")
+        self._agent_configs_edit.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self._agent_configs_edit.clicked.connect(self._on_agent_configs_edit_clicked)
+
+        self._agent_configs_delete = QToolButton()
+        self._agent_configs_delete.setText("Delete")
+        self._agent_configs_delete.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextOnly
+        )
+        self._agent_configs_delete.clicked.connect(
+            self._on_agent_configs_delete_clicked
+        )
+        self._sync_agent_configs_actions()
 
         self._ui_theme = QComboBox()
         self._ui_theme.setToolTip(
@@ -654,6 +708,19 @@ class SettingsFormMixin:
         agent_body.addStretch(1)
         self._register_page("agent_defaults", agent_page)
 
+        agent_configs_page, agent_configs_body = self._create_page(
+            specs_by_key["agent_configs"]
+        )
+        agent_configs_body.addWidget(self._agent_configs_list, 1)
+        agent_configs_actions = QHBoxLayout()
+        agent_configs_actions.setSpacing(BUTTON_ROW_SPACING)
+        agent_configs_actions.addWidget(self._agent_configs_add)
+        agent_configs_actions.addWidget(self._agent_configs_edit)
+        agent_configs_actions.addWidget(self._agent_configs_delete)
+        agent_configs_actions.addStretch(1)
+        agent_configs_body.addLayout(agent_configs_actions)
+        self._register_page("agent_configs", agent_configs_page)
+
         github_config_page, github_config_body = self._create_page(
             specs_by_key["github_config"]
         )
@@ -836,6 +903,189 @@ class SettingsFormMixin:
                 self._compact_nav.addItem(button_label, spec.key)
 
         nav_layout.addStretch(1)
+
+    def _resolve_state_path(self) -> str:
+        state_path = str(getattr(self, "_state_path", "") or "").strip()
+        if state_path:
+            return state_path
+        window = getattr(self, "window", lambda: None)()
+        state_path = str(getattr(window, "_state_path", "") or "").strip()
+        if state_path:
+            return state_path
+        return default_state_path()
+
+    def _refresh_agent_configs_list(self, *, select_config_id: str = "") -> None:
+        if not hasattr(self, "_agent_configs_list"):
+            return
+
+        selected = str(select_config_id or "").strip()
+        if not selected:
+            selected = str(self._agent_configs_selected_config_id() or "").strip()
+
+        try:
+            configs = load_agent_configs(self._resolve_state_path())
+        except Exception:
+            configs = []
+        configs.sort(key=lambda cfg: str(getattr(cfg, "config_id", "") or "").lower())
+
+        self._agent_configs = list(configs)
+        self._agent_configs_by_id = {
+            str(cfg.config_id or "").strip(): cfg
+            for cfg in configs
+            if str(getattr(cfg, "config_id", "") or "").strip()
+        }
+
+        self._agent_configs_list.clear()
+        if not configs:
+            empty = QListWidgetItem("No agent configs saved.")
+            empty.setFlags(Qt.ItemFlag.NoItemFlags)
+            self._agent_configs_list.addItem(empty)
+            self._sync_agent_configs_actions()
+            return
+
+        chosen_row = -1
+        for index, cfg in enumerate(configs):
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, str(cfg.config_id or ""))
+            widget = self._create_agent_config_row_widget(cfg)
+            item.setSizeHint(widget.sizeHint())
+            self._agent_configs_list.addItem(item)
+            self._agent_configs_list.setItemWidget(item, widget)
+            if selected and str(cfg.config_id or "").strip() == selected:
+                chosen_row = index
+
+        if chosen_row >= 0:
+            self._agent_configs_list.setCurrentRow(chosen_row)
+        elif self._agent_configs_list.count() > 0:
+            self._agent_configs_list.setCurrentRow(0)
+        self._sync_agent_configs_actions()
+
+    def _agent_configs_selected_config_id(self) -> str:
+        item = self._agent_configs_list.currentItem()
+        if item is None:
+            return ""
+        return str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+
+    def _selected_agent_config(self) -> AgentConfig | None:
+        config_id = self._agent_configs_selected_config_id()
+        if not config_id:
+            return None
+        return self._agent_configs_by_id.get(config_id)
+
+    def _sync_agent_configs_actions(self) -> None:
+        selected = bool(self._selected_agent_config() is not None)
+        if hasattr(self, "_agent_configs_edit"):
+            self._agent_configs_edit.setEnabled(selected)
+        if hasattr(self, "_agent_configs_delete"):
+            self._agent_configs_delete.setEnabled(selected)
+
+    def _create_agent_config_row_widget(self, config: AgentConfig) -> QWidget:
+        row = QWidget(self._agent_configs_list)
+        layout = QVBoxLayout(row)
+        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setSpacing(2)
+
+        title = QLabel(str(getattr(config, "config_id", "") or "").strip())
+        title.setStyleSheet(
+            "font-size: 12px; font-weight: 650; color: rgba(237, 239, 245, 230);"
+        )
+
+        agent_cli = str(getattr(config, "agent_cli", "") or "").strip()
+        config_dir = str(getattr(config, "config_dir", "") or "").strip()
+        cli_flags = str(getattr(config, "cli_flags", "") or "").strip()
+
+        parts = [f"Agent CLI: {agent_cli}" if agent_cli else "Agent CLI: —"]
+        if config_dir:
+            parts.append(f"Config Dir: {config_dir}")
+        if cli_flags:
+            parts.append(f"CLI Flags: {cli_flags}")
+
+        detail = QLabel("\n".join(parts))
+        detail.setObjectName("SettingsPaneSubtitle")
+        detail.setWordWrap(True)
+
+        layout.addWidget(title)
+        layout.addWidget(detail)
+        return row
+
+    def _on_agent_configs_add_clicked(self) -> None:
+        dialog = AgentConfigDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        config = dialog.agent_config()
+        if config is None:
+            return
+        try:
+            save_agent_config(self._resolve_state_path(), config)
+        except Exception as exc:
+            QMessageBox.warning(self, "Save failed", str(exc))
+            return
+        self._refresh_agent_configs_list(select_config_id=str(config.config_id or ""))
+
+    def _on_agent_configs_edit_clicked(self) -> None:
+        selected = self._selected_agent_config()
+        if selected is None:
+            return
+        dialog = AgentConfigDialog(self, config=selected)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        updated = dialog.agent_config()
+        if updated is None:
+            return
+        try:
+            save_agent_config(self._resolve_state_path(), updated)
+        except Exception as exc:
+            QMessageBox.warning(self, "Save failed", str(exc))
+            return
+        self._refresh_agent_configs_list(select_config_id=str(updated.config_id or ""))
+
+    def _on_agent_configs_delete_clicked(self) -> None:
+        selected = self._selected_agent_config()
+        if selected is None:
+            return
+        config_id = str(getattr(selected, "config_id", "") or "").strip()
+        if not config_id:
+            return
+
+        state_path = self._resolve_state_path()
+        referenced: list[str] = []
+        try:
+            referenced = find_envs_referencing_config(state_path, config_id)
+        except Exception:
+            referenced = []
+
+        referenced = [
+            str(item or "").strip() for item in referenced if str(item or "").strip()
+        ]
+        referenced.sort(key=str.casefold)
+
+        if referenced:
+            env_list = ", ".join(referenced[:12])
+            more = f" (+{len(referenced) - 12} more)" if len(referenced) > 12 else ""
+            prompt = (
+                f"This config is referenced by {len(referenced)} environment(s): {env_list}{more}\n\n"
+                "Deleting it will remove this config ID from those environments.\n\n"
+                "Do you want to continue?"
+            )
+        else:
+            prompt = f"Delete agent config '{config_id}'?"
+
+        result = QMessageBox.warning(
+            self,
+            "Delete agent config?",
+            prompt,
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if result != QMessageBox.StandardButton.Ok:
+            return
+
+        try:
+            delete_agent_config(state_path, config_id)
+        except Exception as exc:
+            QMessageBox.warning(self, "Delete failed", str(exc))
+            return
+        self._refresh_agent_configs_list()
 
     def _create_page(self, spec: _SettingsPaneSpec) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
@@ -1235,6 +1485,10 @@ class SettingsFormMixin:
             self._radio_loudness_boost_factor.setValue(radio_loudness_boost_factor)
             self._radio_loudness_boost_factor.setEnabled(radio_loudness_boost_enabled)
             self._refresh_radio_volume_label()
+            try:
+                self._refresh_agent_configs_list()
+            except Exception:
+                pass
         finally:
             self._suppress_autosave = False
 
