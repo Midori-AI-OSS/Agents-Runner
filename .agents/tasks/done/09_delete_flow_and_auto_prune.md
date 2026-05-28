@@ -39,3 +39,6 @@ In `environments/serialize.py`:
 - After confirmed delete, the config is removed from state.toml.
 - On next environment save, environments that referenced the deleted config have those agents auto-pruned.
 - Fallbacks, pinned_agent_id, and cross_agent_allowlist are all cleaned of dangling references.
+
+## Completion
+- Implemented live environment reference warnings and save-time pruning of deleted agent config references.

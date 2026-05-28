@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 from typing import cast
 
@@ -111,6 +112,74 @@ def _validate_cross_agent_allowlist(
         seen_ids.add(agent_id)
 
     return validated
+
+
+def prune_missing_config_ids(
+    env: Environment, valid_config_ids: set[str]
+) -> Environment:
+    """Return a copy of ``env`` with missing agent config references pruned."""
+
+    selection = env.agent_selection
+    if selection is None:
+        return env
+
+    kept_agents: list[AgentInstance] = []
+    removed_agent_ids: set[str] = set()
+    for agent in selection.agents:
+        config_id = str(getattr(agent, "config_id", "") or "").strip()
+        if config_id and config_id not in valid_config_ids:
+            agent_id = str(getattr(agent, "agent_id", "") or "").strip()
+            if agent_id:
+                removed_agent_ids.add(agent_id)
+            continue
+        kept_agents.append(
+            AgentInstance(
+                agent_id=str(getattr(agent, "agent_id", "") or "").strip(),
+                config_id=config_id,
+            )
+        )
+
+    if not removed_agent_ids:
+        return env
+
+    cleaned_fallbacks: dict[str, str] = {}
+    for raw_agent_id, raw_fallback_id in selection.agent_fallbacks.items():
+        agent_id = str(raw_agent_id or "").strip()
+        fallback_id = str(raw_fallback_id or "").strip()
+        if not agent_id or not fallback_id:
+            continue
+        if agent_id in removed_agent_ids or fallback_id in removed_agent_ids:
+            continue
+        cleaned_fallbacks[agent_id] = fallback_id
+
+    pinned_agent_id = str(selection.pinned_agent_id or "").strip()
+    if pinned_agent_id in removed_agent_ids:
+        pinned_agent_id = ""
+
+    cleaned_allowlist: list[str] = []
+    for raw_agent_id in env.cross_agent_allowlist:
+        agent_id = str(raw_agent_id or "").strip()
+        if not agent_id or agent_id in removed_agent_ids:
+            continue
+        cleaned_allowlist.append(agent_id)
+
+    if not kept_agents:
+        return replace(
+            env,
+            agent_selection=None,
+            cross_agent_allowlist=cleaned_allowlist,
+        )
+
+    return replace(
+        env,
+        agent_selection=replace(
+            selection,
+            agents=kept_agents,
+            agent_fallbacks=cleaned_fallbacks,
+            pinned_agent_id=pinned_agent_id,
+        ),
+        cross_agent_allowlist=cleaned_allowlist,
+    )
 
 
 def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:

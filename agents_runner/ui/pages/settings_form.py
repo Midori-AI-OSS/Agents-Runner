@@ -1060,25 +1060,19 @@ class SettingsFormMixin:
         referenced.sort(key=str.casefold)
 
         if referenced:
-            env_list = ", ".join(referenced[:12])
-            more = f" (+{len(referenced) - 12} more)" if len(referenced) > 12 else ""
             prompt = (
-                f"This config is referenced by {len(referenced)} environment(s): {env_list}{more}\n\n"
-                "Deleting it will remove this config ID from those environments.\n\n"
-                "Do you want to continue?"
+                f"This config is referenced by {len(referenced)} environment(s): {', '.join(referenced)}\n\n"
+                "Deleting it will remove this config ID from those environments."
             )
-        else:
-            prompt = f"Delete agent config '{config_id}'?"
-
-        result = QMessageBox.warning(
-            self,
-            "Delete agent config?",
-            prompt,
-            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if result != QMessageBox.StandardButton.Ok:
-            return
+            result = QMessageBox.warning(
+                self,
+                "Delete agent config?",
+                prompt,
+                QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if result != QMessageBox.StandardButton.Ok:
+                return
 
         try:
             delete_agent_config(state_path, config_id)

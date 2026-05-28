@@ -185,58 +185,28 @@ def find_envs_referencing_config(state_path: str, config_id: str) -> list[str]:
     if not target:
         return []
 
-    payload = _load_state_payload(state_path)
-    envs_raw = payload.get("environments")
-    if not isinstance(envs_raw, list):
+    path = str(state_path or "").strip()
+    if not path:
         return []
 
+    from agents_runner.environments.storage import load_environments
+
+    data_dir = os.path.dirname(path) or os.getcwd()
+    envs = load_environments(data_dir)
     referenced: list[str] = []
     seen: set[str] = set()
 
-    for env in envs_raw:
-        env_dict = _as_dict(env)
-        if env_dict is None:
-            continue
-        env_id = str(env_dict.get("env_id") or "").strip()
+    for env in envs.values():
+        env_id = str(getattr(env, "env_id", "") or "").strip()
         if not env_id or env_id in seen:
             continue
 
-        found = False
-        selection_dict = _as_dict(env_dict.get("agent_selection"))
-        if selection_dict is not None:
-            agents_raw = selection_dict.get("agents")
-            if isinstance(agents_raw, list):
-                for agent in agents_raw:
-                    agent_dict = _as_dict(agent)
-                    if agent_dict is None:
-                        continue
-                    if str(agent_dict.get("config_id") or "").strip() == target:
-                        found = True
-                        break
-
-            if not found:
-                pinned = str(selection_dict.get("pinned_agent_id") or "").strip()
-                if pinned == target:
-                    found = True
-
-            if not found:
-                fallbacks_raw = selection_dict.get("agent_fallbacks")
-                if isinstance(fallbacks_raw, dict):
-                    for k, v in fallbacks_raw.items():
-                        if (
-                            str(k or "").strip() == target
-                            or str(v or "").strip() == target
-                        ):
-                            found = True
-                            break
-
-        if not found:
-            allowlist_raw = env_dict.get("cross_agent_allowlist")
-            if isinstance(allowlist_raw, list):
-                if any(str(item or "").strip() == target for item in allowlist_raw):
-                    found = True
-
-        if found:
+        selection = getattr(env, "agent_selection", None)
+        agents = selection.agents if selection is not None else []
+        if any(
+            str(getattr(agent, "config_id", "") or "").strip() == target
+            for agent in agents
+        ):
             referenced.append(env_id)
             seen.add(env_id)
 
