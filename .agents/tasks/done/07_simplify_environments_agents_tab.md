@@ -45,3 +45,6 @@ Remove: Agent name, Config folder, CLI Flags columns. The old `_COL_ID` column i
 - Config ID dropdown contains entries from saved agent configs in state.toml.
 - Adding/removing rows works.
 - UI doesn't crash when no configs exist (show empty dropdown).
+
+## Completion note
+- Completed 2026-05-28: simplified the agents tab to config-id-driven rows, preserved fallback/pinned/cross behavior, and wired dropdowns to saved agent configs loaded from state.
