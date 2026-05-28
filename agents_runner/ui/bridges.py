@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import Signal
 from PySide6.QtCore import Slot
 
+from agents_runner.agent_configs.model import AgentConfig
 from agents_runner.docker_runner import DockerAgentWorker
 from agents_runner.docker_runner import DockerRunnerConfig
 from agents_runner.environments.model import AgentSelection
@@ -33,6 +34,7 @@ class TaskRunnerBridge(QObject):
         agent_selection: AgentSelection | None = None,
         use_supervisor: bool = True,
         watch_states: dict[str, Any] | None = None,
+        agent_configs: Mapping[str, AgentConfig] | None = None,
     ) -> None:
         super().__init__()
         self.task_id = task_id
@@ -61,6 +63,7 @@ class TaskRunnerBridge(QObject):
                     self.task_id, code, err, artifacts, metadata
                 ),
                 watch_states=watch_states or {},
+                agent_configs=dict(agent_configs or {}),
             )
         else:
             # Legacy mode without supervisor

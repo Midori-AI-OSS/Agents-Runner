@@ -29,6 +29,8 @@ import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from agents_runner.agent_configs.storage import load_agent_configs
+from agents_runner.agent_configs.storage import resolve_agent_config
 from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
 from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.github_token import resolve_github_token
@@ -42,29 +44,30 @@ from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.environments import load_environments
 
 
-def _is_gh_context_enabled(environment_id: str | None) -> bool:
-    """Check if GitHub Context is enabled in environment settings."""
+def _load_environment(environment_id: str | None, state_path: str = "") -> Any | None:
     if not environment_id:
-        return False
+        return None
+    data_dir = os.path.dirname(str(state_path or "").strip()) if state_path else None
     try:
-        environments = load_environments()
-        env = environments.get(str(environment_id))
+        environments = load_environments(data_dir=data_dir)
+        return environments.get(str(environment_id))
     except Exception:
-        return False
+        return None
+
+
+def _is_gh_context_enabled(environment_id: str | None, state_path: str = "") -> bool:
+    """Check if GitHub Context is enabled in environment settings."""
+    env = _load_environment(environment_id, state_path)
     if env is None:
         return False
     return bool(getattr(env, "gh_context_enabled", False))
 
 
-def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
+def _needs_cross_agent_gh_token(
+    environment_id: str | None, state_path: str = ""
+) -> bool:
     """Check if any cross-agent allowlisted agent requires a GitHub token."""
-    if not environment_id:
-        return False
-    try:
-        environments = load_environments()
-        env = environments.get(str(environment_id))
-    except Exception:
-        return False
+    env = _load_environment(environment_id, state_path)
     if env is None or not env.cross_agent_allowlist:
         return False
     if env.agent_selection is None or not env.agent_selection.agents:
@@ -72,8 +75,28 @@ def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
 
     from agents_runner.agent_cli import normalize_agent
 
+    try:
+        agent_configs = {
+            str(config.config_id or "").strip(): config
+            for config in load_agent_configs(state_path)
+            if str(config.config_id or "").strip()
+        }
+    except Exception:
+        agent_configs = {}
+
     agent_cli_by_id: dict[str, str] = {
-        agent.agent_id: agent.agent_cli for agent in env.agent_selection.agents
+        str(agent.agent_id or "").strip(): str(
+            getattr(
+                resolve_agent_config(
+                    str(getattr(agent, "config_id", "") or "").strip(), agent_configs
+                ),
+                "agent_cli",
+                "",
+            )
+            or ""
+        ).strip()
+        for agent in env.agent_selection.agents
+        if str(getattr(agent, "agent_id", "") or "").strip()
     }
 
     for agent_id in env.cross_agent_allowlist:
@@ -472,9 +495,12 @@ class ContainerExecutor:
 
         # Forward GitHub tokens if needed
         needs_token = (
-            _is_gh_context_enabled(self._config.environment_id)
+            _is_gh_context_enabled(self._config.environment_id, self._config.state_path)
             or agent_requires_github_token(self._runtime_env.agent_cli)
-            or _needs_cross_agent_gh_token(self._config.environment_id)
+            or _needs_cross_agent_gh_token(
+                self._config.environment_id,
+                self._config.state_path,
+            )
         )
 
         if needs_token:

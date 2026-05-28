@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 from typing import cast
 
@@ -72,7 +73,7 @@ def _validate_cross_agent_allowlist(
     1. Coerce to list[str], strip empties, de-dupe
     2. If agents list is empty, return empty list
     3. Filter unknown agent_ids (must exist in agents list)
-    4. Enforce max 1 allowlisted per agent_cli (keep first occurrence)
+    4. Preserve allowlist order after filtering
 
     Args:
         raw_allowlist: Raw allowlist data from JSON
@@ -92,17 +93,10 @@ def _validate_cross_agent_allowlist(
     if not agents:
         return []
 
-    # Build lookups for validation
     known_ids = {a.agent_id for a in agents}
-    cli_to_id: dict[str, str] = {}  # Normalized CLI -> first matching agent_id
-    for a in agents:
-        normalized_cli = a.agent_cli.strip().lower()
-        if normalized_cli not in cli_to_id:
-            cli_to_id[normalized_cli] = a.agent_id
 
     # Filter and deduplicate
     seen_ids: set[str] = set()
-    seen_clis: set[str] = set()
     validated: list[str] = []
 
     for agent_id in allowlist:
@@ -114,22 +108,78 @@ def _validate_cross_agent_allowlist(
         if agent_id in seen_ids:
             continue
 
-        # Find the agent and check CLI uniqueness
-        agent = next((a for a in agents if a.agent_id == agent_id), None)
-        if not agent:
-            continue
-
-        normalized_cli = agent.agent_cli.strip().lower()
-
-        # Enforce max 1 per CLI (keep first occurrence)
-        if normalized_cli in seen_clis:
-            continue
-
         validated.append(agent_id)
         seen_ids.add(agent_id)
-        seen_clis.add(normalized_cli)
 
     return validated
+
+
+def prune_missing_config_ids(
+    env: Environment, valid_config_ids: set[str]
+) -> Environment:
+    """Return a copy of ``env`` with missing agent config references pruned."""
+
+    selection = env.agent_selection
+    if selection is None:
+        return env
+
+    kept_agents: list[AgentInstance] = []
+    removed_agent_ids: set[str] = set()
+    for agent in selection.agents:
+        config_id = str(getattr(agent, "config_id", "") or "").strip()
+        if config_id and config_id not in valid_config_ids:
+            agent_id = str(getattr(agent, "agent_id", "") or "").strip()
+            if agent_id:
+                removed_agent_ids.add(agent_id)
+            continue
+        kept_agents.append(
+            AgentInstance(
+                agent_id=str(getattr(agent, "agent_id", "") or "").strip(),
+                config_id=config_id,
+            )
+        )
+
+    if not removed_agent_ids:
+        return env
+
+    cleaned_fallbacks: dict[str, str] = {}
+    for raw_agent_id, raw_fallback_id in selection.agent_fallbacks.items():
+        agent_id = str(raw_agent_id or "").strip()
+        fallback_id = str(raw_fallback_id or "").strip()
+        if not agent_id or not fallback_id:
+            continue
+        if agent_id in removed_agent_ids or fallback_id in removed_agent_ids:
+            continue
+        cleaned_fallbacks[agent_id] = fallback_id
+
+    pinned_agent_id = str(selection.pinned_agent_id or "").strip()
+    if pinned_agent_id in removed_agent_ids:
+        pinned_agent_id = ""
+
+    cleaned_allowlist: list[str] = []
+    for raw_agent_id in env.cross_agent_allowlist:
+        agent_id = str(raw_agent_id or "").strip()
+        if not agent_id or agent_id in removed_agent_ids:
+            continue
+        cleaned_allowlist.append(agent_id)
+
+    if not kept_agents:
+        return replace(
+            env,
+            agent_selection=None,
+            cross_agent_allowlist=cleaned_allowlist,
+        )
+
+    return replace(
+        env,
+        agent_selection=replace(
+            selection,
+            agents=kept_agents,
+            agent_fallbacks=cleaned_fallbacks,
+            pinned_agent_id=pinned_agent_id,
+        ),
+        cross_agent_allowlist=cleaned_allowlist,
+    )
 
 
 def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
@@ -403,21 +453,17 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
                 raw_dict: dict[str, object] = {
                     str(k): v for k, v in cast(dict[object, object], raw).items()
                 }
-                agent_cli = str(raw_dict.get("agent_cli") or "").strip()
                 agent_id = str(raw_dict.get("agent_id") or "").strip()
-                config_dir = str(raw_dict.get("config_dir") or "").strip()
-                cli_flags = str(raw_dict.get("cli_flags") or "").strip()
-                if not agent_cli:
-                    continue
+                config_id = str(raw_dict.get("config_id") or "").strip()
                 unique_id = _unique_agent_id(
-                    seen_ids, agent_id, fallback_prefix=agent_cli.lower()
+                    seen_ids, agent_id, fallback_prefix=config_id.lower()
                 )
+                if not unique_id:
+                    continue
                 agents.append(
                     AgentInstance(
                         agent_id=unique_id,
-                        agent_cli=agent_cli,
-                        config_dir=config_dir,
-                        cli_flags=cli_flags,
+                        config_id=config_id,
                     )
                 )
 
@@ -520,12 +566,7 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
     if env.agent_selection and env.agent_selection.agents:
         agents_list_for_validation = env.agent_selection.agents
         agents_list = [
-            {
-                "agent_id": a.agent_id,
-                "agent_cli": a.agent_cli,
-                "config_dir": a.config_dir,
-                "cli_flags": a.cli_flags,
-            }
+            {"agent_id": a.agent_id, "config_id": a.config_id}
             for a in (env.agent_selection.agents or [])
         ]
 

@@ -129,7 +129,14 @@ class MainWindowPersistenceMixin(_MainWindowHints):
         settings_payload = dict(self._settings_data)
         for key in self._REMOVED_IDE_SETTINGS_KEYS:
             settings_payload.pop(key, None)
-        payload = {"settings": settings_payload}
+
+        try:
+            payload = load_state(self._state_path)
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        payload["settings"] = settings_payload
 
         # Save watch states
         save_watch_state(payload, self._watch_states)

@@ -4,11 +4,13 @@ import tempfile
 
 from typing import Any
 
+from agents_runner.agent_configs.storage import load_agent_configs
 from agents_runner.persistence import default_state_path
 
 from .model import Environment
 from .paths import default_data_dir
 from .serialize import environment_from_payload
+from .serialize import prune_missing_config_ids
 from .serialize import serialize_environment
 from .prompt_storage import delete_prompt_file
 
@@ -29,6 +31,16 @@ def _environments_path_for_data_dir(data_dir: str) -> str:
     state_path = _state_path_for_data_dir(data_dir)
     base_dir = os.path.dirname(state_path) or data_dir or os.getcwd()
     return os.path.join(base_dir, ENVIRONMENTS_FILENAME)
+
+
+def _valid_config_ids_for_data_dir(data_dir: str) -> set[str]:
+    state_path = _state_path_for_data_dir(data_dir)
+    valid_ids: set[str] = set()
+    for config in load_agent_configs(state_path):
+        config_id = str(getattr(config, "config_id", "") or "").strip()
+        if config_id:
+            valid_ids.add(config_id)
+    return valid_ids
 
 
 def _atomic_write_json(path: str, payload: dict[str, Any]) -> None:
@@ -120,6 +132,7 @@ def save_environment(env: Environment, data_dir: str | None = None) -> None:
     data_dir = data_dir or default_data_dir()
     envs_path = _environments_path_for_data_dir(data_dir)
 
+    env = prune_missing_config_ids(env, _valid_config_ids_for_data_dir(data_dir))
     payload = serialize_environment(env)
     env_id = str(payload.get("env_id") or "").strip()
     if not env_id:

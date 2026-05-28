@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from agents_runner.agent_configs.model import AgentConfig
+from agents_runner.agent_configs.storage import save_agent_config
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.ui.main_window_environment import MainWindowEnvironmentMixin
@@ -143,6 +145,16 @@ def test_interactive_task_uses_plugin_defaults_and_copilot_override(
     workdir = tmp_path / "workspace"
     workdir.mkdir(parents=True, exist_ok=True)
 
+    save_agent_config(
+        str(tmp_path / "state.toml"),
+        AgentConfig(
+            config_id="copilot-override",
+            agent_cli="copilot",
+            config_dir="",
+            cli_flags="--override-flag",
+        ),
+    )
+
     env = Environment(
         env_id="env-override",
         name="Override",
@@ -206,6 +218,7 @@ def test_interactive_task_uses_plugin_defaults_and_copilot_override(
     override = {
         "agent_cli": "copilot",
         "agent_id": "copilot-1",
+        "config_id": "copilot-override",
         "cli_flags": "--override-flag",
     }
 

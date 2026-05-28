@@ -8,6 +8,7 @@ class DockerRunnerConfig:
     image: str
     host_config_dir: str
     host_workdir: str
+    state_path: str = ""
     agent_cli: str = "codex"
     container_config_dir: str = ""
     container_workdir: str = "/home/midori-ai/workspace"

@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from agents_runner.agent_configs.model import AgentConfig
+from agents_runner.agent_configs.storage import save_agent_config
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments.model import AgentInstance
@@ -216,6 +218,25 @@ def test_selected_environment_agent_cli_flags_reach_interactive_launch(
     workdir = tmp_path / "workspace"
     workdir.mkdir(parents=True, exist_ok=True)
 
+    save_agent_config(
+        str(tmp_path / "state.toml"),
+        AgentConfig(
+            config_id="opencode-plan",
+            agent_cli="opencode",
+            config_dir="",
+            cli_flags="--agent plan",
+        ),
+    )
+    save_agent_config(
+        str(tmp_path / "state.toml"),
+        AgentConfig(
+            config_id="codex-default",
+            agent_cli="codex",
+            config_dir="",
+            cli_flags="",
+        ),
+    )
+
     env = Environment(
         env_id="env-opencode",
         name="OpenCode",
@@ -226,15 +247,11 @@ def test_selected_environment_agent_cli_flags_reach_interactive_launch(
         agents=[
             AgentInstance(
                 agent_id="opencode-plan",
-                agent_cli="opencode",
-                config_dir="",
-                cli_flags="--agent plan",
+                config_id="opencode-plan",
             ),
             AgentInstance(
                 agent_id="codex-default",
-                agent_cli="codex",
-                config_dir="",
-                cli_flags="",
+                config_id="codex-default",
             ),
         ],
         selection_mode="pinned",
@@ -299,6 +316,16 @@ def test_selected_environment_agent_cli_flags_reach_run_agent_launch(
     workdir = tmp_path / "workspace"
     workdir.mkdir(parents=True, exist_ok=True)
 
+    save_agent_config(
+        str(tmp_path / "state.toml"),
+        AgentConfig(
+            config_id="opencode-plan",
+            agent_cli="opencode",
+            config_dir="",
+            cli_flags="--agent plan",
+        ),
+    )
+
     env = Environment(
         env_id="env-opencode",
         name="OpenCode",
@@ -309,9 +336,7 @@ def test_selected_environment_agent_cli_flags_reach_run_agent_launch(
         agents=[
             AgentInstance(
                 agent_id="opencode-plan",
-                agent_cli="opencode",
-                config_dir="",
-                cli_flags="--agent plan",
+                config_id="opencode-plan",
             )
         ],
         selection_mode="pinned",
@@ -344,7 +369,7 @@ def test_selected_environment_agent_cli_flags_reach_run_agent_launch(
     assert task.agent_instance_id == "opencode-plan"
     selection = getattr(task, "_agent_selection", None)
     assert selection is not None
-    assert selection.agents[0].cli_flags == "--agent plan"
+    assert selection.agents[0].config_id == "opencode-plan"
 
     config = getattr(task, "_runner_config", None)
     assert config is not None
@@ -362,6 +387,14 @@ def test_selected_environment_agent_cli_flags_reach_run_agent_launch(
         on_agent_switch=lambda _from_agent, _to_agent: None,
         on_done=None,
         watch_states={},
+        agent_configs={
+            "opencode-plan": AgentConfig(
+                config_id="opencode-plan",
+                agent_cli="opencode",
+                config_dir="",
+                cli_flags="--agent plan",
+            )
+        },
     )
 
     agent_config = supervisor._build_agent_config(selection.agents[0])

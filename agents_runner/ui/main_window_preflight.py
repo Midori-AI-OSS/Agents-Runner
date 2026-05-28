@@ -116,6 +116,7 @@ class MainWindowPreflightMixin(_MainWindowHints):
             image=image,
             host_config_dir=host_config_dir,
             host_workdir=host_workdir,
+            state_path=self._state_path,
             agent_cli=smoke_agent_cli,
             environment_id=env.env_id if env else "",
             workspace_type=str(getattr(env, "workspace_type", "none") or "none"),

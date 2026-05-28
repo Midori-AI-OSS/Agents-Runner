@@ -12,6 +12,9 @@ from typing import Any
 from typing import Callable
 from typing import Literal
 
+from agents_runner.agent_configs.model import AgentConfig
+from agents_runner.agent_configs.storage import load_agent_configs
+from agents_runner.agent_configs.storage import resolve_agent_config
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import default_host_config_dir
 from agents_runner.docker.config import DockerRunnerConfig
@@ -23,6 +26,7 @@ from agents_runner.execution.supervisor_types import AttemptKey
 from agents_runner.execution.supervisor_types import SupervisorConfig
 from agents_runner.execution.supervisor_types import SupervisorResult
 from agents_runner.log_format import format_log
+from agents_runner.persistence import default_state_path
 from agents_runner.prompts import RetryContext
 from agents_runner.prompts import build_task_prompt
 
@@ -50,6 +54,7 @@ class TaskSupervisor:
         on_done: Callable[[int, str | None, list[str], dict[str, Any]], None]
         | None = None,
         watch_states: dict[str, Any] | None = None,
+        agent_configs: dict[str, AgentConfig] | None = None,
     ) -> None:
         """Initialize task supervisor.
 
@@ -75,6 +80,7 @@ class TaskSupervisor:
         self._on_agent_switch = on_agent_switch
         self._on_done = on_done
         self._watch_states = watch_states or {}
+        self._agent_configs = self._normalize_agent_configs(agent_configs)
 
         # State tracking
         self._agent_chain: list[AgentInstance] = []
@@ -95,6 +101,51 @@ class TaskSupervisor:
         self._last_logs: list[str] = []
         self._last_container_state: dict[str, Any] = {}
         self._user_stop_reason: Literal["cancel", "kill"] | None = None
+
+    def _normalize_agent_configs(
+        self, agent_configs: dict[str, AgentConfig] | None
+    ) -> dict[str, AgentConfig]:
+        if agent_configs:
+            return {
+                config_id: config
+                for config_id, config in agent_configs.items()
+                if str(config_id or "").strip() and isinstance(config, AgentConfig)
+            }
+        state_path = str(getattr(self._config, "state_path", "") or "").strip()
+        if not state_path:
+            state_path = default_state_path()
+        try:
+            return {
+                config_id: config
+                for config in load_agent_configs(state_path)
+                if (config_id := str(getattr(config, "config_id", "") or "").strip())
+            }
+        except Exception:
+            return {}
+
+    def _resolved_agent_config(self, agent: AgentInstance) -> AgentConfig | None:
+        return resolve_agent_config(
+            str(getattr(agent, "config_id", "") or ""), self._agent_configs
+        )
+
+    def _resolved_agent_cli(self, agent: AgentInstance) -> str:
+        config = self._resolved_agent_config(agent)
+        agent_cli = (
+            str(
+                getattr(config, "agent_cli", "")
+                if config is not None
+                else self._config.agent_cli or "codex"
+            )
+            .strip()
+            .lower()
+        )
+        return agent_cli or "codex"
+
+    def _resolved_agent_cli_flags_text(self, agent: AgentInstance) -> str:
+        config = self._resolved_agent_config(agent)
+        if config is None:
+            return ""
+        return str(getattr(config, "cli_flags", "") or "").strip()
 
     @property
     def container_id(self) -> str | None:
@@ -198,9 +249,10 @@ class TaskSupervisor:
             if next_index != self._current_agent_index:
                 self._current_agent_index = next_index
 
-            if current_agent_cli and current_agent_cli != agent.agent_cli:
-                self._on_agent_switch(current_agent_cli, agent.agent_cli)
-            current_agent_cli = agent.agent_cli
+            next_agent_cli = self._resolved_agent_cli(agent)
+            if current_agent_cli and current_agent_cli != next_agent_cli:
+                self._on_agent_switch(current_agent_cli, next_agent_cli)
+            current_agent_cli = next_agent_cli
 
             attempt_key = self._attempt_key(agent)
             self._attempted.add(attempt_key)
@@ -233,7 +285,7 @@ class TaskSupervisor:
                 self._attempt_history.append(
                     {
                         "attempt_number": int(self._total_attempts),
-                        "agent_cli": agent.agent_cli,
+                        "agent_cli": attempt_key.agent_cli,
                         "agent_id": agent.agent_id,
                         "host_config_dir": attempt_key.host_config_dir,
                         "agent_cli_args": list(attempt_key.agent_cli_args),
@@ -266,7 +318,7 @@ class TaskSupervisor:
             self._attempt_history.append(
                 {
                     "attempt_number": int(self._total_attempts),
-                    "agent_cli": agent.agent_cli,
+                    "agent_cli": attempt_key.agent_cli,
                     "agent_id": agent.agent_id,
                     "host_config_dir": attempt_key.host_config_dir,
                     "agent_cli_args": list(attempt_key.agent_cli_args),
@@ -301,7 +353,9 @@ class TaskSupervisor:
 
             next_attempt_number = int(self._total_attempts) + 1
             _, candidate = next_candidate
-            self._on_retry(next_attempt_number, candidate.agent_cli, 0.0)
+            self._on_retry(
+                next_attempt_number, self._resolved_agent_cli(candidate), 0.0
+            )
             continue
 
         # Should not reach here
@@ -326,9 +380,7 @@ class TaskSupervisor:
             # Use default agent from config
             default_agent = AgentInstance(
                 agent_id="default",
-                agent_cli=self._config.agent_cli,
-                config_dir=self._config.host_config_dir,
-                cli_flags="",
+                config_id="",
             )
             self._agent_chain = [default_agent]
             return
@@ -380,7 +432,8 @@ class TaskSupervisor:
                 "supervisor",
                 "task",
                 "INFO",
-                f"agent chain: {' -> '.join(a.agent_cli for a in chain)}",
+                "agent chain: "
+                + " -> ".join(self._resolved_agent_cli(agent) for agent in chain),
             )
         )
 
@@ -398,7 +451,7 @@ class TaskSupervisor:
                         "supervisor",
                         "cooldown",
                         "INFO",
-                        f"skipping {agent.agent_cli} (agent+config) due to cooldown",
+                        f"skipping {self._resolved_agent_cli(agent)} (agent+config) due to cooldown",
                     )
                 )
                 continue
@@ -438,10 +491,11 @@ class TaskSupervisor:
             )
 
         # Build agent-specific config
+        agent_cli = self._resolved_agent_cli(agent)
         agent_config = self._build_agent_config(agent)
         config_mount_sources = [str(agent_config.host_config_dir or "").strip()]
         for mount_spec in additional_config_mounts(
-            agent.agent_cli, agent_config.host_config_dir
+            agent_config.agent_cli, agent_config.host_config_dir
         ):
             src = str(mount_spec or "").split(":", 1)[0].strip()
             if src:
@@ -455,7 +509,7 @@ class TaskSupervisor:
                 "supervisor",
                 "attempt",
                 "INFO",
-                f"selected agent={agent.agent_cli} config={agent_config.host_config_dir} config_mounts=[{preview}]",
+                f"selected agent={agent_cli} config={agent_config.host_config_dir} config_mounts=[{preview}]",
             )
         )
 
@@ -489,7 +543,7 @@ class TaskSupervisor:
             error=self._last_error,
             artifacts=self._last_artifacts,
             metadata={
-                "agent_used": agent.agent_cli,
+                "agent_used": agent_config.agent_cli,
                 "agent_id": agent.agent_id,
                 "retry_count": max(0, int(self._total_attempts) - 1),
                 "total_attempts": self._total_attempts,
@@ -515,14 +569,16 @@ class TaskSupervisor:
         Returns:
             DockerRunnerConfig configured for this agent
         """
+        agent_cli = self._resolved_agent_cli(agent)
         host_config_dir = self._resolve_host_config_dir(agent)
         # Parse agent CLI args
         agent_cli_args: list[str] = []
-        if agent.cli_flags:
+        flags_text = self._resolved_agent_cli_flags_text(agent)
+        if flags_text:
             import shlex
 
             try:
-                agent_cli_args = shlex.split(agent.cli_flags)
+                agent_cli_args = shlex.split(flags_text)
             except ValueError:
                 # Invalid flags, use empty list
                 pass
@@ -532,7 +588,8 @@ class TaskSupervisor:
             image=self._config.image,
             host_config_dir=host_config_dir,
             host_workdir=self._config.host_workdir,
-            agent_cli=agent.agent_cli,
+            state_path=self._config.state_path,
+            agent_cli=agent_cli,
             container_config_dir=self._config.container_config_dir,
             container_workdir=self._config.container_workdir,
             auto_remove=self._config.auto_remove,
@@ -575,11 +632,18 @@ class TaskSupervisor:
         return config
 
     def _resolve_host_config_dir(self, agent: AgentInstance) -> str:
-        configured = os.path.expanduser(str(agent.config_dir or "").strip())
+        config = self._resolved_agent_config(agent)
+        configured = os.path.expanduser(
+            str(
+                getattr(config, "config_dir", "")
+                if config is not None
+                else self._config.host_config_dir or ""
+            ).strip()
+        )
         if configured:
             host_config_dir = configured
         else:
-            host_config_dir = default_host_config_dir(agent.agent_cli)
+            host_config_dir = default_host_config_dir(self._resolved_agent_cli(agent))
         host_config_dir = str(host_config_dir or "").strip()
         if host_config_dir:
             host_config_dir = os.path.abspath(host_config_dir)
@@ -618,7 +682,7 @@ class TaskSupervisor:
         self._last_container_state = {}
 
     def _attempt_key(self, agent: AgentInstance) -> AttemptKey:
-        agent_cli = str(agent.agent_cli or "").strip().lower() or "codex"
+        agent_cli = self._resolved_agent_cli(agent)
         host_config_dir = self._resolve_host_config_dir(agent)
 
         agent_cli_args = self._effective_agent_cli_args(agent)
@@ -629,11 +693,12 @@ class TaskSupervisor:
         )
 
     def _effective_agent_cli_args(self, agent: AgentInstance) -> list[str]:
-        if agent.cli_flags:
+        flags_text = self._resolved_agent_cli_flags_text(agent)
+        if flags_text:
             import shlex
 
             try:
-                return list(shlex.split(agent.cli_flags))
+                return list(shlex.split(flags_text))
             except ValueError:
                 return []
         return list(self._config.agent_cli_args or [])
@@ -697,7 +762,7 @@ class TaskSupervisor:
                 until = getattr(watch_state, "cooldown_until", None)
                 until_s = until.isoformat() if until else "unknown"
                 on_cooldown.append(
-                    f"{agent.agent_cli}[{agent.agent_id}] until {until_s}"
+                    f"{self._resolved_agent_cli(agent)}[{agent.agent_id}] until {until_s}"
                 )
 
         parts: list[str] = []

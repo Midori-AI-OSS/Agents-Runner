@@ -81,6 +81,7 @@ def load_state(path: str) -> dict[str, Any]:
             "tasks": [],
             "settings": {},
             "environments": [],
+            "agent_configs": [],
         }
     with open(path, "rb") as f:
         payload = tomli.load(f)
@@ -90,6 +91,7 @@ def load_state(path: str) -> dict[str, Any]:
             "tasks": [],
             "settings": {},
             "environments": [],
+            "agent_configs": [],
         }
     version = payload.get("version")
     if version != STATE_VERSION:
@@ -98,17 +100,21 @@ def load_state(path: str) -> dict[str, Any]:
             "tasks": [],
             "settings": {},
             "environments": [],
+            "agent_configs": [],
         }
     payload.setdefault("version", STATE_VERSION)
     payload.setdefault("tasks", [])
     payload.setdefault("settings", {})
     payload.setdefault("environments", [])
+    payload.setdefault("agent_configs", [])
     if not isinstance(payload["tasks"], list):
         payload["tasks"] = []
     if not isinstance(payload["settings"], dict):
         payload["settings"] = {}
     if not isinstance(payload["environments"], list):
         payload["environments"] = []
+    if not isinstance(payload["agent_configs"], list):
+        payload["agent_configs"] = []
     return payload
 
 
@@ -545,6 +551,7 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             image=str(payload.get("image") or ""),
             host_config_dir=str(payload.get("host_config_dir") or ""),
             host_workdir=str(payload.get("host_workdir") or ""),
+            state_path=str(payload.get("state_path") or ""),
             agent_cli=agent_cli,
             container_config_dir=container_config_dir,
             container_workdir=str(

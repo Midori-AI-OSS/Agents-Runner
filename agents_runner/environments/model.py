@@ -201,12 +201,13 @@ class AgentInstance:
 
     ``agent_id`` must be unique within the environment so it can be referenced by
     fallback mappings and UI controls.
+
+    ``config_id`` references an :class:`~agents_runner.agent_configs.model.AgentConfig`
+    stored in application state.
     """
 
     agent_id: str
-    agent_cli: str
-    config_dir: str = ""
-    cli_flags: str = ""
+    config_id: str = ""
 
 
 @dataclass

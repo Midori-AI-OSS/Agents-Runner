@@ -171,14 +171,16 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             and getattr(env.agent_selection, "agents", None)
         )
         if override:
-            agent_cli = override.get("agent_cli", "")
-            auto_config_dir = self._resolve_override_config_dir(
+            (
+                agent_cli,
+                auto_config_dir,
+                selected_cli_flags,
+                agent_instance_id,
+            ) = self._resolve_override_agent_runtime(
                 override=override,
                 env=env,
                 settings=self._settings_data,
             )
-            agent_instance_id = str(override.get("agent_id") or "").strip()
-            selected_cli_flags = str(override.get("cli_flags") or "").strip()
         elif (
             env and env.agent_selection and getattr(env.agent_selection, "agents", None)
         ):
@@ -204,18 +206,15 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
 
         cooldown_mgr = CooldownManager(self._watch_states)
         if not override and env and env.agent_selection and agent_instance_id:
-            inst = next(
-                (
-                    a
-                    for a in (env.agent_selection.agents or [])
-                    if str(getattr(a, "agent_id", "") or "").strip()
-                    == agent_instance_id
-                ),
-                None,
-            )
-            selected_cli_flags = (
-                str(getattr(inst, "cli_flags", "") or "").strip() if inst else ""
-            )
+            inst = self._find_agent_instance_by_id(env, agent_instance_id)
+            if inst is not None:
+                _resolved_cli, _resolved_dir, selected_cli_flags = (
+                    self._resolve_agent_instance_runtime(
+                        inst,
+                        env=env,
+                        settings=self._settings_data,
+                    )
+                )
 
         cooldown_args: list[str] = []
         if selected_cli_flags:
@@ -241,6 +240,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             # Get fallback agent name
             fallback_name = None
             fallback_agent = None
+            agent_configs = self._load_agent_configs_by_id()
             if (
                 env
                 and env.agent_selection
@@ -251,12 +251,9 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                 == "fallback"
             ):
                 # Find primary agent
-                primary_agent = None
-                if env.agent_selection.agents:
-                    for agent in env.agent_selection.agents:
-                        if agent.agent_cli == agent_cli:
-                            primary_agent = agent
-                            break
+                primary_agent = self._find_agent_instance_by_id(env, agent_instance_id)
+                if primary_agent is None and env.agent_selection.agents:
+                    primary_agent = env.agent_selection.agents[0]
 
                 # Get fallback
                 if primary_agent:
@@ -273,8 +270,9 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                             None,
                         )
                         if fallback_agent:
-                            fallback_name = format_agent_ui_label(
-                                fallback_agent.agent_cli
+                            fallback_name = self._format_agent_label(
+                                fallback_agent,
+                                agent_configs=agent_configs,
                             )
 
             # Show cooldown modal
@@ -299,16 +297,14 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             elif action == CooldownAction.USE_FALLBACK:
                 # Override agent for this task only (task-scoped)
                 if fallback_agent:
-                    agent_cli = fallback_agent.agent_cli
-                    auto_config_dir = os.path.expanduser(
-                        str(getattr(fallback_agent, "config_dir", "") or "").strip()
-                    )
-                    if not auto_config_dir:
-                        auto_config_dir = self._resolve_config_dir_for_agent(
-                            agent_cli=agent_cli,
+                    agent_cli, auto_config_dir, selected_cli_flags = (
+                        self._resolve_agent_instance_runtime(
+                            fallback_agent,
                             env=env,
                             settings=self._settings_data,
+                            agent_configs=agent_configs,
                         )
+                    )
                     agent_instance_id = fallback_agent.agent_id
                     # Don't modify environment, just use fallback for this task
 
@@ -346,14 +342,11 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
         resolved_agent_selection: AgentSelection | None = None
         if override:
             override_id = agent_instance_id or agent_cli
-            override_cli = str(agent_cli or "").strip()
             resolved_agent_selection = AgentSelection(
                 agents=[
                     AgentInstance(
                         agent_id=override_id,
-                        agent_cli=override_cli,
-                        config_dir=auto_config_dir,
-                        cli_flags=selected_cli_flags,
+                        config_id=str(override.get("config_id") or "").strip(),
                     )
                 ],
                 selection_mode="pinned",
@@ -382,23 +375,14 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                     != pinned_lower
                 ):
                     continue
-                inst_cli = str(getattr(inst, "agent_cli", "") or "").strip()
-                inst_dir = os.path.expanduser(
-                    str(getattr(inst, "config_dir", "") or "").strip()
-                )
-                if not inst_dir:
-                    inst_dir = self._resolve_config_dir_for_agent(
-                        agent_cli=inst_cli,
-                        env=env,
-                        settings=self._settings_data,
-                    )
+                inst_id = str(getattr(inst, "agent_id", "") or "").strip()
+                inst_config_id = str(getattr(inst, "config_id", "") or "").strip()
                 resolved_agents.append(
                     AgentInstance(
-                        agent_id=str(getattr(inst, "agent_id", "") or "").strip()
-                        or inst_cli,
-                        agent_cli=inst_cli,
-                        config_dir=inst_dir,
-                        cli_flags=str(getattr(inst, "cli_flags", "") or "").strip(),
+                        agent_id=inst_id
+                        or inst_config_id
+                        or f"agent-{len(resolved_agents) + 1}",
+                        config_id=inst_config_id,
                     )
                 )
             if (
@@ -437,7 +421,13 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
         image = PIXELARCH_EMERALD_IMAGE
 
         agent_cli_args: list[str] = []
-        if env and env.agent_cli_args.strip():
+        if selected_cli_flags:
+            try:
+                agent_cli_args = shlex.split(selected_cli_flags)
+            except ValueError as exc:
+                QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
+                return
+        elif env and env.agent_cli_args.strip():
             try:
                 agent_cli_args = shlex.split(env.agent_cli_args)
             except ValueError as exc:
@@ -896,6 +886,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             image=image,
             host_config_dir=host_config_dir,
             host_workdir=effective_workdir,
+            state_path=self._state_path,
             agent_cli=agent_cli,
             environment_id=env_id,
             workspace_type=workspace_type,
@@ -1002,6 +993,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             agent_selection=agent_selection,
             use_supervisor=True,
             watch_states=self._watch_states,
+            agent_configs=self._load_agent_configs_by_id(),
         )
         thread = QThread(self)
         bridge.moveToThread(thread)
