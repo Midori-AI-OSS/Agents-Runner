@@ -163,4 +163,37 @@ def opencode_model_options() -> list[tuple[str, str, list[str]]]:
     return options
 
 
-__all__ = ["opencode_model_options", "parse_opencode_models"]
+def opencode_model_options_by_provider() -> dict[str, list[tuple[str, str, list[str]]]]:
+    """Return OpenCode model options grouped by provider for UI dropdowns.
+
+    Each key is a provider name; each value is a sorted list of
+    ``(model_id, display_label, variants)`` tuples for that provider.
+    """
+
+    by_provider: dict[str, list[tuple[str, str, list[str]]]] = {}
+    for model in parse_opencode_models():
+        model_id = str(model.get("id") or "").strip()
+        if not model_id:
+            continue
+
+        provider, _, _ = model_id.partition("/")
+        provider = provider.strip()
+        if not provider:
+            continue
+
+        display_label = str(model.get("name") or model_id).strip() or model_id
+        by_provider.setdefault(provider, []).append(
+            (model_id, display_label, _string_list(model.get("variants")))
+        )
+
+    for models in by_provider.values():
+        models.sort(key=lambda item: (item[1].casefold(), item[0].casefold()))
+
+    return by_provider
+
+
+__all__ = [
+    "opencode_model_options",
+    "opencode_model_options_by_provider",
+    "parse_opencode_models",
+]

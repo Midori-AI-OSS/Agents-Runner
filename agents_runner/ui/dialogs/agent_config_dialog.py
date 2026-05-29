@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QComboBox
@@ -21,7 +22,7 @@ from agents_runner.agent_configs.storage import load_agent_configs
 from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.agent_systems.registry import available_agent_system_names
 from agents_runner.agent_systems.status import command_in_path
-from agents_runner.opencode_models import opencode_model_options
+from agents_runner.opencode_models import opencode_model_options_by_provider
 from agents_runner.persistence import default_state_path
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 
@@ -35,6 +36,9 @@ class AgentConfigDialog(ThemedDialog):
         parent: QWidget | None = None,
         *,
         config: AgentConfig | None = None,
+        initial_agent: str = "",
+        initial_model: str = "",
+        initial_variant: str = "",
     ) -> None:
         super().__init__(parent)
         self._editing = config is not None
@@ -49,6 +53,9 @@ class AgentConfigDialog(ThemedDialog):
         layout = self.content_layout()
 
         self._model_variants: dict[str, list[str]] = {}
+        self._models_by_provider: dict[str, list[tuple[str, str, list[str]]]] | None = (
+            None
+        )
         self._form = QFormLayout()
         self._form.setContentsMargins(0, 0, 0, 0)
         self._form.setHorizontalSpacing(12)
@@ -84,19 +91,25 @@ class AgentConfigDialog(ThemedDialog):
         self._agent_edit.setMaxLength(128)
         self._form.addRow("Agent", self._agent_edit)
 
+        self._provider_combo = QComboBox()
+        self._form.addRow("Provider", self._provider_combo)
+
         self._model_combo = QComboBox()
         self._form.addRow("Model", self._model_combo)
 
         self._variant_combo = QComboBox()
         self._form.addRow("Variant", self._variant_combo)
 
-        self._populate_model_combo()
+        self._populate_provider_combo()
         self._set_form_row_visible(self._agent_edit, False)
+        self._set_form_row_visible(self._provider_combo, False)
         self._set_form_row_visible(self._model_combo, False)
         self._set_form_row_visible(self._variant_combo, False)
 
         self._agent_cli.currentIndexChanged.connect(self._on_agent_cli_changed)
+        self._provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         self._model_combo.currentIndexChanged.connect(self._on_model_changed)
+        self._cli_flags.textChanged.connect(self._on_cli_flags_text_changed)
         self._on_model_changed(self._model_combo.currentIndex())
         self._on_agent_cli_changed(self._agent_cli.currentIndex())
 
@@ -113,6 +126,17 @@ class AgentConfigDialog(ThemedDialog):
         if config is not None:
             self._prefill(config)
 
+        if not self._editing:
+            if initial_agent:
+                self._agent_edit.setText(initial_agent)
+            if initial_model:
+                provider, _, _ = initial_model.partition("/")
+                if provider.strip():
+                    self._set_provider_selection(provider.strip())
+                self._set_model_selection(initial_model)
+            if initial_variant:
+                self._set_variant_selection(initial_variant)
+
     def agent_config(self) -> AgentConfig | None:
         return self._result
 
@@ -122,7 +146,12 @@ class AgentConfigDialog(ThemedDialog):
         self._config_dir.setText(str(config.config_dir or "").strip())
         self._cli_flags.setText(str(config.cli_flags or "").strip())
         self._agent_edit.setText(str(config.agent or "").strip())
-        self._set_model_selection(str(config.model or "").strip())
+        model_value = str(config.model or "").strip()
+        if model_value:
+            provider, _, _ = model_value.partition("/")
+            if provider.strip():
+                self._set_provider_selection(provider.strip())
+        self._set_model_selection(model_value)
         self._set_variant_selection(str(config.variant or "").strip())
 
     def _populate_agent_cli_combo(self) -> None:
@@ -134,12 +163,24 @@ class AgentConfigDialog(ThemedDialog):
             label = format_agent_ui_label(agent_name)
             self._agent_cli.addItem(label, agent_name)
 
-    def _populate_model_combo(self) -> None:
+    def _populate_provider_combo(self) -> None:
+        self._models_by_provider = opencode_model_options_by_provider()
+        self._provider_combo.clear()
+        self._provider_combo.addItem("—", "")
+        for provider in sorted(self._models_by_provider, key=lambda p: p.casefold()):
+            self._provider_combo.addItem(provider, provider)
+
+    def _populate_model_combo_for_provider(self, provider: str) -> None:
         self._model_variants = {}
         was_blocked = self._model_combo.blockSignals(True)
         self._model_combo.clear()
         self._model_combo.addItem("—", "")
-        for model_id, display_label, variants in opencode_model_options():
+        models = (
+            self._models_by_provider.get(provider, [])
+            if self._models_by_provider is not None
+            else []
+        )
+        for model_id, display_label, variants in models:
             normalized_model_id = str(model_id or "").strip()
             if not normalized_model_id:
                 continue
@@ -175,6 +216,48 @@ class AgentConfigDialog(ThemedDialog):
     def _on_model_changed(self, _index: int) -> None:
         self._populate_variant_combo("")
 
+    def _on_provider_changed(self, _index: int) -> None:
+        provider = str(self._provider_combo.currentData() or "").strip()
+        self._populate_model_combo_for_provider(provider)
+
+    def _on_cli_flags_text_changed(self) -> None:
+        text = str(self._cli_flags.text() or "").strip()
+        if not text:
+            return
+
+        try:
+            parts = shlex.split(text)
+        except ValueError:
+            return
+
+        agent = ""
+        model = ""
+        variant = ""
+        i = 0
+        while i < len(parts):
+            arg = parts[i]
+            if arg in {"--agent", "--model", "--variant"} and i + 1 < len(parts):
+                value = parts[i + 1]
+                if not value.startswith("-"):
+                    if arg == "--agent":
+                        agent = value
+                    elif arg == "--model":
+                        model = value
+                    else:
+                        variant = value
+                    i += 1
+            i += 1
+
+        if agent and not str(self._agent_edit.text() or "").strip():
+            self._agent_edit.setText(agent)
+        if model and not str(self._model_combo.currentData() or "").strip():
+            provider, _, _ = model.partition("/")
+            if provider.strip():
+                self._set_provider_selection(provider.strip())
+            self._set_model_selection(model)
+        if variant and not str(self._variant_combo.currentData() or "").strip():
+            self._set_variant_selection(variant)
+
     def _set_agent_cli(self, value: str) -> None:
         normalized = str(value or "").strip().lower()
         for i in range(self._agent_cli.count()):
@@ -206,6 +289,9 @@ class AgentConfigDialog(ThemedDialog):
             self._variant_combo.addItem(normalized, normalized)
         self._set_combo_current_data(self._variant_combo, normalized)
 
+    def _set_provider_selection(self, value: str) -> None:
+        self._set_combo_current_data(self._provider_combo, str(value or "").strip())
+
     def _populate_variant_combo(self, selected_variant: str) -> None:
         model_id = str(self._model_combo.currentData() or "").strip()
         was_blocked = self._variant_combo.blockSignals(True)
@@ -228,6 +314,7 @@ class AgentConfigDialog(ThemedDialog):
             str(self._agent_cli.currentData() or "").strip().lower() == "opencode"
         )
         self._set_form_row_visible(self._agent_edit, is_opencode)
+        self._set_form_row_visible(self._provider_combo, is_opencode)
         self._set_form_row_visible(self._model_combo, is_opencode)
         self._set_form_row_visible(self._variant_combo, is_opencode)
 
@@ -252,17 +339,10 @@ class AgentConfigDialog(ThemedDialog):
             combo.setCurrentIndex(0)
 
     def _format_model_label(self, model_id: str, display_label: str) -> str:
-        normalized_model_id = str(model_id or "").strip()
         label = str(display_label or "").strip()
-        _, _, suffix = normalized_model_id.partition("/")
-        model_name = suffix.strip()
-        if model_name:
-            label = model_name
-        elif not label or label == normalized_model_id:
-            label = normalized_model_id
-        if label.casefold().endswith("(opencode)"):
+        if label:
             return label
-        return f"{label} (OpenCode)"
+        return str(model_id or "").strip()
 
     def _browse_config_dir(self) -> None:
         current = str(self._config_dir.text() or "").strip()

@@ -61,6 +61,7 @@ from agents_runner.ui.pages.github_trust import (
 from agents_runner.ui.pages.github_username_list import GitHubUsernameListWidget
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.dialogs.agent_config_dialog import AgentConfigDialog
+from agents_runner.cli import get_opencode_cli_overrides
 from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
 from agents_runner.ui.graphics import normalize_ui_theme_name
@@ -1063,7 +1064,13 @@ class SettingsFormMixin:
         return row
 
     def _on_agent_configs_add_clicked(self) -> None:
-        dialog = AgentConfigDialog(self)
+        overrides = get_opencode_cli_overrides()
+        dialog = AgentConfigDialog(
+            self,
+            initial_agent=overrides.get("agent", ""),
+            initial_model=overrides.get("model", ""),
+            initial_variant=overrides.get("variant", ""),
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         config = dialog.agent_config()
