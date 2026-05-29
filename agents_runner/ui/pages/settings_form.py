@@ -1009,10 +1009,27 @@ class SettingsFormMixin:
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(2)
 
+        title_row = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(0)
+
         title = QLabel(str(getattr(config, "config_id", "") or "").strip())
         title.setStyleSheet(
             "font-size: 12px; font-weight: 650; color: rgba(237, 239, 245, 230);"
         )
+
+        config_id = str(getattr(config, "config_id", "") or "").strip()
+        count = (usage_counts or {}).get(config_id, 0)
+        if count > 0:
+            usage = QLabel(f"{count} Env")
+            usage.setStyleSheet("font-size: 10px; color: rgba(129, 199, 132, 220);")
+        else:
+            usage = QLabel("0 Env")
+            usage.setStyleSheet("font-size: 10px; color: rgba(255, 183, 77, 220);")
+        usage.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        title_row.addWidget(title)
+        title_row.addWidget(usage, 1)
 
         agent_cli = str(getattr(config, "agent_cli", "") or "").strip()
         config_dir = str(getattr(config, "config_dir", "") or "").strip()
@@ -1028,18 +1045,8 @@ class SettingsFormMixin:
         detail.setObjectName("SettingsPaneSubtitle")
         detail.setWordWrap(True)
 
-        layout.addWidget(title)
+        layout.addLayout(title_row)
         layout.addWidget(detail)
-
-        config_id = str(getattr(config, "config_id", "") or "").strip()
-        count = (usage_counts or {}).get(config_id, 0)
-        if count > 0:
-            usage = QLabel(f"{count} Env")
-            usage.setStyleSheet("font-size: 10px; color: rgba(129, 199, 132, 220);")
-        else:
-            usage = QLabel("0 Env")
-            usage.setStyleSheet("font-size: 10px; color: rgba(255, 183, 77, 220);")
-        layout.addWidget(usage)
 
         return row
 
