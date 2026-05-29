@@ -23,3 +23,7 @@ Models are separated by blank lines or by the next `providerID/modelID` header. 
 - Module exists at `agents_runner/opencode_models.py`.
 - `parse_opencode_models()` can be called independently and returns correct parsed data.
 - `opencode_model_options()` returns a list suitable for populating a QComboBox.
+
+## Completion
+
+- 2026-05-29: Added `agents_runner/opencode_models.py` with `parse_opencode_models()` and `opencode_model_options()`, including subprocess error handling, logging, and verified parsing against live `opencode models --verbose` output.
