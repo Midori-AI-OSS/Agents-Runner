@@ -152,10 +152,6 @@ def opencode_model_options() -> list[tuple[str, str, list[str]]]:
 
     options: list[tuple[str, str, list[str]]] = []
     for model in parse_opencode_models():
-        provider_id = str(model.get("provider_id") or "").strip().casefold()
-        if provider_id != "opencode":
-            continue
-
         model_id = str(model.get("id") or "").strip()
         if not model_id:
             continue
