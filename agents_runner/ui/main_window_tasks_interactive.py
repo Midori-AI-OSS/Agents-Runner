@@ -264,26 +264,16 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
         elif (
             env and env.agent_selection and getattr(env.agent_selection, "agents", None)
         ):
-            agent_cli, auto_config_dir, agent_instance_id = (
+            agent_cli, auto_config_dir, agent_instance_id, selected_cli_flags = (
                 self._select_agent_instance_for_env(
                     env=env,
                     settings=self._settings_data,
                     advance_round_robin=False,
                 )
             )
-            if agent_instance_id:
-                selected_inst = self._find_agent_instance_by_id(env, agent_instance_id)
-                if selected_inst is not None:
-                    _resolved_cli, _resolved_dir, selected_cli_flags = (
-                        self._resolve_agent_instance_runtime(
-                            selected_inst,
-                            env=env,
-                            settings=self._settings_data,
-                        )
-                    )
         else:
-            agent_cli, auto_config_dir = self._effective_agent_and_config(
-                env=env, advance_round_robin=True
+            agent_cli, auto_config_dir, selected_cli_flags = (
+                self._effective_agent_and_config(env=env, advance_round_robin=True)
             )
         host_config_dir = auto_config_dir
         if not shell_mode and not self._ensure_agent_config_dir(

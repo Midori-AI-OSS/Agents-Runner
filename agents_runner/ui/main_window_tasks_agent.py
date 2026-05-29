@@ -184,7 +184,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
         elif (
             env and env.agent_selection and getattr(env.agent_selection, "agents", None)
         ):
-            agent_cli, auto_config_dir, agent_instance_id = (
+            agent_cli, auto_config_dir, agent_instance_id, selected_cli_flags = (
                 self._select_agent_instance_for_env(
                     env=env,
                     settings=self._settings_data,
@@ -192,8 +192,8 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                 )
             )
         else:
-            agent_cli, auto_config_dir = self._effective_agent_and_config(
-                env=env, advance_round_robin=True
+            agent_cli, auto_config_dir, selected_cli_flags = (
+                self._effective_agent_and_config(env=env, advance_round_robin=True)
             )
 
         # Check cooldown for selected agent
@@ -205,17 +205,6 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
         )
 
         cooldown_mgr = CooldownManager(self._watch_states)
-        if not override and env and env.agent_selection and agent_instance_id:
-            inst = self._find_agent_instance_by_id(env, agent_instance_id)
-            if inst is not None:
-                _resolved_cli, _resolved_dir, selected_cli_flags = (
-                    self._resolve_agent_instance_runtime(
-                        inst,
-                        env=env,
-                        settings=self._settings_data,
-                    )
-                )
-
         cooldown_args: list[str] = []
         if selected_cli_flags:
             try:

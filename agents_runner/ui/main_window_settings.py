@@ -666,14 +666,14 @@ class MainWindowSettingsMixin(_MainWindowHints):
         env: Environment,
         settings: dict[str, object],
         advance_round_robin: bool,
-    ) -> tuple[str, str, str]:
+    ) -> tuple[str, str, str, str]:
         agents = list(getattr(env.agent_selection, "agents", []) or [])
         if not agents:
             agent_cli = normalize_agent(str(settings.get("use") or "codex"))
             config_dir = self._resolve_config_dir_for_agent(
                 agent_cli=agent_cli, env=env, settings=settings
             )
-            return agent_cli, config_dir, ""
+            return agent_cli, config_dir, "", ""
 
         mode = (
             str(getattr(env.agent_selection, "selection_mode", "") or "round-robin")
@@ -745,7 +745,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
         agent_id = str(getattr(chosen, "agent_id", "") or "").strip()
 
-        agent_cli, config_dir, _cli_flags = self._resolve_agent_instance_runtime(
+        agent_cli, config_dir, cli_flags = self._resolve_agent_instance_runtime(
             chosen,
             env=env,
             settings=settings,
@@ -753,7 +753,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             fallback_agent_cli=str(settings.get("use") or "codex"),
         )
 
-        return agent_cli, config_dir, agent_id
+        return agent_cli, config_dir, agent_id, cli_flags
 
     def _commit_round_robin_selection(
         self,
@@ -819,8 +819,8 @@ class MainWindowSettingsMixin(_MainWindowHints):
         env: Environment | None,
         settings: dict[str, object] | None = None,
         advance_round_robin: bool = False,
-    ) -> tuple[str, str]:
-        """Return the effective ``(agent_cli, config_dir)`` for a launch.
+    ) -> tuple[str, str, str]:
+        """Return the effective ``(agent_cli, config_dir, cli_flags)`` for a launch.
 
         Agent and config directory selection follows this precedence:
 
@@ -834,10 +834,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
         2. Global UI settings
 
            * If no environment-specific agent is found, the agent is taken from
-            ``settings["use"]`` (defaulting to ``"codex"``) and normalized via
-             :func:`normalize_agent`.
+             ``settings["use"]`` (defaulting to ``"codex"``) and normalized via
+              :func:`normalize_agent`.
            * The config directory is then derived from that plugin's default host
-             config directory.
+              config directory.
 
         The returned ``config_dir`` is always a string with ``~`` expanded via
         :func:`os.path.expanduser`.
@@ -847,22 +847,24 @@ class MainWindowSettingsMixin(_MainWindowHints):
             settings: Optional settings dict; uses ``self._settings_data`` if None
 
         Returns:
-            A tuple of (agent_cli, config_dir) where agent_cli is normalized
+            A tuple of (agent_cli, config_dir, cli_flags) where agent_cli is normalized
         """
         settings = settings or self._settings_data
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
-            agent_cli, config_dir, _agent_id = self._select_agent_instance_for_env(
-                env=env,
-                settings=settings,
-                advance_round_robin=advance_round_robin,
+            agent_cli, config_dir, _agent_id, cli_flags = (
+                self._select_agent_instance_for_env(
+                    env=env,
+                    settings=settings,
+                    advance_round_robin=advance_round_robin,
+                )
             )
-            return agent_cli, config_dir
+            return agent_cli, config_dir, cli_flags
 
         agent_cli = normalize_agent(str(settings.get("use") or "codex"))
         config_dir = self._resolve_config_dir_for_agent(
             agent_cli=agent_cli, env=env, settings=settings
         )
-        return agent_cli, config_dir
+        return agent_cli, config_dir, ""
 
     def _effective_host_config_dir(
         self,
@@ -1025,7 +1027,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
     def _get_next_agent_info(self, *, env: Environment | None) -> tuple[str, str]:
         """Return (current, next) labels for Run button tooltips."""
-        agent_cli, _ = self._effective_agent_and_config(env=env)
+        agent_cli, _, _ = self._effective_agent_and_config(env=env)
 
         if (
             not env

@@ -133,14 +133,14 @@ class _MainWindowHints:
             env: Environment,
             settings: dict[str, object],
             advance_round_robin: bool,
-        ) -> tuple[str, str, str]: ...
+        ) -> tuple[str, str, str, str]: ...
         def _effective_agent_and_config(
             self,
             *,
             env: Environment | None,
             settings: dict[str, object] | None = None,
             advance_round_robin: bool = False,
-        ) -> tuple[str, str]: ...
+        ) -> tuple[str, str, str]: ...
         def _resolve_config_dir_for_agent(
             self,
             *,
