@@ -236,7 +236,7 @@ class MainWindowPreflightMixin(_MainWindowHints):
         started = 0
         for env in self._environment_list():
             # Get effective agent and config for each environment
-            agent_cli, host_config_dir = self._effective_agent_and_config(
+            agent_cli, host_config_dir, _ = self._effective_agent_and_config(
                 env=env, settings=settings
             )
             host_workdir = self._environment_effective_workdir(
@@ -281,7 +281,7 @@ class MainWindowPreflightMixin(_MainWindowHints):
 
         host_workdir_base = str(self._settings_data.get("host_workdir") or os.getcwd())
         # Get effective agent and config for this environment
-        agent_cli, host_config_dir = self._effective_agent_and_config(env=env)
+        agent_cli, host_config_dir, _ = self._effective_agent_and_config(env=env)
         host_workdir = self._environment_effective_workdir(
             env, fallback=host_workdir_base
         )

@@ -79,7 +79,9 @@ class MainWindowAutoReviewMixin(_MainWindowHints):
             )
             if resolved_base_branch is None:
                 return
-        _agent_cli, host_config_dir = self._effective_agent_and_config(env=env_for_task)
+        _agent_cli, host_config_dir, _ = self._effective_agent_and_config(
+            env=env_for_task
+        )
         pr_context: dict[str, object] | None = None
         if is_pr:
             pr_context = {

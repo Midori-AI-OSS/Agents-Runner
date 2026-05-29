@@ -330,7 +330,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
     ) -> None:
         env = self._environments.get(self._active_environment_id())
         # Get effective agent and config dir (environment agent_selection overrides settings)
-        agent_cli, _ = self._effective_agent_and_config(env=env)
+        agent_cli, _, _ = self._effective_agent_and_config(env=env)
         if hasattr(self, "_root"):
             try:
                 from agents_runner.ui.graphics import normalize_ui_theme_name
