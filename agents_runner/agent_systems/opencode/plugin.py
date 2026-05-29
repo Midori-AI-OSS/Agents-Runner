@@ -63,6 +63,7 @@ _TOP_LEVEL_VALUE_OPTIONS = {
     "--session",
     "--prompt",
     "--agent",
+    "--variant",
 }
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import threading
 
 from typing import TYPE_CHECKING, Any
@@ -46,6 +47,29 @@ from agents_runner.ui.task_workspace_migration import TaskWorkspaceMigrationReco
 from agents_runner.ui.task_workspace_migration import TaskWorkspaceMigrationWorker
 
 logger = logging.getLogger(__name__)
+
+
+def _resolved_agent_config_cli_flags(
+    config: AgentConfig | None,
+    *,
+    fallback_cli_flags: str = "",
+) -> str:
+    cli_flags = str(
+        getattr(config, "cli_flags", "") if config is not None else fallback_cli_flags
+    ).strip()
+    parts: list[str] = []
+    for flag, value in (
+        ("--agent", getattr(config, "agent", "") if config is not None else ""),
+        ("--model", getattr(config, "model", "") if config is not None else ""),
+        ("--variant", getattr(config, "variant", "") if config is not None else ""),
+    ):
+        resolved_value = str(value or "").strip()
+        if resolved_value:
+            parts.extend([flag, resolved_value])
+    prefixed_flags = " ".join(shlex.quote(part) for part in parts)
+    if prefixed_flags and cli_flags:
+        return f"{prefixed_flags} {cli_flags}"
+    return prefixed_flags or cli_flags
 
 
 class MainWindowSettingsMixin(_MainWindowHints):
@@ -602,11 +626,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
                 settings=settings_data,
             )
 
-        cli_flags = str(
-            getattr(config, "cli_flags", "")
-            if config is not None
-            else fallback_cli_flags or ""
-        ).strip()
+        cli_flags = _resolved_agent_config_cli_flags(
+            config,
+            fallback_cli_flags=fallback_cli_flags,
+        )
         return agent_cli, config_dir, cli_flags
 
     def _resolve_override_agent_runtime(
@@ -658,11 +681,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
                 env=None if source == "env" else env,
                 settings=settings_data,
             )
-        cli_flags = str(
-            getattr(config, "cli_flags", "")
-            if config is not None
-            else fallback_cli_flags or ""
-        ).strip()
+        cli_flags = _resolved_agent_config_cli_flags(
+            config,
+            fallback_cli_flags=fallback_cli_flags,
+        )
         return agent_cli, config_dir, cli_flags, agent_id
 
     def _select_agent_instance_for_env(

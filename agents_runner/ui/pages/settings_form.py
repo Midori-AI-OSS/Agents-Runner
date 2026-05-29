@@ -1037,12 +1037,21 @@ class SettingsFormMixin:
         agent_cli = str(getattr(config, "agent_cli", "") or "").strip()
         config_dir = str(getattr(config, "config_dir", "") or "").strip()
         cli_flags = str(getattr(config, "cli_flags", "") or "").strip()
+        agent = str(getattr(config, "agent", "") or "").strip()
+        model = str(getattr(config, "model", "") or "").strip()
+        variant = str(getattr(config, "variant", "") or "").strip()
 
         parts = [f"Agent CLI: {agent_cli}" if agent_cli else "Agent CLI: —"]
         if config_dir:
             parts.append(f"Config Dir: {config_dir}")
         if cli_flags:
             parts.append(f"CLI Flags: {cli_flags}")
+        if agent:
+            parts.append(f"Agent: {agent}")
+        if model:
+            parts.append(f"Model: {model}")
+        if variant:
+            parts.append(f"Variant: {variant}")
 
         detail = QLabel("\n".join(parts))
         detail.setObjectName("SettingsPaneSubtitle")
