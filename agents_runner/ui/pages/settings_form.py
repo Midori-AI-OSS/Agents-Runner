@@ -914,6 +914,24 @@ class SettingsFormMixin:
             return state_path
         return default_state_path()
 
+    def _agent_config_usage_counts(self) -> dict[str, int]:
+        state_path = self._resolve_state_path()
+        counts: dict[str, int] = {}
+        try:
+            configs = load_agent_configs(state_path)
+        except Exception:
+            configs = []
+        for cfg in configs:
+            config_id = str(getattr(cfg, "config_id", "") or "").strip()
+            if not config_id:
+                continue
+            try:
+                refs = find_envs_referencing_config(state_path, config_id)
+            except Exception:
+                refs = []
+            counts[config_id] = len(refs)
+        return counts
+
     def _refresh_agent_configs_list(self, *, select_config_id: str = "") -> None:
         if not hasattr(self, "_agent_configs_list"):
             return
@@ -935,6 +953,8 @@ class SettingsFormMixin:
             if str(getattr(cfg, "config_id", "") or "").strip()
         }
 
+        usage_counts = self._agent_config_usage_counts()
+
         self._agent_configs_list.clear()
         if not configs:
             empty = QListWidgetItem("No agent configs saved.")
@@ -947,7 +967,9 @@ class SettingsFormMixin:
         for index, cfg in enumerate(configs):
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, str(cfg.config_id or ""))
-            widget = self._create_agent_config_row_widget(cfg)
+            widget = self._create_agent_config_row_widget(
+                cfg, usage_counts=usage_counts
+            )
             item.setSizeHint(widget.sizeHint())
             self._agent_configs_list.addItem(item)
             self._agent_configs_list.setItemWidget(item, widget)
@@ -979,7 +1001,9 @@ class SettingsFormMixin:
         if hasattr(self, "_agent_configs_delete"):
             self._agent_configs_delete.setEnabled(selected)
 
-    def _create_agent_config_row_widget(self, config: AgentConfig) -> QWidget:
+    def _create_agent_config_row_widget(
+        self, config: AgentConfig, *, usage_counts: dict[str, int] | None = None
+    ) -> QWidget:
         row = QWidget(self._agent_configs_list)
         layout = QVBoxLayout(row)
         layout.setContentsMargins(8, 6, 8, 6)
@@ -1006,6 +1030,17 @@ class SettingsFormMixin:
 
         layout.addWidget(title)
         layout.addWidget(detail)
+
+        config_id = str(getattr(config, "config_id", "") or "").strip()
+        count = (usage_counts or {}).get(config_id, 0)
+        if count > 0:
+            usage = QLabel(f"{count} Env")
+            usage.setStyleSheet("font-size: 10px; color: rgba(129, 199, 132, 220);")
+        else:
+            usage = QLabel("0 Env")
+            usage.setStyleSheet("font-size: 10px; color: rgba(255, 183, 77, 220);")
+        layout.addWidget(usage)
+
         return row
 
     def _on_agent_configs_add_clicked(self) -> None:

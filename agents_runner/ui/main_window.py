@@ -286,6 +286,9 @@ class MainWindow(
         self._envs_page.updated.connect(
             self._reload_environments, Qt.ConnectionType.QueuedConnection
         )
+        self._envs_page.updated.connect(
+            self.refresh_agent_config_usage_counts, Qt.ConnectionType.QueuedConnection
+        )
         self._envs_page.test_preflight_requested.connect(
             self._on_environment_test_preflight, Qt.ConnectionType.QueuedConnection
         )
