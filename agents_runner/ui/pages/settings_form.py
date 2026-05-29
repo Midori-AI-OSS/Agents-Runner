@@ -245,6 +245,9 @@ class SettingsFormMixin:
         self._agent_configs_list.itemDoubleClicked.connect(
             lambda _item=None: self._on_agent_configs_edit_clicked()
         )
+        self._agent_configs_list.setStyleSheet(
+            "QListWidget::item:selected { background-color: rgba(148, 163, 184, 50); }"
+        )
 
         self._agent_configs_add = QToolButton()
         self._agent_configs_add.setText("Add")
