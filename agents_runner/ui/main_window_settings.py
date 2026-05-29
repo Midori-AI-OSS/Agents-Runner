@@ -538,6 +538,11 @@ class MainWindowSettingsMixin(_MainWindowHints):
             if (config_id := str(getattr(config, "config_id", "") or "").strip())
         }
 
+    def refresh_agent_config_usage_counts(self) -> None:
+        page = getattr(self, "_settings", None)
+        if page is not None and hasattr(page, "_refresh_agent_configs_list"):
+            page._refresh_agent_configs_list()
+
     @staticmethod
     def _find_agent_instance_by_id(
         env: Environment | None, agent_id: str

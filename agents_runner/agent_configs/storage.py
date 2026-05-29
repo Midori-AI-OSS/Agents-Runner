@@ -3,60 +3,12 @@ import tempfile
 
 from typing import Any
 
-import tomli
 import tomli_w
 
-from agents_runner.persistence import STATE_VERSION
+from agents_runner.persistence import load_state
 from agents_runner.persistence import strip_none_for_toml
 
 from .model import AgentConfig
-
-
-def _load_state_payload(state_path: str) -> dict[str, Any]:
-    path = str(state_path or "").strip()
-    if not path or not os.path.exists(path):
-        return {
-            "version": STATE_VERSION,
-            "tasks": [],
-            "settings": {},
-            "environments": [],
-        }
-    try:
-        with open(path, "rb") as f:
-            payload = tomli.load(f)
-    except Exception:
-        return {
-            "version": STATE_VERSION,
-            "tasks": [],
-            "settings": {},
-            "environments": [],
-        }
-    if not isinstance(payload, dict):
-        return {
-            "version": STATE_VERSION,
-            "tasks": [],
-            "settings": {},
-            "environments": [],
-        }
-    version = payload.get("version")
-    if version != STATE_VERSION:
-        return {
-            "version": STATE_VERSION,
-            "tasks": [],
-            "settings": {},
-            "environments": [],
-        }
-    payload.setdefault("version", STATE_VERSION)
-    payload.setdefault("tasks", [])
-    payload.setdefault("settings", {})
-    payload.setdefault("environments", [])
-    if not isinstance(payload["tasks"], list):
-        payload["tasks"] = []
-    if not isinstance(payload["settings"], dict):
-        payload["settings"] = {}
-    if not isinstance(payload["environments"], list):
-        payload["environments"] = []
-    return payload
 
 
 def _atomic_write_state_payload(state_path: str, payload: dict[str, Any]) -> None:
@@ -86,7 +38,7 @@ def _as_dict(value: object) -> dict[str, object] | None:
 
 
 def load_agent_configs(state_path: str) -> list[AgentConfig]:
-    payload = _load_state_payload(state_path)
+    payload = load_state(state_path)
     raw = payload.get("agent_configs")
     if not isinstance(raw, list):
         return []
@@ -132,7 +84,7 @@ def save_agent_config(state_path: str, config: AgentConfig) -> None:
     if not config_id:
         return
 
-    payload = _load_state_payload(state_path)
+    payload = load_state(state_path)
     raw_configs = payload.get("agent_configs")
     items: list[dict[str, Any]] = []
     if isinstance(raw_configs, list):
@@ -162,7 +114,7 @@ def delete_agent_config(state_path: str, config_id: str) -> None:
     if not target:
         return
 
-    payload = _load_state_payload(state_path)
+    payload = load_state(state_path)
     raw_configs = payload.get("agent_configs")
     if not isinstance(raw_configs, list) or not raw_configs:
         return
