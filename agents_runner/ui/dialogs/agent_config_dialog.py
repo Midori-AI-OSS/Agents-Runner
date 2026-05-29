@@ -20,6 +20,7 @@ from agents_runner.agent_configs.model import AgentConfig
 from agents_runner.agent_configs.storage import load_agent_configs
 from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.agent_systems.registry import available_agent_system_names
+from agents_runner.agent_systems.status import command_in_path
 from agents_runner.persistence import default_state_path
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 
@@ -77,6 +78,8 @@ class AgentConfigDialog(ThemedDialog):
         self._cli_flags = QLineEdit()
         form.addRow("CLI Flags", self._cli_flags)
 
+        self._agent_cli.currentIndexChanged.connect(self._on_agent_cli_changed)
+
         layout.addStretch(1)
 
         buttons = QDialogButtonBox(
@@ -103,8 +106,20 @@ class AgentConfigDialog(ThemedDialog):
         self._agent_cli.clear()
         self._agent_cli.addItem("—", "")
         for agent_name in available_agent_system_names(include_internal=False):
+            if not command_in_path(agent_name):
+                continue
             label = format_agent_ui_label(agent_name)
             self._agent_cli.addItem(label, agent_name)
+
+    def _on_agent_cli_changed(self, _index: int) -> None:
+        if self._editing:
+            return
+        if str(self._config_id.text() or "").strip():
+            return
+        agent_cli = str(self._agent_cli.currentData() or "").strip()
+        if not agent_cli:
+            return
+        self._config_id.setText(agent_cli)
 
     def _set_agent_cli(self, value: str) -> None:
         normalized = str(value or "").strip().lower()
