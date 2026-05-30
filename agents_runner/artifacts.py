@@ -7,7 +7,6 @@ Artifacts are stored in ~/.midoriai/agents-runner/artifacts/{task_id}/ with UUID
 
 import hashlib
 import json
-import logging
 import mimetypes
 import multiprocessing
 import os
@@ -24,8 +23,9 @@ from typing import cast
 from uuid import uuid4
 
 from cryptography.fernet import Fernet, InvalidToken
+from midori_ai_logger import MidoriAiLogger
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 _ARTIFACT_KEY_VERSION = "task-id-env-v1"
 _TRANSIENT_STAGING_ERRNOS = {errno.ENOENT, errno.ENOTDIR}
 _ARTIFACT_MIGRATION_LOCKS: dict[str, threading.Lock] = {}
@@ -100,9 +100,7 @@ def _canonical_env_name(env_name: object) -> str:
     return raw
 
 
-def _build_env_name_candidates(
-    *, requested_env: object, metadata_env: object | None = None
-) -> list[str]:
+def _build_env_name_candidates(*, requested_env: object, metadata_env: object | None = None) -> list[str]:
     candidates = [
         "" if requested_env is None else str(requested_env),
         _canonical_env_name(requested_env),
@@ -327,14 +325,10 @@ def decrypt_artifact(
                     if updated_meta:
                         updated_meta["key_version"] = _ARTIFACT_KEY_VERSION
                         updated_meta["env_name_used"] = canonical_env
-                        updated_meta["migrated_at"] = datetime.now(
-                            timezone.utc
-                        ).isoformat()
+                        updated_meta["migrated_at"] = datetime.now(timezone.utc).isoformat()
                         _write_json_atomic(meta_path, updated_meta)
                 except Exception as exc:
-                    logger.debug(
-                        f"Artifact migration skipped for {artifact_uuid}: {exc}"
-                    )
+                    logger.debug(f"Artifact migration skipped for {artifact_uuid}: {exc}")
 
         # Ensure destination directory exists
         dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -407,9 +401,7 @@ def list_artifacts(task_id: str) -> list[ArtifactMeta]:
     return artifacts
 
 
-def collect_artifacts_from_container(
-    container_id: str, task_dict: dict[str, Any], env_name: str
-) -> list[str]:
+def collect_artifacts_from_container(container_id: str, task_dict: dict[str, Any], env_name: str) -> list[str]:
     """
     Collect artifacts from task's staging directory (already mounted to container).
 
@@ -453,21 +445,15 @@ def collect_artifacts_from_container(
         for file_path in files:
             try:
                 relative_path = file_path.relative_to(artifacts_staging).as_posix()
-                artifact_uuid = encrypt_artifact(
-                    task_dict, env_name, str(file_path), relative_path
-                )
+                artifact_uuid = encrypt_artifact(task_dict, env_name, str(file_path), relative_path)
                 if artifact_uuid:
                     artifact_uuids.append(artifact_uuid)
-                    logger.info(
-                        f"Collected artifact: {relative_path} -> {artifact_uuid}"
-                    )
+                    logger.info(f"Collected artifact: {relative_path} -> {artifact_uuid}")
                     # Remove from staging after successful encryption
                     try:
                         file_path.unlink()
                     except Exception as unlink_error:
-                        logger.warning(
-                            f"Failed to remove staged artifact {relative_path}: {unlink_error}"
-                        )
+                        logger.warning(f"Failed to remove staged artifact {relative_path}: {unlink_error}")
             except Exception as e:
                 logger.error(f"Failed to collect artifact {file_path}: {e}")
                 continue
@@ -528,13 +514,9 @@ def collect_artifacts_from_container(
                             f"mode={oct(stat.st_mode)} mtime={stat.st_mtime}"
                         )
                     except Exception as entry_error:
-                        logger.warning(
-                            f"Staging leftover: path={entry} (failed to stat: {entry_error})"
-                        )
+                        logger.warning(f"Staging leftover: path={entry} (failed to stat: {entry_error})")
             except Exception as list_error:
-                logger.warning(
-                    f"Staging cleanup failed while listing leftovers: {list_error}"
-                )
+                logger.warning(f"Staging cleanup failed while listing leftovers: {list_error}")
 
     return artifact_uuids
 
@@ -546,9 +528,7 @@ def _collect_artifacts_child(
     env_name: str,
 ) -> None:
     try:
-        artifact_uuids = collect_artifacts_from_container(
-            container_id, task_dict, env_name
-        )
+        artifact_uuids = collect_artifacts_from_container(container_id, task_dict, env_name)
         result_q.put(("ok", artifact_uuids))
     except Exception as exc:
         result_q.put(("err", f"{type(exc).__name__}: {exc}"))
@@ -600,9 +580,7 @@ def collect_artifacts_from_container_with_timeout(
         kind, payload = cast(tuple[str, object], result_q.get(timeout=1.0))
     except queue.Empty:
         exit_code = proc.exitcode
-        raise RuntimeError(
-            f"artifact collection process exited without result (exit_code={exit_code})"
-        )
+        raise RuntimeError(f"artifact collection process exited without result (exit_code={exit_code})")
     finally:
         try:
             result_q.close()
@@ -646,9 +624,7 @@ def _iter_staging_files(staging_dir: Path) -> list[Path]:
             return
         logger.warning(f"Failed to walk staging dir {staging_dir}: {exc}")
 
-    for root, dirs, filenames in os.walk(
-        staging_dir, followlinks=False, onerror=_on_walk_error
-    ):
+    for root, dirs, filenames in os.walk(staging_dir, followlinks=False, onerror=_on_walk_error):
         root_path = Path(root)
         pruned_dirs: list[str] = []
         for dirname in dirs:

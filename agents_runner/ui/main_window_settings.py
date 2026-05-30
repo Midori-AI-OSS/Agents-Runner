@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import logging
 import os
 import shlex
 import threading
 
 from typing import TYPE_CHECKING, Any
+
+from midori_ai_logger import MidoriAiLogger
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import _MainWindowHints
@@ -46,7 +47,7 @@ from agents_runner.gh.automation_policy import normalize_default_marker_comment_
 from agents_runner.ui.task_workspace_migration import TaskWorkspaceMigrationRecord
 from agents_runner.ui.task_workspace_migration import TaskWorkspaceMigrationWorker
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 def _resolved_agent_config_cli_flags(
@@ -54,9 +55,7 @@ def _resolved_agent_config_cli_flags(
     *,
     fallback_cli_flags: str = "",
 ) -> str:
-    cli_flags = str(
-        getattr(config, "cli_flags", "") if config is not None else fallback_cli_flags
-    ).strip()
+    cli_flags = str(getattr(config, "cli_flags", "") if config is not None else fallback_cli_flags).strip()
     parts: list[str] = []
     for flag, value in (
         ("--agent", getattr(config, "agent", "") if config is not None else ""),
@@ -97,12 +96,8 @@ class MainWindowSettingsMixin(_MainWindowHints):
         if not self._settings.isVisible():
             self._settings.set_settings(self._settings_data)
         if hasattr(self._settings, "set_task_workspace_migration_blocked"):
-            self._settings.set_task_workspace_migration_blocked(
-                self._has_active_cloned_task_workspaces()
-            )
-        self._envs_page.set_settings_data(
-            self._settings_data
-        )  # Pass settings to environments page
+            self._settings.set_task_workspace_migration_blocked(self._has_active_cloned_task_workspaces())
+        self._envs_page.set_settings_data(self._settings_data)  # Pass settings to environments page
         if hasattr(self, "_tasks_page"):
             self._tasks_page.set_settings_data(self._settings_data)
         self._apply_active_environment_to_new_task()
@@ -117,14 +112,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
             if str(getattr(task, "workspace_type", "") or "") != "cloned":
                 continue
             status = str(getattr(task, "status", "") or "").strip().lower()
-            finalization = (
-                str(getattr(task, "finalization_state", "") or "").strip().lower()
-            )
+            finalization = str(getattr(task, "finalization_state", "") or "").strip().lower()
             if task.is_active() or status in {"queued", "running", "finalizing"}:
                 return True
-            if finalization in {"pending", "running"} and not (
-                task.is_done() or task.is_failed()
-            ):
+            if finalization in {"pending", "running"} and not (task.is_done() or task.is_failed()):
                 return True
         return False
 
@@ -150,9 +141,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
                 return
             self._force_stop_cloned_tasks_for_migration()
 
-        target_location = str(
-            self._settings_data.get("task_workspace_location") or "app_data"
-        )
+        target_location = str(self._settings_data.get("task_workspace_location") or "app_data")
         target_location = (
             TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
             if target_location == TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
@@ -256,9 +245,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         source_location: str,
         target_location: str,
     ) -> None:
-        progress = QProgressDialog(
-            "Preparing migration...", "Close", 0, len(records), self
-        )
+        progress = QProgressDialog("Preparing migration...", "Close", 0, len(records), self)
         progress.setWindowTitle("Move all tasks")
         progress.setWindowModality(Qt.WindowModality.ApplicationModal)
         progress.setCancelButton(None)
@@ -278,9 +265,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         def _on_progress(done: int, total: int, task_id: str, eta: str) -> None:
             progress.setMaximum(max(1, int(total)))
             progress.setValue(max(0, int(done)))
-            progress.setLabelText(
-                f"Moving {done}/{total}\nCurrent task: {task_id or 'Preparing'}\n{eta}"
-            )
+            progress.setLabelText(f"Moving {done}/{total}\nCurrent task: {task_id or 'Preparing'}\n{eta}")
 
         def _on_finished(
             moved: int,
@@ -310,14 +295,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self._task_workspace_migration_worker = worker
         thread.start()
 
-    def _apply_migrated_workspace_paths(
-        self, moved_records: object, target_location: str
-    ) -> None:
+    def _apply_migrated_workspace_paths(self, moved_records: object, target_location: str) -> None:
         records = moved_records if isinstance(moved_records, list) else []
         moved_by_task = {
-            str(getattr(record, "task_id", "") or ""): str(
-                getattr(record, "destination", "") or ""
-            )
+            str(getattr(record, "task_id", "") or ""): str(getattr(record, "destination", "") or "")
             for record in records
         }
         if not moved_by_task:
@@ -381,59 +362,35 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
         merged["preflight_enabled"] = bool(merged.get("preflight_enabled") or False)
         merged["preflight_script"] = str(merged.get("preflight_script") or "")
-        merged["interactive_terminal_id"] = str(
-            merged.get("interactive_terminal_id") or ""
-        ).strip()
+        merged["interactive_terminal_id"] = str(merged.get("interactive_terminal_id") or "").strip()
         for key in self._REMOVED_LEGACY_SETTINGS_KEYS:
             merged.pop(key, None)
-        merged["append_pixelarch_context"] = bool(
-            merged.get("append_pixelarch_context") or False
-        )
-        merged["github_workroom_prefer_browser"] = bool(
-            merged.get("github_workroom_prefer_browser") or False
-        )
-        confirmation_mode = (
-            str(merged.get("github_write_confirmation_mode") or "always")
-            .strip()
-            .lower()
-        )
+        merged["append_pixelarch_context"] = bool(merged.get("append_pixelarch_context") or False)
+        merged["github_workroom_prefer_browser"] = bool(merged.get("github_workroom_prefer_browser") or False)
+        confirmation_mode = str(merged.get("github_write_confirmation_mode") or "always").strip().lower()
         if confirmation_mode not in {"always", "destructive_only", "never"}:
             confirmation_mode = "always"
         merged["github_write_confirmation_mode"] = confirmation_mode
-        merged["agentsnova_auto_review_enabled"] = bool(
-            merged.get("agentsnova_auto_review_enabled", True)
-        )
-        merged["agentsnova_auto_marker_comments_mode"] = (
-            normalize_default_marker_comment_mode(
-                merged.get(
-                    "agentsnova_auto_marker_comments_mode",
-                    merged.get("agentsnova_auto_marker_comments_enabled", True),
-                )
+        merged["agentsnova_auto_review_enabled"] = bool(merged.get("agentsnova_auto_review_enabled", True))
+        merged["agentsnova_auto_marker_comments_mode"] = normalize_default_marker_comment_mode(
+            merged.get(
+                "agentsnova_auto_marker_comments_mode",
+                merged.get("agentsnova_auto_marker_comments_enabled", True),
             )
         )
         merged.pop("agentsnova_auto_marker_comments_enabled", None)
-        merged["agentsnova_auto_reactions_enabled"] = bool(
-            merged.get("agentsnova_auto_reactions_enabled", True)
-        )
+        merged["agentsnova_auto_reactions_enabled"] = bool(merged.get("agentsnova_auto_reactions_enabled", True))
         try:
-            merged["github_poll_interval_s"] = max(
-                5, int(merged.get("github_poll_interval_s", 30))
-            )
+            merged["github_poll_interval_s"] = max(5, int(merged.get("github_poll_interval_s", 30)))
         except Exception:
             merged["github_poll_interval_s"] = 30
-        merged["github_polling_enabled"] = bool(
-            merged.get("github_polling_enabled") or False
-        )
+        merged["github_polling_enabled"] = bool(merged.get("github_polling_enabled") or False)
         try:
-            merged["github_poll_startup_delay_s"] = max(
-                0, int(merged.get("github_poll_startup_delay_s", 35))
-            )
+            merged["github_poll_startup_delay_s"] = max(0, int(merged.get("github_poll_startup_delay_s", 35)))
         except Exception:
             merged["github_poll_startup_delay_s"] = 35
         trusted_users_raw = merged.get("agentsnova_trusted_users_global")
-        trusted_users_rows = (
-            trusted_users_raw if isinstance(trusted_users_raw, list) else []
-        )
+        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []
         trusted_users: list[str] = []
         seen_trusted_users: set[str] = set()
         for row in trusted_users_rows:
@@ -444,58 +401,37 @@ class MainWindowSettingsMixin(_MainWindowHints):
             seen_trusted_users.add(username)
         merged["agentsnova_trusted_users_global"] = trusted_users
         merged["agentsnova_review_guard_mode"] = (
-            str(merged.get("agentsnova_review_guard_mode") or "reaction").strip()
-            or "reaction"
+            str(merged.get("agentsnova_review_guard_mode") or "reaction").strip() or "reaction"
         )
-        merged["headless_desktop_enabled"] = bool(
-            merged.get("headless_desktop_enabled") or False
-        )
+        merged["headless_desktop_enabled"] = bool(merged.get("headless_desktop_enabled") or False)
         merged["gpu_enabled"] = bool(merged.get("gpu_enabled") or False)
         merged["opencode_interactive_mode"] = normalize_opencode_interactive_mode(
             str(merged.get("opencode_interactive_mode") or "terminal")
         )
-        merged["popup_theme_animation_enabled"] = bool(
-            merged.get("popup_theme_animation_enabled", True)
-        )
-        merged["auto_navigate_on_run_agent_start"] = bool(
-            merged.get("auto_navigate_on_run_agent_start") or False
-        )
+        merged["popup_theme_animation_enabled"] = bool(merged.get("popup_theme_animation_enabled", True))
+        merged["auto_navigate_on_run_agent_start"] = bool(merged.get("auto_navigate_on_run_agent_start") or False)
         merged["auto_navigate_on_run_interactive_start"] = bool(
             merged.get("auto_navigate_on_run_interactive_start") or False
         )
         merged["radio_enabled"] = bool(merged.get("radio_enabled") or False)
         merged["radio_autostart"] = bool(merged.get("radio_autostart") or False)
-        merged["radio_channel"] = RadioController.normalize_channel(
-            merged.get("radio_channel")
-        )
-        merged["radio_quality"] = RadioController.normalize_quality(
-            merged.get("radio_quality")
-        )
-        merged["radio_volume"] = RadioController.clamp_volume(
-            merged.get("radio_volume")
-        )
-        merged["radio_loudness_boost_enabled"] = bool(
-            merged.get("radio_loudness_boost_enabled") or False
-        )
-        merged["radio_loudness_boost_factor"] = (
-            RadioController.normalize_loudness_boost_factor(
-                merged.get("radio_loudness_boost_factor")
-            )
+        merged["radio_channel"] = RadioController.normalize_channel(merged.get("radio_channel"))
+        merged["radio_quality"] = RadioController.normalize_quality(merged.get("radio_quality"))
+        merged["radio_volume"] = RadioController.clamp_volume(merged.get("radio_volume"))
+        merged["radio_loudness_boost_enabled"] = bool(merged.get("radio_loudness_boost_enabled") or False)
+        merged["radio_loudness_boost_factor"] = RadioController.normalize_loudness_boost_factor(
+            merged.get("radio_loudness_boost_factor")
         )
         merged = normalize_task_workspace_settings(merged)
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
 
-            merged["ui_theme"] = normalize_ui_theme_name(
-                merged.get("ui_theme"), allow_auto=True
-            )
+            merged["ui_theme"] = normalize_ui_theme_name(merged.get("ui_theme"), allow_auto=True)
         except Exception:
             merged["ui_theme"] = "auto"
 
         try:
-            merged["max_agents_running"] = int(
-                str(merged.get("max_agents_running", -1)).strip()
-            )
+            merged["max_agents_running"] = int(str(merged.get("max_agents_running", -1)).strip())
         except Exception:
             merged["max_agents_running"] = -1
         self._settings_data = merged
@@ -508,9 +444,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
     def _plugin_default_interactive_command(self, agent_cli: str) -> str:
         agent_cli = str(agent_cli or "").strip().lower()
-        if not agent_cli or agent_cli not in set(
-            available_agents(include_internal=False)
-        ):
+        if not agent_cli or agent_cli not in set(available_agents(include_internal=False)):
             return ""
         try:
             plugin = get_agent_system(agent_cli)
@@ -520,9 +454,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
     def _default_interactive_command(self, agent_cli: str) -> str:
         agent_cli = str(agent_cli or "").strip().lower()
-        if not agent_cli or agent_cli not in set(
-            available_agents(include_internal=False)
-        ):
+        if not agent_cli or agent_cli not in set(available_agents(include_internal=False)):
             return ""
         return self._plugin_default_interactive_command(agent_cli)
 
@@ -568,14 +500,8 @@ class MainWindowSettingsMixin(_MainWindowHints):
             page._refresh_agent_configs_list()
 
     @staticmethod
-    def _find_agent_instance_by_id(
-        env: Environment | None, agent_id: str
-    ) -> object | None:
-        if (
-            env is None
-            or env.agent_selection is None
-            or not getattr(env.agent_selection, "agents", None)
-        ):
+    def _find_agent_instance_by_id(env: Environment | None, agent_id: str) -> object | None:
+        if env is None or env.agent_selection is None or not getattr(env.agent_selection, "agents", None):
             return None
 
         target = str(agent_id or "").strip()
@@ -606,17 +532,12 @@ class MainWindowSettingsMixin(_MainWindowHints):
         config = resolve_agent_config(config_id, configs)
 
         agent_cli_raw = str(
-            getattr(config, "agent_cli", "")
-            or fallback_agent_cli
-            or settings_data.get("use")
-            or "codex"
+            getattr(config, "agent_cli", "") or fallback_agent_cli or settings_data.get("use") or "codex"
         ).strip()
         agent_cli = normalize_agent(agent_cli_raw) if agent_cli_raw else ""
 
         if config is not None:
-            config_dir = os.path.expanduser(
-                str(getattr(config, "config_dir", "") or "").strip()
-            )
+            config_dir = os.path.expanduser(str(getattr(config, "config_dir", "") or "").strip())
         else:
             config_dir = os.path.expanduser(str(fallback_config_dir or "").strip())
         if not config_dir and agent_cli:
@@ -660,14 +581,9 @@ class MainWindowSettingsMixin(_MainWindowHints):
             )
             return agent_cli, config_dir, cli_flags, agent_id
 
-        config = resolve_agent_config(
-            str(override.get("config_id") or "").strip(), agent_configs
-        )
+        config = resolve_agent_config(str(override.get("config_id") or "").strip(), agent_configs)
         agent_cli_raw = str(
-            getattr(config, "agent_cli", "")
-            or fallback_agent_cli
-            or settings_data.get("use")
-            or "codex"
+            getattr(config, "agent_cli", "") or fallback_agent_cli or settings_data.get("use") or "codex"
         ).strip()
         agent_cli = normalize_agent(agent_cli_raw) if agent_cli_raw else ""
         config_dir = (
@@ -697,16 +613,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
         agents = list(getattr(env.agent_selection, "agents", []) or [])
         if not agents:
             agent_cli = normalize_agent(str(settings.get("use") or "codex"))
-            config_dir = self._resolve_config_dir_for_agent(
-                agent_cli=agent_cli, env=env, settings=settings
-            )
+            config_dir = self._resolve_config_dir_for_agent(agent_cli=agent_cli, env=env, settings=settings)
             return agent_cli, config_dir, "", ""
 
-        mode = (
-            str(getattr(env.agent_selection, "selection_mode", "") or "round-robin")
-            .strip()
-            .lower()
-        )
+        mode = str(getattr(env.agent_selection, "selection_mode", "") or "round-robin").strip().lower()
         env_id = str(getattr(env, "env_id", "") or "")
 
         if not hasattr(self, "_agent_selection_round_robin_cursor"):
@@ -716,15 +626,11 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
         chosen = agents[0]
         if mode == "round-robin":
-            cursor = int(
-                getattr(self, "_agent_selection_round_robin_cursor", {}).get(env_id, 0)
-            )
+            cursor = int(getattr(self, "_agent_selection_round_robin_cursor", {}).get(env_id, 0))
             idx = cursor % len(agents)
             chosen = agents[idx]
             if advance_round_robin:
-                getattr(self, "_agent_selection_round_robin_cursor", {})[env_id] = (
-                    idx + 1
-                )
+                getattr(self, "_agent_selection_round_robin_cursor", {})[env_id] = idx + 1
         elif mode == "least-used":
             counts: dict[str, int] = {}
             tasks = getattr(self, "_tasks", {}) or {}
@@ -733,9 +639,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
                     continue
                 if not getattr(task, "is_active", lambda: False)():
                     continue
-                agent_instance_id = str(
-                    getattr(task, "agent_instance_id", "") or ""
-                ).strip()
+                agent_instance_id = str(getattr(task, "agent_instance_id", "") or "").strip()
                 if not agent_instance_id:
                     continue
                 counts[agent_instance_id] = counts.get(agent_instance_id, 0) + 1
@@ -746,24 +650,17 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
             chosen = min(agents, key=_score)
         elif mode == "pinned":
-            pinned_id = str(
-                getattr(env.agent_selection, "pinned_agent_id", "") or ""
-            ).strip()
+            pinned_id = str(getattr(env.agent_selection, "pinned_agent_id", "") or "").strip()
             if pinned_id:
                 pinned_lower = pinned_id.lower()
                 pinned_inst = next(
-                    (
-                        inst
-                        for inst in agents
-                        if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
-                    ),
+                    (inst for inst in agents if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id),
                     None,
                 ) or next(
                     (
                         inst
                         for inst in agents
-                        if str(getattr(inst, "agent_id", "") or "").strip().lower()
-                        == pinned_lower
+                        if str(getattr(inst, "agent_id", "") or "").strip().lower() == pinned_lower
                     ),
                     None,
                 )
@@ -788,18 +685,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
         env: Environment | None,
         selected_agent_id: str,
     ) -> None:
-        if (
-            env is None
-            or not env.agent_selection
-            or not getattr(env.agent_selection, "agents", None)
-        ):
+        if env is None or not env.agent_selection or not getattr(env.agent_selection, "agents", None):
             return
 
-        mode = (
-            str(getattr(env.agent_selection, "selection_mode", "") or "round-robin")
-            .strip()
-            .lower()
-        )
+        mode = str(getattr(env.agent_selection, "selection_mode", "") or "round-robin").strip().lower()
         if mode != "round-robin":
             return
 
@@ -878,19 +767,15 @@ class MainWindowSettingsMixin(_MainWindowHints):
         """
         settings = settings or self._settings_data
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
-            agent_cli, config_dir, _agent_id, cli_flags = (
-                self._select_agent_instance_for_env(
-                    env=env,
-                    settings=settings,
-                    advance_round_robin=advance_round_robin,
-                )
+            agent_cli, config_dir, _agent_id, cli_flags = self._select_agent_instance_for_env(
+                env=env,
+                settings=settings,
+                advance_round_robin=advance_round_robin,
             )
             return agent_cli, config_dir, cli_flags
 
         agent_cli = normalize_agent(str(settings.get("use") or "codex"))
-        config_dir = self._resolve_config_dir_for_agent(
-            agent_cli=agent_cli, env=env, settings=settings
-        )
+        config_dir = self._resolve_config_dir_for_agent(agent_cli=agent_cli, env=env, settings=settings)
         return agent_cli, config_dir, ""
 
     def _effective_host_config_dir(
@@ -927,13 +812,11 @@ class MainWindowSettingsMixin(_MainWindowHints):
         if env and env.agent_selection and getattr(env.agent_selection, "agents", None):
             agent_configs = self._load_agent_configs_by_id()
             for inst in list(env.agent_selection.agents or []):
-                resolved_cli, resolved_dir, _cli_flags = (
-                    self._resolve_agent_instance_runtime(
-                        inst,
-                        env=env,
-                        settings=settings,
-                        agent_configs=agent_configs,
-                    )
+                resolved_cli, resolved_dir, _cli_flags = self._resolve_agent_instance_runtime(
+                    inst,
+                    env=env,
+                    settings=settings,
+                    agent_configs=agent_configs,
                 )
                 if resolved_cli == agent_cli and resolved_dir:
                     return resolved_dir
@@ -973,9 +856,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         global_enabled = bool(settings_data.get("gpu_enabled") or False)
         if env is None:
             return global_enabled
-        mode = normalize_gpu_override_mode(
-            str(getattr(env, "gpu_override_mode", "inherit") or "inherit")
-        )
+        mode = normalize_gpu_override_mode(str(getattr(env, "gpu_override_mode", "inherit") or "inherit"))
         if mode == "enabled":
             return True
         if mode == "disabled":
@@ -1008,12 +889,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
         env: Environment | None,
         settings: dict[str, object] | None = None,
     ) -> str:
-        _agent_cli, config_dir, _cli_flags, _agent_id = (
-            self._resolve_override_agent_runtime(
-                override=override,
-                env=env,
-                settings=settings or self._settings_data,
-            )
+        _agent_cli, config_dir, _cli_flags, _agent_id = self._resolve_override_agent_runtime(
+            override=override,
+            env=env,
+            settings=settings or self._settings_data,
         )
         return config_dir
 
@@ -1023,17 +902,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
         if not host_config_dir:
             agent_label = agent_cli
             try:
-                agent_label = (
-                    str(
-                        getattr(get_agent_system(agent_cli), "display_name", "") or ""
-                    ).strip()
-                    or agent_cli
-                )
+                agent_label = str(getattr(get_agent_system(agent_cli), "display_name", "") or "").strip() or agent_cli
             except Exception:
                 pass
-            agent_label = (
-                agent_label[0].upper() + agent_label[1:] if agent_label else "Agent"
-            )
+            agent_label = agent_label[0].upper() + agent_label[1:] if agent_label else "Agent"
             QMessageBox.warning(
                 self,
                 "Missing config folder",
@@ -1041,9 +913,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             )
             return False
         if os.path.exists(host_config_dir) and not os.path.isdir(host_config_dir):
-            QMessageBox.warning(
-                self, "Invalid config folder", "Config folder path is not a directory."
-            )
+            QMessageBox.warning(self, "Invalid config folder", "Config folder path is not a directory.")
             return False
         try:
             os.makedirs(host_config_dir, exist_ok=True)
@@ -1056,11 +926,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         """Return (current, next) labels for Run button tooltips."""
         agent_cli, _, _ = self._effective_agent_and_config(env=env)
 
-        if (
-            not env
-            or not env.agent_selection
-            or not getattr(env.agent_selection, "agents", None)
-        ):
+        if not env or not env.agent_selection or not getattr(env.agent_selection, "agents", None):
             return agent_cli, ""
 
         agents = list(env.agent_selection.agents or [])
@@ -1071,33 +937,22 @@ class MainWindowSettingsMixin(_MainWindowHints):
             agent_configs = self._load_agent_configs_by_id()
             return self._format_agent_label(inst, agent_configs=agent_configs), ""
 
-        mode = (
-            str(getattr(env.agent_selection, "selection_mode", "") or "round-robin")
-            .strip()
-            .lower()
-        )
+        mode = str(getattr(env.agent_selection, "selection_mode", "") or "round-robin").strip().lower()
         env_id = str(getattr(env, "env_id", "") or "")
         agent_configs = self._load_agent_configs_by_id()
 
         if mode == "pinned":
-            pinned_id = str(
-                getattr(env.agent_selection, "pinned_agent_id", "") or ""
-            ).strip()
+            pinned_id = str(getattr(env.agent_selection, "pinned_agent_id", "") or "").strip()
             if pinned_id:
                 pinned_lower = pinned_id.lower()
                 pinned_inst = next(
-                    (
-                        inst
-                        for inst in agents
-                        if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id
-                    ),
+                    (inst for inst in agents if str(getattr(inst, "agent_id", "") or "").strip() == pinned_id),
                     None,
                 ) or next(
                     (
                         inst
                         for inst in agents
-                        if str(getattr(inst, "agent_id", "") or "").strip().lower()
-                        == pinned_lower
+                        if str(getattr(inst, "agent_id", "") or "").strip().lower() == pinned_lower
                     ),
                     None,
                 )
@@ -1120,23 +975,12 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
         if mode == "fallback":
             fallbacks = dict(getattr(env.agent_selection, "agent_fallbacks", {}) or {})
-            wanted_id = str(
-                fallbacks.get(str(getattr(current, "agent_id", "") or "").strip(), "")
-                or ""
-            ).strip()
+            wanted_id = str(fallbacks.get(str(getattr(current, "agent_id", "") or "").strip(), "") or "").strip()
             next_inst = next(
-                (
-                    a
-                    for a in agents
-                    if str(getattr(a, "agent_id", "") or "").strip() == wanted_id
-                ),
+                (a for a in agents if str(getattr(a, "agent_id", "") or "").strip() == wanted_id),
                 None,
             )
-            next_label = (
-                self._format_agent_label(next_inst, agent_configs=agent_configs)
-                if next_inst
-                else ""
-            )
+            next_label = self._format_agent_label(next_inst, agent_configs=agent_configs) if next_inst else ""
             if next_label:
                 next_label = f"Fallback: {next_label}"
             return self._format_agent_label(
@@ -1165,9 +1009,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             now = ordered[0] if ordered else current
             nxt = ordered[1] if len(ordered) > 1 else None
             return self._format_agent_label(now, agent_configs=agent_configs), (
-                self._format_agent_label(nxt, agent_configs=agent_configs)
-                if nxt
-                else ""
+                self._format_agent_label(nxt, agent_configs=agent_configs) if nxt else ""
             )
 
         # round-robin (default)
@@ -1254,9 +1096,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         # Track which CLIs we've already mounted (including primary)
         mounted_clis: set[str] = {normalize_agent(primary_agent_cli)}
         mounted_dirs: set[str] = {os.path.expanduser(primary_config_dir)}
-        mounted_container_paths: set[str] = {
-            container_config_dir(normalize_agent(primary_agent_cli))
-        }
+        mounted_container_paths: set[str] = {container_config_dir(normalize_agent(primary_agent_cli))}
 
         mounts: list[str] = []
 
@@ -1268,9 +1108,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             # Look up agent instance
             inst = agents_by_id.get(agent_id)
             if inst is None:
-                logger.warning(
-                    f"Cross-agent allowlist references unknown agent_id: {agent_id}"
-                )
+                logger.warning(f"Cross-agent allowlist references unknown agent_id: {agent_id}")
                 continue
 
             inst_cli, inst_dir, _cli_flags = self._resolve_agent_instance_runtime(
@@ -1280,17 +1118,12 @@ class MainWindowSettingsMixin(_MainWindowHints):
                 agent_configs=agent_configs,
             )
             if not inst_cli:
-                logger.warning(
-                    f"Cross-agent allowlist references unresolved agent config: {agent_id}"
-                )
+                logger.warning(f"Cross-agent allowlist references unresolved agent config: {agent_id}")
                 continue
 
             # Enforce one-per-CLI constraint
             if inst_cli in mounted_clis:
-                logger.debug(
-                    f"Skipping allowlisted agent {agent_id} ({inst_cli}): "
-                    f"already mounted config for this CLI"
-                )
+                logger.debug(f"Skipping allowlisted agent {agent_id} ({inst_cli}): already mounted config for this CLI")
                 continue
 
             # Validate config directory exists
@@ -1301,10 +1134,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             # Check for duplicate mount (same dir as primary or already mounted)
             inst_dir_expanded = os.path.expanduser(inst_dir)
             if inst_dir_expanded in mounted_dirs:
-                logger.debug(
-                    f"Skipping allowlisted agent {agent_id} ({inst_cli}): "
-                    f"config dir already mounted"
-                )
+                logger.debug(f"Skipping allowlisted agent {agent_id} ({inst_cli}): config dir already mounted")
                 continue
 
             # Build mount string and check for duplicate container path

@@ -7,11 +7,12 @@ defaults if files are missing.
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from midori_ai_logger import MidoriAiLogger
+
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 # Cache for loaded prompts to avoid re-reading files
 _PROMPT_CACHE: dict[str, str] = {}
@@ -84,10 +85,7 @@ def load_prompt(name: str, **kwargs: Any) -> str:
         try:
             prompt = prompt.format(**kwargs)
         except KeyError as e:
-            logger.error(
-                f"Template variable missing in prompt '{name}': {e}, "
-                f"using prompt without substitution"
-            )
+            logger.error(f"Template variable missing in prompt '{name}': {e}, using prompt without substitution")
         except Exception as e:
             logger.error(f"Failed to substitute variables in prompt '{name}': {e}")
 

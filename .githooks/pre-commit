@@ -250,20 +250,21 @@ if [[ "${tasks_has_task_files}" -eq 1 ]]; then
 fi
 
 # ---- logging-usage check ------------------------------------------------
-# Warn when staged Python files introduce standard-logging imports.
+# Block staged Python files that introduce stdlib logging imports.
 staged_py=()
 mapfile -d '' -t staged_py < <(git diff --cached --name-only -z --diff-filter=ACMR -- '*.py')
 logging_additions=()
+logging_import_pattern='^\+[[:space:]]*import[[:space:]]+logging([[:space:]]|$)|^\+[[:space:]]*from[[:space:]]+logging[[:space:]]+import([[:space:]]|$)'
 for py_file in "${staged_py[@]}"; do
   [[ -z "${py_file}" ]] && continue
-  if git diff --cached -- "${py_file}" | grep -qE '^\+import logging|^\+from logging import'; then
+  if git diff --cached -- "${py_file}" | grep -qE "${logging_import_pattern}"; then
     logging_additions+=("${py_file}")
   fi
 done
 if ((${#logging_additions[@]} > 0)); then
-  log "WARNING: Standard logging from Python logging module detected in staged changes."
   print_paths "Affected files" "${logging_additions[@]}"
-  log "Use midori_ai_logger (MidoriAiLogger) instead. See AGENTS.md."
+  log "Remediation: Use midori_ai_logger (MidoriAiLogger) instead. See AGENTS.md."
+  die "Standard logging from Python logging module detected in staged changes."
 fi
 
 if ! command -v uv >/dev/null 2>&1; then

@@ -7,14 +7,15 @@ from available sources.
 
 from __future__ import annotations
 
-import logging
 import os
 from typing import Any
+
+from midori_ai_logger import MidoriAiLogger
 
 from agents_runner.pr_metadata import github_context_host_path
 from agents_runner.pr_metadata import load_github_metadata
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 def repair_task_git_metadata(
@@ -39,9 +40,7 @@ def repair_task_git_metadata(
     has_metadata = task.git is not None and isinstance(task.git, dict) and task.git
 
     if not task.requires_git_metadata():
-        logger.debug(
-            f"[repair] task {task_id}: not cloned environment, no repair needed"
-        )
+        logger.debug(f"[repair] task {task_id}: not cloned environment, no repair needed")
         return (True, "not cloned environment")
 
     if has_metadata:
@@ -77,9 +76,7 @@ def repair_task_git_metadata(
         logger.warning(f"[repair] task {task_id}: {msg}")
         return (False, msg)
 
-    logger.error(
-        f"[repair] task {task_id}: repair failed - no metadata sources available"
-    )
+    logger.error(f"[repair] task {task_id}: repair failed - no metadata sources available")
     return (False, "no metadata sources available")
 
 
@@ -149,9 +146,7 @@ def _repair_from_task_fields(task: Any) -> tuple[bool, str]:
     return (False, "task fields incomplete")
 
 
-def _repair_from_environment(
-    task: Any, state_path: str, environments: dict[str, Any]
-) -> tuple[bool, str]:
+def _repair_from_environment(task: Any, state_path: str, environments: dict[str, Any]) -> tuple[bool, str]:
     """Attempt to repair from environment repository."""
     task_id = getattr(task, "task_id", "unknown")
     env_id = getattr(task, "environment_id", "")

@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Callable
 
+from midori_ai_logger import MidoriAiLogger
+
 from agents_runner.docker.process import has_image
 from agents_runner.docker.process import run_docker
 from agents_runner.log_format import format_log
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 PREFLIGHTS_DIR = Path(__file__).parent.parent / "preflights"
 
@@ -85,12 +86,7 @@ def _get_dockerfile_template(
     custom_copy = "COPY phase_script.sh /tmp/agents-runner-phase-script.sh\n"
     if not include_custom_script:
         custom_copy = ""
-    return (
-        f"FROM {base_image}\n\n"
-        "COPY preflights/ /tmp/agents-runner-preflights/\n"
-        f"{custom_copy}\n"
-        f"RUN {run_cmd}\n"
-    )
+    return f"FROM {base_image}\n\nCOPY preflights/ /tmp/agents-runner-preflights/\n{custom_copy}\nRUN {run_cmd}\n"
 
 
 def compute_phase_cache_key(
@@ -124,9 +120,7 @@ def build_phase_image(
     if not preflights_dir.is_dir():
         raise FileNotFoundError(f"Preflights directory not found: {preflights_dir}")
 
-    script_name = _resolve_bundled_script_name(
-        script_content, preflights_dir=preflights_dir
-    )
+    script_name = _resolve_bundled_script_name(script_content, preflights_dir=preflights_dir)
     include_custom_script = script_name is None
 
     if include_custom_script:
@@ -137,10 +131,7 @@ def build_phase_image(
         )
         script_source = "custom"
     else:
-        run_cmd = (
-            f"/bin/bash /tmp/agents-runner-preflights/{script_name} "
-            "&& sudo rm -rf /tmp/agents-runner-preflights"
-        )
+        run_cmd = f"/bin/bash /tmp/agents-runner-preflights/{script_name} && sudo rm -rf /tmp/agents-runner-preflights"
         script_source = f"bundled:{script_name}"
 
     dockerfile_template = _get_dockerfile_template(
@@ -225,11 +216,7 @@ def ensure_phase_image(
     if not content:
         return base_image
 
-    phase = "".join(
-        ch
-        for ch in str(phase_name or "phase").strip().lower()
-        if ch.isalnum() or ch in {"-", "_"}
-    )
+    phase = "".join(ch for ch in str(phase_name or "phase").strip().lower() if ch.isalnum() or ch in {"-", "_"})
     if not phase:
         phase = "phase"
 

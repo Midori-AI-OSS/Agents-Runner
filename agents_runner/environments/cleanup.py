@@ -4,7 +4,6 @@ Cleanup and resource management for task workspaces.
 Provides utilities to clean up task-specific directories and manage disk space.
 """
 
-import logging
 import os
 import shutil
 import time
@@ -13,13 +12,15 @@ from datetime import datetime
 from collections.abc import Iterable
 from typing import Any, Callable
 
+from midori_ai_logger import MidoriAiLogger
+
 from agents_runner.log_format import format_log
 from .paths import managed_repo_checkout_path
 from .task_workspaces import finished_cutoff_s
 from .task_workspaces import is_safe_task_workspace_path
 from .task_workspaces import task_workspace_candidates
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 _FINISHED_STATUSES = {"done", "failed", "error", "cancelled", "killed"}
 
@@ -155,9 +156,7 @@ def _cleanup_one_task_workspace(
 
     # Safety check: reject symlinks to prevent symlink attacks
     if os.path.islink(task_workspace):
-        msg = format_log(
-            "cleanup", "safety", "WARN", f"Refusing to remove symlink: {task_workspace}"
-        )
+        msg = format_log("cleanup", "safety", "WARN", f"Refusing to remove symlink: {task_workspace}")
         logger.warning(msg)
         if on_log:
             on_log(msg)
@@ -176,9 +175,7 @@ def _cleanup_one_task_workspace(
         return False
 
     try:
-        msg = format_log(
-            "cleanup", "task", "INFO", f"Removing task workspace: {task_workspace}"
-        )
+        msg = format_log("cleanup", "task", "INFO", f"Removing task workspace: {task_workspace}")
         logger.info(msg)
         if on_log:
             on_log(msg)
@@ -190,9 +187,7 @@ def _cleanup_one_task_workspace(
             exc: BaseException,
         ) -> None:
             """Handle permission errors during removal."""
-            logger.debug(
-                format_log("cleanup", "task", "DEBUG", f"Error removing {path}: {exc}")
-            )
+            logger.debug(format_log("cleanup", "task", "DEBUG", f"Error removing {path}: {exc}"))
             # Try to make writable and retry
             try:
                 os.chmod(path, 0o700)
@@ -209,11 +204,7 @@ def _cleanup_one_task_workspace(
 
         shutil.rmtree(task_workspace, onexc=handle_remove_error)
 
-        logger.info(
-            format_log(
-                "cleanup", "task", "INFO", f"Successfully removed: {task_workspace}"
-            )
-        )
+        logger.info(format_log("cleanup", "task", "INFO", f"Successfully removed: {task_workspace}"))
         if on_log:
             on_log(format_log("cleanup", "task", "INFO", "Workspace cleaned up"))
         return True

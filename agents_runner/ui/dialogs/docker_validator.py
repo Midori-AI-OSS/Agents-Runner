@@ -4,12 +4,12 @@ This module provides Docker smoke test functionality to verify that Docker
 is properly installed and configured on the system.
 """
 
-import logging
 import os
 import shutil
 import tempfile
 from typing import Callable
 
+from midori_ai_logger import MidoriAiLogger
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget, QMessageBox
 
@@ -22,7 +22,7 @@ POLL_INTERVAL_MS = 2000
 POLL_MAX_COUNT = 60  # 2 minutes timeout (60 * 2000ms = 120000ms = 2 minutes)
 TEST_RESULT_FILE = "test-result.txt"
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class DockerValidator:
@@ -158,11 +158,7 @@ read
         Checks the result marker file periodically until the test completes
         or timeout is reached. Timeout is POLL_MAX_COUNT * POLL_INTERVAL_MS.
         """
-        if (
-            not self._test_folder
-            or not self._status_callback
-            or not self._completion_callback
-        ):
+        if not self._test_folder or not self._status_callback or not self._completion_callback:
             return
 
         marker_file = os.path.join(self._test_folder, TEST_RESULT_FILE)
@@ -200,9 +196,7 @@ read
         elif self._poll_count >= POLL_MAX_COUNT:
             # Timeout reached
             timeout_seconds = (POLL_MAX_COUNT * POLL_INTERVAL_MS) // 1000
-            self._status_callback(
-                f"✗ Docker test timeout ({timeout_seconds}s)", "#f44336"
-            )
+            self._status_callback(f"✗ Docker test timeout ({timeout_seconds}s)", "#f44336")
             self._show_setup_help()
             self._completion_callback(False)
             self._cleanup_test_folder()
@@ -234,9 +228,7 @@ read
                 shutil.rmtree(self._test_folder)
                 logger.debug(f"Cleaned up Docker test folder: {self._test_folder}")
             except (OSError, PermissionError) as e:
-                logger.warning(
-                    f"Failed to clean up Docker test folder {self._test_folder}: {e}"
-                )
+                logger.warning(f"Failed to clean up Docker test folder {self._test_folder}: {e}")
             finally:
                 self._test_folder = None
 

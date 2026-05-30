@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import importlib
-import logging
 from pathlib import Path
+
+from midori_ai_logger import MidoriAiLogger
 
 from agents_runner.agent_systems.models import AgentSystemPlugin
 
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 _DEFAULT_AGENT_SYSTEM = "codex"
 
@@ -19,11 +20,7 @@ def available_agent_system_names(*, include_internal: bool = True) -> list[str]:
     registry = _ensure_registry()
     if include_internal:
         return sorted(registry.keys())
-    return sorted(
-        name
-        for name, plugin in registry.items()
-        if not bool(getattr(plugin, "internal_only", False))
-    )
+    return sorted(name for name, plugin in registry.items() if not bool(getattr(plugin, "internal_only", False)))
 
 
 def get_default_agent_system_name() -> str:
@@ -81,9 +78,7 @@ def _discover_builtin_plugins(registry: dict[str, AgentSystemPlugin]) -> None:
         try:
             module = importlib.import_module(module_name)
         except Exception as exc:
-            logger.warning(
-                "agent system plugin import failed: %s (%s)", module_name, exc
-            )
+            logger.warning("agent system plugin import failed: %s (%s)", module_name, exc)
             continue
 
         plugin = getattr(module, "PLUGIN", None)
@@ -96,8 +91,6 @@ def _discover_builtin_plugins(registry: dict[str, AgentSystemPlugin]) -> None:
             logger.warning("agent system plugin has invalid name: %s", module_name)
             continue
         if name in registry:
-            logger.warning(
-                "duplicate agent system plugin name %r from %s", name, module_name
-            )
+            logger.warning("duplicate agent system plugin name %r from %s", name, module_name)
             continue
         registry[name] = plugin

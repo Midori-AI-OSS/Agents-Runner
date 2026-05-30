@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from midori_ai_logger import MidoriAiLogger
+
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import _MainWindowHints
 else:
@@ -23,6 +25,8 @@ from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import parse_docker_time
 from agents_runner.ui.utils import stain_color
 from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
+
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class MainWindowPersistenceMixin(_MainWindowHints):
@@ -110,9 +114,7 @@ class MainWindowPersistenceMixin(_MainWindowHints):
             and task.exit_code is not None
             and (task.status or "").lower() not in {"cancelled", "killed"}
         ):
-            task.status = (
-                "done" if status == "exited" and task.exit_code == 0 else "failed"
-            )
+            task.status = "done" if status == "exited" and task.exit_code == 0 else "failed"
             if task.finished_at is None:
                 from datetime import datetime
                 from datetime import timezone
@@ -166,9 +168,7 @@ class MainWindowPersistenceMixin(_MainWindowHints):
         self._settings_data.pop("stt_mode", None)
         for key in self._REMOVED_IDE_SETTINGS_KEYS:
             self._settings_data.pop(key, None)
-        self._settings_data["use"] = normalize_agent(
-            str(self._settings_data.get("use") or "codex")
-        )
+        self._settings_data["use"] = normalize_agent(str(self._settings_data.get("use") or "codex"))
         try:
             self._settings_data["max_agents_running"] = int(
                 str(self._settings_data.get("max_agents_running", -1)).strip()
@@ -204,21 +204,15 @@ class MainWindowPersistenceMixin(_MainWindowHints):
         )
         self._settings_data.setdefault(
             "agentsnova_auto_marker_comments_mode",
-            legacy_marker_comment_setting
-            if legacy_marker_comment_setting is not None
-            else "keep",
+            legacy_marker_comment_setting if legacy_marker_comment_setting is not None else "keep",
         )
         self._settings_data.setdefault("agentsnova_auto_reactions_enabled", True)
         self._settings_data.setdefault("agentsnova_trusted_users_global", [])
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
         self._settings_data = normalize_task_workspace_settings(self._settings_data)
-        self._settings_data["gpu_enabled"] = bool(
-            self._settings_data.get("gpu_enabled") or False
-        )
-        self._settings_data["opencode_interactive_mode"] = (
-            normalize_opencode_interactive_mode(
-                str(self._settings_data.get("opencode_interactive_mode") or "terminal")
-            )
+        self._settings_data["gpu_enabled"] = bool(self._settings_data.get("gpu_enabled") or False)
+        self._settings_data["opencode_interactive_mode"] = normalize_opencode_interactive_mode(
+            str(self._settings_data.get("opencode_interactive_mode") or "terminal")
         )
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
@@ -229,48 +223,34 @@ class MainWindowPersistenceMixin(_MainWindowHints):
         except Exception:
             self._settings_data["ui_theme"] = "auto"
 
-        self._settings_data["radio_enabled"] = bool(
-            self._settings_data.get("radio_enabled") or False
-        )
+        self._settings_data["radio_enabled"] = bool(self._settings_data.get("radio_enabled") or False)
         self._settings_data["popup_theme_animation_enabled"] = bool(
             self._settings_data.get("popup_theme_animation_enabled", True)
         )
-        self._settings_data["radio_autostart"] = bool(
-            self._settings_data.get("radio_autostart") or False
-        )
+        self._settings_data["radio_autostart"] = bool(self._settings_data.get("radio_autostart") or False)
         self._settings_data["radio_channel"] = RadioController.normalize_channel(
             self._settings_data.get("radio_channel")
         )
         self._settings_data["radio_quality"] = RadioController.normalize_quality(
             self._settings_data.get("radio_quality")
         )
-        self._settings_data["radio_volume"] = RadioController.clamp_volume(
-            self._settings_data.get("radio_volume")
-        )
+        self._settings_data["radio_volume"] = RadioController.clamp_volume(self._settings_data.get("radio_volume"))
         self._settings_data["radio_loudness_boost_enabled"] = bool(
             self._settings_data.get("radio_loudness_boost_enabled") or False
         )
-        self._settings_data["radio_loudness_boost_factor"] = (
-            RadioController.normalize_loudness_boost_factor(
-                self._settings_data.get("radio_loudness_boost_factor")
-            )
+        self._settings_data["radio_loudness_boost_factor"] = RadioController.normalize_loudness_boost_factor(
+            self._settings_data.get("radio_loudness_boost_factor")
         )
-        self._settings_data["agentsnova_auto_marker_comments_mode"] = (
-            normalize_default_marker_comment_mode(
-                self._settings_data.get(
-                    "agentsnova_auto_marker_comments_mode",
-                    legacy_marker_comment_setting
-                    if legacy_marker_comment_setting is not None
-                    else "keep",
-                )
+        self._settings_data["agentsnova_auto_marker_comments_mode"] = normalize_default_marker_comment_mode(
+            self._settings_data.get(
+                "agentsnova_auto_marker_comments_mode",
+                legacy_marker_comment_setting if legacy_marker_comment_setting is not None else "keep",
             )
         )
         self._settings_data["agentsnova_auto_reactions_enabled"] = bool(
             self._settings_data.get("agentsnova_auto_reactions_enabled", True)
         )
-        self._settings_data["github_polling_enabled"] = bool(
-            self._settings_data.get("github_polling_enabled") or False
-        )
+        self._settings_data["github_polling_enabled"] = bool(self._settings_data.get("github_polling_enabled") or False)
         try:
             self._settings_data["github_poll_startup_delay_s"] = max(
                 0, int(self._settings_data.get("github_poll_startup_delay_s", 35))
@@ -278,9 +258,7 @@ class MainWindowPersistenceMixin(_MainWindowHints):
         except Exception:
             self._settings_data["github_poll_startup_delay_s"] = 35
         trusted_users_raw = self._settings_data.get("agentsnova_trusted_users_global")
-        trusted_users_rows = (
-            trusted_users_raw if isinstance(trusted_users_raw, list) else []
-        )
+        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []
         trusted_users: list[str] = []
         seen_users: set[str] = set()
         for row in trusted_users_rows:
@@ -349,9 +327,6 @@ class MainWindowPersistenceMixin(_MainWindowHints):
                     )
 
         if repair_count > 0:
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.info(f"Repaired git metadata for {repair_count} tasks")
 
         for task in loaded:
