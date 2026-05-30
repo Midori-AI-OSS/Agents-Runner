@@ -7,6 +7,7 @@ from datetime import UTC
 from datetime import datetime
 
 from ..agent_display import format_agent_markdown_link
+from ..agent_display import get_agent_github_url
 from ..environments.model import GH_BRANCH_WORK_MODE_DIRECT_BASE
 from ..environments.model import GH_BRANCH_WORK_MODE_TASK_BRANCH
 from ..environments.model import GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
@@ -95,7 +96,10 @@ _BRANCH_THEME_TOKENS: dict[str, tuple[str, ...]] = {
 
 
 def _append_pr_attribution_footer(
-    body: str, agent_cli: str = "", agent_cli_args: str = ""
+    body: str,
+    agent_cli: str = "",
+    agent_cli_args: str = "",
+    agent_display_name: str | None = None,
 ) -> str:
     body = (body or "").rstrip()
     if _PR_ATTRIBUTION_MARKER in body:
@@ -105,7 +109,14 @@ def _append_pr_attribution_footer(
     agent_args = agent_cli_args.strip()
 
     if agent_cli_name:
-        agent_link = format_agent_markdown_link(agent_cli_name)
+        if agent_display_name:
+            github_url = get_agent_github_url(agent_cli_name)
+            if github_url:
+                agent_link = f"[{agent_display_name}]({github_url})"
+            else:
+                agent_link = agent_display_name
+        else:
+            agent_link = format_agent_markdown_link(agent_cli_name)
         if agent_args:
             agent_used = f"{agent_link} {agent_args}"
         else:
@@ -403,6 +414,7 @@ def commit_push_and_pr(
     use_gh: bool = True,
     agent_cli: str = "",
     agent_cli_args: str = "",
+    agent_display_name: str | None = None,
 ) -> str | None:
     repo_root = expand_dir(repo_root)
     branch = str(branch or "").strip()
@@ -414,7 +426,10 @@ def commit_push_and_pr(
             "current branch matches the base branch; PR creation is unavailable for direct-base tasks"
         )
     body = _append_pr_attribution_footer(
-        body, agent_cli=agent_cli, agent_cli_args=agent_cli_args
+        body,
+        agent_cli=agent_cli,
+        agent_cli_args=agent_cli_args,
+        agent_display_name=agent_display_name,
     )
 
     def _porcelain_status() -> str:
