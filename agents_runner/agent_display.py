@@ -8,6 +8,8 @@ AGENT_DISPLAY_NAMES = {
     "copilot": "Github Copilot",
     "gemini": "Google Gemini",
     "opencode": "OpenCode",
+    "opencode-tui": "OpenCode TUI",
+    "opencode-web": "OpenCode Web",
     "qwen": "Qwen",
 }
 
@@ -17,6 +19,8 @@ AGENT_GITHUB_URLS = {
     "copilot": "https://github.com/github/copilot-cli",
     "gemini": "https://github.com/google-gemini/gemini-cli",
     "opencode": "https://github.com/anomalyco/opencode",
+    "opencode-tui": "https://github.com/anomalyco/opencode",
+    "opencode-web": "https://github.com/anomalyco/opencode",
     "qwen": "https://github.com/QwenLM/qwen-code",
 }
 
