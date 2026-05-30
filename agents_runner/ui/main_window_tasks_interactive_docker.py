@@ -542,9 +542,14 @@ def launch_docker_terminal_task(
             if cmd_parts and cmd_parts[0] in set(available_agents()):
                 verify_clause = verify_cli_clause(cmd_parts[0])
 
+        runtime_cmd_log = (
+            "printf '%s\\n' "
+            f"{shlex.quote(format_log('agent', 'cmd', 'INFO', f'running: {target_cmd}'))}; "
+        )
         container_script = (
             "set -euo pipefail; "
-            f"{git_identity_clause()}{preflight_clause}{verify_clause}{desktop_start_clause}{target_cmd}"
+            f"{git_identity_clause()}{preflight_clause}{verify_clause}"
+            f"{desktop_start_clause}{runtime_cmd_log}{target_cmd}"
         )
 
         main_window._on_task_log(

@@ -5,6 +5,8 @@ from pathlib import Path
 
 from agents_runner.agent_configs.model import AgentConfig
 from agents_runner.agent_configs.storage import save_agent_config
+from agents_runner.agent_systems.opencode.plugin import PLUGIN as OPENCODE_PLUGIN
+from agents_runner.agent_systems.opencode.plugin import WORKSPACE_DIR
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments.model import AgentInstance
@@ -91,6 +93,63 @@ class _FakeMessageBox:
     @staticmethod
     def information(*_args, **_kwargs) -> None:
         return
+
+
+def test_opencode_interactive_tui_drops_variant_but_keeps_agent_and_model() -> None:
+    cmd_parts = OPENCODE_PLUGIN.build_interactive_command_parts(
+        cmd_parts=["opencode"],
+        agent_cli_args=[
+            "--agent",
+            "worker",
+            "--model",
+            "deepseek/deepseek-v4-pro",
+            "--variant",
+            "max",
+        ],
+        prompt="",
+        is_help_launch=False,
+        help_repos_dir="",
+    )
+
+    assert cmd_parts == [
+        "opencode",
+        "--agent",
+        "worker",
+        "--model",
+        "deepseek/deepseek-v4-pro",
+        WORKSPACE_DIR,
+    ]
+
+
+def test_opencode_run_keeps_variant_and_uses_dir() -> None:
+    cmd_parts = OPENCODE_PLUGIN.build_interactive_command_parts(
+        cmd_parts=["opencode", "run"],
+        agent_cli_args=[
+            "--agent",
+            "worker",
+            "--model",
+            "deepseek/deepseek-v4-pro",
+            "--variant",
+            "max",
+        ],
+        prompt="hello",
+        is_help_launch=False,
+        help_repos_dir="",
+    )
+
+    assert cmd_parts == [
+        "opencode",
+        "run",
+        "--agent",
+        "worker",
+        "--model",
+        "deepseek/deepseek-v4-pro",
+        "--variant",
+        "max",
+        "--dir",
+        WORKSPACE_DIR,
+        "hello",
+    ]
 
 
 @dataclass
