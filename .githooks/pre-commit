@@ -25,6 +25,7 @@ print_allowlist() {
   log "  - .agents"
   log "  - .githooks"
   log "  - .github"
+  log "  - .opencode"
   log "  - agents_runner"
   log "  - agents_runner.egg-info"
   log "  - .gitignore"
@@ -66,6 +67,7 @@ declare -A root_allowlist=(
   [".agents"]=1
   [".githooks"]=1
   [".github"]=1
+  [".opencode"]=1
   ["agents_runner"]=1
   ["agents_runner.egg-info"]=1
   [".gitignore"]=1
