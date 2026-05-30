@@ -38,10 +38,11 @@ from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.widgets import LogHighlighter
 from agents_runner.ui.widgets import StatusGlyph
 
-import logging
 import sys
 
-logger = logging.getLogger(__name__)
+from midori_ai_logger import MidoriAiLogger
+
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class TaskDetailsPage(QWidget):
@@ -162,9 +163,7 @@ class TaskDetailsPage(QWidget):
         self._btn_unfreeze.setIcon(lucide_icon("play"))
         self._btn_unfreeze.setIconSize(QSize(16, 16))
         self._btn_unfreeze.setToolTip("Unfreeze: Resume the container")
-        self._btn_unfreeze.clicked.connect(
-            lambda: self._emit_container_action("unfreeze")
-        )
+        self._btn_unfreeze.clicked.connect(lambda: self._emit_container_action("unfreeze"))
 
         self._btn_stop = QToolButton()
         self._btn_stop.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
@@ -254,27 +253,17 @@ class TaskDetailsPage(QWidget):
         self._workdir = QLabel("—")
         self._workdir_label = QLabel("Host Workdir")
         self._container = QLabel("—")
-        self._container.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        self._workdir.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        self._container.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._workdir.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self._novnc_label = QLabel("noVNC URL")
         self._novnc_url = QLabel("—")
-        self._novnc_url.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        self._novnc_url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._opencode_web_url_label = QLabel("OpenCode Web URL")
         self._opencode_web_url = QLabel("—")
-        self._opencode_web_url.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        self._opencode_web_url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._agent_system = QLabel("—")
-        self._agent_system.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
+        self._agent_system.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self._workdir_row = 0
         cfg.addWidget(self._workdir_label, self._workdir_row, 0)
@@ -342,9 +331,7 @@ class TaskDetailsPage(QWidget):
         """Show the Artifacts tab if not already visible."""
         if self._artifacts_tab_visible:
             return
-        self._artifacts_tab_index = self._tabs.addTab(
-            self._artifacts_tab_widget, "Artifacts"
-        )
+        self._artifacts_tab_index = self._tabs.addTab(self._artifacts_tab_widget, "Artifacts")
         self._artifacts_tab_visible = True
 
     def _hide_artifacts_tab(self) -> None:
@@ -368,16 +355,13 @@ class TaskDetailsPage(QWidget):
         can_pr = task.requires_git_metadata()
         branch_matches_base = bool(
             str(task.gh_branch or "").strip()
-            and str(task.gh_branch or "").strip()
-            == str(task.gh_base_branch or "").strip()
+            and str(task.gh_branch or "").strip() == str(task.gh_base_branch or "").strip()
         )
 
         pr_url = str(task.gh_pr_url or "").strip()
         self._review_pr.setVisible(can_pr)
         self._review_pr.setEnabled(
-            can_pr
-            and not task.is_active()
-            and (pr_url.startswith("http") or not branch_matches_base)
+            can_pr and not task.is_active() and (pr_url.startswith("http") or not branch_matches_base)
         )
         self._review_pr.setText("Open PR" if pr_url.startswith("http") else "Create PR")
 
@@ -438,9 +422,7 @@ class TaskDetailsPage(QWidget):
         try:
             from PySide6 import QtWebEngineWidgets as _  # noqa: F401
         except Exception:
-            logger.warning(
-                "QtWebEngine not available; opening noVNC URL in system browser instead"
-            )
+            logger.warning("QtWebEngine not available; opening noVNC URL in system browser instead")
             QDesktopServices.openUrl(QUrl(url))
             return True
 
@@ -463,12 +445,8 @@ class TaskDetailsPage(QWidget):
         title = f"Task {task_id}" if task_id else "Desktop"
 
         self._desktop_viewer_process = QProcess(self)
-        self._desktop_viewer_process.setProcessChannelMode(
-            QProcess.ProcessChannelMode.MergedChannels
-        )
-        self._desktop_viewer_process.readyReadStandardOutput.connect(
-            self._on_viewer_output
-        )
+        self._desktop_viewer_process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self._desktop_viewer_process.readyReadStandardOutput.connect(self._on_viewer_output)
         self._desktop_viewer_process.finished.connect(self._on_viewer_finished)
 
         # Use sys.executable to get the current Python interpreter
@@ -493,19 +471,13 @@ class TaskDetailsPage(QWidget):
             session_type = str(env.value("XDG_SESSION_TYPE") or "").strip().lower()
         except Exception:
             session_type = ""
-        allow_wayland = str(
-            env.value("AGENTS_RUNNER_DESKTOP_VIEWER_ALLOW_WAYLAND") or ""
-        ).strip().lower() in {
+        allow_wayland = str(env.value("AGENTS_RUNNER_DESKTOP_VIEWER_ALLOW_WAYLAND") or "").strip().lower() in {
             "1",
             "true",
             "yes",
             "on",
         }
-        if (
-            session_type == "wayland"
-            and not allow_wayland
-            and not env.contains("QT_QPA_PLATFORM")
-        ):
+        if session_type == "wayland" and not allow_wayland and not env.contains("QT_QPA_PLATFORM"):
             env.insert("QT_QPA_PLATFORM", "xcb")
         self._desktop_viewer_process.setProcessEnvironment(env)
         self._desktop_viewer_process.start(sys.executable, args)
@@ -525,9 +497,7 @@ class TaskDetailsPage(QWidget):
         if proc is None:
             return
         try:
-            chunk = bytes(proc.readAllStandardOutput()).decode(
-                "utf-8", errors="replace"
-            )
+            chunk = bytes(proc.readAllStandardOutput()).decode("utf-8", errors="replace")
         except Exception:
             return
 
@@ -542,9 +512,7 @@ class TaskDetailsPage(QWidget):
         if len(self._desktop_viewer_output_lines) > 250:
             self._desktop_viewer_output_lines = self._desktop_viewer_output_lines[-250:]
 
-    def _on_viewer_finished(
-        self, exit_code: int, exit_status: QProcess.ExitStatus
-    ) -> None:
+    def _on_viewer_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
         """Handle desktop viewer process exit."""
         try:
             if exit_status == QProcess.ExitStatus.CrashExit:
@@ -756,9 +724,7 @@ class TaskDetailsPage(QWidget):
         status = task_display_status(task)
         color = status_color(task.status)
         self._status.setText(status)
-        self._status.setStyleSheet(
-            f"font-size: 16px; font-weight: 750; color: {rgba(color, 235)};"
-        )
+        self._status.setStyleSheet(f"font-size: 16px; font-weight: 750; color: {rgba(color, 235)};")
         if task.is_active():
             self._glyph.set_mode("spinner", color)
         elif task.is_done():

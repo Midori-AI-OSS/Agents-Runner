@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import shlex
 import shutil
@@ -8,6 +7,8 @@ import time
 
 from typing import TYPE_CHECKING
 from uuid import uuid4
+
+from midori_ai_logger import MidoriAiLogger
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import _MainWindowHints
@@ -51,7 +52,7 @@ from agents_runner.environments.model import AgentSelection
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import stain_color
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class MainWindowTasksAgentMixin(_MainWindowHints):
@@ -62,9 +63,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             if (
                 status in {"done", "failed", "error"}
                 and not task.is_active()
-                and (
-                    str(getattr(task, "finalization_state", "") or "").lower() == "done"
-                )
+                and (str(getattr(task, "finalization_state", "") or "").lower() == "done")
             ):
                 to_remove.add(task_id)
         if not to_remove:
@@ -106,18 +105,14 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
     ) -> str | None:
         del host_config_dir
         if shutil.which("docker") is None:
-            QMessageBox.critical(
-                self, "Docker not found", "Could not find `docker` in PATH."
-            )
+            QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
             return
         prompt = sanitize_prompt((prompt or "").strip())
 
         task_id = uuid4().hex[:10]
         env_id = str(env_id or "").strip() or self._active_environment_id()
         if env_id not in self._environments:
-            QMessageBox.warning(
-                self, "Unknown environment", "Pick an environment first."
-            )
+            QMessageBox.warning(self, "Unknown environment", "Pick an environment first.")
             return
         self._settings_data["active_environment_id"] = env_id
         env = self._environments.get(env_id)
@@ -128,14 +123,9 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             not override
             and env
             and env.agent_selection
-            and str(getattr(env.agent_selection, "selection_mode", "") or "")
-            .strip()
-            .lower()
-            == "pinned"
+            and str(getattr(env.agent_selection, "selection_mode", "") or "").strip().lower() == "pinned"
         ):
-            pinned_id = str(
-                getattr(env.agent_selection, "pinned_agent_id", "") or ""
-            ).strip()
+            pinned_id = str(getattr(env.agent_selection, "pinned_agent_id", "") or "").strip()
             pinned_lower = pinned_id.lower()
             pinned_inst = next(
                 (
@@ -148,8 +138,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                 (
                     inst
                     for inst in list(getattr(env.agent_selection, "agents", []) or [])
-                    if str(getattr(inst, "agent_id", "") or "").strip().lower()
-                    == pinned_lower
+                    if str(getattr(inst, "agent_id", "") or "").strip().lower() == pinned_lower
                 ),
                 None,
             )
@@ -165,10 +154,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
         agent_instance_id = ""
         selected_cli_flags = ""
         uses_environment_agent_selection = bool(
-            not override
-            and env
-            and env.agent_selection
-            and getattr(env.agent_selection, "agents", None)
+            not override and env and env.agent_selection and getattr(env.agent_selection, "agents", None)
         )
         if override:
             (
@@ -181,19 +167,15 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                 env=env,
                 settings=self._settings_data,
             )
-        elif (
-            env and env.agent_selection and getattr(env.agent_selection, "agents", None)
-        ):
-            agent_cli, auto_config_dir, agent_instance_id, selected_cli_flags = (
-                self._select_agent_instance_for_env(
-                    env=env,
-                    settings=self._settings_data,
-                    advance_round_robin=False,
-                )
+        elif env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            agent_cli, auto_config_dir, agent_instance_id, selected_cli_flags = self._select_agent_instance_for_env(
+                env=env,
+                settings=self._settings_data,
+                advance_round_robin=False,
             )
         else:
-            agent_cli, auto_config_dir, selected_cli_flags = (
-                self._effective_agent_and_config(env=env, advance_round_robin=True)
+            agent_cli, auto_config_dir, selected_cli_flags = self._effective_agent_and_config(
+                env=env, advance_round_robin=True
             )
 
         # Check cooldown for selected agent
@@ -234,10 +216,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                 env
                 and env.agent_selection
                 and env.agent_selection.agent_fallbacks
-                and str(getattr(env.agent_selection, "selection_mode", "") or "")
-                .strip()
-                .lower()
-                == "fallback"
+                and str(getattr(env.agent_selection, "selection_mode", "") or "").strip().lower() == "fallback"
             ):
                 # Find primary agent
                 primary_agent = self._find_agent_instance_by_id(env, agent_instance_id)
@@ -246,16 +225,10 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
 
                 # Get fallback
                 if primary_agent:
-                    fallback_id = env.agent_selection.agent_fallbacks.get(
-                        primary_agent.agent_id
-                    )
+                    fallback_id = env.agent_selection.agent_fallbacks.get(primary_agent.agent_id)
                     if fallback_id:
                         fallback_agent = next(
-                            (
-                                a
-                                for a in env.agent_selection.agents
-                                if a.agent_id == fallback_id
-                            ),
+                            (a for a in env.agent_selection.agents if a.agent_id == fallback_id),
                             None,
                         )
                         if fallback_agent:
@@ -286,21 +259,17 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             elif action == CooldownAction.USE_FALLBACK:
                 # Override agent for this task only (task-scoped)
                 if fallback_agent:
-                    agent_cli, auto_config_dir, selected_cli_flags = (
-                        self._resolve_agent_instance_runtime(
-                            fallback_agent,
-                            env=env,
-                            settings=self._settings_data,
-                            agent_configs=agent_configs,
-                        )
+                    agent_cli, auto_config_dir, selected_cli_flags = self._resolve_agent_instance_runtime(
+                        fallback_agent,
+                        env=env,
+                        settings=self._settings_data,
+                        agent_configs=agent_configs,
                     )
                     agent_instance_id = fallback_agent.agent_id
                     # Don't modify environment, just use fallback for this task
 
         workspace_type = env.workspace_type if env else "none"
-        effective_workdir, ready, message = self._new_task_workspace(
-            env, task_id=task_id
-        )
+        effective_workdir, ready, message = self._new_task_workspace(env, task_id=task_id)
         if not ready:
             QMessageBox.warning(self, "Workspace not configured", message)
             return
@@ -343,49 +312,33 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                 pinned_agent_id=override_id,
             )
             agent_instance_id = override_id
-        elif (
-            env and env.agent_selection and getattr(env.agent_selection, "agents", None)
-        ):
-            selection_mode = str(
-                getattr(env.agent_selection, "selection_mode", "") or "round-robin"
-            ).strip()
-            pinned_agent_id = str(
-                getattr(env.agent_selection, "pinned_agent_id", "") or ""
-            ).strip()
+        elif env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            selection_mode = str(getattr(env.agent_selection, "selection_mode", "") or "round-robin").strip()
+            pinned_agent_id = str(getattr(env.agent_selection, "pinned_agent_id", "") or "").strip()
             pinned_lower = pinned_agent_id.lower()
             resolved_agents: list[AgentInstance] = []
             for inst in list(env.agent_selection.agents or []):
                 if (
                     selection_mode.lower() == "pinned"
                     and pinned_agent_id
-                    and str(getattr(inst, "agent_id", "") or "").strip()
-                    != pinned_agent_id
-                    and str(getattr(inst, "agent_id", "") or "").strip().lower()
-                    != pinned_lower
+                    and str(getattr(inst, "agent_id", "") or "").strip() != pinned_agent_id
+                    and str(getattr(inst, "agent_id", "") or "").strip().lower() != pinned_lower
                 ):
                     continue
                 inst_id = str(getattr(inst, "agent_id", "") or "").strip()
                 inst_config_id = str(getattr(inst, "config_id", "") or "").strip()
                 resolved_agents.append(
                     AgentInstance(
-                        agent_id=inst_id
-                        or inst_config_id
-                        or f"agent-{len(resolved_agents) + 1}",
+                        agent_id=inst_id or inst_config_id or f"agent-{len(resolved_agents) + 1}",
                         config_id=inst_config_id,
                     )
                 )
-            if (
-                selection_mode.strip().lower() in {"round-robin", "least-used"}
-                and agent_instance_id
-            ):
+            if selection_mode.strip().lower() in {"round-robin", "least-used"} and agent_instance_id:
                 selected_lower = agent_instance_id.lower()
                 selected_index: int | None = None
                 for idx, inst in enumerate(resolved_agents):
                     inst_id = str(getattr(inst, "agent_id", "") or "").strip()
-                    if (
-                        inst_id == agent_instance_id
-                        or inst_id.lower() == selected_lower
-                    ):
+                    if inst_id == agent_instance_id or inst_id.lower() == selected_lower:
                         selected_index = idx
                         break
                 if selected_index is not None and selected_index > 0:
@@ -433,33 +386,17 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             self._settings_data.get("preflight_enabled")
             and str(self._settings_data.get("preflight_script") or "").strip()
         ):
-            settings_preflight_script = str(
-                self._settings_data.get("preflight_script") or ""
-            )
+            settings_preflight_script = str(self._settings_data.get("preflight_script") or "")
 
-        force_headless_desktop = bool(
-            self._settings_data.get("headless_desktop_enabled") or False
-        )
-        env_headless_desktop = (
-            bool(getattr(env, "headless_desktop_enabled", False)) if env else False
-        )
+        force_headless_desktop = bool(self._settings_data.get("headless_desktop_enabled") or False)
+        env_headless_desktop = bool(getattr(env, "headless_desktop_enabled", False)) if env else False
         headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
         gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
-        desktop_cache_enabled = (
-            bool(getattr(env, "cache_desktop_build", False)) if env else False
-        )
-        container_caching_enabled = (
-            bool(getattr(env, "container_caching_enabled", False)) if env else False
-        )
-        cache_system_preflight_enabled = (
-            bool(getattr(env, "cache_system_preflight_enabled", False))
-            if env
-            else False
-        )
+        desktop_cache_enabled = bool(getattr(env, "cache_desktop_build", False)) if env else False
+        container_caching_enabled = bool(getattr(env, "container_caching_enabled", False)) if env else False
+        cache_system_preflight_enabled = bool(getattr(env, "cache_system_preflight_enabled", False)) if env else False
         cache_settings_preflight_enabled = (
-            bool(getattr(env, "cache_settings_preflight_enabled", False))
-            if env
-            else False
+            bool(getattr(env, "cache_settings_preflight_enabled", False)) if env else False
         )
         # Only enable cache if desktop is enabled
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
@@ -528,19 +465,12 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             pr_repo_name = str(pr_context.get("repo_name") or "").strip()
         if pr_head_ref:
             same_repo = True
-            if (
-                pr_head_repo_owner
-                and pr_head_repo_name
-                and pr_repo_owner
-                and pr_repo_name
-            ):
+            if pr_head_repo_owner and pr_head_repo_name and pr_repo_owner and pr_repo_name:
                 same_repo = (
                     pr_head_repo_owner.lower() == pr_repo_owner.lower()
                     and pr_head_repo_name.lower() == pr_repo_name.lower()
                 )
-            if pr_is_cross_repo or (
-                pr_head_repo_owner and pr_head_repo_name and not same_repo
-            ):
+            if pr_is_cross_repo or (pr_head_repo_owner and pr_head_repo_name and not same_repo):
                 pr_head_ref = ""
         if pr_head_ref:
             desired_base = pr_head_ref
@@ -549,14 +479,8 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
 
         gh_branch_work_mode = "task_branch"
         if workspace_type == WORKSPACE_CLONED and env:
-            gh_branch_work_mode = str(
-                getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch"
-            ).strip()
-        expects_pr_creation = bool(
-            workspace_type == WORKSPACE_CLONED
-            and env
-            and gh_branch_work_mode != "direct_base"
-        )
+            gh_branch_work_mode = str(getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch").strip()
+        expects_pr_creation = bool(workspace_type == WORKSPACE_CLONED and env and gh_branch_work_mode != "direct_base")
         gh_pr_unavailable_reason = ""
         gh_pr_unavailable_status = ""
         if expects_pr_creation and env:
@@ -575,10 +499,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                         "gh",
                         "pr",
                         "WARN",
-                        (
-                            "PR creation unavailable; running in recommendation-only "
-                            f"mode: {gh_pr_unavailable_reason}"
-                        ),
+                        (f"PR creation unavailable; running in recommendation-only mode: {gh_pr_unavailable_reason}"),
                     ),
                 )
 
@@ -697,11 +618,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                                 ),
                             )
                     except Exception as exc:
-                        logger.warning(
-                            format_log(
-                                "gh", "context", "WARN", f"git detection failed: {exc}"
-                            )
-                        )
+                        logger.warning(format_log("gh", "context", "WARN", f"git detection failed: {exc}"))
                         self._on_task_log(
                             task_id,
                             format_log(
@@ -717,9 +634,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
 
             # Create GitHub context file
             if should_generate:
-                host_context_path = github_context_host_path(
-                    os.path.dirname(self._state_path), task_id
-                )
+                host_context_path = github_context_host_path(os.path.dirname(self._state_path), task_id)
                 pr_host_path = ""
                 pr_container_path = ""
                 try:
@@ -729,9 +644,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                         github_context=github_context,
                     )
                     if not gh_pr_unavailable_reason:
-                        pr_host_path = pr_metadata_host_path(
-                            os.path.dirname(self._state_path), task_id
-                        )
+                        pr_host_path = pr_metadata_host_path(os.path.dirname(self._state_path), task_id)
                         pr_container_path = pr_metadata_container_path(task_id)
                         ensure_pr_metadata_file(
                             pr_host_path,
@@ -762,9 +675,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
 
                     # Only mount the PR title/body TOML into the container (agents edit this).
                     if pr_host_path and pr_container_path:
-                        extra_mounts_for_task.append(
-                            f"{pr_host_path}:{pr_container_path}:rw"
-                        )
+                        extra_mounts_for_task.append(f"{pr_host_path}:{pr_container_path}:rw")
 
                     # Provide read-only repo context inline; do not mount the repo metadata file.
                     repo_url = ""
@@ -782,21 +693,14 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                         head_commit = github_context.head_commit
                     else:
                         # For cloned repos, we may not know branch/commit until after clone.
-                        repo_url = str(
-                            getattr(env, "workspace_target", "") or ""
-                        ).strip()
+                        repo_url = str(getattr(env, "workspace_target", "") or "").strip()
                         base_branch = str(desired_base or "").strip() or "auto"
                         if (
                             env
-                            and str(
-                                getattr(env, "gh_branch_work_mode", "task_branch")
-                                or "task_branch"
-                            ).strip()
+                            and str(getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch").strip()
                             == "direct_base"
                         ):
-                            task_branch = (
-                                "(working directly on the selected base branch)"
-                            )
+                            task_branch = "(working directly on the selected base branch)"
                         else:
                             task_branch = "(created by runner during clone)"
                         head_commit = "(set after clone)"
@@ -809,11 +713,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                         task_branch=task_branch,
                         head_commit=head_commit,
                     )
-                    pr_prompt = (
-                        pr_metadata_prompt_instructions(pr_container_path)
-                        if pr_container_path
-                        else ""
-                    )
+                    pr_prompt = pr_metadata_prompt_instructions(pr_container_path) if pr_container_path else ""
                     runner_prompt = insert_prompt_sections_before_user_prompt(
                         runner_prompt,
                         [f"{context_prompt}{pr_prompt}"],
@@ -866,8 +766,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                 getattr(env, "gh_task_branch_naming_style", "standard") or "standard"
             ).strip()
             gh_task_branch_custom_template = str(
-                getattr(env, "gh_task_branch_custom_template", "{task_id}")
-                or "{task_id}"
+                getattr(env, "gh_task_branch_custom_template", "{task_id}") or "{task_id}"
             ).strip()
 
         config = DockerRunnerConfig(
@@ -909,9 +808,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
         )
         task._runner_config = config
         task._runner_prompt = runner_prompt
-        task._agent_selection = resolved_agent_selection or (
-            env.agent_selection if env else None
-        )
+        task._agent_selection = resolved_agent_selection or (env.agent_selection if env else None)
 
         if self._can_start_new_agent_for_env(env_id):
             self._actually_start_task(task)
@@ -996,19 +893,11 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
                 include_supervisor_events=True,
             )
         else:
-            bridge.state.connect(
-                self._on_bridge_state, Qt.ConnectionType.QueuedConnection
-            )
+            bridge.state.connect(self._on_bridge_state, Qt.ConnectionType.QueuedConnection)
             bridge.log.connect(self._on_bridge_log, Qt.ConnectionType.QueuedConnection)
-            bridge.done.connect(
-                self._on_bridge_done, Qt.ConnectionType.QueuedConnection
-            )
-            bridge.retry_attempt.connect(
-                self._on_bridge_retry_attempt, Qt.ConnectionType.QueuedConnection
-            )
-            bridge.agent_switched.connect(
-                self._on_bridge_agent_switched, Qt.ConnectionType.QueuedConnection
-            )
+            bridge.done.connect(self._on_bridge_done, Qt.ConnectionType.QueuedConnection)
+            bridge.retry_attempt.connect(self._on_bridge_retry_attempt, Qt.ConnectionType.QueuedConnection)
+            bridge.agent_switched.connect(self._on_bridge_agent_switched, Qt.ConnectionType.QueuedConnection)
 
         bridge.done.connect(thread.quit, Qt.ConnectionType.QueuedConnection)
         bridge.done.connect(bridge.deleteLater, Qt.ConnectionType.QueuedConnection)

@@ -39,5 +39,14 @@ pythonpath = ["."]
 typeCheckingMode = "strict"
 pythonVersion = "3.13"
 
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["TID"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"logging".msg = "Use midori_ai_logger (MidoriAiLogger) instead. See AGENTS.md."
+
 [tool.uv.sources]
 midori_ai_logger = { git = "https://github.com/Midori-AI-OSS/agents-packages.git", subdirectory = "logger" }

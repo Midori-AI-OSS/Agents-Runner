@@ -8,23 +8,22 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Callable
 
+from midori_ai_logger import MidoriAiLogger
+
 from agents_runner.docker.process import run_docker
 from agents_runner.docker.process import has_image
 from agents_runner.log_format import format_log
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 # Default paths to desktop scripts
 PREFLIGHTS_DIR = Path(__file__).parent.parent / "preflights"
-DESKTOP_INSTALL_SCRIPT = (
-    Path(__file__).parent.parent / "preflights" / "desktop_install.sh"
-)
+DESKTOP_INSTALL_SCRIPT = Path(__file__).parent.parent / "preflights" / "desktop_install.sh"
 DESKTOP_SETUP_SCRIPT = Path(__file__).parent.parent / "preflights" / "desktop_setup.sh"
 LOG_COMMON_SCRIPT = Path(__file__).parent.parent / "preflights" / "log_common.sh"
 
@@ -118,31 +117,19 @@ def compute_desktop_cache_key(base_image: str) -> str:
     try:
         install_hash = _compute_file_hash(DESKTOP_INSTALL_SCRIPT)
     except Exception as exc:
-        logger.warning(
-            format_log(
-                "docker", "image", "WARN", f"Failed to hash desktop_install.sh: {exc}"
-            )
-        )
+        logger.warning(format_log("docker", "image", "WARN", f"Failed to hash desktop_install.sh: {exc}"))
         install_hash = "missing"
 
     try:
         setup_hash = _compute_file_hash(DESKTOP_SETUP_SCRIPT)
     except Exception as exc:
-        logger.warning(
-            format_log(
-                "docker", "image", "WARN", f"Failed to hash desktop_setup.sh: {exc}"
-            )
-        )
+        logger.warning(format_log("docker", "image", "WARN", f"Failed to hash desktop_setup.sh: {exc}"))
         setup_hash = "missing"
 
     try:
         log_common_hash = _compute_file_hash(LOG_COMMON_SCRIPT)
     except Exception as exc:
-        logger.warning(
-            format_log(
-                "docker", "image", "WARN", f"Failed to hash log_common.sh: {exc}"
-            )
-        )
+        logger.warning(format_log("docker", "image", "WARN", f"Failed to hash log_common.sh: {exc}"))
         log_common_hash = "missing"
 
     # Dockerfile template hash (inline template, hash the template string)
@@ -194,13 +181,9 @@ def build_desktop_image(
     if not PREFLIGHTS_DIR.exists():
         raise FileNotFoundError(f"Preflights directory not found: {PREFLIGHTS_DIR}")
     if not DESKTOP_INSTALL_SCRIPT.exists():
-        raise FileNotFoundError(
-            f"Desktop install script not found: {DESKTOP_INSTALL_SCRIPT}"
-        )
+        raise FileNotFoundError(f"Desktop install script not found: {DESKTOP_INSTALL_SCRIPT}")
     if not DESKTOP_SETUP_SCRIPT.exists():
-        raise FileNotFoundError(
-            f"Desktop setup script not found: {DESKTOP_SETUP_SCRIPT}"
-        )
+        raise FileNotFoundError(f"Desktop setup script not found: {DESKTOP_SETUP_SCRIPT}")
     if not LOG_COMMON_SCRIPT.exists():
         raise FileNotFoundError(f"log_common script not found: {LOG_COMMON_SCRIPT}")
 
@@ -221,11 +204,7 @@ def build_desktop_image(
         dockerfile_path = build_path / "Dockerfile"
         dockerfile_path.write_text(dockerfile_content, encoding="utf-8")
 
-        on_log(
-            format_log(
-                "docker", "build", "INFO", f"build context prepared in {build_dir}"
-            )
-        )
+        on_log(format_log("docker", "build", "INFO", f"build context prepared in {build_dir}"))
 
         # Build image
         process = None
@@ -309,11 +288,7 @@ def ensure_desktop_image(
 
         # Check if cached image exists
         if has_image(cached_image_tag):
-            on_log(
-                format_log(
-                    "docker", "image", "INFO", "cache HIT: reusing existing image"
-                )
-            )
+            on_log(format_log("docker", "image", "INFO", "cache HIT: reusing existing image"))
             return cached_image_tag
 
         # Cache miss - need to build
