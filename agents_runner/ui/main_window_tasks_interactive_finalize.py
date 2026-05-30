@@ -126,7 +126,6 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
                         bool(task.gh_use_host_cli),
                         (str(task.gh_pr_metadata_path or "").strip() or None),
                         str(task.agent_cli or "").strip(),
-                        str(task.agent_cli_args or "").strip(),
                     ),
                     daemon=True,
                 ).start()
@@ -269,7 +268,6 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
         use_gh: bool,
         pr_metadata_path: str | None = None,
         agent_cli: str = "",
-        agent_cli_args: str = "",
         is_override: bool = False,
     ) -> None:
         if not repo_root or not branch:
@@ -455,7 +453,6 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
                     body=body,
                     use_gh=bool(use_gh),
                     agent_cli=agent_cli,
-                    agent_cli_args=agent_cli_args,
                     agent_display_name=display_name,
                 )
             except GhManagementError as exc:

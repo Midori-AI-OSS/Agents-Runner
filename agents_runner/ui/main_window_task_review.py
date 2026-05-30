@@ -176,7 +176,6 @@ class MainWindowTaskReviewMixin(_MainWindowHints):
                 bool(task.gh_use_host_cli),
                 pr_metadata_path,
                 str(task.agent_cli or "").strip(),
-                str(task.agent_cli_args or "").strip(),
                 is_override,
             ),
             daemon=True,

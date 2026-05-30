@@ -98,7 +98,6 @@ _BRANCH_THEME_TOKENS: dict[str, tuple[str, ...]] = {
 def _append_pr_attribution_footer(
     body: str,
     agent_cli: str = "",
-    agent_cli_args: str = "",
     agent_display_name: str | None = None,
 ) -> str:
     body = (body or "").rstrip()
@@ -106,7 +105,6 @@ def _append_pr_attribution_footer(
         return body + "\n"
 
     agent_cli_name = agent_cli.strip()
-    agent_args = agent_cli_args.strip()
 
     if agent_cli_name:
         if agent_display_name:
@@ -117,10 +115,7 @@ def _append_pr_attribution_footer(
                 agent_link = agent_display_name
         else:
             agent_link = format_agent_markdown_link(agent_cli_name)
-        if agent_args:
-            agent_used = f"{agent_link} {agent_args}"
-        else:
-            agent_used = agent_link
+        agent_used = agent_link
     else:
         agent_used = "(unknown)"
 
@@ -405,7 +400,6 @@ def commit_push_and_pr(
     body: str,
     use_gh: bool = True,
     agent_cli: str = "",
-    agent_cli_args: str = "",
     agent_display_name: str | None = None,
 ) -> str | None:
     repo_root = expand_dir(repo_root)
@@ -420,7 +414,6 @@ def commit_push_and_pr(
     body = _append_pr_attribution_footer(
         body,
         agent_cli=agent_cli,
-        agent_cli_args=agent_cli_args,
         agent_display_name=agent_display_name,
     )
 
