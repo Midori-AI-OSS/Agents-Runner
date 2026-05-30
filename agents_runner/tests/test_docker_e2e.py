@@ -43,6 +43,13 @@ from agents_runner.persistence import (
 TEST_IMAGE = "lunamidori5/pixelarch:emerald"
 
 
+def _make_container_bind_dir(prefix: str) -> str:
+    """Create a temp bind-mount directory writable by the image user."""
+    path = tempfile.mkdtemp(prefix=prefix)
+    os.chmod(path, 0o777)
+    return path
+
+
 def _can_access_docker() -> bool:
     """Check if Docker is accessible."""
     try:
@@ -124,8 +131,8 @@ def test_config(temp_state_dir, request):
     - No shared state between test runs
     """
     # Create a temporary workspace directory
-    workdir = tempfile.mkdtemp(prefix="docker-e2e-workspace-")
-    codex_dir = tempfile.mkdtemp(prefix="docker-e2e-codex-")
+    workdir = _make_container_bind_dir("docker-e2e-workspace-")
+    codex_dir = _make_container_bind_dir("docker-e2e-codex-")
 
     task_id = f"test-task-{int(time.time() * 1000)}"
 
