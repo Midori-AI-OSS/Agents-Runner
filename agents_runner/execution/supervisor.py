@@ -8,6 +8,7 @@ fallback to alternate agents, and intelligent error classification.
 from __future__ import annotations
 
 import os
+import shlex
 from typing import Any
 from typing import Callable
 from typing import Literal
@@ -29,6 +30,25 @@ from agents_runner.log_format import format_log
 from agents_runner.persistence import default_state_path
 from agents_runner.prompts import RetryContext
 from agents_runner.prompts import build_task_prompt
+
+
+def _resolved_agent_config_cli_flags_text(
+    config: AgentConfig | None,
+) -> str:
+    cli_flags = str(getattr(config, "cli_flags", "") or "").strip()
+    parts: list[str] = []
+    for flag, value in (
+        ("--agent", getattr(config, "agent", "") if config is not None else ""),
+        ("--model", getattr(config, "model", "") if config is not None else ""),
+        ("--variant", getattr(config, "variant", "") if config is not None else ""),
+    ):
+        resolved_value = str(value or "").strip()
+        if resolved_value:
+            parts.extend([flag, resolved_value])
+    prefixed_flags = " ".join(shlex.quote(part) for part in parts)
+    if prefixed_flags and cli_flags:
+        return f"{prefixed_flags} {cli_flags}"
+    return prefixed_flags or cli_flags
 
 
 class TaskSupervisor:
@@ -143,9 +163,7 @@ class TaskSupervisor:
 
     def _resolved_agent_cli_flags_text(self, agent: AgentInstance) -> str:
         config = self._resolved_agent_config(agent)
-        if config is None:
-            return ""
-        return str(getattr(config, "cli_flags", "") or "").strip()
+        return _resolved_agent_config_cli_flags_text(config)
 
     @property
     def container_id(self) -> str | None:
@@ -575,8 +593,6 @@ class TaskSupervisor:
         agent_cli_args: list[str] = []
         flags_text = self._resolved_agent_cli_flags_text(agent)
         if flags_text:
-            import shlex
-
             try:
                 agent_cli_args = shlex.split(flags_text)
             except ValueError:
@@ -695,8 +711,6 @@ class TaskSupervisor:
     def _effective_agent_cli_args(self, agent: AgentInstance) -> list[str]:
         flags_text = self._resolved_agent_cli_flags_text(agent)
         if flags_text:
-            import shlex
-
             try:
                 return list(shlex.split(flags_text))
             except ValueError:

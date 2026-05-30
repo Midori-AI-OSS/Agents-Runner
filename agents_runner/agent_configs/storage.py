@@ -57,6 +57,9 @@ def load_agent_configs(state_path: str) -> list[AgentConfig]:
                 agent_cli=str(item_dict.get("agent_cli") or "").strip(),
                 config_dir=str(item_dict.get("config_dir") or "").strip(),
                 cli_flags=str(item_dict.get("cli_flags") or "").strip(),
+                agent=str(item_dict.get("agent", "") or "").strip(),
+                model=str(item_dict.get("model", "") or "").strip(),
+                variant=str(item_dict.get("variant", "") or "").strip(),
             )
         )
     return configs
@@ -103,6 +106,9 @@ def save_agent_config(state_path: str, config: AgentConfig) -> None:
             "agent_cli": str(getattr(config, "agent_cli", "") or "").strip(),
             "config_dir": str(getattr(config, "config_dir", "") or "").strip(),
             "cli_flags": str(getattr(config, "cli_flags", "") or "").strip(),
+            "agent": str(getattr(config, "agent", "") or "").strip(),
+            "model": str(getattr(config, "model", "") or "").strip(),
+            "variant": str(getattr(config, "variant", "") or "").strip(),
         }
     )
     payload["agent_configs"] = items

@@ -7,3 +7,6 @@ class AgentConfig:
     agent_cli: str
     config_dir: str = ""
     cli_flags: str = ""
+    agent: str = ""
+    model: str = ""
+    variant: str = ""

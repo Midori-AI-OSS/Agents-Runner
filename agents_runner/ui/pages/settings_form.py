@@ -61,6 +61,7 @@ from agents_runner.ui.pages.github_trust import (
 from agents_runner.ui.pages.github_username_list import GitHubUsernameListWidget
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.dialogs.agent_config_dialog import AgentConfigDialog
+from agents_runner.cli import get_opencode_cli_overrides
 from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
 from agents_runner.ui.graphics import normalize_ui_theme_name
@@ -1037,12 +1038,21 @@ class SettingsFormMixin:
         agent_cli = str(getattr(config, "agent_cli", "") or "").strip()
         config_dir = str(getattr(config, "config_dir", "") or "").strip()
         cli_flags = str(getattr(config, "cli_flags", "") or "").strip()
+        agent = str(getattr(config, "agent", "") or "").strip()
+        model = str(getattr(config, "model", "") or "").strip()
+        variant = str(getattr(config, "variant", "") or "").strip()
 
         parts = [f"Agent CLI: {agent_cli}" if agent_cli else "Agent CLI: —"]
         if config_dir:
             parts.append(f"Config Dir: {config_dir}")
         if cli_flags:
             parts.append(f"CLI Flags: {cli_flags}")
+        if agent:
+            parts.append(f"Agent: {agent}")
+        if model:
+            parts.append(f"Model: {model}")
+        if variant:
+            parts.append(f"Variant: {variant}")
 
         detail = QLabel("\n".join(parts))
         detail.setObjectName("SettingsPaneSubtitle")
@@ -1054,7 +1064,13 @@ class SettingsFormMixin:
         return row
 
     def _on_agent_configs_add_clicked(self) -> None:
-        dialog = AgentConfigDialog(self)
+        overrides = get_opencode_cli_overrides()
+        dialog = AgentConfigDialog(
+            self,
+            initial_agent=overrides.get("agent", ""),
+            initial_model=overrides.get("model", ""),
+            initial_variant=overrides.get("variant", ""),
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         config = dialog.agent_config()

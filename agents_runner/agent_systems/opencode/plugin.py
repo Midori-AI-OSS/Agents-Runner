@@ -95,6 +95,23 @@ def _has_top_level_project(parts: list[str]) -> bool:
     return False
 
 
+def _without_variant_option(parts: list[str]) -> list[str]:
+    sanitized: list[str] = []
+    skip_next = False
+    for part in parts:
+        current = str(part or "")
+        if skip_next:
+            skip_next = False
+            continue
+        if current == "--variant":
+            skip_next = True
+            continue
+        if current.startswith("--variant="):
+            continue
+        sanitized.append(part)
+    return sanitized
+
+
 class OpenCodeAgentSystemPlugin:
     name = "opencode"
     display_name = "OpenCode"
@@ -260,7 +277,7 @@ class OpenCodeAgentSystemPlugin:
             parts.extend(agent_cli_args)
 
         if subcommand and subcommand != "run":
-            return parts
+            return _without_variant_option(parts)
 
         if subcommand == "run":
             if "--dir" not in parts:
@@ -268,6 +285,8 @@ class OpenCodeAgentSystemPlugin:
             if prompt:
                 move_positional_to_end(parts, prompt)
             return parts
+
+        parts = _without_variant_option(parts)
 
         if prompt:
             if "--prompt" in parts:

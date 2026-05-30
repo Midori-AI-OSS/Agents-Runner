@@ -3,6 +3,27 @@ import sys
 import traceback
 
 
+_opencode_cli_overrides: dict[str, str] = {}
+
+
+def _parse_opencode_cli_overrides(argv: list[str]) -> None:
+    global _opencode_cli_overrides
+    parts = list(argv[1:])
+    i = 0
+    while i < len(parts):
+        arg = parts[i]
+        if arg in {"--agent", "--model", "--variant"} and i + 1 < len(parts):
+            value = parts[i + 1]
+            if not value.startswith("--"):
+                _opencode_cli_overrides[arg.lstrip("-")] = value
+                i += 1
+        i += 1
+
+
+def get_opencode_cli_overrides() -> dict[str, str]:
+    return dict(_opencode_cli_overrides)
+
+
 def _is_truthy_env(name: str) -> bool:
     return str(os.environ.get(name, "")).strip().lower() in {
         "1",
@@ -73,6 +94,7 @@ def main() -> None:
 
         from agents_runner.ui.runtime.app import run_app
 
+        _parse_opencode_cli_overrides(sys.argv)
         run_app(sys.argv)
     except SystemExit:
         raise

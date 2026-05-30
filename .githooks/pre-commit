@@ -249,6 +249,23 @@ if [[ "${tasks_has_task_files}" -eq 1 ]]; then
   log "WARNING: Task files (.md/.txt) exist under .agents/tasks/{wip,done,taskmaster}."
 fi
 
+# ---- logging-usage check ------------------------------------------------
+# Warn when staged Python files introduce standard-logging imports.
+staged_py=()
+mapfile -d '' -t staged_py < <(git diff --cached --name-only -z --diff-filter=ACMR -- '*.py')
+logging_additions=()
+for py_file in "${staged_py[@]}"; do
+  [[ -z "${py_file}" ]] && continue
+  if git diff --cached -- "${py_file}" | grep -qE '^\+import logging|^\+from logging import'; then
+    logging_additions+=("${py_file}")
+  fi
+done
+if ((${#logging_additions[@]} > 0)); then
+  log "WARNING: Standard logging from Python logging module detected in staged changes."
+  print_paths "Affected files" "${logging_additions[@]}"
+  log "Use midori_ai_logger (MidoriAiLogger) instead. See AGENTS.md."
+fi
+
 if ! command -v uv >/dev/null 2>&1; then
   die "uv not found; install uv to run compile checks (or use --no-verify to bypass)"
 fi
