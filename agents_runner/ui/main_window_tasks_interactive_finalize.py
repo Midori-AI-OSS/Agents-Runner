@@ -483,6 +483,14 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
                 ),
             )
             try:
+                display_name = None
+                if task and str(task.agent_cli or "").strip().lower() == "opencode":
+                    launch_mode = str(task.launch_mode or "").strip().lower()
+                    if launch_mode == "opencode_web":
+                        display_name = "OpenCode Web"
+                    else:
+                        display_name = "OpenCode TUI"
+
                 pr_url = commit_push_and_pr(
                     repo_root,
                     branch=branch,
@@ -492,6 +500,7 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
                     use_gh=bool(use_gh),
                     agent_cli=agent_cli,
                     agent_cli_args=agent_cli_args,
+                    agent_display_name=display_name,
                 )
             except GhManagementError as exc:
                 self.host_log.emit(
