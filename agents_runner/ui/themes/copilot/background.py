@@ -267,9 +267,7 @@ def copilot_make_active_line(
             else:
                 mutated_chars.append(rng.choice(["_", ".", " "]))
         mutated = "".join(mutated_chars)
-        mutated_body = (
-            body[:mistake_at_body] + mutated + body[mistake_at_body + mistake_len :]
-        )
+        mutated_body = body[:mistake_at_body] + mutated + body[mistake_at_body + mistake_len :]
         draw_text = f"{prefix}{mutated_body}{suffix}"
         extra_after = int(rng.randint(1, 4))
         trigger = min(
@@ -331,11 +329,7 @@ def tick_copilot_typed_code(
         for line in pane.lines:
             line.age_s += float(dt_s)
 
-        pane.lines = [
-            line
-            for line in pane.lines
-            if line.age_s <= float(line.hold_s + line.fade_s)
-        ]
+        pane.lines = [line for line in pane.lines if line.age_s <= float(line.hold_s + line.fade_s)]
 
         if pane.active is None:
             if pane.cooldown_s <= 0.0:
@@ -359,19 +353,12 @@ def tick_copilot_typed_code(
             active.pause_s = float(max(0.0, active.pause_s - float(dt_s)))
         elif active.state == "typing":
             typed_now = active.typed_chars()
-            if (
-                typed_now >= 4
-                and typed_now < len(active.draw_text) - 6
-                and rng.random() < (0.08 * float(dt_s))
-            ):
+            if typed_now >= 4 and typed_now < len(active.draw_text) - 6 and rng.random() < (0.08 * float(dt_s)):
                 active.pause_s = float(rng.uniform(1.6, 3.2))
                 continue
 
             active.typed_chars_f += float(active.cps) * float(dt_s)
-            if (
-                active.mistake_trigger_at >= 0
-                and active.typed_chars() >= active.mistake_trigger_at
-            ):
+            if active.mistake_trigger_at >= 0 and active.typed_chars() >= active.mistake_trigger_at:
                 active.state = "backspacing"
 
             if active.typed_chars() >= len(active.draw_text):
@@ -499,15 +486,9 @@ def paint_copilot_background(
 
             fade = 1.0
             if line.age_s >= line.hold_s:
-                fade = 1.0 - (float(line.age_s) - float(line.hold_s)) / float(
-                    line.fade_s
-                )
+                fade = 1.0 - (float(line.age_s) - float(line.hold_s)) / float(line.fade_s)
             fade = max(0.0, min(1.0, fade))
-            fade *= (
-                min(1.0, float(line.age_s) / float(fade_in_s))
-                if line.age_s < fade_in_s
-                else 1.0
-            )
+            fade *= min(1.0, float(line.age_s) / float(fade_in_s)) if line.age_s < fade_in_s else 1.0
 
             if fade <= 0.0:
                 continue
@@ -616,14 +597,12 @@ class _CopilotBackground:
                 runtime.source_files,
             )
 
-            runtime.font, runtime.metrics, runtime.char_w, runtime.line_h = (
-                copilot_font_metrics(
-                    widget,
-                    runtime.font,
-                    runtime.metrics,
-                    runtime.char_w,
-                    runtime.line_h,
-                )
+            runtime.font, runtime.metrics, runtime.char_w, runtime.line_h = copilot_font_metrics(
+                widget,
+                runtime.font,
+                runtime.metrics,
+                runtime.char_w,
+                runtime.line_h,
             )
 
             tick_copilot_typed_code(
@@ -643,12 +622,8 @@ class _CopilotBackground:
     @staticmethod
     def paint(*, painter: QPainter, rect: QRect, runtime: object) -> None:
         state = runtime if isinstance(runtime, _CopilotRuntime) else _CopilotRuntime()
-        state.source_files, state.repo_root = ensure_copilot_sources(
-            state.source_files, state.repo_root
-        )
-        state.panes = ensure_copilot_panes(
-            rect, state.panes, state.rng, state.source_files
-        )
+        state.source_files, state.repo_root = ensure_copilot_sources(state.source_files, state.repo_root)
+        state.panes = ensure_copilot_panes(rect, state.panes, state.rng, state.source_files)
 
         state.font, state.metrics, state.char_w, state.line_h = copilot_font_metrics(
             rect, state.font, state.metrics, state.char_w, state.line_h
@@ -657,9 +632,7 @@ class _CopilotBackground:
         pane_rects = copilot_pane_rects(rect, state.panes)
         if len(pane_rects) != len(state.panes):
             state.panes = []
-            state.panes = ensure_copilot_panes(
-                rect, state.panes, state.rng, state.source_files
-            )
+            state.panes = ensure_copilot_panes(rect, state.panes, state.rng, state.source_files)
 
         paint_copilot_background(
             painter,

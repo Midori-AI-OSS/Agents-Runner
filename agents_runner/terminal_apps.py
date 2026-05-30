@@ -34,11 +34,7 @@ def detect_terminal_options() -> list[TerminalOption]:
             try:
                 hint_exe = shlex.split(terminal_hint.strip())[0]
             except ValueError:
-                hint_exe = (
-                    terminal_hint.strip().split()[0]
-                    if terminal_hint.strip().split()
-                    else ""
-                )
+                hint_exe = terminal_hint.strip().split()[0] if terminal_hint.strip().split() else ""
         if hint_exe:
             hint_base = os.path.basename(hint_exe)
             hint_terminal_id = hint_base or "terminal-env"
@@ -77,23 +73,17 @@ def detect_terminal_options() -> list[TerminalOption]:
             if resolved:
                 if any(opt.terminal_id == terminal_id for opt in options):
                     continue
-                options.append(
-                    TerminalOption(terminal_id, label, "linux-exe", exe=resolved)
-                )
+                options.append(TerminalOption(terminal_id, label, "linux-exe", exe=resolved))
         return options
 
     return []
 
 
-def launch_in_terminal(
-    option: TerminalOption, bash_script: str, cwd: str | None = None
-) -> None:
+def launch_in_terminal(option: TerminalOption, bash_script: str, cwd: str | None = None) -> None:
     cwd = os.path.abspath(os.path.expanduser(cwd)) if cwd else None
 
     if option.kind == "linux-exe":
-        args = linux_terminal_args(
-            option.terminal_id, option.exe or option.terminal_id, bash_script, cwd=cwd
-        )
+        args = linux_terminal_args(option.terminal_id, option.exe or option.terminal_id, bash_script, cwd=cwd)
         subprocess.Popen(args, start_new_session=True)
         return
 
@@ -108,9 +98,7 @@ def launch_in_terminal(
     raise RuntimeError(f"Unsupported terminal kind: {option.kind}")
 
 
-def linux_terminal_args(
-    terminal_id: str, exe: str, bash_script: str, cwd: str | None
-) -> list[str]:
+def linux_terminal_args(terminal_id: str, exe: str, bash_script: str, cwd: str | None) -> list[str]:
     command = bash_script
     if cwd:
         command = f"cd {shlex_quote(cwd)}; {bash_script}"

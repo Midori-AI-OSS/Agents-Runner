@@ -179,6 +179,7 @@ class MainWindowPersistenceMixin(_MainWindowHints):
             self._settings_data.pop(key, None)
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("gpu_enabled", False)
+        self._settings_data.setdefault("network_host", False)
         self._settings_data.setdefault("opencode_interactive_mode", "terminal")
         self._settings_data.setdefault("auto_navigate_on_run_agent_start", False)
         self._settings_data.setdefault("auto_navigate_on_run_interactive_start", False)
@@ -211,6 +212,7 @@ class MainWindowPersistenceMixin(_MainWindowHints):
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
         self._settings_data = normalize_task_workspace_settings(self._settings_data)
         self._settings_data["gpu_enabled"] = bool(self._settings_data.get("gpu_enabled") or False)
+        self._settings_data["network_host"] = bool(self._settings_data.get("network_host") or False)
         self._settings_data["opencode_interactive_mode"] = normalize_opencode_interactive_mode(
             str(self._settings_data.get("opencode_interactive_mode") or "terminal")
         )

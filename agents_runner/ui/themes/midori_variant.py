@@ -178,18 +178,12 @@ def _paint_blobs(
     for seed in runtime.blobs:
         drift = runtime.tick_time
         wave_x = math.sin(runtime.wave_phase + seed.phase + (seed.ny * math.pi * 2.0))
-        wave_y = math.cos(
-            (runtime.wave_phase * 0.7) + (seed.phase * 0.65) + (seed.nx * math.pi)
-        )
+        wave_y = math.cos((runtime.wave_phase * 0.7) + (seed.phase * 0.65) + (seed.nx * math.pi))
         drift_x = math.sin((drift * seed.speed) + seed.phase)
         drift_y = math.cos((drift * (seed.speed * 0.83)) + (seed.phase * 1.15))
 
-        cx = float(w) * (
-            seed.nx + (seed.jitter_x * drift_x) + (0.055 * spec.wave_strength * wave_x)
-        )
-        cy = float(h) * (
-            seed.ny + (seed.jitter_y * drift_y) + (0.018 * spec.wave_strength * wave_y)
-        )
+        cx = float(w) * (seed.nx + (seed.jitter_x * drift_x) + (0.055 * spec.wave_strength * wave_x))
+        cy = float(h) * (seed.ny + (seed.jitter_y * drift_y) + (0.018 * spec.wave_strength * wave_y))
 
         rx = max(1.0, size * seed.rx_scale * pulse_scale)
         ry = max(1.0, size * seed.ry_scale * pulse_scale)
@@ -282,9 +276,7 @@ class _MidoriVariantBackground:
         del widget
         return
 
-    def tick(
-        self, *, runtime: object, widget: QWidget, now_s: float, dt_s: float
-    ) -> bool:
+    def tick(self, *, runtime: object, widget: QWidget, now_s: float, dt_s: float) -> bool:
         del widget
         del now_s
         state = runtime if isinstance(runtime, _MidoriRuntime) else _MidoriRuntime()

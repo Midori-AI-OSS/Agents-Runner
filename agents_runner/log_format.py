@@ -196,17 +196,13 @@ def parse_canonical_log(line: str) -> tuple[str, str, str, str] | None:
     return (scope, subscope, level, message)
 
 
-def wrap_legacy_log(
-    line: str, fallback_scope: str = "legacy", fallback_subscope: str = "unknown"
-) -> str:
+def wrap_legacy_log(line: str, fallback_scope: str = "legacy", fallback_subscope: str = "unknown") -> str:
     """Wrap a non-canonical log line in canonical format.
 
     Returns:
         Wrapped line: [fallback_scope/fallback_subscope][INFO] <original>
     """
-    return format_log_line(
-        fallback_scope, fallback_subscope, "INFO", line, padded=False
-    )
+    return format_log_line(fallback_scope, fallback_subscope, "INFO", line, padded=False)
 
 
 def format_log_display(line: str, scope_width: int = 20, level_width: int = 5) -> str:

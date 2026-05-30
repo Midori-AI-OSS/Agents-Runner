@@ -34,9 +34,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
 
     def _user_environment_map(self) -> dict[str, Environment]:
         return {
-            env.env_id: env
-            for env in self._environments.values()
-            if not self._is_internal_environment_id(env.env_id)
+            env.env_id: env for env in self._environments.values() if not self._is_internal_environment_id(env.env_id)
         }
 
     def _environment_list(self) -> list[Environment]:
@@ -46,9 +44,14 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
         )
 
     def _environment_effective_workdir(
-        self, env: Environment | None, fallback: str
+        self,
+        env: Environment | None,
+        fallback: str,
+        *,
+        settings: dict[str, object] | None = None,
     ) -> str:
         fallback = os.path.expanduser(str(fallback or "").strip()) or os.getcwd()
+        settings_data = settings or self._settings_data
         if env is None:
             return fallback
         workspace_type = env.workspace_type or WORKSPACE_NONE
@@ -58,7 +61,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
             workdir = managed_repo_checkout_path(
                 env.env_id,
                 data_dir=os.path.dirname(self._state_path),
-                workspace_location=self._settings_data.get("task_workspace_location"),
+                workspace_location=settings_data.get("task_workspace_location"),
             )
             try:
                 os.makedirs(workdir, exist_ok=True)
@@ -67,9 +70,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
             return workdir
         return fallback
 
-    def _new_task_workspace(
-        self, env: Environment | None, task_id: str | None = None
-    ) -> tuple[str, bool, str]:
+    def _new_task_workspace(self, env: Environment | None, task_id: str | None = None) -> tuple[str, bool, str]:
         if env is None:
             return "—", False, "Pick an environment first."
 
@@ -105,16 +106,10 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
         env: Environment | None,
         base_branch: str,
     ) -> None:
-        if (
-            env is None
-            or str(getattr(env, "workspace_type", "") or "") != WORKSPACE_CLONED
-        ):
+        if env is None or str(getattr(env, "workspace_type", "") or "") != WORKSPACE_CLONED:
             return
         normalized_base = str(base_branch or "").strip()
-        if (
-            str(getattr(env, "gh_last_base_branch", "") or "").strip()
-            == normalized_base
-        ):
+        if str(getattr(env, "gh_last_base_branch", "") or "").strip() == normalized_base:
             return
         env.gh_last_base_branch = normalized_base
         save_environment(env)
@@ -167,9 +162,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
                 self._new_task.set_repo_branches([])
                 return
             env_id = str(env.env_id or "").strip()
-            fallback_branches = list(
-                getattr(self, "_repo_branches_cache", {}).get(env_id, [])
-            )
+            fallback_branches = list(getattr(self, "_repo_branches_cache", {}).get(env_id, []))
             fallback_selected = ""
             last_branch = str(getattr(env, "gh_last_base_branch", "") or "").strip()
             if last_branch and last_branch in fallback_branches:
@@ -223,14 +216,10 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
             return
         request_meta = self._repo_branches_request_meta.pop(request_id, {})
 
-        preserve_current_selection = bool(
-            request_meta.get("preserve_current_selection")
-        )
+        preserve_current_selection = bool(request_meta.get("preserve_current_selection"))
         fallback_branch_values = request_meta.get("fallback_branches", [])
         fallback_branches = [
-            str(branch or "").strip()
-            for branch in fallback_branch_values
-            if str(branch or "").strip()
+            str(branch or "").strip() for branch in fallback_branch_values if str(branch or "").strip()
         ]
         fallback_selected_raw = str(request_meta.get("fallback_selected") or "").strip()
         fallback_selected = fallback_selected_raw if fallback_selected_raw else None
@@ -287,18 +276,10 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
         stains = {e.env_id: e.color for e in envs}
         workspace_types = {e.env_id: e.workspace_type or WORKSPACE_NONE for e in envs}
         template_statuses = {
-            e.env_id: bool(
-                getattr(
-                    disk_envs.get(e.env_id) or e, "midoriai_template_detected", False
-                )
-            )
-            for e in envs
+            e.env_id: bool(getattr(disk_envs.get(e.env_id) or e, "midoriai_template_detected", False)) for e in envs
         }
         desktop_enabled = {
-            e.env_id: (
-                e.headless_desktop_enabled
-                or self._settings_data.get("headless_desktop_enabled", False)
-            )
+            e.env_id: (e.headless_desktop_enabled or self._settings_data.get("headless_desktop_enabled", False))
             for e in envs
         }
 
@@ -306,17 +287,13 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
         self._new_task.set_environment_workspace_types(workspace_types)
         self._new_task.set_environment_template_injection_status(template_statuses)
         self._new_task.set_environment_desktop_enabled(desktop_enabled)
-        self._dashboard.set_environment_filter_options(
-            [(e.env_id, e.name or e.env_id) for e in envs]
-        )
+        self._dashboard.set_environment_filter_options([(e.env_id, e.name or e.env_id) for e in envs])
         if hasattr(self, "_tasks_page"):
             self._tasks_page.set_environments(self._user_environment_map(), active_id)
 
         self._syncing_environment = True
         try:
-            self._new_task.set_environments(
-                [(e.env_id, e.name or e.env_id) for e in envs], active_id=active_id
-            )
+            self._new_task.set_environments([(e.env_id, e.name or e.env_id) for e in envs], active_id=active_id)
             self._new_task.set_environment_id(active_id)
         finally:
             self._syncing_environment = False
@@ -335,9 +312,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
             try:
                 from agents_runner.ui.graphics import normalize_ui_theme_name
 
-                ui_theme = normalize_ui_theme_name(
-                    self._settings_data.get("ui_theme"), allow_auto=True
-                )
+                ui_theme = normalize_ui_theme_name(self._settings_data.get("ui_theme"), allow_auto=True)
                 if ui_theme == "auto":
                     self._root.set_agent_theme(agent_cli)
                 else:
@@ -348,12 +323,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
         workdir, ready, message = self._new_task_workspace(env)
 
         workspace_type = env.workspace_type or WORKSPACE_NONE if env else WORKSPACE_NONE
-        if (
-            env
-            and ready
-            and workspace_type == WORKSPACE_MOUNTED
-            and os.path.isdir(workdir)
-        ):
+        if env and ready and workspace_type == WORKSPACE_MOUNTED and os.path.isdir(workdir):
             try:
                 from agents_runner.environments.midoriai_template import (
                     apply_midoriai_template_detection,
@@ -383,13 +353,9 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
             command=self._default_interactive_command(agent_cli),
         )
         self._populate_environment_pickers()
-        if hasattr(self, "_radio_controller") and hasattr(
-            self, "_update_window_title_from_radio_state"
-        ):
+        if hasattr(self, "_radio_controller") and hasattr(self, "_update_window_title_from_radio_state"):
             try:
-                self._update_window_title_from_radio_state(
-                    self._radio_controller.state_snapshot()
-                )
+                self._update_window_title_from_radio_state(self._radio_controller.state_snapshot())
             except Exception:
                 pass
 
@@ -415,9 +381,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
         if not envs:
             active_workdir = str(self._settings_data.get("host_workdir") or os.getcwd())
             try:
-                max_agents_running = int(
-                    str(self._settings_data.get("max_agents_running", -1)).strip()
-                )
+                max_agents_running = int(str(self._settings_data.get("max_agents_running", -1)).strip())
             except Exception:
                 max_agents_running = -1
             env = Environment(
@@ -474,9 +438,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
                 task.environment_id = self._active_environment_id()
         if self._envs_page.isVisible():
             current_selected = self._envs_page.selected_environment_id()
-            selected = (
-                preferred_env_id or current_selected or self._active_environment_id()
-            )
+            selected = preferred_env_id or current_selected or self._active_environment_id()
             if self._is_internal_environment_id(selected):
                 selected = self._active_environment_id()
             if not (preferred_env_id and preferred_env_id == current_selected):

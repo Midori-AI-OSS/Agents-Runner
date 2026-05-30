@@ -30,18 +30,14 @@ def is_gh_context_enabled(environment_id: str | None) -> bool:
     return bool(getattr(env, "gh_context_enabled", False))
 
 
-def needs_cross_agent_gh_token(
-    environment_id: str | None, state_path: str = ""
-) -> bool:
+def needs_cross_agent_gh_token(environment_id: str | None, state_path: str = "") -> bool:
     """Check if any cross-agent allowlisted agent requires a GitHub token."""
     if not environment_id:
         return False
 
     # Load environment and validate structure
     try:
-        data_dir = (
-            os.path.dirname(str(state_path or "").strip()) if state_path else None
-        )
+        data_dir = os.path.dirname(str(state_path or "").strip()) if state_path else None
         environments = load_environments(data_dir=data_dir)
         env = environments.get(str(environment_id))
     except Exception:

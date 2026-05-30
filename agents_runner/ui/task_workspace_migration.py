@@ -54,9 +54,7 @@ class TaskWorkspaceMigrationWorker(QObject):
 
         for index, record in enumerate(self._records, start=1):
             task_id = str(record.task_id or "").strip()
-            self.progress.emit(
-                index - 1, total, task_id, self._eta_text(index - 1, total, started_s)
-            )
+            self.progress.emit(index - 1, total, task_id, self._eta_text(index - 1, total, started_s))
             result = move_task_workspace(
                 env_id=record.environment_id,
                 task_id=record.task_id,
@@ -78,9 +76,7 @@ class TaskWorkspaceMigrationWorker(QObject):
             else:
                 failed += 1
                 failures.append(f"{record.task_id}: {result.error}")
-            self.progress.emit(
-                index, total, task_id, self._eta_text(index, total, started_s)
-            )
+            self.progress.emit(index, total, task_id, self._eta_text(index, total, started_s))
 
         self.finished.emit(moved, skipped, failed, failures, moved_records)
 

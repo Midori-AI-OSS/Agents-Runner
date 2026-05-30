@@ -139,9 +139,7 @@ class _DummyMainWindow(
         return
 
 
-def test_interactive_task_uses_plugin_defaults_and_copilot_override(
-    monkeypatch, tmp_path
-) -> None:
+def test_interactive_task_uses_plugin_defaults_and_copilot_override(monkeypatch, tmp_path) -> None:
     workdir = tmp_path / "workspace"
     workdir.mkdir(parents=True, exist_ok=True)
 
@@ -210,10 +208,7 @@ def test_interactive_task_uses_plugin_defaults_and_copilot_override(
     assert Path(default_task.host_config_dir).is_absolute()
     assert default_task.agent_instance_id == ""
     assert default_task.agent_cli_args == "--env-flag"
-    assert (
-        window._interactive_prep_context[default_task_id]["command"]
-        == "--sandbox danger-full-access"
-    )
+    assert window._interactive_prep_context[default_task_id]["command"] == "--sandbox danger-full-access"
 
     override = {
         "agent_cli": "copilot",
@@ -244,7 +239,5 @@ def test_interactive_task_uses_plugin_defaults_and_copilot_override(
     assert Path(override_task.host_config_dir).is_absolute()
     assert override_task.host_config_dir != default_task.host_config_dir
     assert override_task.agent_cli_args == "--override-flag"
-    override_command = str(
-        window._interactive_prep_context[override_task_id]["command"] or ""
-    )
+    override_command = str(window._interactive_prep_context[override_task_id]["command"] or "")
     assert "--add-dir /home/midori-ai/workspace" in override_command

@@ -66,11 +66,7 @@ class MainWindowDashboardMixin(_MainWindowHints):
             if not task.task_id:
                 continue
             if task.logs:
-                task.logs = [
-                    prettify_log_line(line)
-                    for line in task.logs
-                    if isinstance(line, str)
-                ]
+                task.logs = [prettify_log_line(line) for line in task.logs if isinstance(line, str)]
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
             self._dashboard.upsert_past_task(task, stain=stain)

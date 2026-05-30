@@ -80,9 +80,7 @@ class _GitHubWorkRow(QWidget):
         self._btn_primary = QToolButton()
         self._btn_primary.setObjectName("RowTrash")
         self._btn_primary.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-        self._btn_primary.clicked.connect(
-            lambda: self.primary_requested.emit(self._item)
-        )
+        self._btn_primary.clicked.connect(lambda: self.primary_requested.emit(self._item))
 
         self._btn_open = QToolButton()
         self._btn_open.setObjectName("RowTrash")
@@ -140,9 +138,7 @@ class _GitHubWorkRow(QWidget):
         target_x = 0 if target_visible else self._ACTION_PANEL_HIDDEN_OFFSET
         target_opacity = 1.0 if target_visible else 0.0
 
-        self._actions_panel.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents, not target_visible
-        )
+        self._actions_panel.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, not target_visible)
 
         if not animate:
             current_y = int(self._actions_panel.pos().y())
@@ -150,9 +146,7 @@ class _GitHubWorkRow(QWidget):
             effect.setOpacity(target_opacity)
             return
 
-        start_pos = QPoint(
-            int(self._actions_panel.pos().x()), int(self._actions_panel.pos().y())
-        )
+        start_pos = QPoint(int(self._actions_panel.pos().x()), int(self._actions_panel.pos().y()))
         end_pos = QPoint(target_x, int(self._actions_panel.pos().y()))
         start_opacity = float(effect.opacity())
 
@@ -175,9 +169,7 @@ class _GitHubWorkRow(QWidget):
         def _on_finished() -> None:
             self._actions_animation = None
             if not self._actions_visible:
-                self._actions_panel.setAttribute(
-                    Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
-                )
+                self._actions_panel.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         group.finished.connect(_on_finished)
         group.start()
@@ -340,14 +332,8 @@ class GitHubWorkListPage(QWidget):
 
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
         settings = dict(settings_data or {})
-        self._prefer_browser = bool(
-            settings.get("github_workroom_prefer_browser") or False
-        )
-        self._confirmation_mode = (
-            str(settings.get("github_write_confirmation_mode") or "always")
-            .strip()
-            .lower()
-        )
+        self._prefer_browser = bool(settings.get("github_workroom_prefer_browser") or False)
+        self._confirmation_mode = str(settings.get("github_write_confirmation_mode") or "always").strip().lower()
         self._sync_refresh_visibility()
 
     def set_polling_enabled(self, enabled: bool) -> None:
@@ -405,9 +391,7 @@ class GitHubWorkListPage(QWidget):
             return
 
         load_key = self._first_load_key(env_id)
-        entry = self._coordinator.get_cache_entry(
-            item_type=self._item_type, env_id=env_id
-        )
+        entry = self._coordinator.get_cache_entry(item_type=self._item_type, env_id=env_id)
         if entry is None and load_key not in self._initial_load_seen_keys:
             self._initial_load_seen_keys.add(load_key)
             self._render_loading_rows(stain=self._current_stain())
@@ -432,9 +416,7 @@ class GitHubWorkListPage(QWidget):
             self._last_fetch_issue = ""
             return
 
-        entry = self._coordinator.get_cache_entry(
-            item_type=self._item_type, env_id=env_id
-        )
+        entry = self._coordinator.get_cache_entry(item_type=self._item_type, env_id=env_id)
         if entry is None:
             if show_loading_if_missing:
                 load_key = self._first_load_key(env_id)
@@ -451,10 +433,7 @@ class GitHubWorkListPage(QWidget):
             return
 
         env = self._environments.get(self._active_env_id)
-        stain = (
-            self._active_stain
-            or str(getattr(env, "color", "slate") or "").strip().lower()
-        )
+        stain = self._active_stain or str(getattr(env, "color", "slate") or "").strip().lower()
         if not stain:
             stain = "slate"
 
@@ -464,10 +443,7 @@ class GitHubWorkListPage(QWidget):
             else:
                 self._clear_rows()
                 self._log_fetch_issue_once(
-                    (
-                        f"[github-{self._item_type}] GitHub is unavailable for "
-                        f"environment '{self._active_env_id}'."
-                    ),
+                    (f"[github-{self._item_type}] GitHub is unavailable for environment '{self._active_env_id}'."),
                     mode="warn",
                 )
             return
@@ -475,10 +451,7 @@ class GitHubWorkListPage(QWidget):
         if entry.error and not entry.items:
             self._clear_rows()
             self._log_fetch_issue_once(
-                (
-                    f"[github-{self._item_type}] Load failed for environment "
-                    f"'{self._active_env_id}': {entry.error}"
-                ),
+                (f"[github-{self._item_type}] Load failed for environment '{self._active_env_id}': {entry.error}"),
                 mode="error",
             )
             return
@@ -528,9 +501,7 @@ class GitHubWorkListPage(QWidget):
             row.set_stain(stain)
             row.set_item(
                 item,
-                meta_text=(
-                    f"by {item.author or 'unknown'}  |  updated {self._format_time(item.updated_at)}"
-                ),
+                meta_text=(f"by {item.author or 'unknown'}  |  updated {self._format_time(item.updated_at)}"),
             )
             row.clicked.connect(self._open_item)
             row.open_requested.connect(self._open_item)
@@ -548,9 +519,7 @@ class GitHubWorkListPage(QWidget):
             QDesktopServices.openUrl(QUrl(item.url))
             return
 
-        repo_context = resolve_environment_github_repo(
-            self._environments.get(self._active_env_id)
-        )
+        repo_context = resolve_environment_github_repo(self._environments.get(self._active_env_id))
         if repo_context is None:
             return
 
@@ -566,9 +535,7 @@ class GitHubWorkListPage(QWidget):
             parent=self,
         )
         dialog.prompt_requested.connect(
-            lambda prompt: self.prompt_append_requested.emit(
-                self._active_env_id, prompt, None
-            )
+            lambda prompt: self.prompt_append_requested.emit(self._active_env_id, prompt, None)
         )
         dialog.exec()
 
@@ -576,9 +543,7 @@ class GitHubWorkListPage(QWidget):
         if not isinstance(item, GitHubWorkItem):
             return
 
-        repo_context = resolve_environment_github_repo(
-            self._environments.get(self._active_env_id)
-        )
+        repo_context = resolve_environment_github_repo(self._environments.get(self._active_env_id))
         repo_owner = str(getattr(repo_context, "repo_owner", "") or "")
         repo_name = str(getattr(repo_context, "repo_name", "") or "")
         pr_context: dict[str, object] | None = None
@@ -653,16 +618,12 @@ class GitHubWorkListPage(QWidget):
         ).strip()
 
     def _sync_refresh_visibility(self) -> None:
-        hide_refresh = self._coordinator.is_polling_effective_for_env(
-            str(self._active_env_id or "").strip()
-        )
+        hide_refresh = self._coordinator.is_polling_effective_for_env(str(self._active_env_id or "").strip())
         self._refresh.setVisible(not hide_refresh)
 
     def _current_stain(self) -> str:
         env = self._environments.get(self._active_env_id)
-        stain = (
-            self._active_stain or str(getattr(env, "color", "") or "").strip().lower()
-        )
+        stain = self._active_stain or str(getattr(env, "color", "") or "").strip().lower()
         if not stain:
             return "slate"
         return stain

@@ -90,23 +90,17 @@ class NewEnvironmentWizard(ThemedDialog):
 
         # Environment Name with tooltip
         name_label = QLabel("Environment Name:")
-        name_label.setToolTip(
-            "A label you'll recognize later (e.g., 'My Repo (Remote)')"
-        )
+        name_label.setToolTip("A label you'll recognize later (e.g., 'My Repo (Remote)')")
         card_layout.addWidget(name_label)
         self._name_input = QLineEdit()
         self._name_input.setPlaceholderText("e.g., 'My Repo (Remote)'")
-        self._name_input.setToolTip(
-            "A label you'll recognize later (e.g., 'My Repo (Remote)')"
-        )
+        self._name_input.setToolTip("A label you'll recognize later (e.g., 'My Repo (Remote)')")
         self._name_input.textChanged.connect(self._update_next_button)
         card_layout.addWidget(self._name_input)
 
         # Workspace Source Type with tooltip
         source_label = QLabel("Workspace Source Type:")
-        source_label.setToolTip(
-            "Both run in a container; this only changes the workspace source"
-        )
+        source_label.setToolTip("Both run in a container; this only changes the workspace source")
         card_layout.addWidget(source_label)
         self._source_combo = QComboBox()
         self._source_combo.addItem("Use a folder workspace")
@@ -129,16 +123,12 @@ class NewEnvironmentWizard(ThemedDialog):
         f_layout.setContentsMargins(0, 0, 0, 0)
         f_layout.setSpacing(4)
         folder_label = QLabel("Folder Path:")
-        folder_label.setToolTip(
-            "Path to an existing folder that will be used as the workspace"
-        )
+        folder_label.setToolTip("Path to an existing folder that will be used as the workspace")
         f_layout.addWidget(folder_label)
         f_row = QHBoxLayout()
         f_row.setSpacing(4)
         self._folder_input = QLineEdit()
-        self._folder_input.setToolTip(
-            "Path to an existing folder that will be used as the workspace"
-        )
+        self._folder_input.setToolTip("Path to an existing folder that will be used as the workspace")
         self._folder_input.textChanged.connect(self._validate_folder)
         f_row.addWidget(self._folder_input, 1)
         browse_btn = QPushButton("Browse...")
@@ -155,15 +145,11 @@ class NewEnvironmentWizard(ThemedDialog):
         c_layout.setContentsMargins(0, 0, 0, 0)
         c_layout.setSpacing(4)
         repo_label = QLabel("Repository URL:")
-        repo_label.setToolTip(
-            "GitHub shorthand (owner/repo) or full URL (https://github.com/owner/repo.git)"
-        )
+        repo_label.setToolTip("GitHub shorthand (owner/repo) or full URL (https://github.com/owner/repo.git)")
         c_layout.addWidget(repo_label)
         self._clone_input = QLineEdit()
         self._clone_input.setPlaceholderText("owner/repo or full URL")
-        self._clone_input.setToolTip(
-            "GitHub shorthand (owner/repo) or full URL (https://github.com/owner/repo.git)"
-        )
+        self._clone_input.setToolTip("GitHub shorthand (owner/repo) or full URL (https://github.com/owner/repo.git)")
         self._clone_input.textChanged.connect(self._validate_clone)
         c_layout.addWidget(self._clone_input)
         self._clone_validation = QLabel()
@@ -264,9 +250,7 @@ class NewEnvironmentWizard(ThemedDialog):
 
     def _current_stain(self) -> str:
         combo = getattr(self, "_color_combo", None)
-        stain = (
-            str(combo.currentData() or "").strip().lower() if combo is not None else ""
-        )
+        stain = str(combo.currentData() or "").strip().lower() if combo is not None else ""
         return stain or str(self._suggested_color or "").strip().lower()
 
     def _apply_environment_tint(self) -> None:
@@ -364,10 +348,7 @@ class NewEnvironmentWizard(ThemedDialog):
                 self._next_btn.setEnabled(True)
             else:
                 name_valid = bool(self._name_input.text().strip())
-                clone_valid = bool(
-                    self._clone_input.text().strip()
-                    and "✓" in self._clone_validation.text()
-                )
+                clone_valid = bool(self._clone_input.text().strip() and "✓" in self._clone_validation.text())
                 self._next_btn.setText("Test")
                 self._next_btn.setEnabled(name_valid and clone_valid)
 
@@ -438,9 +419,7 @@ read
 
     def _check_clone_result(self) -> None:
         self._clone_check_count += 1
-        if os.path.isdir(self._test_folder) and os.path.isdir(
-            os.path.join(self._test_folder, ".git")
-        ):
+        if os.path.isdir(self._test_folder) and os.path.isdir(os.path.join(self._test_folder, ".git")):
             self._clone_test_passed = True
             self._clone_validation.setText("✓ Clone test passed")
             self._clone_validation.setStyleSheet("color: #4caf50; font-size: 11px;")

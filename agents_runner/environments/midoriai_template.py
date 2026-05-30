@@ -8,9 +8,7 @@ from agents_runner.midoriai_template import scan_midoriai_agents_template
 from .model import Environment
 
 
-def apply_midoriai_template_detection(
-    env: Environment, *, workspace_root: str
-) -> MidoriAITemplateDetection:
+def apply_midoriai_template_detection(env: Environment, *, workspace_root: str) -> MidoriAITemplateDetection:
     detection = scan_midoriai_agents_template(workspace_root)
     env.midoriai_template_likelihood = detection.midoriai_template_likelihood
     env.midoriai_template_detected = detection.midoriai_template_detected

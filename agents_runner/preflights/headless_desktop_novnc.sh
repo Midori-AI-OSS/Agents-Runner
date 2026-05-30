@@ -10,6 +10,7 @@ log_info desktop setup "starting headless desktop (noVNC)"
 export DISPLAY="${DISPLAY:-:1}"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"
+NOVNC_PORT="${NOVNC_PORT:-6080}"
 mkdir -p "${XDG_RUNTIME_DIR}"
 
 RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"
@@ -105,7 +106,7 @@ if [ -z "${NOVNC_WEB}" ]; then
   exit 1
 fi
 
-websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 &
+websockify --web="${NOVNC_WEB}" "${NOVNC_PORT}" 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 &
 
 log_info desktop setup "ready"
 log_info desktop setup "DISPLAY=${DISPLAY}"

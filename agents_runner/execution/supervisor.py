@@ -71,8 +71,7 @@ class TaskSupervisor:
         on_log: Callable[[str], None],
         on_retry: Callable[[int, str, float], None],
         on_agent_switch: Callable[[str, str], None],
-        on_done: Callable[[int, str | None, list[str], dict[str, Any]], None]
-        | None = None,
+        on_done: Callable[[int, str | None, list[str], dict[str, Any]], None] | None = None,
         watch_states: dict[str, Any] | None = None,
         agent_configs: dict[str, AgentConfig] | None = None,
     ) -> None:
@@ -122,9 +121,7 @@ class TaskSupervisor:
         self._last_container_state: dict[str, Any] = {}
         self._user_stop_reason: Literal["cancel", "kill"] | None = None
 
-    def _normalize_agent_configs(
-        self, agent_configs: dict[str, AgentConfig] | None
-    ) -> dict[str, AgentConfig]:
+    def _normalize_agent_configs(self, agent_configs: dict[str, AgentConfig] | None) -> dict[str, AgentConfig]:
         if agent_configs:
             return {
                 config_id: config
@@ -144,18 +141,12 @@ class TaskSupervisor:
             return {}
 
     def _resolved_agent_config(self, agent: AgentInstance) -> AgentConfig | None:
-        return resolve_agent_config(
-            str(getattr(agent, "config_id", "") or ""), self._agent_configs
-        )
+        return resolve_agent_config(str(getattr(agent, "config_id", "") or ""), self._agent_configs)
 
     def _resolved_agent_cli(self, agent: AgentInstance) -> str:
         config = self._resolved_agent_config(agent)
         agent_cli = (
-            str(
-                getattr(config, "agent_cli", "")
-                if config is not None
-                else self._config.agent_cli or "codex"
-            )
+            str(getattr(config, "agent_cli", "") if config is not None else self._config.agent_cli or "codex")
             .strip()
             .lower()
         )
@@ -202,9 +193,7 @@ class TaskSupervisor:
         """User requested graceful cancellation (terminal, no retry/fallback)."""
         if self._user_stop_reason is None:
             self._user_stop_reason = "cancel"
-            self._on_log(
-                format_log("supervisor", "none", "INFO", "user_cancel requested")
-            )
+            self._on_log(format_log("supervisor", "none", "INFO", "user_cancel requested"))
         if self._current_worker:
             self._current_worker.request_stop()
 
@@ -212,9 +201,7 @@ class TaskSupervisor:
         """User requested force kill (terminal, no retry/fallback)."""
         if self._user_stop_reason is None:
             self._user_stop_reason = "kill"
-            self._on_log(
-                format_log("supervisor", "none", "INFO", "user_kill requested")
-            )
+            self._on_log(format_log("supervisor", "none", "INFO", "user_kill requested"))
         if self._current_worker:
             request_kill = getattr(self._current_worker, "request_kill", None)
             if callable(request_kill):
@@ -235,11 +222,7 @@ class TaskSupervisor:
         while self._current_agent_index < len(self._agent_chain):
             if self._user_stop_reason is not None:
                 result = self._result_for_user_stop()
-                self._on_log(
-                    format_log(
-                        "supervisor", "task", "INFO", "retry skipped due to user stop"
-                    )
-                )
+                self._on_log(format_log("supervisor", "task", "INFO", "retry skipped due to user stop"))
                 if self._on_done:
                     self._on_done(
                         result.exit_code,
@@ -249,9 +232,7 @@ class TaskSupervisor:
                     )
                 return result
 
-            next_agent = self._next_available_agent(
-                start_index=self._current_agent_index
-            )
+            next_agent = self._next_available_agent(start_index=self._current_agent_index)
             if next_agent is None:
                 result = self._result_for_exhausted_agents()
                 if self._on_done:
@@ -279,11 +260,7 @@ class TaskSupervisor:
             result = self._try_agent(agent)
 
             if self._user_stop_reason is not None:
-                self._on_log(
-                    format_log(
-                        "supervisor", "task", "INFO", "retry skipped due to user stop"
-                    )
-                )
+                self._on_log(format_log("supervisor", "task", "INFO", "retry skipped due to user stop"))
                 if self._on_done:
                     self._on_done(
                         result.exit_code,
@@ -353,13 +330,9 @@ class TaskSupervisor:
 
             # Select the next distinct agent+config in the fallback chain.
             self._current_agent_index += 1
-            next_candidate = self._next_available_agent(
-                start_index=self._current_agent_index
-            )
+            next_candidate = self._next_available_agent(start_index=self._current_agent_index)
             if next_candidate is None:
-                exhausted = self._result_for_exhausted_agents(
-                    last_exit_code=result.exit_code
-                )
+                exhausted = self._result_for_exhausted_agents(last_exit_code=result.exit_code)
                 if self._on_done:
                     self._on_done(
                         exhausted.exit_code,
@@ -371,9 +344,7 @@ class TaskSupervisor:
 
             next_attempt_number = int(self._total_attempts) + 1
             _, candidate = next_candidate
-            self._on_retry(
-                next_attempt_number, self._resolved_agent_cli(candidate), 0.0
-            )
+            self._on_retry(next_attempt_number, self._resolved_agent_cli(candidate), 0.0)
             continue
 
         # Should not reach here
@@ -450,14 +421,11 @@ class TaskSupervisor:
                 "supervisor",
                 "task",
                 "INFO",
-                "agent chain: "
-                + " -> ".join(self._resolved_agent_cli(agent) for agent in chain),
+                "agent chain: " + " -> ".join(self._resolved_agent_cli(agent) for agent in chain),
             )
         )
 
-    def _next_available_agent(
-        self, *, start_index: int
-    ) -> tuple[int, AgentInstance] | None:
+    def _next_available_agent(self, *, start_index: int) -> tuple[int, AgentInstance] | None:
         for index in range(max(0, int(start_index)), len(self._agent_chain)):
             agent = self._agent_chain[index]
             key = self._attempt_key(agent)
@@ -499,12 +467,8 @@ class TaskSupervisor:
                     total_configured_attempts=len(self._agent_chain) or None,
                     previous_agent=str(previous.get("agent_cli") or "unknown"),
                     previous_config=str(previous.get("host_config_dir") or "unknown"),
-                    previous_failure_category=str(
-                        previous.get("failure_category") or "unknown"
-                    ),
-                    previous_failure_summary=str(
-                        previous.get("failure_message") or "unknown"
-                    ),
+                    previous_failure_category=str(previous.get("failure_category") or "unknown"),
+                    previous_failure_summary=str(previous.get("failure_message") or "unknown"),
                 ),
             )
 
@@ -512,9 +476,7 @@ class TaskSupervisor:
         agent_cli = self._resolved_agent_cli(agent)
         agent_config = self._build_agent_config(agent)
         config_mount_sources = [str(agent_config.host_config_dir or "").strip()]
-        for mount_spec in additional_config_mounts(
-            agent_config.agent_cli, agent_config.host_config_dir
-        ):
+        for mount_spec in additional_config_mounts(agent_config.agent_cli, agent_config.host_config_dir):
             src = str(mount_spec or "").split(":", 1)[0].strip()
             if src:
                 config_mount_sources.append(src)
@@ -617,9 +579,8 @@ class TaskSupervisor:
             cache_system_preflight_enabled=self._config.cache_system_preflight_enabled,
             cache_settings_preflight_enabled=self._config.cache_settings_preflight_enabled,
             gpu_enabled=self._config.gpu_enabled,
-            setup_agents_missing_prompt_enabled=(
-                self._config.setup_agents_missing_prompt_enabled
-            ),
+            network_host=self._config.network_host,
+            setup_agents_missing_prompt_enabled=(self._config.setup_agents_missing_prompt_enabled),
             environment_id=self._config.environment_id,
             workspace_type=self._config.workspace_type,
             workspace_target=self._config.workspace_target,
@@ -650,11 +611,7 @@ class TaskSupervisor:
     def _resolve_host_config_dir(self, agent: AgentInstance) -> str:
         config = self._resolved_agent_config(agent)
         configured = os.path.expanduser(
-            str(
-                getattr(config, "config_dir", "")
-                if config is not None
-                else self._config.host_config_dir or ""
-            ).strip()
+            str(getattr(config, "config_dir", "") if config is not None else self._config.host_config_dir or "").strip()
         )
         if configured:
             host_config_dir = configured
@@ -752,16 +709,10 @@ class TaskSupervisor:
             )
         )
 
-    def _result_for_exhausted_agents(
-        self, *, last_exit_code: int | None = None
-    ) -> SupervisorResult:
+    def _result_for_exhausted_agents(self, *, last_exit_code: int | None = None) -> SupervisorResult:
         from agents_runner.core.agent.keys import cooldown_key
 
-        attempted = [
-            f"{a.get('agent_cli')}[{a.get('agent_id')}]"
-            for a in self._attempt_history
-            if a.get("agent_cli")
-        ]
+        attempted = [f"{a.get('agent_cli')}[{a.get('agent_id')}]" for a in self._attempt_history if a.get("agent_cli")]
 
         on_cooldown: list[str] = []
         for agent in self._agent_chain:
@@ -775,9 +726,7 @@ class TaskSupervisor:
             if watch_state and watch_state.is_on_cooldown() and ckey:
                 until = getattr(watch_state, "cooldown_until", None)
                 until_s = until.isoformat() if until else "unknown"
-                on_cooldown.append(
-                    f"{self._resolved_agent_cli(agent)}[{agent.agent_id}] until {until_s}"
-                )
+                on_cooldown.append(f"{self._resolved_agent_cli(agent)}[{agent.agent_id}] until {until_s}")
 
         parts: list[str] = []
         if attempted:

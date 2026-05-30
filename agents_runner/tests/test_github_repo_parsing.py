@@ -23,9 +23,7 @@ from agents_runner.gh.git_ops import normalize_github_repo_slug, parse_github_ur
         ("ssh://git@github.com:22/owner/repo", ("owner", "repo")),
     ],
 )
-def test_parse_github_url_accepts_supported_formats(
-    value: str, expected: tuple[str, str]
-) -> None:
+def test_parse_github_url_accepts_supported_formats(value: str, expected: tuple[str, str]) -> None:
     assert parse_github_url(value) == expected
 
 
@@ -46,12 +44,8 @@ def test_parse_github_url_rejects_embedded_hosts_and_extra_segments(
     assert parse_github_url(value) == (None, None)
 
 
-def test_normalize_github_repo_slug_lowercases_and_preserves_dotted_repo_names() -> (
-    None
-):
-    assert normalize_github_repo_slug("https://github.com/Owner/Repo.Name.git") == (
-        "owner/repo.name"
-    )
+def test_normalize_github_repo_slug_lowercases_and_preserves_dotted_repo_names() -> None:
+    assert normalize_github_repo_slug("https://github.com/Owner/Repo.Name.git") == ("owner/repo.name")
 
 
 def test_build_preflight_identity_token_distinguishes_github_lookalikes() -> None:
@@ -88,9 +82,7 @@ def test_build_preflight_identity_token_keeps_non_github_targets_distinct() -> N
     assert first != second
 
 
-def test_ensure_github_clone_accepts_equivalent_existing_repo(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_ensure_github_clone_accepts_equivalent_existing_repo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     def _is_git_repo(_path: str, *, timeout_s: float = 8.0) -> bool:
         _ = timeout_s
         return True
@@ -124,9 +116,7 @@ def test_ensure_github_clone_rejects_invalid_ref_against_existing_repo(
     monkeypatch.setattr(repo_clone, "is_git_repo", _is_git_repo)
     monkeypatch.setattr(repo_clone, "_read_origin_url", _read_origin_url)
 
-    with pytest.raises(
-        GhManagementError, match="destination contains a different repo"
-    ):
+    with pytest.raises(GhManagementError, match="destination contains a different repo"):
         repo_clone.ensure_github_clone(
             "https://example.com/github.com/owner/repo",
             str(dest),

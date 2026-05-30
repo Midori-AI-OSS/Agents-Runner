@@ -242,9 +242,7 @@ class EnvironmentsPage(
         self._env_select.blockSignals(True)
         try:
             self._env_select.clear()
-            ordered = sorted(
-                self._environments.values(), key=lambda e: (e.name or e.env_id).lower()
-            )
+            ordered = sorted(self._environments.values(), key=lambda e: (e.name or e.env_id).lower())
             for env in ordered:
                 self._env_select.addItem(env.name or env.env_id, env.env_id)
             desired = active_id or current
@@ -271,9 +269,7 @@ class EnvironmentsPage(
         return bool(force or env_enabled)
 
     def _sync_github_polling_override_visibility(self) -> None:
-        app_wide_polling = bool(
-            self._settings_data.get("github_polling_enabled") or False
-        )
+        app_wide_polling = bool(self._settings_data.get("github_polling_enabled") or False)
         polling_visible = not app_wide_polling
 
         polling_label = getattr(self, "_github_polling_enabled_label", None)
@@ -287,9 +283,7 @@ class EnvironmentsPage(
         self._github_polling_enabled.setVisible(polling_visible)
 
     def _sync_headless_desktop_override_visibility(self) -> None:
-        force_headless = bool(
-            self._settings_data.get("headless_desktop_enabled") or False
-        )
+        force_headless = bool(self._settings_data.get("headless_desktop_enabled") or False)
 
         headless_label = getattr(self, "_headless_desktop_label", None)
         if isinstance(headless_label, QWidget):
@@ -304,9 +298,7 @@ class EnvironmentsPage(
 
     def _sync_interactive_pr_controls(self) -> None:
         show_no_prompt_mode = not bool(self._interactive_pr_prompt_enabled.isChecked())
-        no_prompt_mode_label = getattr(
-            self, "_interactive_pr_no_prompt_mode_label", None
-        )
+        no_prompt_mode_label = getattr(self, "_interactive_pr_no_prompt_mode_label", None)
         if isinstance(no_prompt_mode_label, QWidget):
             no_prompt_mode_label.setVisible(show_no_prompt_mode)
         no_prompt_mode_row = getattr(self, "_interactive_pr_no_prompt_mode_row", None)
@@ -317,9 +309,7 @@ class EnvironmentsPage(
 
     def _sync_github_branch_naming_controls(self) -> None:
         workspace_type = str(self._workspace_type_combo.currentData() or "").strip()
-        branch_work_mode = normalize_gh_branch_work_mode(
-            self._gh_branch_work_mode.currentData() or "task_branch"
-        )
+        branch_work_mode = normalize_gh_branch_work_mode(self._gh_branch_work_mode.currentData() or "task_branch")
         naming_style = normalize_gh_task_branch_naming_style(
             self._gh_task_branch_naming_style.currentData() or "standard"
         )
@@ -328,9 +318,7 @@ class EnvironmentsPage(
         show_custom_template = branch_controls_enabled and naming_style == "custom"
         self._gh_branch_work_mode.setEnabled(branch_controls_enabled)
         self._gh_task_branch_naming_style.setEnabled(naming_enabled)
-        custom_template_label = getattr(
-            self, "_gh_task_branch_custom_template_label", None
-        )
+        custom_template_label = getattr(self, "_gh_task_branch_custom_template_label", None)
         if isinstance(custom_template_label, QWidget):
             custom_template_label.setVisible(show_custom_template)
 
@@ -365,6 +353,11 @@ class EnvironmentsPage(
                     gpu_mode_idx = 0
                 if gpu_mode_idx >= 0:
                     self._gpu_override_mode.setCurrentIndex(gpu_mode_idx)
+                network_host_mode_idx = self._network_host_override_mode.findData("inherit")
+                if network_host_mode_idx < 0:
+                    network_host_mode_idx = 0
+                if network_host_mode_idx >= 0:
+                    self._network_host_override_mode.setCurrentIndex(network_host_mode_idx)
                 opencode_mode_idx = self._opencode_interactive_mode.findData("inherit")
                 if opencode_mode_idx < 0:
                     opencode_mode_idx = 0
@@ -387,24 +380,16 @@ class EnvironmentsPage(
                     auto_review_idx = 0
                 if auto_review_idx >= 0:
                     self._agentsnova_auto_review_mode.setCurrentIndex(auto_review_idx)
-                auto_reactions_idx = self._agentsnova_auto_reactions_mode.findData(
-                    "inherit"
-                )
+                auto_reactions_idx = self._agentsnova_auto_reactions_mode.findData("inherit")
                 if auto_reactions_idx < 0:
                     auto_reactions_idx = 0
                 if auto_reactions_idx >= 0:
-                    self._agentsnova_auto_reactions_mode.setCurrentIndex(
-                        auto_reactions_idx
-                    )
-                marker_comment_idx = self._agentsnova_marker_comment_mode.findData(
-                    "inherit"
-                )
+                    self._agentsnova_auto_reactions_mode.setCurrentIndex(auto_reactions_idx)
+                marker_comment_idx = self._agentsnova_marker_comment_mode.findData("inherit")
                 if marker_comment_idx < 0:
                     marker_comment_idx = 0
                 if marker_comment_idx >= 0:
-                    self._agentsnova_marker_comment_mode.setCurrentIndex(
-                        marker_comment_idx
-                    )
+                    self._agentsnova_marker_comment_mode.setCurrentIndex(marker_comment_idx)
                 self._interactive_pr_prompt_enabled.setChecked(True)
                 no_prompt_mode_idx = self._interactive_pr_no_prompt_mode.findData(
                     INTERACTIVE_PR_NO_PROMPT_MODE_AUTO_CREATE
@@ -412,9 +397,7 @@ class EnvironmentsPage(
                 if no_prompt_mode_idx < 0:
                     no_prompt_mode_idx = 0
                 if no_prompt_mode_idx >= 0:
-                    self._interactive_pr_no_prompt_mode.setCurrentIndex(
-                        no_prompt_mode_idx
-                    )
+                    self._interactive_pr_no_prompt_mode.setCurrentIndex(no_prompt_mode_idx)
                 self._setup_agents_missing_prompt_enabled.setChecked(False)
                 self._interactive_pull_before_run_enabled.setChecked(True)
                 branch_work_idx = self._gh_branch_work_mode.findData("task_branch")
@@ -422,16 +405,12 @@ class EnvironmentsPage(
                     branch_work_idx = 0
                 if branch_work_idx >= 0:
                     self._gh_branch_work_mode.setCurrentIndex(branch_work_idx)
-                naming_style_idx = self._gh_task_branch_naming_style.findData(
-                    "standard"
-                )
+                naming_style_idx = self._gh_task_branch_naming_style.findData("standard")
                 if naming_style_idx < 0:
                     naming_style_idx = 0
                 if naming_style_idx >= 0:
                     self._gh_task_branch_naming_style.setCurrentIndex(naming_style_idx)
-                self._gh_task_branch_custom_template.setText(
-                    GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
-                )
+                self._gh_task_branch_custom_template.setText(GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT)
                 self._agentsnova_trusted_users_env.set_usernames([])
                 self._workspace_type_combo.setCurrentIndex(0)
                 self._workspace_target.setText("")
@@ -450,9 +429,7 @@ class EnvironmentsPage(
                     advanced_mode=False,
                     advanced_acknowledged=False,
                 )
-                self._ports_tab.set_desktop_effective_enabled(
-                    self._effective_desktop_enabled()
-                )
+                self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
                 self._ports_tab.set_ports([], False, False)
                 self._prompts_tab.set_prompts([], False)
                 self._agents_tab.set_agent_selection(None)
@@ -466,15 +443,9 @@ class EnvironmentsPage(
             idx = self._color.findData(env.color)
             if idx >= 0:
                 self._color.setCurrentIndex(idx)
-            self._max_agents_running.setText(
-                str(int(getattr(env, "max_agents_running", -1)))
-            )
-            self._headless_desktop_enabled.setChecked(
-                bool(getattr(env, "headless_desktop_enabled", False))
-            )
-            gpu_mode = normalize_gpu_override_mode(
-                getattr(env, "gpu_override_mode", "inherit")
-            )
+            self._max_agents_running.setText(str(int(getattr(env, "max_agents_running", -1))))
+            self._headless_desktop_enabled.setChecked(bool(getattr(env, "headless_desktop_enabled", False)))
+            gpu_mode = normalize_gpu_override_mode(getattr(env, "gpu_override_mode", "inherit"))
             gpu_mode_idx = self._gpu_override_mode.findData(gpu_mode)
             if gpu_mode_idx < 0:
                 gpu_mode_idx = self._gpu_override_mode.findData("inherit")
@@ -482,6 +453,14 @@ class EnvironmentsPage(
                 gpu_mode_idx = 0
             if gpu_mode_idx >= 0:
                 self._gpu_override_mode.setCurrentIndex(gpu_mode_idx)
+            network_host_mode = normalize_gpu_override_mode(getattr(env, "network_host_override_mode", "inherit"))
+            network_host_mode_idx = self._network_host_override_mode.findData(network_host_mode)
+            if network_host_mode_idx < 0:
+                network_host_mode_idx = self._network_host_override_mode.findData("inherit")
+            if network_host_mode_idx < 0:
+                network_host_mode_idx = 0
+            if network_host_mode_idx >= 0:
+                self._network_host_override_mode.setCurrentIndex(network_host_mode_idx)
             opencode_mode = normalize_opencode_interactive_override(
                 getattr(env, "opencode_interactive_mode", "inherit")
             )
@@ -492,19 +471,11 @@ class EnvironmentsPage(
                 opencode_mode_idx = 0
             if opencode_mode_idx >= 0:
                 self._opencode_interactive_mode.setCurrentIndex(opencode_mode_idx)
-            self._ports_tab.set_desktop_effective_enabled(
-                self._effective_desktop_enabled()
-            )
-            self._cache_desktop_build.setChecked(
-                bool(getattr(env, "cache_desktop_build", False))
-            )
+            self._ports_tab.set_desktop_effective_enabled(self._effective_desktop_enabled())
+            self._cache_desktop_build.setChecked(bool(getattr(env, "cache_desktop_build", False)))
             self._cache_desktop_build.setEnabled(self._effective_desktop_enabled())
-            self._container_caching_enabled.setChecked(
-                bool(getattr(env, "container_caching_enabled", False))
-            )
-            self._use_cross_agents.setChecked(
-                bool(getattr(env, "use_cross_agents", False))
-            )
+            self._container_caching_enabled.setChecked(bool(getattr(env, "container_caching_enabled", False)))
+            self._use_cross_agents.setChecked(bool(getattr(env, "use_cross_agents", False)))
             workspace_type = env.workspace_type or WORKSPACE_NONE
             is_github_env = workspace_type == WORKSPACE_CLONED
             is_local_env = workspace_type == WORKSPACE_MOUNTED
@@ -515,67 +486,45 @@ class EnvironmentsPage(
 
             context_available = is_github_env or (is_local_env and is_git_repo)
 
-            self._gh_context_enabled.setChecked(
-                bool(getattr(env, "gh_context_enabled", False))
-            )
+            self._gh_context_enabled.setChecked(bool(getattr(env, "gh_context_enabled", False)))
             self._gh_context_enabled.setEnabled(context_available)
-            self._github_polling_enabled.setChecked(
-                bool(getattr(env, "github_polling_enabled", False))
-            )
-            trusted_mode = normalize_trusted_mode(
-                getattr(env, "agentsnova_trusted_mode", "inherit")
-            )
+            self._github_polling_enabled.setChecked(bool(getattr(env, "github_polling_enabled", False)))
+            trusted_mode = normalize_trusted_mode(getattr(env, "agentsnova_trusted_mode", "inherit"))
             trusted_mode_idx = self._agentsnova_trusted_mode.findData(trusted_mode)
             if trusted_mode_idx >= 0:
                 self._agentsnova_trusted_mode.setCurrentIndex(trusted_mode_idx)
-            auto_review_mode = normalize_agentsnova_auto_mode(
-                getattr(env, "agentsnova_auto_review_mode", "inherit")
-            )
-            auto_review_idx = self._agentsnova_auto_review_mode.findData(
-                auto_review_mode
-            )
+            auto_review_mode = normalize_agentsnova_auto_mode(getattr(env, "agentsnova_auto_review_mode", "inherit"))
+            auto_review_idx = self._agentsnova_auto_review_mode.findData(auto_review_mode)
             if auto_review_idx >= 0:
                 self._agentsnova_auto_review_mode.setCurrentIndex(auto_review_idx)
             auto_reactions_mode = normalize_agentsnova_auto_mode(
                 getattr(env, "agentsnova_auto_reactions_mode", "inherit")
             )
-            auto_reactions_idx = self._agentsnova_auto_reactions_mode.findData(
-                auto_reactions_mode
-            )
+            auto_reactions_idx = self._agentsnova_auto_reactions_mode.findData(auto_reactions_mode)
             if auto_reactions_idx >= 0:
                 self._agentsnova_auto_reactions_mode.setCurrentIndex(auto_reactions_idx)
             marker_comment_mode = normalize_agentsnova_marker_comment_mode(
                 getattr(env, "agentsnova_marker_comment_mode", "inherit")
             )
-            marker_comment_idx = self._agentsnova_marker_comment_mode.findData(
-                marker_comment_mode
-            )
+            marker_comment_idx = self._agentsnova_marker_comment_mode.findData(marker_comment_mode)
             if marker_comment_idx >= 0:
                 self._agentsnova_marker_comment_mode.setCurrentIndex(marker_comment_idx)
-            self._interactive_pr_prompt_enabled.setChecked(
-                bool(getattr(env, "interactive_pr_prompt_enabled", True))
-            )
+            self._interactive_pr_prompt_enabled.setChecked(bool(getattr(env, "interactive_pr_prompt_enabled", True)))
             interactive_pr_no_prompt_mode = normalize_interactive_pr_no_prompt_mode(
                 getattr(env, "interactive_pr_no_prompt_mode", "auto_create_pr")
             )
-            interactive_pr_no_prompt_idx = self._interactive_pr_no_prompt_mode.findData(
-                interactive_pr_no_prompt_mode
-            )
+            interactive_pr_no_prompt_idx = self._interactive_pr_no_prompt_mode.findData(interactive_pr_no_prompt_mode)
             if interactive_pr_no_prompt_idx < 0:
                 interactive_pr_no_prompt_idx = 0
             if interactive_pr_no_prompt_idx >= 0:
-                self._interactive_pr_no_prompt_mode.setCurrentIndex(
-                    interactive_pr_no_prompt_idx
-                )
+                self._interactive_pr_no_prompt_mode.setCurrentIndex(interactive_pr_no_prompt_idx)
             self._setup_agents_missing_prompt_enabled.setChecked(
                 bool(getattr(env, "setup_agents_missing_prompt_enabled", False))
             )
             self._interactive_pull_before_run_enabled.setChecked(
                 bool(getattr(env, "interactive_pull_before_run_enabled", True))
             )
-            branch_work_mode = normalize_gh_branch_work_mode(
-                getattr(env, "gh_branch_work_mode", "task_branch")
-            )
+            branch_work_mode = normalize_gh_branch_work_mode(getattr(env, "gh_branch_work_mode", "task_branch"))
             branch_work_idx = self._gh_branch_work_mode.findData(branch_work_mode)
             if branch_work_idx >= 0:
                 self._gh_branch_work_mode.setCurrentIndex(branch_work_idx)
@@ -602,14 +551,10 @@ class EnvironmentsPage(
             if idx >= 0:
                 self._workspace_type_combo.setCurrentIndex(idx)
             self._workspace_target.setText(str(env.workspace_target or ""))
-            self._gh_use_host_cli.setChecked(
-                bool(getattr(env, "gh_use_host_cli", True))
-            )
+            self._gh_use_host_cli.setChecked(bool(getattr(env, "gh_use_host_cli", True)))
             self._sync_workspace_controls(env=env)
             self._refresh_setup_agents_preview(env)
-            self._cache_system_preflight_enabled.setChecked(
-                bool(getattr(env, "cache_system_preflight_enabled", False))
-            )
+            self._cache_system_preflight_enabled.setChecked(bool(getattr(env, "cache_system_preflight_enabled", False)))
             self._cache_settings_preflight_enabled.setChecked(
                 bool(getattr(env, "cache_settings_preflight_enabled", False))
             )
@@ -622,25 +567,19 @@ class EnvironmentsPage(
             self._env_vars_tab.set_env_vars(
                 env.env_vars,
                 advanced_mode=bool(getattr(env, "env_vars_advanced_mode", False)),
-                advanced_acknowledged=bool(
-                    getattr(env, "env_vars_advanced_acknowledged", False)
-                ),
+                advanced_acknowledged=bool(getattr(env, "env_vars_advanced_acknowledged", False)),
             )
             self._mounts_tab.set_mounts(
                 env.extra_mounts,
                 advanced_mode=bool(getattr(env, "mounts_advanced_mode", False)),
-                advanced_acknowledged=bool(
-                    getattr(env, "mounts_advanced_acknowledged", False)
-                ),
+                advanced_acknowledged=bool(getattr(env, "mounts_advanced_acknowledged", False)),
             )
             self._ports_tab.set_ports(
                 getattr(env, "ports", []) or [],
                 bool(getattr(env, "ports_unlocked", False)),
                 bool(getattr(env, "ports_advanced_acknowledged", False)),
             )
-            self._prompts_tab.set_prompts(
-                env.prompts or [], env.prompts_unlocked or False
-            )
+            self._prompts_tab.set_prompts(env.prompts or [], env.prompts_unlocked or False)
 
             use_cross_agents = bool(getattr(env, "use_cross_agents", False))
             cross_agent_allowlist = list(getattr(env, "cross_agent_allowlist", []))
@@ -729,9 +668,7 @@ class EnvironmentsPage(
         if workspace_type == WORKSPACE_MOUNTED:
             candidate = str(getattr(env, "workspace_target", "") or "").strip()
         elif workspace_type == WORKSPACE_CLONED:
-            candidate = managed_repo_checkout_path(
-                env.env_id, data_dir=os.path.dirname(default_state_path())
-            )
+            candidate = managed_repo_checkout_path(env.env_id, data_dir=os.path.dirname(default_state_path()))
         else:
             candidate = str(getattr(env, "host_workdir", "") or "").strip()
         candidate = os.path.expanduser(candidate) if candidate else ""
@@ -751,9 +688,7 @@ class EnvironmentsPage(
     def _refresh_setup_agents_preview(self, env: Environment | None) -> None:
         if env is None:
             self._setup_agents_preview.setPlainText("")
-            self._setup_agents_preview.setToolTip(
-                "Create in repo: .agents/setup-agents.sh"
-            )
+            self._setup_agents_preview.setToolTip("Create in repo: .agents/setup-agents.sh")
             self._setup_agents_preview_highlighter.set_language("bash")
             return
 
@@ -787,9 +722,7 @@ class EnvironmentsPage(
         if not repo_edit_path:
             repo_edit_path = ".agents/setup-agents.sh"
 
-        direct_script = self._load_direct_setup_agents_script(
-            preview.repo_script_path if preview is not None else None
-        )
+        direct_script = self._load_direct_setup_agents_script(preview.repo_script_path if preview is not None else None)
         if direct_script is not None:
             preview_text = direct_script
             tooltip = f"Edit in repo: {repo_edit_path}"
@@ -806,9 +739,7 @@ class EnvironmentsPage(
 
         self._setup_agents_preview.setPlainText(preview_text)
         if preview_text.strip():
-            self._setup_agents_preview_highlighter.set_language(
-                self._setup_agents_preview_language(preview_text)
-            )
+            self._setup_agents_preview_highlighter.set_language(self._setup_agents_preview_language(preview_text))
         else:
             self._setup_agents_preview_highlighter.set_language("bash")
         self._setup_agents_preview.document().setModified(False)

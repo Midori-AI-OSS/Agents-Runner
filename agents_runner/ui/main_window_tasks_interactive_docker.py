@@ -108,6 +108,7 @@ def launch_docker_terminal_task(
     shell: str = "bash",
     opencode_web_mode: bool = False,
     gpu_enabled: bool = False,
+    network_host: bool = False,
     ports_for_task: list[str] | None = None,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
@@ -159,6 +160,7 @@ def launch_docker_terminal_task(
         shell: Shell to use when shell_mode is True (bash, sh, zsh, fish, tmux)
         opencode_web_mode: If True, run OpenCode Web and open its host URL
         gpu_enabled: If True, request Docker GPU runtime (`--gpus all`)
+        network_host: If True, use Docker host networking (`--network host`)
         ports_for_task: Runtime publish specs for this launch (defaults to env.ports)
     """
     # Apply desktop preflight script override if provided, before desktop detection
@@ -188,18 +190,12 @@ def launch_docker_terminal_task(
     system_preflight_cached = False
     desktop_preflight_cached = False
     settings_preflight_cached = False
-    container_caching_enabled = bool(
-        env and getattr(env, "container_caching_enabled", False)
-    )
+    container_caching_enabled = bool(env and getattr(env, "container_caching_enabled", False))
     cache_system_enabled = bool(
-        container_caching_enabled
-        and env
-        and getattr(env, "cache_system_preflight_enabled", False)
+        container_caching_enabled and env and getattr(env, "cache_system_preflight_enabled", False)
     )
     cache_settings_enabled = bool(
-        container_caching_enabled
-        and env
-        and getattr(env, "cache_settings_preflight_enabled", False)
+        container_caching_enabled and env and getattr(env, "cache_settings_preflight_enabled", False)
     )
     desktop_cache_enabled = bool(env and getattr(env, "cache_desktop_build", False))
     desktop_cache_enabled = desktop_cache_enabled and desktop_enabled
@@ -255,19 +251,13 @@ def launch_docker_terminal_task(
                 )
             )
 
-        if (
-            not resolved_install_preflight_script
-            and cmd_parts
-            and resolved_probe_available is not True
-        ):
+        if not resolved_install_preflight_script and cmd_parts and resolved_probe_available is not True:
             install_plan = resolve_agent_install_plan(
                 agent_cli=str(cmd_parts[0]),
                 include_internal=False,
             )
             if install_plan is not None:
-                resolved_install_preflight_script = str(
-                    install_plan.script_content or ""
-                ).strip()
+                resolved_install_preflight_script = str(install_plan.script_content or "").strip()
                 resolved_install_phase_name = str(install_plan.phase_name or "").strip()
 
         if container_caching_enabled and resolved_install_preflight_script:
@@ -309,9 +299,7 @@ def launch_docker_terminal_task(
             if desktop_preflight_cached:
                 desktop_run_path = preflights_host_dir / "desktop_run.sh"
                 try:
-                    desktop_preflight_script = desktop_run_path.read_text(
-                        encoding="utf-8"
-                    )
+                    desktop_preflight_script = desktop_run_path.read_text(encoding="utf-8")
                 except Exception:
                     desktop_preflight_script = ""
                 if not desktop_preflight_script.strip():
@@ -376,18 +364,16 @@ def launch_docker_terminal_task(
     # Prepare preflight scripts and get mounts.
     # Desktop caching only pre-installs desktop dependencies into an image layer;
     # runtime desktop services still need to start for each container launch.
-    preflight_clause, preflight_mounts, tmp_paths, desktop_start_clause = (
-        _prepare_preflight_scripts(
-            task_token=task_token,
-            desktop_preflight_script=desktop_preflight_script,
-            settings_preflight_script=settings_preflight_script,
-            setup_agents_script=setup_agents_script,
-            install_preflight_script=resolved_install_preflight_script,
-            skip_install=install_preflight_cached,
-            skip_system=skip_system_preflight,
-            skip_desktop=False,
-            skip_settings=settings_preflight_cached,
-        )
+    preflight_clause, preflight_mounts, tmp_paths, desktop_start_clause = _prepare_preflight_scripts(
+        task_token=task_token,
+        desktop_preflight_script=desktop_preflight_script,
+        settings_preflight_script=settings_preflight_script,
+        setup_agents_script=setup_agents_script,
+        install_preflight_script=resolved_install_preflight_script,
+        skip_install=install_preflight_cached,
+        skip_system=skip_system_preflight,
+        skip_desktop=False,
+        skip_settings=settings_preflight_cached,
     )
 
     if preflight_clause is None:
@@ -420,9 +406,7 @@ def launch_docker_terminal_task(
         if forward_gh_token:
             gh_token = resolve_github_token()
             if gh_token:
-                env_args.extend(
-                    ["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"]
-                )
+                env_args.extend(["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"])
 
         ports_source = (
             list(ports_for_task or [])
@@ -436,19 +420,18 @@ def launch_docker_terminal_task(
         opencode_web_host_port = 0
         opencode_web_container_port = OPENCODE_WEB_CONTAINER_PORT
         if opencode_web_mode:
-            opencode_web_container_port = select_opencode_web_container_port(
-                ports_source
-            )
-            opencode_web_host_port = allocate_localhost_port()
-            port_args.extend(
-                [
-                    "-p",
-                    (
-                        f"{OPENCODE_WEB_HOST}:{opencode_web_host_port}:"
-                        f"{opencode_web_container_port}"
-                    ),
-                ]
-            )
+            if network_host:
+                opencode_web_host_port = allocate_localhost_port()
+                opencode_web_container_port = opencode_web_host_port
+            else:
+                opencode_web_container_port = select_opencode_web_container_port(ports_source)
+                opencode_web_host_port = allocate_localhost_port()
+                port_args.extend(
+                    [
+                        "-p",
+                        (f"{OPENCODE_WEB_HOST}:{opencode_web_host_port}:{opencode_web_container_port}"),
+                    ]
+                )
             opencode_web_url = f"http://{OPENCODE_WEB_HOST}:{opencode_web_host_port}"
             task.opencode_web_url = opencode_web_url
             main_window._on_task_log(
@@ -470,7 +453,20 @@ def launch_docker_terminal_task(
 
         if desktop_enabled:
             host_port = allocate_localhost_port()
-            port_args.extend(["-p", f"127.0.0.1:{host_port}:6080"])
+            if network_host:
+                vnc_host_port = allocate_localhost_port()
+                while vnc_host_port == host_port:
+                    vnc_host_port = allocate_localhost_port()
+                env_args.extend(
+                    [
+                        "-e",
+                        f"VNC_PORT={vnc_host_port}",
+                        "-e",
+                        f"NOVNC_PORT={host_port}",
+                    ]
+                )
+            else:
+                port_args.extend(["-p", f"127.0.0.1:{host_port}:6080"])
             env_args.extend(["-e", f"AGENTS_RUNNER_TASK_ID={task_token}"])
             task.headless_desktop_enabled = True
             task.novnc_url = f"http://127.0.0.1:{host_port}/vnc.html"
@@ -479,17 +475,16 @@ def launch_docker_terminal_task(
             main_window._schedule_save()
 
         # Apply environment-specified ports (or task runtime overrides)
-        for port_spec in ports_source:
-            spec = str(port_spec or "").strip()
-            if not spec:
-                continue
-            if desktop_enabled and publishes_container_port(spec, 6080):
-                continue
-            if opencode_web_mode and publishes_container_port(
-                spec, opencode_web_container_port
-            ):
-                continue
-            port_args.extend(["-p", spec])
+        if not network_host:
+            for port_spec in ports_source:
+                spec = str(port_spec or "").strip()
+                if not spec:
+                    continue
+                if desktop_enabled and publishes_container_port(spec, 6080):
+                    continue
+                if opencode_web_mode and publishes_container_port(spec, opencode_web_container_port):
+                    continue
+                port_args.extend(["-p", spec])
 
         # Prepare extra mounts
         all_mounts: list[str] = []
@@ -532,9 +527,7 @@ def launch_docker_terminal_task(
                 target_cmd = f"/bin/{shell}"
             verify_clause = ""
         elif opencode_web_mode:
-            target_cmd = (
-                f"opencode web --port {opencode_web_container_port} --hostname 0.0.0.0"
-            )
+            target_cmd = f"opencode web --port {opencode_web_container_port} --hostname 0.0.0.0"
             verify_clause = verify_cli_clause("opencode")
         else:
             target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
@@ -543,8 +536,7 @@ def launch_docker_terminal_task(
                 verify_clause = verify_cli_clause(cmd_parts[0])
 
         runtime_cmd_log = (
-            "printf '%s\\n' "
-            f"{shlex.quote(format_log('agent', 'cmd', 'INFO', f'running: {target_cmd}'))}; "
+            f"printf '%s\\n' {shlex.quote(format_log('agent', 'cmd', 'INFO', f'running: {target_cmd}'))}; "
         )
         container_script = (
             "set -euo pipefail; "
@@ -573,6 +565,7 @@ def launch_docker_terminal_task(
             container_script=container_script,
             shell_mode=shell_mode,
             gpu_enabled=gpu_enabled,
+            network_host=network_host,
         )
 
         docker_cmd_for_log = _build_docker_command(
@@ -590,6 +583,7 @@ def launch_docker_terminal_task(
             container_script=container_script,
             shell_mode=shell_mode,
             gpu_enabled=gpu_enabled,
+            network_host=network_host,
         )
         main_window._on_task_log(
             task_id,
@@ -650,9 +644,7 @@ def launch_docker_terminal_task(
         # Update settings
         main_window._settings_data["host_workdir"] = host_workdir
         main_window._settings_data["active_environment_id"] = env_id
-        main_window._settings_data["interactive_terminal_id"] = str(
-            getattr(terminal_opt, "terminal_id", "")
-        )
+        main_window._settings_data["interactive_terminal_id"] = str(getattr(terminal_opt, "terminal_id", ""))
         main_window._apply_active_environment_to_new_task()
         main_window._schedule_save()
 
@@ -664,9 +656,7 @@ def launch_docker_terminal_task(
         main_window._schedule_save()
 
         # Start finish file watcher
-        main_window._start_interactive_finish_watch(
-            task_id, finish_path, error_log_path
-        )
+        main_window._start_interactive_finish_watch(task_id, finish_path, error_log_path)
 
         # Log launch
         main_window._on_task_log(
@@ -748,27 +738,17 @@ def _prepare_preflight_scripts(
     }
 
     desktop_container_path = f"/tmp/agents-runner-preflight-desktop-{task_token}.sh"
-    desktop_start_container_path = (
-        f"/tmp/agents-runner-preflight-desktop-start-{task_token}.sh"
-    )
-    install_container_path = (
-        f"/tmp/agents-runner-preflight-install-agent-{task_token}.sh"
-    )
+    desktop_start_container_path = f"/tmp/agents-runner-preflight-desktop-start-{task_token}.sh"
+    install_container_path = f"/tmp/agents-runner-preflight-install-agent-{task_token}.sh"
     settings_container_path = f"/tmp/agents-runner-preflight-settings-{task_token}.sh"
-    setup_agents_container_path = (
-        f"/tmp/agents-runner-preflight-setup-agents-{task_token}.sh"
-    )
+    setup_agents_container_path = f"/tmp/agents-runner-preflight-setup-agents-{task_token}.sh"
 
-    preflights_host_dir = (
-        Path(__file__).resolve().parent.parent / "preflights"
-    ).resolve()
+    preflights_host_dir = (Path(__file__).resolve().parent.parent / "preflights").resolve()
     preflights_container_dir = "/tmp/agents-runner-preflights"
 
     def _write_preflight_script(script: str, label: str) -> str:
         """Write a preflight script to a temporary file."""
-        fd, tmp_path = tempfile.mkstemp(
-            prefix=f"agents-runner-preflight-{label}-{task_token}-", suffix=".sh"
-        )
+        fd, tmp_path = tempfile.mkstemp(prefix=f"agents-runner-preflight-{label}-{task_token}-", suffix=".sh")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 if not script.endswith("\n"):
@@ -792,16 +772,12 @@ def _prepare_preflight_scripts(
             raise RuntimeError(f"Missing system preflight: {system_preflight_path}")
 
         # Mount the entire preflights directory (read-only) to avoid missing dependency scripts.
-        preflight_mounts.extend(
-            ["-v", f"{preflights_host_dir}:{preflights_container_dir}:ro"]
-        )
+        preflight_mounts.extend(["-v", f"{preflights_host_dir}:{preflights_container_dir}:ro"])
 
         preflights_scripts: dict[str, str] = {}
         try:
             for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                preflights_scripts[candidate.name] = candidate.read_text(
-                    encoding="utf-8"
-                ).strip()
+                preflights_scripts[candidate.name] = candidate.read_text(encoding="utf-8").strip()
         except Exception:
             preflights_scripts = {}
 
@@ -814,27 +790,18 @@ def _prepare_preflight_scripts(
         desktop_start_script = ""
         desktop_preflight_stripped = desktop_install_script.strip()
         if desktop_preflight_stripped:
-            headless_script = preflights_scripts.get(
-                "headless_desktop_novnc.sh", ""
-            ).strip()
-            desktop_install_phase_script = preflights_scripts.get(
-                "desktop_install.sh", ""
-            ).strip()
+            headless_script = preflights_scripts.get("headless_desktop_novnc.sh", "").strip()
+            desktop_install_phase_script = preflights_scripts.get("desktop_install.sh", "").strip()
             desktop_run_script = preflights_scripts.get("desktop_run.sh", "").strip()
             if headless_script and desktop_preflight_stripped == headless_script:
                 if desktop_install_phase_script:
                     desktop_install_script = desktop_install_phase_script
                 if desktop_run_script:
                     desktop_start_script = desktop_run_script
-            elif (
-                desktop_run_script and desktop_preflight_stripped == desktop_run_script
-            ):
+            elif desktop_run_script and desktop_preflight_stripped == desktop_run_script:
                 desktop_install_script = ""
                 desktop_start_script = desktop_run_script
-            elif (
-                desktop_install_phase_script
-                and desktop_preflight_stripped == desktop_install_phase_script
-            ):
+            elif desktop_install_phase_script and desktop_preflight_stripped == desktop_install_phase_script:
                 desktop_install_script = desktop_install_phase_script
                 if desktop_run_script:
                     desktop_start_script = desktop_run_script
@@ -981,6 +948,7 @@ def _build_docker_command(
     container_script: str,
     shell_mode: bool = False,
     gpu_enabled: bool = False,
+    network_host: bool = False,
 ) -> str:
     """Build complete Docker run command string.
 
@@ -999,17 +967,20 @@ def _build_docker_command(
         container_script: Container script to execute
         shell_mode: If True, skip agent config dir mount (for "To Shell" feature)
         gpu_enabled: If True, add `--gpus all` to docker run
+        network_host: If True, add `--network host` to docker run
 
     Returns:
         Complete Docker command string
     """
     docker_platform_args = docker_platform_args_for_pixelarch()
     gpu_args = ["--gpus", "all"] if bool(gpu_enabled) else []
+    network_args = ["--network", "host"] if bool(network_host) else []
     docker_args: list[str] = [
         "docker",
         "run",
         *docker_platform_args,
         *gpu_args,
+        *network_args,
         "-it",
         "--name",
         container_name,

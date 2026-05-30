@@ -29,10 +29,7 @@ WORKSPACE_DIR = "/home/midori-ai/workspace"
 def _has_yolo_permissions(parts: list[str]) -> bool:
     if "--yolo" in parts or "--allow-all" in parts:
         return True
-    return all(
-        flag in parts
-        for flag in ("--allow-all-tools", "--allow-all-paths", "--allow-all-urls")
-    )
+    return all(flag in parts for flag in ("--allow-all-tools", "--allow-all-paths", "--allow-all-urls"))
 
 
 class CopilotAgentSystemPlugin:

@@ -38,11 +38,7 @@ class SmokeAgentSystemPlugin:
     def plan(self, req: AgentSystemRequest) -> AgentSystemPlan:
         context = req.context
         prompt = str(req.prompt or "").strip()
-        extra_args = [
-            str(arg).strip()
-            for arg in (context.extra_cli_args or [])
-            if str(arg).strip()
-        ]
+        extra_args = [str(arg).strip() for arg in (context.extra_cli_args or []) if str(arg).strip()]
 
         if extra_args:
             argv = ["sh", *extra_args]

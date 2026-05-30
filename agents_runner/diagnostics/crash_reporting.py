@@ -22,9 +22,7 @@ def crash_reports_dir() -> Path:
 
 
 def _format_exception(exc: BaseException) -> str:
-    return "".join(
-        traceback.format_exception(type(exc), exc, exc.__traceback__)
-    ).strip()
+    return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).strip()
 
 
 def _build_report_payload(
@@ -103,14 +101,8 @@ def install_exception_hooks(*, argv: list[str] | None = None) -> None:
             exc_tb: types.TracebackType | None,
         ) -> None:
             try:
-                exc = (
-                    exc_value
-                    if isinstance(exc_value, BaseException)
-                    else RuntimeError(str(exc_value))
-                )
-                path = report_fatal_exception(
-                    exc, context="sys.excepthook", argv=argv or list(sys.argv)
-                )
+                exc = exc_value if isinstance(exc_value, BaseException) else RuntimeError(str(exc_value))
+                path = report_fatal_exception(exc, context="sys.excepthook", argv=argv or list(sys.argv))
                 if path is not None:
                     print(
                         f"Agents Runner crashed. Crash report: {path}",

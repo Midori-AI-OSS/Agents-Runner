@@ -106,9 +106,7 @@ class PastTaskProgressiveLoader:
             return
 
         try:
-            loaded = self._load_callback(
-                self._current_offset, self.PROGRESSIVE_BATCH_SIZE
-            )
+            loaded = self._load_callback(self._current_offset, self.PROGRESSIVE_BATCH_SIZE)
             # Validate return value
             if not isinstance(loaded, int) or loaded < 0:
                 loaded = 0

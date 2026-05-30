@@ -94,16 +94,12 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
         if bool(getattr(self, "_task_workspace_cleanup_running", False)):
             return
         try:
-            interval_minutes = int(
-                self._settings_data.get("task_workspace_cleanup_interval_minutes", 60)
-            )
+            interval_minutes = int(self._settings_data.get("task_workspace_cleanup_interval_minutes", 60))
         except Exception:
             interval_minutes = 60
         interval_s = max(5, interval_minutes) * 60.0
         now_s = time.time()
-        last_s = float(
-            getattr(self, "_task_workspace_cleanup_last_check_s", 0.0) or 0.0
-        )
+        last_s = float(getattr(self, "_task_workspace_cleanup_last_check_s", 0.0) or 0.0)
         if now_s - last_s < interval_s:
             return
         self._task_workspace_cleanup_last_check_s = now_s
@@ -119,15 +115,11 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
 
     def _run_task_workspace_cleanup(self) -> None:
         try:
-            retention_days = int(
-                self._settings_data.get("task_workspace_cleanup_retention_days", 30)
-            )
+            retention_days = int(self._settings_data.get("task_workspace_cleanup_retention_days", 30))
         except Exception:
             retention_days = 30
         try:
-            scan_delay_seconds = int(
-                self._settings_data.get("task_workspace_cleanup_scan_delay_seconds", 5)
-            )
+            scan_delay_seconds = int(self._settings_data.get("task_workspace_cleanup_scan_delay_seconds", 5))
         except Exception:
             scan_delay_seconds = 5
         active_task_ids: set[str] = set()
@@ -140,9 +132,7 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
                 continue
             if task.is_active():
                 active_task_ids.add(task_id)
-            finalization_state = (
-                str(getattr(task, "finalization_state", "") or "").strip().lower()
-            )
+            finalization_state = str(getattr(task, "finalization_state", "") or "").strip().lower()
             if finalization_state in {"pending", "running"}:
                 finalizing_task_ids.add(task_id)
         removed = cleanup_retained_task_workspaces(
@@ -437,9 +427,7 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
         self._schedule_save()
         self.host_log.emit(
             task_id,
-            format_log(
-                "host", "finalize", "INFO", f"finalization running (reason={reason})"
-            ),
+            format_log("host", "finalize", "INFO", f"finalization running (reason={reason})"),
         )
 
         try:
@@ -454,9 +442,7 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
                 timeout_s = 30.0
                 if runner_config is not None:
                     try:
-                        timeout_s = float(
-                            getattr(runner_config, "artifact_collection_timeout_s")
-                        )
+                        timeout_s = float(getattr(runner_config, "artifact_collection_timeout_s"))
                     except Exception:
                         timeout_s = 30.0
                 if timeout_s <= 0.0:
@@ -594,9 +580,7 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
             else:
                 self.host_log.emit(
                     task_id,
-                    format_log(
-                        "gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"
-                    ),
+                    format_log("gh", "pr", "INFO", f"PR creation skipped: {skip_reason}"),
                 )
 
             task.finalization_state = "done"

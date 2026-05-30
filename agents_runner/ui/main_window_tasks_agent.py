@@ -392,6 +392,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
         env_headless_desktop = bool(getattr(env, "headless_desktop_enabled", False)) if env else False
         headless_desktop_enabled = bool(force_headless_desktop or env_headless_desktop)
         gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
+        network_host = self._effective_network_host(env=env, settings=self._settings_data)
         desktop_cache_enabled = bool(getattr(env, "cache_desktop_build", False)) if env else False
         container_caching_enabled = bool(getattr(env, "container_caching_enabled", False)) if env else False
         cache_system_preflight_enabled = bool(getattr(env, "cache_system_preflight_enabled", False)) if env else False
@@ -401,14 +402,18 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
         # Only enable cache if desktop is enabled
         desktop_cache_enabled = desktop_cache_enabled and headless_desktop_enabled
 
-        port_decision = resolve_launch_port_decision(
-            parent=self,
-            port_specs=(getattr(env, "ports", []) if env else []),
-        )
-        if port_decision.outcome == "conflict_cancel":
-            return None
-        ports_for_task = list(port_decision.ports_for_task)
-        port_remaps_for_log = list(port_decision.remaps)
+        if network_host:
+            ports_for_task = []
+            port_remaps_for_log = []
+        else:
+            port_decision = resolve_launch_port_decision(
+                parent=self,
+                port_specs=(getattr(env, "ports", []) if env else []),
+            )
+            if port_decision.outcome == "conflict_cancel":
+                return None
+            ports_for_task = list(port_decision.ports_for_task)
+            port_remaps_for_log = list(port_decision.remaps)
 
         task = Task(
             task_id=task_id,
@@ -788,6 +793,7 @@ class MainWindowTasksAgentMixin(_MainWindowHints):
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
             gpu_enabled=gpu_enabled,
+            network_host=network_host,
             setup_agents_missing_prompt_enabled=bool(
                 env and getattr(env, "setup_agents_missing_prompt_enabled", False)
             ),

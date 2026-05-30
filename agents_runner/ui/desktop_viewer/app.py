@@ -144,9 +144,7 @@ def run_desktop_viewer(args: list[str]) -> int:
     _maybe_install_exception_hooks(args)
     _debug_log(f"XDG_SESSION_TYPE={os.environ.get('XDG_SESSION_TYPE')}")
     _debug_log(f"QT_QPA_PLATFORM={os.environ.get('QT_QPA_PLATFORM')}")
-    _debug_log(
-        f"QTWEBENGINE_CHROMIUM_FLAGS={os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS')}"
-    )
+    _debug_log(f"QTWEBENGINE_CHROMIUM_FLAGS={os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS')}")
 
     try:
         from PySide6.QtWebEngineWidgets import QWebEngineView as _QWebEngineView
@@ -177,9 +175,7 @@ def run_desktop_viewer(args: list[str]) -> int:
         app.setWindowIcon(QIcon(str(icon_path)))
 
     if fault_log_path is not None:
-        logger.rprint(
-            f"[Desktop Viewer] faulthandler enabled: {fault_log_path}", mode="normal"
-        )
+        logger.rprint(f"[Desktop Viewer] faulthandler enabled: {fault_log_path}", mode="normal")
 
     window = DesktopViewerWindow(url=parsed.url, title=parsed.title)
     window.show()
@@ -214,8 +210,7 @@ class DesktopViewerWindow(QMainWindow):
             from PySide6.QtWidgets import QLabel
 
             error_label = QLabel(
-                "QtWebEngine not available.\n"
-                "Please install PySide6-WebEngine or open the URL in a browser."
+                "QtWebEngine not available.\nPlease install PySide6-WebEngine or open the URL in a browser."
             )
             error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(error_label)

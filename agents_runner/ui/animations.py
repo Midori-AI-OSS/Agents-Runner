@@ -24,9 +24,7 @@ class AnimationPresets:
     EASE_BOUNCE = QEasingCurve.Type.OutBack
 
 
-def fade_in(
-    widget: QWidget, duration: int = AnimationPresets.DURATION_NORMAL, delay: int = 0
-) -> QPropertyAnimation:
+def fade_in(widget: QWidget, duration: int = AnimationPresets.DURATION_NORMAL, delay: int = 0) -> QPropertyAnimation:
     """Create a fade-in animation for a widget."""
     effect = widget.graphicsEffect()
     if not isinstance(effect, QGraphicsOpacityEffect):
@@ -50,9 +48,7 @@ def fade_in(
     return anim
 
 
-def fade_out(
-    widget: QWidget, duration: int = AnimationPresets.DURATION_NORMAL
-) -> QPropertyAnimation:
+def fade_out(widget: QWidget, duration: int = AnimationPresets.DURATION_NORMAL) -> QPropertyAnimation:
     """Create a fade-out animation for a widget."""
     effect = widget.graphicsEffect()
     if not isinstance(effect, QGraphicsOpacityEffect):
@@ -187,10 +183,7 @@ class _ButtonAnimationFilter:
 
         style = self._button.styleSheet()
         if "background" not in style:
-            style = (
-                self._original_style
-                + "\nQToolButton:hover { background-color: rgba(255, 255, 255, 20); }"
-            )
+            style = self._original_style + "\nQToolButton:hover { background-color: rgba(255, 255, 255, 20); }"
             self._button.setStyleSheet(style)
 
     def _on_hover_leave(self) -> None:

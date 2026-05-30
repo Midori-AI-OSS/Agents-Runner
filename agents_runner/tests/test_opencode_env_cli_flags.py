@@ -271,9 +271,7 @@ class _DummyMainWindowAgent(
         return False
 
 
-def test_selected_environment_agent_cli_flags_reach_interactive_launch(
-    monkeypatch, tmp_path
-) -> None:
+def test_selected_environment_agent_cli_flags_reach_interactive_launch(monkeypatch, tmp_path) -> None:
     workdir = tmp_path / "workspace"
     workdir.mkdir(parents=True, exist_ok=True)
 
@@ -339,9 +337,7 @@ def test_selected_environment_agent_cli_flags_reach_interactive_launch(
         lambda name: "/usr/bin/docker" if name == "docker" else None,
     )
     monkeypatch.setattr(interactive_module, "QMessageBox", _FakeMessageBox)
-    monkeypatch.setattr(
-        interactive_module, "InteractivePrepWorker", _CapturingPrepWorker
-    )
+    monkeypatch.setattr(interactive_module, "InteractivePrepWorker", _CapturingPrepWorker)
     monkeypatch.setattr(interactive_module, "InteractivePrepBridge", _FakePrepBridge)
     monkeypatch.setattr(interactive_module, "QThread", _FakeThread)
     monkeypatch.setattr(interactive_module, "is_gh_available", lambda: False)
@@ -369,9 +365,7 @@ def test_selected_environment_agent_cli_flags_reach_interactive_launch(
     assert worker.kwargs.get("agent_cli_args") == ["--agent", "plan"]
 
 
-def test_selected_environment_agent_cli_flags_reach_run_agent_launch(
-    monkeypatch, tmp_path
-) -> None:
+def test_selected_environment_agent_cli_flags_reach_run_agent_launch(monkeypatch, tmp_path) -> None:
     workdir = tmp_path / "workspace"
     workdir.mkdir(parents=True, exist_ok=True)
 

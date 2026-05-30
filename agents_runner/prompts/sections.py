@@ -33,9 +33,7 @@ def append_prompt_sections(prompt: str, sections: Sequence[str]) -> str:
     return compose_prompt_sections([*existing, *additions])
 
 
-def insert_prompt_sections_before_user_prompt(
-    prompt: str, sections: Sequence[str]
-) -> str:
+def insert_prompt_sections_before_user_prompt(prompt: str, sections: Sequence[str]) -> str:
     existing = split_prompt_sections(prompt)
     additions = [_clean_section(section) for section in sections]
     additions = [section for section in additions if section]

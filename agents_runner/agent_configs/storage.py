@@ -65,9 +65,7 @@ def load_agent_configs(state_path: str) -> list[AgentConfig]:
     return configs
 
 
-def resolve_agent_config(
-    config_id: str, agent_configs: dict[str, AgentConfig]
-) -> AgentConfig | None:
+def resolve_agent_config(config_id: str, agent_configs: dict[str, AgentConfig]) -> AgentConfig | None:
     """Look up an AgentConfig by config_id.
 
     Returns ``None`` when ``config_id`` is empty or missing from ``agent_configs``.
@@ -161,10 +159,7 @@ def find_envs_referencing_config(state_path: str, config_id: str) -> list[str]:
 
         selection = getattr(env, "agent_selection", None)
         agents = selection.agents if selection is not None else []
-        if any(
-            str(getattr(agent, "config_id", "") or "").strip() == target
-            for agent in agents
-        ):
+        if any(str(getattr(agent, "config_id", "") or "").strip() == target for agent in agents):
             referenced.append(env_id)
             seen.add(env_id)
 

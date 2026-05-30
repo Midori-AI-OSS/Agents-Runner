@@ -44,9 +44,7 @@ class AgentConfigDialog(ThemedDialog):
         super().__init__(parent)
         self._editing = config is not None
         self._result: AgentConfig | None = None
-        self._original_config_id = (
-            str(getattr(config, "config_id", "") or "").strip().lower()
-        )
+        self._original_config_id = str(getattr(config, "config_id", "") or "").strip().lower()
 
         self.setWindowTitle("Edit Agent Config" if self._editing else "Agent Config")
         self.setMinimumWidth(520)
@@ -54,9 +52,7 @@ class AgentConfigDialog(ThemedDialog):
         layout = self.content_layout()
 
         self._model_variants: dict[str, list[str]] = {}
-        self._models_by_provider: dict[str, list[tuple[str, str, list[str]]]] | None = (
-            None
-        )
+        self._models_by_provider: dict[str, list[tuple[str, str, list[str]]]] | None = None
         self._form = QFormLayout()
         self._form.setContentsMargins(0, 0, 0, 0)
         self._form.setHorizontalSpacing(12)
@@ -116,10 +112,7 @@ class AgentConfigDialog(ThemedDialog):
 
         layout.addStretch(1)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Cancel
-            | QDialogButtonBox.StandardButton.Save
-        )
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel | QDialogButtonBox.StandardButton.Save)
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self._on_save)
         layout.addWidget(buttons)
@@ -176,11 +169,7 @@ class AgentConfigDialog(ThemedDialog):
         was_blocked = self._model_combo.blockSignals(True)
         self._model_combo.clear()
         self._model_combo.addItem("—", "")
-        models = (
-            self._models_by_provider.get(provider, [])
-            if self._models_by_provider is not None
-            else []
-        )
+        models = self._models_by_provider.get(provider, []) if self._models_by_provider is not None else []
         for model_id, display_label, variants in models:
             normalized_model_id = str(model_id or "").strip()
             if not normalized_model_id:
@@ -279,17 +268,12 @@ class AgentConfigDialog(ThemedDialog):
         normalized = str(value or "").strip()
         if normalized and self._combo_index_for_data(self._model_combo, normalized) < 0:
             self._model_variants.setdefault(normalized, [])
-            self._model_combo.addItem(
-                self._format_model_label(normalized, ""), normalized
-            )
+            self._model_combo.addItem(self._format_model_label(normalized, ""), normalized)
         self._set_combo_current_data(self._model_combo, normalized)
 
     def _set_variant_selection(self, value: str) -> None:
         normalized = str(value or "").strip()
-        if (
-            normalized
-            and self._combo_index_for_data(self._variant_combo, normalized) < 0
-        ):
+        if normalized and self._combo_index_for_data(self._variant_combo, normalized) < 0:
             self._variant_combo.addItem(normalized, normalized)
         self._set_combo_current_data(self._variant_combo, normalized)
 
@@ -305,18 +289,13 @@ class AgentConfigDialog(ThemedDialog):
             self._variant_combo.addItem(variant_name, variant_name)
 
         normalized_variant = str(selected_variant or "").strip()
-        if (
-            normalized_variant
-            and self._combo_index_for_data(self._variant_combo, normalized_variant) < 0
-        ):
+        if normalized_variant and self._combo_index_for_data(self._variant_combo, normalized_variant) < 0:
             self._variant_combo.addItem(normalized_variant, normalized_variant)
         self._variant_combo.blockSignals(was_blocked)
         self._set_combo_current_data(self._variant_combo, normalized_variant)
 
     def _update_opencode_fields_visibility(self) -> None:
-        is_opencode = (
-            str(self._agent_cli.currentData() or "").strip().lower() == "opencode"
-        )
+        is_opencode = str(self._agent_cli.currentData() or "").strip().lower() == "opencode"
         self._set_form_row_visible(self._agent_edit, is_opencode)
         self._set_form_row_visible(self._provider_combo, is_opencode)
         self._set_form_row_visible(self._model_combo, is_opencode)

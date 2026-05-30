@@ -85,21 +85,11 @@ class MountsTabWidget(QWidget):
 
         self._table = QTableWidget()
         self._table.setColumnCount(4)
-        self._table.setHorizontalHeaderLabels(
-            ["Host path", "Container path", "Mode", ""]
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_HOST_PATH, QHeaderView.Stretch
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_CONTAINER_PATH, QHeaderView.Stretch
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_MODE, QHeaderView.ResizeToContents
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_REMOVE, QHeaderView.ResizeToContents
-        )
+        self._table.setHorizontalHeaderLabels(["Host path", "Container path", "Mode", ""])
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_HOST_PATH, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_CONTAINER_PATH, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_MODE, QHeaderView.ResizeToContents)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeToContents)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
         self._table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
@@ -173,19 +163,13 @@ class MountsTabWidget(QWidget):
         else:
             self._advanced_mode = bool(advanced_mode) or use_advanced_mode
         self._advanced_acknowledged = (
-            bool(advanced_acknowledged)
-            if advanced_acknowledged is not None
-            else bool(self._advanced_mode)
+            bool(advanced_acknowledged) if advanced_acknowledged is not None else bool(self._advanced_mode)
         ) or bool(self._advanced_mode)
 
         self._advanced_text.blockSignals(True)
         try:
             self._advanced_text.setPlainText(
-                "\n".join(
-                    str(spec or "").strip()
-                    for spec in mounts or []
-                    if str(spec or "").strip()
-                )
+                "\n".join(str(spec or "").strip() for spec in mounts or [] if str(spec or "").strip())
             )
         finally:
             self._advanced_text.blockSignals(False)
@@ -224,16 +208,12 @@ class MountsTabWidget(QWidget):
             return
         for row_index in range(len(self._rows)):
             host_widget = self._table.cellWidget(row_index, self._COL_HOST_PATH)
-            container_widget = self._table.cellWidget(
-                row_index, self._COL_CONTAINER_PATH
-            )
+            container_widget = self._table.cellWidget(row_index, self._COL_CONTAINER_PATH)
             mode_widget = self._table.cellWidget(row_index, self._COL_MODE)
             if isinstance(host_widget, QLineEdit):
                 self._rows[row_index].host_path = str(host_widget.text() or "")
             if isinstance(container_widget, QLineEdit):
-                self._rows[row_index].container_path = str(
-                    container_widget.text() or ""
-                )
+                self._rows[row_index].container_path = str(container_widget.text() or "")
             if isinstance(mode_widget, QComboBox):
                 mode = str(mode_widget.currentData() or "rw").strip().lower() or "rw"
                 self._rows[row_index].mode = mode
@@ -306,9 +286,7 @@ class MountsTabWidget(QWidget):
         for index, spec in enumerate(mounts, start=1):
             row = _simple_mount_row_from_spec(spec)
             if row is None:
-                errors.append(
-                    f"line {index}: expected host_path:container_path[:rw|ro|cached|delegated]"
-                )
+                errors.append(f"line {index}: expected host_path:container_path[:rw|ro|cached|delegated]")
                 continue
             rows.append(row)
 
@@ -335,19 +313,13 @@ class MountsTabWidget(QWidget):
 
                 host_edit = QLineEdit(str(row.host_path or ""))
                 host_edit.setPlaceholderText("/host/path")
-                host_edit.textChanged.connect(
-                    lambda text, i=row_index: self._on_host_path_changed(i, text)
-                )
+                host_edit.textChanged.connect(lambda text, i=row_index: self._on_host_path_changed(i, text))
                 self._table.setCellWidget(row_index, self._COL_HOST_PATH, host_edit)
 
                 container_edit = QLineEdit(str(row.container_path or ""))
                 container_edit.setPlaceholderText("/container/path")
-                container_edit.textChanged.connect(
-                    lambda text, i=row_index: self._on_container_path_changed(i, text)
-                )
-                self._table.setCellWidget(
-                    row_index, self._COL_CONTAINER_PATH, container_edit
-                )
+                container_edit.textChanged.connect(lambda text, i=row_index: self._on_container_path_changed(i, text))
+                self._table.setCellWidget(row_index, self._COL_CONTAINER_PATH, container_edit)
 
                 mode_combo = QComboBox()
                 for mode in _MOUNT_MODES:
@@ -357,9 +329,7 @@ class MountsTabWidget(QWidget):
                     mode_index = mode_combo.findData("rw")
                 mode_combo.setCurrentIndex(mode_index)
                 mode_combo.currentIndexChanged.connect(
-                    lambda _idx, i=row_index, combo=mode_combo: self._on_mode_changed(
-                        i, combo
-                    )
+                    lambda _idx, i=row_index, combo=mode_combo: self._on_mode_changed(i, combo)
                 )
                 self._table.setCellWidget(row_index, self._COL_MODE, mode_combo)
 
@@ -368,9 +338,7 @@ class MountsTabWidget(QWidget):
                 remove_btn.setIcon(lucide_icon("trash-2"))
                 remove_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
                 remove_btn.setToolTip("Remove row")
-                remove_btn.clicked.connect(
-                    lambda _=False, i=row_index: self._on_remove_row(i)
-                )
+                remove_btn.clicked.connect(lambda _=False, i=row_index: self._on_remove_row(i))
                 self._table.setCellWidget(row_index, self._COL_REMOVE, remove_btn)
         finally:
             self._table.blockSignals(False)

@@ -22,15 +22,11 @@ class SpellTextEdit(QPlainTextEdit):
     - Can be enabled/disabled dynamically
     """
 
-    def __init__(
-        self, parent: QWidget | None = None, spellcheck_enabled: bool = True
-    ) -> None:
+    def __init__(self, parent: QWidget | None = None, spellcheck_enabled: bool = True) -> None:
         super().__init__(parent)
 
         # Create spell highlighter
-        self._spell_highlighter = SpellHighlighter(
-            self.document(), enabled=spellcheck_enabled
-        )
+        self._spell_highlighter = SpellHighlighter(self.document(), enabled=spellcheck_enabled)
 
     def set_spellcheck_enabled(self, enabled: bool) -> None:
         """Enable or disable spell checking."""
@@ -53,11 +49,7 @@ class SpellTextEdit(QPlainTextEdit):
         menu = self.createStandardContextMenu()
 
         # If we have a word and spell checking is enabled, add suggestions
-        if (
-            word
-            and self._spell_highlighter.enabled
-            and self._spell_highlighter.spell_checker
-        ):
+        if word and self._spell_highlighter.enabled and self._spell_highlighter.spell_checker:
             # Check if word is misspelled
             if self._spell_highlighter.is_misspelled(word):
                 # Get suggestions
@@ -71,11 +63,7 @@ class SpellTextEdit(QPlainTextEdit):
                     # Add suggestion actions
                     for suggestion in suggestions:
                         action = menu.addAction(f"Replace with '{suggestion}'")
-                        action.triggered.connect(
-                            lambda checked=False, s=suggestion, c=cursor: (
-                                self._replace_word(c, s)
-                            )
-                        )
+                        action.triggered.connect(lambda checked=False, s=suggestion, c=cursor: self._replace_word(c, s))
                         if first_action:
                             menu.insertAction(first_action, action)
                             first_action = action
@@ -90,9 +78,7 @@ class SpellTextEdit(QPlainTextEdit):
 
                 # Add "Add to dictionary" option
                 add_to_dict_action = menu.addAction(f"Add '{word}' to dictionary")
-                add_to_dict_action.triggered.connect(
-                    lambda checked=False, w=word: self._add_to_dictionary(w)
-                )
+                add_to_dict_action.triggered.connect(lambda checked=False, w=word: self._add_to_dictionary(w))
 
                 # Insert at top if we have actions
                 if menu.actions():
@@ -100,9 +86,7 @@ class SpellTextEdit(QPlainTextEdit):
                         # Insert after suggestions and separator
                         insert_index = len(suggestions) + 1
                         if insert_index < len(menu.actions()):
-                            menu.insertAction(
-                                menu.actions()[insert_index], add_to_dict_action
-                            )
+                            menu.insertAction(menu.actions()[insert_index], add_to_dict_action)
                     else:
                         # Insert at very top
                         menu.insertAction(menu.actions()[0], add_to_dict_action)

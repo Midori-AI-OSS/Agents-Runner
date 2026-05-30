@@ -63,9 +63,7 @@ class PromptAssembler:
                     prompt_for_agent,
                     [combined_template],
                 )
-                self._on_log(
-                    format_log("env", "template", "INFO", "injected template prompts")
-                )
+                self._on_log(format_log("env", "template", "INFO", "injected template prompts"))
 
         if desktop_enabled:
             prompt_for_agent = insert_prompt_sections_before_user_prompt(
@@ -151,9 +149,7 @@ class PromptAssembler:
             env = environments.get(str(self._environment_id))
             if env is not None:
                 cross_agents_enabled = bool(
-                    env.use_cross_agents is True
-                    and env.cross_agent_allowlist
-                    and len(env.cross_agent_allowlist) > 0
+                    env.use_cross_agents is True and env.cross_agent_allowlist and len(env.cross_agent_allowlist) > 0
                 )
                 return (cross_agents_enabled, env)
         except Exception as exc:
@@ -205,9 +201,7 @@ class PromptAssembler:
                 continue
 
             try:
-                allowlist_cli_prompt = load_prompt(
-                    f"templates/agentcli/{normalized_cli}"
-                ).strip()
+                allowlist_cli_prompt = load_prompt(f"templates/agentcli/{normalized_cli}").strip()
                 if allowlist_cli_prompt:
                     allowlist_templates.append(allowlist_cli_prompt)
                     loaded_allowlist_clis.add(normalized_cli)

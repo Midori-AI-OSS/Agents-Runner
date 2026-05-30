@@ -228,6 +228,7 @@ class Environment:
     max_agents_running: int = -1
     headless_desktop_enabled: bool = False
     gpu_override_mode: str = GPU_OVERRIDE_MODE_INHERIT
+    network_host_override_mode: str = GPU_OVERRIDE_MODE_INHERIT
     opencode_interactive_mode: str = OPENCODE_INTERACTIVE_OVERRIDE_INHERIT
     cache_desktop_build: bool = False
     container_caching_enabled: bool = False

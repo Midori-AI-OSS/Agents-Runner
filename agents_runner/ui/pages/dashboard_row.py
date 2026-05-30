@@ -56,9 +56,7 @@ class ElidedLabel(QLabel):
     def _update_elide(self) -> None:
         """Update the displayed text with elision if necessary."""
         metrics = QFontMetrics(self.font())
-        elided = metrics.elidedText(
-            self._full_text, Qt.TextElideMode.ElideRight, max(10, self.width() - 4)
-        )
+        elided = metrics.elidedText(self._full_text, Qt.TextElideMode.ElideRight, max(10, self.width() - 4))
         super().setText(elided)
 
 
@@ -72,9 +70,7 @@ class TaskRow(QWidget):
     clicked = Signal()
     discard_requested = Signal(str)
 
-    def __init__(
-        self, parent: QWidget | None = None, *, discard_enabled: bool = True
-    ) -> None:
+    def __init__(self, parent: QWidget | None = None, *, discard_enabled: bool = True) -> None:
         super().__init__(parent)
         self.setFixedHeight(52)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -105,9 +101,7 @@ class TaskRow(QWidget):
         self._glyph = StatusGlyph(size=18)
         self._glyph.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._busy_bar = BouncingLoadingBar(width=72, height=8)
-        self._busy_bar.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
-        )
+        self._busy_bar.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._busy_bar.hide()
         self._status = QLabel("idle")
         self._status.setStyleSheet("color: rgba(237, 239, 245, 190);")
@@ -129,9 +123,7 @@ class TaskRow(QWidget):
         self._btn_discard.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_discard.setToolTip("Discard task")
         self._btn_discard.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._btn_discard.setIconSize(
-            self._btn_discard.iconSize().expandedTo(self._glyph.size())
-        )
+        self._btn_discard.setIconSize(self._btn_discard.iconSize().expandedTo(self._glyph.size()))
         self._btn_discard.clicked.connect(self._on_discard_clicked)
         self._btn_discard.setVisible(bool(discard_enabled))
         self._btn_discard.setEnabled(bool(discard_enabled))

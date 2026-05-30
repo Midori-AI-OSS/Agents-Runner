@@ -57,10 +57,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
                     normalized_logs.extend(normalize_log_stream_chunk(line))
                     if len(normalized_logs) > 6000:
                         normalized_logs = normalized_logs[-5000:]
-                task.logs = [
-                    format_log_display(prettify_log_line(line))
-                    for line in normalized_logs
-                ]
+                task.logs = [format_log_display(prettify_log_line(line)) for line in normalized_logs]
 
         self._details.show_task(task)
         self._show_task_details()
@@ -73,14 +70,10 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
             return
 
         bridge = self._bridges.get(task_id)
-        container_id = task.container_id or (
-            bridge.container_id if bridge is not None else None
-        )
+        container_id = task.container_id or (bridge.container_id if bridge is not None else None)
         container_id = str(container_id or "").strip()
         if not container_id:
-            QMessageBox.information(
-                self, "No container", "This task does not have a container ID yet."
-            )
+            QMessageBox.information(self, "No container", "This task does not have a container ID yet.")
             return
 
         if action in {"stop", "kill"}:
@@ -119,16 +112,10 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
                     bridge = None
 
             if bridge is None:
-                docker_args = (
-                    ["kill", container_id]
-                    if is_kill
-                    else ["stop", "-t", "1", container_id]
-                )
+                docker_args = ["kill", container_id] if is_kill else ["stop", "-t", "1", container_id]
                 self._on_task_log(
                     task_id,
-                    format_log(
-                        "docker", "cmd", "INFO", f"docker {' '.join(docker_args)}"
-                    ),
+                    format_log("docker", "cmd", "INFO", f"docker {' '.join(docker_args)}"),
                 )
                 try:
                     completed = subprocess.run(
@@ -139,17 +126,13 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
                         timeout=10.0 if is_kill else 20.0,
                     )
                 except Exception as exc:
-                    self._on_task_log(
-                        task_id, format_log("docker", "cmd", "ERROR", str(exc))
-                    )
+                    self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", str(exc)))
                     completed = None
 
                 if completed is not None and completed.returncode != 0:
                     detail = (completed.stderr or completed.stdout or "").strip()
                     if detail:
-                        self._on_task_log(
-                            task_id, format_log("docker", "cmd", "ERROR", detail)
-                        )
+                        self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", detail))
 
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
@@ -205,9 +188,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
             return
 
         if completed.returncode != 0:
-            detail = (
-                completed.stderr or completed.stdout or ""
-            ).strip() or f"docker exited {completed.returncode}"
+            detail = (completed.stderr or completed.stdout or "").strip() or f"docker exited {completed.returncode}"
             self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", detail))
             QMessageBox.warning(self, "Docker command failed", detail)
 
@@ -231,10 +212,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
             f"{prompt}\n\n"
             "This removes it from the list, archives it for auditing, and will attempt to stop/remove any running container."
         )
-        if (
-            QMessageBox.question(self, "Discard task?", message)
-            != QMessageBox.StandardButton.Yes
-        ):
+        if QMessageBox.question(self, "Discard task?", message) != QMessageBox.StandardButton.Yes:
             return
 
         task.status = "discarded"
@@ -252,9 +230,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
         prep_worker = prep_workers.get(task_id)
         prep_thread = prep_threads.get(task_id)
         prep_bridge = prep_bridges.get(task_id)
-        container_id = task.container_id or (
-            bridge.container_id if bridge is not None else None
-        )
+        container_id = task.container_id or (bridge.container_id if bridge is not None else None)
         watch = self._interactive_watch.get(task_id)
         if watch is not None:
             _, stop = watch
@@ -386,12 +362,8 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
         bridge.log.connect(proxy.enqueue_log, Qt.ConnectionType.DirectConnection)
         bridge.done.connect(proxy.enqueue_done, Qt.ConnectionType.DirectConnection)
         if include_supervisor_events:
-            bridge.retry_attempt.connect(
-                proxy.enqueue_retry, Qt.ConnectionType.DirectConnection
-            )
-            bridge.agent_switched.connect(
-                proxy.enqueue_agent_switched, Qt.ConnectionType.DirectConnection
-            )
+            bridge.retry_attempt.connect(proxy.enqueue_retry, Qt.ConnectionType.DirectConnection)
+            bridge.agent_switched.connect(proxy.enqueue_agent_switched, Qt.ConnectionType.DirectConnection)
 
     def _drain_task_event_proxies(self) -> None:
         proxies = getattr(self, "_task_event_proxies", {})
@@ -405,9 +377,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
             events = proxy.drain(max_events=600)
             if not events:
                 continue
-            self._dispatch_buffered_task_events(
-                task_id=task_id, proxy=proxy, events=events
-            )
+            self._dispatch_buffered_task_events(task_id=task_id, proxy=proxy, events=events)
             if proxy.releasable():
                 self._remove_task_event_proxy(task_id)
 
@@ -485,9 +455,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
     def _on_bridge_log(self, task_id: str, line: str) -> None:
         self._on_task_log(task_id, line)
 
-    def _on_bridge_retry_attempt(
-        self, task_id: str, attempt_number: int, agent: str, delay: float
-    ) -> None:
+    def _on_bridge_retry_attempt(self, task_id: str, attempt_number: int, agent: str, delay: float) -> None:
         """Handle retry attempt signal from supervisor."""
         task = self._tasks.get(task_id)
         if task is None:
@@ -510,9 +478,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
         spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
-    def _on_bridge_agent_switched(
-        self, task_id: str, from_agent: str, to_agent: str
-    ) -> None:
+    def _on_bridge_agent_switched(self, task_id: str, from_agent: str, to_agent: str) -> None:
         """Handle agent switch signal from supervisor."""
         task = self._tasks.get(task_id)
         if task is None:
@@ -728,11 +694,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
 
         if current not in {"done", "failed"}:
             if incoming in {"exited", "dead"} and task.exit_code is not None:
-                task.status = (
-                    "done"
-                    if (incoming == "exited" and task.exit_code == 0)
-                    else "failed"
-                )
+                task.status = "done" if (incoming == "exited" and task.exit_code == 0) else "failed"
                 if task.finished_at is None:
                     task.finished_at = datetime.now(tz=timezone.utc)
                 self._try_start_queued_tasks()
@@ -889,9 +851,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
         timeout_s = 30.0
         if runner_config is not None:
             try:
-                timeout_s = float(
-                    getattr(runner_config, "artifact_collection_timeout_s")
-                )
+                timeout_s = float(getattr(runner_config, "artifact_collection_timeout_s"))
             except Exception:
                 timeout_s = 30.0
         if timeout_s <= 0.0:

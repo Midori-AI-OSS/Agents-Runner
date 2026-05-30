@@ -26,20 +26,14 @@ class BreadcrumbBar(QWidget):
         self._back_btn.clicked.connect(self.back_clicked.emit)
 
         self._segments_wrap = QWidget(self)
-        self._segments_wrap.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
+        self._segments_wrap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._segments_layout = QHBoxLayout(self._segments_wrap)
         self._segments_layout.setContentsMargins(0, 0, 0, 0)
         self._segments_layout.setSpacing(2)
 
         self._ellipsis = QLabel("...")
-        self._ellipsis.setStyleSheet(
-            "color: rgba(237, 239, 245, 160); font-size: 11px;"
-        )
-        self._ellipsis.setSizePolicy(
-            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
-        )
+        self._ellipsis.setStyleSheet("color: rgba(237, 239, 245, 160); font-size: 11px;")
+        self._ellipsis.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         self._ellipsis.hide()
 
         self._segments_layout.addWidget(self._ellipsis)
@@ -59,16 +53,10 @@ class BreadcrumbBar(QWidget):
             button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             button.setAutoRaise(True)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setStyleSheet(
-                "border-radius: 0px; color: rgba(237, 239, 245, 200); font-size: 11px; padding: 0px;"
-            )
+            button.setStyleSheet("border-radius: 0px; color: rgba(237, 239, 245, 200); font-size: 11px; padding: 0px;")
             text = label if index == 0 else f" / {label}"
             button.setText(text)
-            button.clicked.connect(
-                lambda checked=False, segment_path=path: self.segment_clicked.emit(
-                    segment_path
-                )
-            )
+            button.clicked.connect(lambda checked=False, segment_path=path: self.segment_clicked.emit(segment_path))
             self._segments_layout.addWidget(button)
             self._segment_buttons.append(button)
 

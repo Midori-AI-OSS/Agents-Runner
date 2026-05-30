@@ -39,9 +39,7 @@ class RadioControlWidget(QWidget):
     RECONNECT_ANIMATION_MS = 900
     CONNECTION_STATES = ("unavailable", "idle", "playing", "reconnecting")
     COLLAPSED_VOLUME_WIDTH = max(0, COLLAPSED_WIDTH - PLAY_BUTTON_WIDTH)
-    EXPANDED_VOLUME_WIDTH = max(
-        COLLAPSED_VOLUME_WIDTH, EXPANDED_WIDTH - PLAY_BUTTON_WIDTH
-    )
+    EXPANDED_VOLUME_WIDTH = max(COLLAPSED_VOLUME_WIDTH, EXPANDED_WIDTH - PLAY_BUTTON_WIDTH)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -102,9 +100,7 @@ class RadioControlWidget(QWidget):
         self._play_button.setCheckable(True)
         self._play_button.setFixedSize(self.PLAY_BUTTON_WIDTH, self.PLAY_BUTTON_HEIGHT)
         self._play_button.clicked.connect(self.play_requested.emit)
-        play_section_layout.addWidget(
-            self._play_button, 0, Qt.AlignmentFlag.AlignCenter
-        )
+        play_section_layout.addWidget(self._play_button, 0, Qt.AlignmentFlag.AlignCenter)
 
         root.addStretch(1)
         root.addWidget(self._volume_section, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -127,13 +123,9 @@ class RadioControlWidget(QWidget):
         self._volume_width_anim.setDuration(self.ANIMATION_MS)
         self._volume_width_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._volume_width_anim.valueChanged.connect(self._sync_volume_min_width)
-        self._volume_width_anim.finished.connect(
-            self._on_volume_width_animation_finished
-        )
+        self._volume_width_anim.finished.connect(self._on_volume_width_animation_finished)
 
-        self._opacity_anim = QPropertyAnimation(
-            self._slider_opacity_effect, b"opacity", self
-        )
+        self._opacity_anim = QPropertyAnimation(self._slider_opacity_effect, b"opacity", self)
         self._opacity_anim.setDuration(self.ANIMATION_MS)
         self._opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._reconnect_anim = QVariantAnimation(self)
@@ -142,9 +134,7 @@ class RadioControlWidget(QWidget):
         self._reconnect_anim.setKeyValueAt(0.5, 1.0)
         self._reconnect_anim.setEndValue(0.0)
         self._reconnect_anim.setLoopCount(-1)
-        self._reconnect_anim.valueChanged.connect(
-            self._on_reconnect_animation_value_changed
-        )
+        self._reconnect_anim.valueChanged.connect(self._on_reconnect_animation_value_changed)
 
         for watched in (
             self,
@@ -320,9 +310,7 @@ class RadioControlWidget(QWidget):
         self._set_root_width(self.EXPANDED_WIDTH)
 
         current_volume_width = int(self._volume_section.maximumWidth())
-        target_volume_width = (
-            self.EXPANDED_VOLUME_WIDTH if expanded else self.COLLAPSED_VOLUME_WIDTH
-        )
+        target_volume_width = self.EXPANDED_VOLUME_WIDTH if expanded else self.COLLAPSED_VOLUME_WIDTH
         self._volume_width_anim.setStartValue(current_volume_width)
         self._volume_width_anim.setEndValue(target_volume_width)
         self._volume_width_anim.start()

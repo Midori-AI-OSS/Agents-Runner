@@ -65,9 +65,7 @@ def is_gh_authenticated(*, timeout_s: float = 10.0, use_cache: bool = True) -> b
     return ready
 
 
-def resolve_authenticated_login(
-    *, timeout_s: float = 10.0, use_cache: bool = True
-) -> str:
+def resolve_authenticated_login(*, timeout_s: float = 10.0, use_cache: bool = True) -> str:
     now_s = time.time()
     if use_cache:
         with _cache_lock:

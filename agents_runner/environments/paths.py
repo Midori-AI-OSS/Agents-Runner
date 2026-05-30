@@ -10,25 +10,19 @@ def default_data_dir() -> str:
 
 
 def safe_env_id(env_id: str) -> str:
-    safe = "".join(
-        ch for ch in (env_id or "").strip() if ch.isalnum() or ch in {"-", "_"}
-    )
+    safe = "".join(ch for ch in (env_id or "").strip() if ch.isalnum() or ch in {"-", "_"})
     return safe or "default"
 
 
 def safe_task_id(task_id: str) -> str:
     """Sanitize task_id for filesystem use."""
-    safe = "".join(
-        ch for ch in (task_id or "").strip() if ch.isalnum() or ch in {"-", "_"}
-    )
+    safe = "".join(ch for ch in (task_id or "").strip() if ch.isalnum() or ch in {"-", "_"})
     return safe or "default"
 
 
 def environment_path(env_id: str, data_dir: str | None = None) -> str:
     data_dir = data_dir or default_data_dir()
-    return os.path.join(
-        data_dir, f"{ENVIRONMENT_FILENAME_PREFIX}{safe_env_id(env_id)}.json"
-    )
+    return os.path.join(data_dir, f"{ENVIRONMENT_FILENAME_PREFIX}{safe_env_id(env_id)}.json")
 
 
 def managed_repos_dir(data_dir: str | None = None) -> str:

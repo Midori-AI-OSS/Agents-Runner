@@ -36,9 +36,7 @@ def _variant_names(payload: dict[str, Any]) -> list[str]:
     return variant_names
 
 
-def _finalize_model_entry(
-    header: str, json_lines: list[str]
-) -> dict[str, object] | None:
+def _finalize_model_entry(header: str, json_lines: list[str]) -> dict[str, object] | None:
     try:
         raw_payload = json.loads("\n".join(json_lines))
     except json.JSONDecodeError as exc:
@@ -191,9 +189,7 @@ def opencode_model_options_by_provider() -> dict[str, list[tuple[str, str, list[
             continue
 
         display_label = str(model.get("name") or model_id).strip() or model_id
-        by_provider.setdefault(provider, []).append(
-            (model_id, display_label, _string_list(model.get("variants")))
-        )
+        by_provider.setdefault(provider, []).append((model_id, display_label, _string_list(model.get("variants"))))
 
     for models in by_provider.values():
         models.sort(key=lambda item: (item[1].casefold(), item[0].casefold()))

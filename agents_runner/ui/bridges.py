@@ -17,12 +17,8 @@ from agents_runner.execution.supervisor import TaskSupervisor
 class TaskRunnerBridge(QObject):
     state = Signal(str, dict)  # task_id, state
     log = Signal(str, str)  # task_id, log line
-    done = Signal(
-        str, int, object, list, dict
-    )  # task_id, exit_code, error, artifacts, metadata
-    retry_attempt = Signal(
-        str, int, str, float
-    )  # task_id, attempt_number, agent, delay_seconds
+    done = Signal(str, int, object, list, dict)  # task_id, exit_code, error, artifacts, metadata
+    retry_attempt = Signal(str, int, str, float)  # task_id, attempt_number, agent, delay_seconds
     agent_switched = Signal(str, str, str)  # task_id, from_agent, to_agent
 
     def __init__(
@@ -53,9 +49,7 @@ class TaskRunnerBridge(QObject):
                 supervisor_config=supervisor_config,
                 on_state=lambda state: self.state.emit(self.task_id, state),
                 on_log=lambda line: self.log.emit(self.task_id, line),
-                on_retry=lambda attempt, agent, delay: self.retry_attempt.emit(
-                    self.task_id, attempt, agent, delay
-                ),
+                on_retry=lambda attempt, agent, delay: self.retry_attempt.emit(self.task_id, attempt, agent, delay),
                 on_agent_switch=lambda from_agent, to_agent: self.agent_switched.emit(
                     self.task_id, from_agent, to_agent
                 ),
@@ -72,9 +66,7 @@ class TaskRunnerBridge(QObject):
                 prompt=prompt,
                 on_state=lambda state: self.state.emit(self.task_id, state),
                 on_log=lambda line: self.log.emit(self.task_id, line),
-                on_done=lambda code, err, artifacts: self.done.emit(
-                    self.task_id, code, err, artifacts, {}
-                ),
+                on_done=lambda code, err, artifacts: self.done.emit(self.task_id, code, err, artifacts, {}),
             )
 
     @property

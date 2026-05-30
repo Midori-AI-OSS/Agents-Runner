@@ -157,9 +157,7 @@ class ThemePreviewTile(QFrame):
         self._preview = ThemePreviewWidget(self._theme_name, self)
         self._preview.setObjectName("ThemePreviewCanvas")
         self._preview.setMinimumHeight(92)
-        self._preview.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
-        )
+        self._preview.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         layout.addWidget(self._preview, 1)
 
         self._label = QLabel(label, self)

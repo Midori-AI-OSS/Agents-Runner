@@ -82,9 +82,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
 
         title = QLabel("Settings")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
-        title.setToolTip(
-            "Settings are saved locally in:\n~/.midoriai/agents-runner/state.json"
-        )
+        title.setToolTip("Settings are saved locally in:\n~/.midoriai/agents-runner/state.json")
 
         header_layout.addWidget(title)
         header_layout.addStretch(1)
@@ -171,6 +169,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
             self._github_polling_enabled,
             self._headless_desktop_enabled,
             self._gpu_enabled,
+            self._network_host,
             self._popup_theme_animation_enabled,
             self._auto_navigate_on_run_agent_start,
             self._auto_navigate_on_run_interactive_start,
@@ -184,25 +183,13 @@ class SettingsPage(QWidget, SettingsFormMixin):
             checkbox.toggled.connect(self._queue_debounced_autosave)
 
         self._radio_volume.valueChanged.connect(self._queue_debounced_autosave)
-        self._radio_loudness_boost_factor.valueChanged.connect(
-            self._queue_debounced_autosave
-        )
-        self._task_workspace_cleanup_retention_days.valueChanged.connect(
-            self._queue_debounced_autosave
-        )
-        self._task_workspace_cleanup_interval_minutes.valueChanged.connect(
-            self._queue_debounced_autosave
-        )
-        self._task_workspace_cleanup_scan_delay_seconds.valueChanged.connect(
-            self._queue_debounced_autosave
-        )
-        self._github_poll_startup_delay_s.textChanged.connect(
-            self._queue_debounced_autosave
-        )
+        self._radio_loudness_boost_factor.valueChanged.connect(self._queue_debounced_autosave)
+        self._task_workspace_cleanup_retention_days.valueChanged.connect(self._queue_debounced_autosave)
+        self._task_workspace_cleanup_interval_minutes.valueChanged.connect(self._queue_debounced_autosave)
+        self._task_workspace_cleanup_scan_delay_seconds.valueChanged.connect(self._queue_debounced_autosave)
+        self._github_poll_startup_delay_s.textChanged.connect(self._queue_debounced_autosave)
         self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
-        self._agentsnova_trusted_users_global.usernames_changed.connect(
-            self._queue_debounced_autosave
-        )
+        self._agentsnova_trusted_users_global.usernames_changed.connect(self._queue_debounced_autosave)
 
     def _on_back(self) -> None:
         self.try_autosave()

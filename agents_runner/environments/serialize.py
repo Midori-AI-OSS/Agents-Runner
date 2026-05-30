@@ -64,9 +64,7 @@ def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) 
         i += 1
 
 
-def _validate_cross_agent_allowlist(
-    raw_allowlist: Any, agents: list[AgentInstance]
-) -> list[str]:
+def _validate_cross_agent_allowlist(raw_allowlist: Any, agents: list[AgentInstance]) -> list[str]:
     """Validate and sanitize cross-agent allowlist.
 
     Validation rules:
@@ -114,9 +112,7 @@ def _validate_cross_agent_allowlist(
     return validated
 
 
-def prune_missing_config_ids(
-    env: Environment, valid_config_ids: set[str]
-) -> Environment:
+def prune_missing_config_ids(env: Environment, valid_config_ids: set[str]) -> Environment:
     """Return a copy of ``env`` with missing agent config references pruned."""
 
     selection = env.agent_selection
@@ -259,20 +255,15 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         max_agents_running = -1
 
     headless_desktop_enabled = bool(payload.get("headless_desktop_enabled", False))
-    gpu_override_mode = normalize_gpu_override_mode(
-        payload.get("gpu_override_mode", "inherit")
-    )
+    gpu_override_mode = normalize_gpu_override_mode(payload.get("gpu_override_mode", "inherit"))
+    network_host_override_mode = normalize_gpu_override_mode(payload.get("network_host_override_mode", "inherit"))
     opencode_interactive_mode = normalize_opencode_interactive_override(
         payload.get("opencode_interactive_mode", "inherit")
     )
     cache_desktop_build = bool(payload.get("cache_desktop_build", False))
     container_caching_enabled = bool(payload.get("container_caching_enabled", False))
-    cache_system_preflight_enabled = bool(
-        payload.get("cache_system_preflight_enabled", False)
-    )
-    cache_settings_preflight_enabled = bool(
-        payload.get("cache_settings_preflight_enabled", False)
-    )
+    cache_system_preflight_enabled = bool(payload.get("cache_system_preflight_enabled", False))
+    cache_settings_preflight_enabled = bool(payload.get("cache_settings_preflight_enabled", False))
 
     env_vars_raw = payload.get("env_vars", {})
     env_vars: dict[str, object] = (
@@ -282,77 +273,51 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     )
 
     extra_mounts_raw = payload.get("extra_mounts", [])
-    extra_mounts: list[object] = (
-        cast(list[object], extra_mounts_raw)
-        if isinstance(extra_mounts_raw, list)
-        else []
-    )
+    extra_mounts: list[object] = cast(list[object], extra_mounts_raw) if isinstance(extra_mounts_raw, list) else []
     env_vars_advanced_mode = bool(payload.get("env_vars_advanced_mode", False))
     mounts_advanced_mode = bool(payload.get("mounts_advanced_mode", False))
-    env_vars_advanced_acknowledged = bool(
-        payload.get("env_vars_advanced_acknowledged", False)
-    ) or bool(env_vars_advanced_mode)
-    mounts_advanced_acknowledged = bool(
-        payload.get("mounts_advanced_acknowledged", False)
-    ) or bool(mounts_advanced_mode)
+    env_vars_advanced_acknowledged = bool(payload.get("env_vars_advanced_acknowledged", False)) or bool(
+        env_vars_advanced_mode
+    )
+    mounts_advanced_acknowledged = bool(payload.get("mounts_advanced_acknowledged", False)) or bool(
+        mounts_advanced_mode
+    )
 
     ports_raw = payload.get("ports", [])
-    ports: list[object] = (
-        cast(list[object], ports_raw) if isinstance(ports_raw, list) else []
-    )
+    ports: list[object] = cast(list[object], ports_raw) if isinstance(ports_raw, list) else []
     ports_unlocked = bool(payload.get("ports_unlocked", False))
-    ports_advanced_acknowledged = bool(
-        payload.get("ports_advanced_acknowledged", False)
-    ) or bool(ports_unlocked)
+    ports_advanced_acknowledged = bool(payload.get("ports_advanced_acknowledged", False)) or bool(ports_unlocked)
 
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
     github_polling_enabled = bool(payload.get("github_polling_enabled", False))
-    agentsnova_trusted_users_env = _normalize_usernames(
-        payload.get("agentsnova_trusted_users_env", [])
-    )
-    agentsnova_trusted_mode = _normalize_trusted_mode(
-        payload.get("agentsnova_trusted_mode", "inherit")
-    )
-    agentsnova_auto_review_mode = normalize_agentsnova_auto_mode(
-        payload.get("agentsnova_auto_review_mode", "inherit")
-    )
+    agentsnova_trusted_users_env = _normalize_usernames(payload.get("agentsnova_trusted_users_env", []))
+    agentsnova_trusted_mode = _normalize_trusted_mode(payload.get("agentsnova_trusted_mode", "inherit"))
+    agentsnova_auto_review_mode = normalize_agentsnova_auto_mode(payload.get("agentsnova_auto_review_mode", "inherit"))
     agentsnova_auto_reactions_mode = normalize_agentsnova_auto_mode(
         payload.get("agentsnova_auto_reactions_mode", "inherit")
     )
     agentsnova_marker_comment_mode = normalize_agentsnova_marker_comment_mode(
         payload.get("agentsnova_marker_comment_mode", "inherit")
     )
-    interactive_pr_prompt_enabled = bool(
-        payload.get("interactive_pr_prompt_enabled", True)
-    )
+    interactive_pr_prompt_enabled = bool(payload.get("interactive_pr_prompt_enabled", True))
     interactive_pr_no_prompt_mode = normalize_interactive_pr_no_prompt_mode(
         payload.get("interactive_pr_no_prompt_mode", "auto_create_pr")
     )
-    setup_agents_missing_prompt_enabled = bool(
-        payload.get("setup_agents_missing_prompt_enabled", False)
-    )
-    interactive_pull_before_run_enabled = bool(
-        payload.get("interactive_pull_before_run_enabled", True)
-    )
-    gh_branch_work_mode = normalize_gh_branch_work_mode(
-        payload.get("gh_branch_work_mode", "task_branch")
-    )
+    setup_agents_missing_prompt_enabled = bool(payload.get("setup_agents_missing_prompt_enabled", False))
+    interactive_pull_before_run_enabled = bool(payload.get("interactive_pull_before_run_enabled", True))
+    gh_branch_work_mode = normalize_gh_branch_work_mode(payload.get("gh_branch_work_mode", "task_branch"))
     gh_task_branch_naming_style = normalize_gh_task_branch_naming_style(
         payload.get("gh_task_branch_naming_style", "standard")
     )
     gh_task_branch_custom_template = normalize_gh_task_branch_custom_template(
-        payload.get(
-            "gh_task_branch_custom_template", GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
-        )
+        payload.get("gh_task_branch_custom_template", GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT)
     )
 
     # Migration: Rename gh_pr_metadata_enabled to gh_context_enabled
     # Check both old and new field names for backward compatibility
-    gh_context_enabled = bool(
-        payload.get("gh_context_enabled", payload.get("gh_pr_metadata_enabled", False))
-    )
+    gh_context_enabled = bool(payload.get("gh_context_enabled", payload.get("gh_pr_metadata_enabled", False)))
 
     # Migration: workspace_type from gh_management_mode
     # Prefer new key, fallback to old key
@@ -370,26 +335,20 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
     # Migration: workspace_target from gh_management_target
     # Prefer new key, fallback to old key for backward compatibility
-    workspace_target = str(
-        payload.get("workspace_target") or payload.get("gh_management_target") or ""
-    ).strip()
+    workspace_target = str(payload.get("workspace_target") or payload.get("gh_management_target") or "").strip()
 
     # Normalize using the new function
     workspace_type = normalize_workspace_type(workspace_type)
 
     try:
-        midoriai_template_likelihood = float(
-            payload.get("midoriai_template_likelihood", 0.0)
-        )
+        midoriai_template_likelihood = float(payload.get("midoriai_template_likelihood", 0.0))
     except (TypeError, ValueError):
         midoriai_template_likelihood = 0.0
     midoriai_template_likelihood = max(0.0, min(1.0, midoriai_template_likelihood))
     midoriai_template_detected = bool(payload.get("midoriai_template_detected", False))
     midoriai_template_detected_path_raw = payload.get("midoriai_template_detected_path")
     midoriai_template_detected_path = (
-        str(midoriai_template_detected_path_raw).strip()
-        if isinstance(midoriai_template_detected_path_raw, str)
-        else ""
+        str(midoriai_template_detected_path_raw).strip() if isinstance(midoriai_template_detected_path_raw, str) else ""
     )
     midoriai_template_detected_path = midoriai_template_detected_path or None
 
@@ -400,9 +359,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         for p in prompts_list:
             if not isinstance(p, dict):
                 continue
-            p_dict: dict[str, object] = {
-                str(k): v for k, v in cast(dict[object, object], p).items()
-            }
+            p_dict: dict[str, object] = {str(k): v for k, v in cast(dict[object, object], p).items()}
             prompt_path = str(p_dict.get("prompt_path", "")).strip()
             text = str(p_dict.get("text", ""))
 
@@ -436,9 +393,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     agents: list[AgentInstance] = []
     if isinstance(agent_selection_data, dict):
         raw_selection_dict = cast(dict[object, object], agent_selection_data)
-        selection_dict: dict[str, object] = {
-            str(k): v for k, v in raw_selection_dict.items()
-        }
+        selection_dict: dict[str, object] = {str(k): v for k, v in raw_selection_dict.items()}
         selection_mode = str(selection_dict.get("selection_mode", "round-robin"))
         pinned_agent_id = str(selection_dict.get("pinned_agent_id", "") or "").strip()
 
@@ -450,14 +405,10 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
             for raw in agents_list:
                 if not isinstance(raw, dict):
                     continue
-                raw_dict: dict[str, object] = {
-                    str(k): v for k, v in cast(dict[object, object], raw).items()
-                }
+                raw_dict: dict[str, object] = {str(k): v for k, v in cast(dict[object, object], raw).items()}
                 agent_id = str(raw_dict.get("agent_id") or "").strip()
                 config_id = str(raw_dict.get("config_id") or "").strip()
-                unique_id = _unique_agent_id(
-                    seen_ids, agent_id, fallback_prefix=config_id.lower()
-                )
+                unique_id = _unique_agent_id(seen_ids, agent_id, fallback_prefix=config_id.lower())
                 if not unique_id:
                     continue
                 agents.append(
@@ -502,9 +453,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     # Cross-agent delegation settings
     use_cross_agents = bool(payload.get("use_cross_agents", False))
     cross_agent_allowlist_raw = payload.get("cross_agent_allowlist", [])
-    cross_agent_allowlist = _validate_cross_agent_allowlist(
-        cross_agent_allowlist_raw, agents
-    )
+    cross_agent_allowlist = _validate_cross_agent_allowlist(cross_agent_allowlist_raw, agents)
 
     return Environment(
         env_id=env_id,
@@ -515,6 +464,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         max_agents_running=max_agents_running,
         headless_desktop_enabled=headless_desktop_enabled,
         gpu_override_mode=gpu_override_mode,
+        network_host_override_mode=network_host_override_mode,
         opencode_interactive_mode=opencode_interactive_mode,
         cache_desktop_build=cache_desktop_build,
         container_caching_enabled=container_caching_enabled,
@@ -565,24 +515,17 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
 
     if env.agent_selection and env.agent_selection.agents:
         agents_list_for_validation = env.agent_selection.agents
-        agents_list = [
-            {"agent_id": a.agent_id, "config_id": a.config_id}
-            for a in (env.agent_selection.agents or [])
-        ]
+        agents_list = [{"agent_id": a.agent_id, "config_id": a.config_id} for a in (env.agent_selection.agents or [])]
 
         selection_payload = {
             "agents": agents_list,
             "selection_mode": env.agent_selection.selection_mode,
-            "pinned_agent_id": str(
-                getattr(env.agent_selection, "pinned_agent_id", "") or ""
-            ).strip(),
+            "pinned_agent_id": str(getattr(env.agent_selection, "pinned_agent_id", "") or "").strip(),
             "agent_fallbacks": dict(env.agent_selection.agent_fallbacks),
         }
 
     # Validate cross-agent allowlist before serializing
-    validated_allowlist = _validate_cross_agent_allowlist(
-        env.cross_agent_allowlist, agents_list_for_validation
-    )
+    validated_allowlist = _validate_cross_agent_allowlist(env.cross_agent_allowlist, agents_list_for_validation)
     workspace_type = normalize_workspace_type(getattr(env, "workspace_type", "none"))
     workspace_target = str(getattr(env, "workspace_target", "") or "").strip()
     host_workdir = str(getattr(env, "host_workdir", "") or "").strip()
@@ -595,55 +538,38 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "host_workdir": host_workdir,
         "agent_cli_args": env.agent_cli_args,
         "max_agents_running": int(env.max_agents_running),
-        "headless_desktop_enabled": bool(
-            getattr(env, "headless_desktop_enabled", False)
-        ),
+        "headless_desktop_enabled": bool(getattr(env, "headless_desktop_enabled", False)),
         "gpu_override_mode": normalize_gpu_override_mode(
             str(getattr(env, "gpu_override_mode", "inherit") or "inherit")
+        ),
+        "network_host_override_mode": normalize_gpu_override_mode(
+            str(getattr(env, "network_host_override_mode", "inherit") or "inherit")
         ),
         "opencode_interactive_mode": normalize_opencode_interactive_override(
             str(getattr(env, "opencode_interactive_mode", "inherit") or "inherit")
         ),
         "cache_desktop_build": bool(getattr(env, "cache_desktop_build", False)),
-        "container_caching_enabled": bool(
-            getattr(env, "container_caching_enabled", False)
-        ),
-        "cache_system_preflight_enabled": bool(
-            getattr(env, "cache_system_preflight_enabled", False)
-        ),
-        "cache_settings_preflight_enabled": bool(
-            getattr(env, "cache_settings_preflight_enabled", False)
-        ),
+        "container_caching_enabled": bool(getattr(env, "container_caching_enabled", False)),
+        "cache_system_preflight_enabled": bool(getattr(env, "cache_system_preflight_enabled", False)),
+        "cache_settings_preflight_enabled": bool(getattr(env, "cache_settings_preflight_enabled", False)),
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),
         "env_vars_advanced_mode": bool(getattr(env, "env_vars_advanced_mode", False)),
         "mounts_advanced_mode": bool(getattr(env, "mounts_advanced_mode", False)),
-        "env_vars_advanced_acknowledged": bool(
-            getattr(env, "env_vars_advanced_acknowledged", False)
-        ),
-        "mounts_advanced_acknowledged": bool(
-            getattr(env, "mounts_advanced_acknowledged", False)
-        ),
+        "env_vars_advanced_acknowledged": bool(getattr(env, "env_vars_advanced_acknowledged", False)),
+        "mounts_advanced_acknowledged": bool(getattr(env, "mounts_advanced_acknowledged", False)),
         "ports": list(getattr(env, "ports", [])),
         "ports_unlocked": bool(getattr(env, "ports_unlocked", False)),
-        "ports_advanced_acknowledged": bool(
-            getattr(env, "ports_advanced_acknowledged", False)
-        ),
+        "ports_advanced_acknowledged": bool(getattr(env, "ports_advanced_acknowledged", False)),
         "gh_management_locked": bool(env.gh_management_locked),
         "workspace_type": workspace_type,
         "workspace_target": workspace_target,
-        "gh_last_base_branch": str(
-            getattr(env, "gh_last_base_branch", "") or ""
-        ).strip(),
+        "gh_last_base_branch": str(getattr(env, "gh_last_base_branch", "") or "").strip(),
         "gh_use_host_cli": bool(env.gh_use_host_cli),
         "gh_context_enabled": bool(env.gh_context_enabled),  # Save with new name
         "github_polling_enabled": bool(getattr(env, "github_polling_enabled", False)),
-        "agentsnova_trusted_users_env": _normalize_usernames(
-            getattr(env, "agentsnova_trusted_users_env", [])
-        ),
-        "agentsnova_trusted_mode": _normalize_trusted_mode(
-            getattr(env, "agentsnova_trusted_mode", "inherit")
-        ),
+        "agentsnova_trusted_users_env": _normalize_usernames(getattr(env, "agentsnova_trusted_users_env", [])),
+        "agentsnova_trusted_mode": _normalize_trusted_mode(getattr(env, "agentsnova_trusted_mode", "inherit")),
         "agentsnova_auto_review_mode": normalize_agentsnova_auto_mode(
             getattr(env, "agentsnova_auto_review_mode", "inherit")
         ),
@@ -653,21 +579,13 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "agentsnova_marker_comment_mode": normalize_agentsnova_marker_comment_mode(
             getattr(env, "agentsnova_marker_comment_mode", "inherit")
         ),
-        "interactive_pr_prompt_enabled": bool(
-            getattr(env, "interactive_pr_prompt_enabled", True)
-        ),
+        "interactive_pr_prompt_enabled": bool(getattr(env, "interactive_pr_prompt_enabled", True)),
         "interactive_pr_no_prompt_mode": normalize_interactive_pr_no_prompt_mode(
             getattr(env, "interactive_pr_no_prompt_mode", "auto_create_pr")
         ),
-        "setup_agents_missing_prompt_enabled": bool(
-            getattr(env, "setup_agents_missing_prompt_enabled", False)
-        ),
-        "interactive_pull_before_run_enabled": bool(
-            getattr(env, "interactive_pull_before_run_enabled", True)
-        ),
-        "gh_branch_work_mode": normalize_gh_branch_work_mode(
-            getattr(env, "gh_branch_work_mode", "task_branch")
-        ),
+        "setup_agents_missing_prompt_enabled": bool(getattr(env, "setup_agents_missing_prompt_enabled", False)),
+        "interactive_pull_before_run_enabled": bool(getattr(env, "interactive_pull_before_run_enabled", True)),
+        "gh_branch_work_mode": normalize_gh_branch_work_mode(getattr(env, "gh_branch_work_mode", "task_branch")),
         "gh_task_branch_naming_style": normalize_gh_task_branch_naming_style(
             getattr(env, "gh_task_branch_naming_style", "standard")
         ),
@@ -683,12 +601,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "midoriai_template_likelihood": float(
             max(0.0, min(1.0, float(getattr(env, "midoriai_template_likelihood", 0.0))))
         ),
-        "midoriai_template_detected": bool(
-            getattr(env, "midoriai_template_detected", False)
-        ),
+        "midoriai_template_detected": bool(getattr(env, "midoriai_template_detected", False)),
         "midoriai_template_detected_path": (
-            str(getattr(env, "midoriai_template_detected_path", "") or "").strip()
-            or None
+            str(getattr(env, "midoriai_template_detected_path", "") or "").strip() or None
         ),
         "prompts": _serialize_prompts(env.prompts or []),
         "prompts_unlocked": bool(env.prompts_unlocked),

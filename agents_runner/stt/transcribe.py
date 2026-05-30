@@ -23,13 +23,9 @@ def _transcribe_offline(audio_path: str) -> str:
     try:
         from faster_whisper import WhisperModel  # type: ignore[reportMissingTypeStubs]
     except Exception as exc:
-        raise TranscribeError(
-            "Offline speech-to-text requires the `faster-whisper` dependency."
-        ) from exc
+        raise TranscribeError("Offline speech-to-text requires the `faster-whisper` dependency.") from exc
 
-    download_root = Path(
-        os.path.expanduser("~/.midoriai/agents-runner/models/faster-whisper")
-    )
+    download_root = Path(os.path.expanduser("~/.midoriai/agents-runner/models/faster-whisper"))
     download_root.mkdir(parents=True, exist_ok=True)
 
     model = WhisperModel(

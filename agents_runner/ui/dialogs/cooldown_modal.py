@@ -61,25 +61,19 @@ class CooldownModal(ThemedDialog):
 
         # Warning header
         header = QLabel(f"⚠  {agent_name} is currently rate-limited")
-        header.setStyleSheet(
-            "font-size: 16px; font-weight: 700; color: rgba(237, 239, 245, 255);"
-        )
+        header.setStyleSheet("font-size: 16px; font-weight: 700; color: rgba(237, 239, 245, 255);")
         layout.addWidget(header)
 
         # Cooldown time remaining
         self._time_label = QLabel()
         self._update_time_label()
-        self._time_label.setStyleSheet(
-            "font-size: 14px; color: rgba(237, 239, 245, 200);"
-        )
+        self._time_label.setStyleSheet("font-size: 14px; color: rgba(237, 239, 245, 200);")
         layout.addWidget(self._time_label)
 
         # Reason
         if watch_state.cooldown_reason:
             reason_label = QLabel(f"Reason: {watch_state.cooldown_reason[:150]}")
-            reason_label.setStyleSheet(
-                "font-size: 12px; color: rgba(237, 239, 245, 160);"
-            )
+            reason_label.setStyleSheet("font-size: 12px; color: rgba(237, 239, 245, 160);")
             reason_label.setWordWrap(True)
             layout.addWidget(reason_label)
 
@@ -90,9 +84,7 @@ class CooldownModal(ThemedDialog):
         options_layout.setSpacing(12)
 
         options_title = QLabel("Options:")
-        options_title.setStyleSheet(
-            "font-weight: 600; font-size: 13px; color: rgba(237, 239, 245, 255);"
-        )
+        options_title.setStyleSheet("font-weight: 600; font-size: 13px; color: rgba(237, 239, 245, 255);")
         options_layout.addWidget(options_title)
 
         # Fallback option text
@@ -103,18 +95,12 @@ class CooldownModal(ThemedDialog):
                 "  fallback chain. This won't change your default."
             )
         else:
-            fallback_text = QLabel(
-                "• Use Fallback Agent (None Available)\n  No fallback agent configured."
-            )
+            fallback_text = QLabel("• Use Fallback Agent (None Available)\n  No fallback agent configured.")
         fallback_text.setStyleSheet("font-size: 12px; color: rgba(237, 239, 245, 200);")
         options_layout.addWidget(fallback_text)
 
         # Bypass option text
-        bypass_text = QLabel(
-            "• Bypass Cooldown\n"
-            "  Attempt to run anyway. The agent may still\n"
-            "  fail if rate-limited."
-        )
+        bypass_text = QLabel("• Bypass Cooldown\n  Attempt to run anyway. The agent may still\n  fail if rate-limited.")
         bypass_text.setStyleSheet("font-size: 12px; color: rgba(237, 239, 245, 200);")
         options_layout.addWidget(bypass_text)
 
@@ -164,9 +150,7 @@ class CooldownModal(ThemedDialog):
             minutes = int(remaining // 60)
             seconds = int(remaining % 60)
             if minutes > 0:
-                self._time_label.setText(
-                    f"Cooldown Time Remaining: {minutes}m {seconds}s"
-                )
+                self._time_label.setText(f"Cooldown Time Remaining: {minutes}m {seconds}s")
             else:
                 self._time_label.setText(f"Cooldown Time Remaining: {seconds} seconds")
 

@@ -60,9 +60,7 @@ class MainWindowAutoReviewMixin(_MainWindowHints):
                 pr_head_repo_owner.strip().lower() == repo_owner.strip().lower()
                 and pr_head_repo_name.strip().lower() == repo_name.strip().lower()
             )
-        is_cross_repo = pr_is_cross_repo or (
-            pr_head_repo_owner and pr_head_repo_name and not same_repo
-        )
+        is_cross_repo = pr_is_cross_repo or (pr_head_repo_owner and pr_head_repo_name and not same_repo)
 
         env_for_task = self._environments.get(selected_env_id)
         if not resolve_effective_auto_review_enabled(
@@ -74,14 +72,10 @@ class MainWindowAutoReviewMixin(_MainWindowHints):
         if is_pr and pr_base_ref:
             resolved_base_branch = pr_base_ref
         else:
-            resolved_base_branch = self._resolve_auto_review_base_branch(
-                env_id=selected_env_id
-            )
+            resolved_base_branch = self._resolve_auto_review_base_branch(env_id=selected_env_id)
             if resolved_base_branch is None:
                 return
-        _agent_cli, host_config_dir, _ = self._effective_agent_and_config(
-            env=env_for_task
-        )
+        _agent_cli, host_config_dir, _ = self._effective_agent_and_config(env=env_for_task)
         pr_context: dict[str, object] | None = None
         if is_pr:
             pr_context = {
@@ -118,10 +112,7 @@ class MainWindowAutoReviewMixin(_MainWindowHints):
             payload=payload_dict,
             task_id=task_id,
         )
-        if (
-            comment_id is not None
-            and marker_mode == AGENTSNOVA_MARKER_COMMENT_MODE_DELETE_AFTER_15S
-        ):
+        if comment_id is not None and marker_mode == AGENTSNOVA_MARKER_COMMENT_MODE_DELETE_AFTER_15S:
             self._schedule_auto_review_marker_cleanup(
                 repo_owner=str(payload_dict.get("repo_owner") or "").strip(),
                 repo_name=str(payload_dict.get("repo_name") or "").strip(),
@@ -153,10 +144,7 @@ class MainWindowAutoReviewMixin(_MainWindowHints):
             return
         self._fork_notice_seen.add(notice_key)
 
-        body = (
-            "Fork PR detected. Agents Runner cannot auto-checkout fork branches; "
-            "continuing on the base branch."
-        )
+        body = "Fork PR detected. Agents Runner cannot auto-checkout fork branches; continuing on the base branch."
         try:
             post_comment(
                 repo_owner,
@@ -174,9 +162,7 @@ class MainWindowAutoReviewMixin(_MainWindowHints):
                 mode="warn",
             )
 
-    def _post_auto_review_marker_comment(
-        self, *, payload: dict[str, object], task_id: str
-    ) -> int | None:
+    def _post_auto_review_marker_comment(self, *, payload: dict[str, object], task_id: str) -> int | None:
         repo_owner = str(payload.get("repo_owner") or "").strip()
         repo_name = str(payload.get("repo_name") or "").strip()
         item_type = str(payload.get("item_type") or "").strip().lower()
@@ -289,10 +275,7 @@ class MainWindowAutoReviewMixin(_MainWindowHints):
             )
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 logger.rprint(
-                    (
-                        "[github-auto-review] skipped: branch selector cancelled for "
-                        f"environment '{env_id}'."
-                    ),
+                    (f"[github-auto-review] skipped: branch selector cancelled for environment '{env_id}'."),
                     mode="info",
                 )
                 return None

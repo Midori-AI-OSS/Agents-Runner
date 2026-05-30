@@ -255,9 +255,7 @@ class GlassRoot(QWidget):
         runtime = self._theme_runtimes.get(theme_name)
         if background is not None and runtime is not None:
             try:
-                background.tick(
-                    runtime=runtime, widget=self, now_s=time.monotonic(), dt_s=0.0
-                )
+                background.tick(runtime=runtime, widget=self, now_s=time.monotonic(), dt_s=0.0)
             except Exception:
                 pass
 
@@ -292,9 +290,7 @@ class GlassRoot(QWidget):
         runtime = self._theme_runtimes.get(resolved)
         if background is not None and runtime is not None:
             try:
-                background.tick(
-                    runtime=runtime, widget=self, now_s=time.monotonic(), dt_s=0.0
-                )
+                background.tick(runtime=runtime, widget=self, now_s=time.monotonic(), dt_s=0.0)
             except Exception:
                 pass
 

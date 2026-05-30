@@ -251,12 +251,8 @@ class _GeminiBackground:
         steps = 0
         while runtime.tick_accum_s >= step_s and steps < max_steps:
             runtime.tick_accum_s -= step_s
-            runtime.orbs = ensure_gemini_orbs(
-                runtime.orbs, runtime.rng, widget.width(), widget.height()
-            )
-            tick_gemini_chroma_orbs(
-                runtime.orbs, runtime.rng, widget.width(), widget.height(), step_s
-            )
+            runtime.orbs = ensure_gemini_orbs(runtime.orbs, runtime.rng, widget.width(), widget.height())
+            tick_gemini_chroma_orbs(runtime.orbs, runtime.rng, widget.width(), widget.height(), step_s)
             steps += 1
 
         return True
@@ -264,9 +260,7 @@ class _GeminiBackground:
     @staticmethod
     def paint(*, painter: QPainter, rect: QRect, runtime: object) -> None:
         state = runtime if isinstance(runtime, _GeminiRuntime) else _GeminiRuntime()
-        state.orbs = ensure_gemini_orbs(
-            state.orbs, state.rng, rect.width(), rect.height()
-        )
+        state.orbs = ensure_gemini_orbs(state.orbs, state.rng, rect.width(), rect.height())
         paint_gemini_background(painter, rect, state.orbs)
 
 

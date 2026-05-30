@@ -68,8 +68,7 @@ class FirstRunSetupDialog(ThemedDialog):
         layout.addWidget(welcome_label)
 
         intro_label = QLabel(
-            "We detected the following AI agent CLIs on your system.\n"
-            "Select which agents you'd like to set up now."
+            "We detected the following AI agent CLIs on your system.\nSelect which agents you'd like to set up now."
         )
         intro_label.setWordWrap(True)
         layout.addWidget(intro_label)
@@ -77,22 +76,12 @@ class FirstRunSetupDialog(ThemedDialog):
         # Agent status table
         self._status_table = QTableWidget()
         self._status_table.setColumnCount(4)
-        self._status_table.setHorizontalHeaderLabels(
-            ["Agent", "Installed", "Login Status", "Setup"]
-        )
+        self._status_table.setHorizontalHeaderLabels(["Agent", "Installed", "Login Status", "Setup"])
         self._status_table.horizontalHeader().setStretchLastSection(False)
-        self._status_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
-        )
-        self._status_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.ResizeToContents
-        )
-        self._status_table.horizontalHeader().setSectionResizeMode(
-            2, QHeaderView.ResizeMode.Stretch
-        )
-        self._status_table.horizontalHeader().setSectionResizeMode(
-            3, QHeaderView.ResizeMode.ResizeToContents
-        )
+        self._status_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self._status_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._status_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self._status_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self._status_table.verticalHeader().setVisible(False)
         self._status_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self._status_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -100,14 +89,11 @@ class FirstRunSetupDialog(ThemedDialog):
 
         # Instructions
         instructions_label = QLabel(
-            "Setup will open one terminal at a time. Complete each agent's setup "
-            "before moving to the next."
+            "Setup will open one terminal at a time. Complete each agent's setup before moving to the next."
         )
         instructions_label.setWordWrap(True)
         instructions_label.setStyleSheet("color: #666; font-size: 11px;")
-        instructions_label.setToolTip(
-            "You can configure individual agents later in Settings → Agent CLI section."
-        )
+        instructions_label.setToolTip("You can configure individual agents later in Settings → Agent CLI section.")
         layout.addWidget(instructions_label)
 
         # Docker check section
@@ -120,9 +106,7 @@ class FirstRunSetupDialog(ThemedDialog):
         docker_title.setStyleSheet("font-weight: 600;")
         docker_layout.addWidget(docker_title)
 
-        docker_desc = QLabel(
-            "Verify Docker is working by pulling PixelArch and running a test container."
-        )
+        docker_desc = QLabel("Verify Docker is working by pulling PixelArch and running a test container.")
         docker_desc.setWordWrap(True)
         docker_desc.setStyleSheet("color: #666; font-size: 11px;")
         docker_layout.addWidget(docker_desc)
@@ -234,11 +218,7 @@ class FirstRunSetupDialog(ThemedDialog):
     def _on_begin_setup(self) -> None:
         """Handle begin setup button click."""
         # Get selected agents
-        selected_agents = [
-            agent
-            for agent, checkbox in self._checkboxes.items()
-            if checkbox.isChecked()
-        ]
+        selected_agents = [agent for agent, checkbox in self._checkboxes.items() if checkbox.isChecked()]
 
         if not selected_agents:
             # Nothing to set up
@@ -253,19 +233,13 @@ class FirstRunSetupDialog(ThemedDialog):
         if result == QDialog.DialogCode.Accepted:
             # Setup complete
             agents_setup = progress_dialog.get_results()
-            agents_enabled = {
-                agent: checkbox.isChecked()
-                for agent, checkbox in self._checkboxes.items()
-            }
+            agents_enabled = {agent: checkbox.isChecked() for agent, checkbox in self._checkboxes.items()}
             mark_setup_complete(agents_setup, agents_enabled, cancelled=False)
             self.accept()
         else:
             # Setup cancelled
             agents_setup = progress_dialog.get_results()
-            agents_enabled = {
-                agent: checkbox.isChecked()
-                for agent, checkbox in self._checkboxes.items()
-            }
+            agents_enabled = {agent: checkbox.isChecked() for agent, checkbox in self._checkboxes.items()}
             mark_setup_complete(agents_setup, agents_enabled, cancelled=True)
             self.reject()
 
@@ -344,9 +318,7 @@ class SetupProgressDialog(ThemedDialog):
 
     async def _run_setup(self) -> None:
         """Run the setup orchestration."""
-        results = await self._orchestrator.run_sequential_setup(
-            self._agents, progress_callback=self._on_progress
-        )
+        results = await self._orchestrator.run_sequential_setup(self._agents, progress_callback=self._on_progress)
         self._results = results
         # All done
         self._title_label.setText("Setup Complete!")
@@ -355,9 +327,7 @@ class SetupProgressDialog(ThemedDialog):
         # Auto-close after 1 second
         QTimer.singleShot(1000, self.accept)
 
-    def _on_progress(
-        self, agent: str, current: int, total: int, status_message: str
-    ) -> None:
+    def _on_progress(self, agent: str, current: int, total: int, status_message: str) -> None:
         """Handle progress update from orchestrator.
 
         Args:
@@ -369,24 +339,14 @@ class SetupProgressDialog(ThemedDialog):
         self._title_label.setText(f"Setting up agent {current} of {total}")
         self._current_label.setText(f"Current: {format_agent_ui_label(agent)}")
         self._status_label.setText(status_message)
-        self._progress_bar.setValue(
-            current - 1 if "Starting in" in status_message else current
-        )
+        self._progress_bar.setValue(current - 1 if "Starting in" in status_message else current)
 
         # Update completed/remaining lists
         completed = [a for a in self._agents[: current - 1]]
         remaining = [a for a in self._agents[current:]]
 
-        completed_text = (
-            ", ".join([format_agent_ui_label(a) for a in completed])
-            if completed
-            else "None"
-        )
-        remaining_text = (
-            ", ".join([format_agent_ui_label(a) for a in remaining])
-            if remaining
-            else "None"
-        )
+        completed_text = ", ".join([format_agent_ui_label(a) for a in completed]) if completed else "None"
+        remaining_text = ", ".join([format_agent_ui_label(a) for a in remaining]) if remaining else "None"
 
         self._completed_label.setText(f"Completed: {completed_text}")
         self._remaining_label.setText(f"Remaining: {remaining_text}")

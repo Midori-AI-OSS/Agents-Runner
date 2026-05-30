@@ -30,6 +30,7 @@ class EnvironmentsNavigationMixin(_EnvironmentsPageHints):
             self._color,
             self._workspace_type_combo,
             self._gpu_override_mode,
+            self._network_host_override_mode,
             self._opencode_interactive_mode,
             self._agentsnova_trusted_mode,
             self._agentsnova_auto_review_mode,
@@ -56,12 +57,8 @@ class EnvironmentsNavigationMixin(_EnvironmentsPageHints):
             self._cache_settings_preflight_enabled,
         ):
             checkbox.toggled.connect(self._queue_debounced_autosave)
-        self._gh_task_branch_custom_template.textChanged.connect(
-            self._queue_debounced_autosave
-        )
-        self._agentsnova_trusted_users_env.usernames_changed.connect(
-            self._queue_advanced_autosave
-        )
+        self._gh_task_branch_custom_template.textChanged.connect(self._queue_debounced_autosave)
+        self._agentsnova_trusted_users_env.usernames_changed.connect(self._queue_advanced_autosave)
 
     def _on_nav_button_clicked(self, key: str) -> None:
         self._navigate_to_pane(key, user_initiated=True)
