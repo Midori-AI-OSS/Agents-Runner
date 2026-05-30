@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from agents_runner.agent_configs.model import AgentConfig
     from agents_runner.ui.bridges import TaskRunnerBridge
     from agents_runner.ui.graphics import GlassRoot
+    from agents_runner.ui.pages.environments_ports import PortsTabWidget
     from agents_runner.ui.pages import (
         DashboardPage,
         EnvironmentsPage,
@@ -286,13 +287,12 @@ class _EnvironmentsPageHints:
         _gh_task_branch_naming_style: QComboBox
         _gh_task_branch_custom_template: QLineEdit
         _gpu_override_mode: QComboBox
-        _network_host_override_mode: QComboBox
         _opencode_interactive_mode: QComboBox
         _cache_system_preflight_enabled: QCheckBox
         _cache_settings_preflight_enabled: QCheckBox
         _env_vars_tab: object
         _mounts_tab: object
-        _ports_tab: object
+        _ports_tab: PortsTabWidget
         _prompts_tab: object
         _agents_tab: object
         _agentsnova_trusted_users_env: object

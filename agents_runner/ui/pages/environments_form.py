@@ -110,8 +110,8 @@ class EnvironmentsFormMixin(_EnvironmentsPageHints):
             ),
             _EnvironmentPaneSpec(
                 key="ports",
-                title="Ports",
-                subtitle="Port mapping policy for task containers.",
+                title="Network",
+                subtitle="Network and port mapping settings for task containers.",
                 section="Container",
             ),
             _EnvironmentPaneSpec(
@@ -155,11 +155,6 @@ class EnvironmentsFormMixin(_EnvironmentsPageHints):
         self._gpu_override_mode.addItem("Enabled", "enabled")
         self._gpu_override_mode.addItem("Disabled", "disabled")
         self._gpu_override_mode.setToolTip("Override the global GPU runtime setting for this environment.")
-        self._network_host_override_mode = QComboBox()
-        self._network_host_override_mode.addItem("Inherit global setting", "inherit")
-        self._network_host_override_mode.addItem("Enabled", "enabled")
-        self._network_host_override_mode.addItem("Disabled", "disabled")
-        self._network_host_override_mode.setToolTip("Override the global host networking setting for this environment.")
         self._opencode_interactive_mode = QComboBox()
         self._opencode_interactive_mode.addItem("Inherit global setting", "inherit")
         self._opencode_interactive_mode.addItem("Terminal", "terminal")
@@ -352,6 +347,7 @@ class EnvironmentsFormMixin(_EnvironmentsPageHints):
 
         self._ports_tab = PortsTabWidget()
         self._ports_tab.ports_changed.connect(self._on_ports_changed)
+        self._ports_tab.network_host_changed.connect(self._queue_debounced_autosave)
 
         self._prompts_tab = PromptsTabWidget()
         self._prompts_tab.prompts_changed.connect(self._on_prompts_changed)
@@ -379,7 +375,6 @@ class EnvironmentsFormMixin(_EnvironmentsPageHints):
         add_grid_row(grid, 3, QLabel("Max agents running"), max_agents_row)
         add_grid_row(grid, 4, self._headless_desktop_label, self._headless_desktop_row)
         add_grid_row(grid, 5, QLabel("GPU runtime"), self._gpu_override_mode)
-        add_grid_row(grid, 6, QLabel("Network host"), self._network_host_override_mode)
         add_grid_row(
             grid,
             7,

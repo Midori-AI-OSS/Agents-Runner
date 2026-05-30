@@ -30,7 +30,6 @@ class EnvironmentsNavigationMixin(_EnvironmentsPageHints):
             self._color,
             self._workspace_type_combo,
             self._gpu_override_mode,
-            self._network_host_override_mode,
             self._opencode_interactive_mode,
             self._agentsnova_trusted_mode,
             self._agentsnova_auto_review_mode,

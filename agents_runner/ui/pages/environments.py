@@ -353,11 +353,7 @@ class EnvironmentsPage(
                     gpu_mode_idx = 0
                 if gpu_mode_idx >= 0:
                     self._gpu_override_mode.setCurrentIndex(gpu_mode_idx)
-                network_host_mode_idx = self._network_host_override_mode.findData("inherit")
-                if network_host_mode_idx < 0:
-                    network_host_mode_idx = 0
-                if network_host_mode_idx >= 0:
-                    self._network_host_override_mode.setCurrentIndex(network_host_mode_idx)
+                self._ports_tab.set_network_host_override("inherit")
                 opencode_mode_idx = self._opencode_interactive_mode.findData("inherit")
                 if opencode_mode_idx < 0:
                     opencode_mode_idx = 0
@@ -454,13 +450,7 @@ class EnvironmentsPage(
             if gpu_mode_idx >= 0:
                 self._gpu_override_mode.setCurrentIndex(gpu_mode_idx)
             network_host_mode = normalize_gpu_override_mode(getattr(env, "network_host_override_mode", "inherit"))
-            network_host_mode_idx = self._network_host_override_mode.findData(network_host_mode)
-            if network_host_mode_idx < 0:
-                network_host_mode_idx = self._network_host_override_mode.findData("inherit")
-            if network_host_mode_idx < 0:
-                network_host_mode_idx = 0
-            if network_host_mode_idx >= 0:
-                self._network_host_override_mode.setCurrentIndex(network_host_mode_idx)
+            self._ports_tab.set_network_host_override(network_host_mode)
             opencode_mode = normalize_opencode_interactive_override(
                 getattr(env, "opencode_interactive_mode", "inherit")
             )

@@ -134,7 +134,7 @@ class EnvironmentsPageActionsMixin(_EnvironmentsPageHints):
             ),
             "gpu_override_mode": normalize_gpu_override_mode(str(self._gpu_override_mode.currentData() or "inherit")),
             "network_host_override_mode": normalize_gpu_override_mode(
-                str(self._network_host_override_mode.currentData() or "inherit")
+                str(self._ports_tab.get_network_host_override() or "inherit")
             ),
             "opencode_interactive_mode": normalize_opencode_interactive_override(
                 str(self._opencode_interactive_mode.currentData() or "inherit")

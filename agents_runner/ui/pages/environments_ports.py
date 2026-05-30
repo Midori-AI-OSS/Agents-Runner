@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QIntValidator
+from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QHeaderView
 from PySide6.QtWidgets import QLabel
@@ -97,6 +98,7 @@ def _simple_row_from_spec(spec: str) -> _PortRow | None:
 
 class PortsTabWidget(QWidget):
     ports_changed = Signal()
+    network_host_changed = Signal()
 
     _COL_HOST = 0
     _COL_CONTAINER = 1
@@ -161,6 +163,13 @@ class PortsTabWidget(QWidget):
         self._stack.addWidget(self._advanced_view)
         self._stack.setCurrentIndex(0)
 
+        self._network_host_override_mode = QComboBox()
+        self._network_host_override_mode.addItem("Inherit global setting", "inherit")
+        self._network_host_override_mode.addItem("Enabled", "enabled")
+        self._network_host_override_mode.addItem("Disabled", "disabled")
+        self._network_host_override_mode.setToolTip("Override the global host networking setting for this environment.")
+        self._network_host_override_mode.currentIndexChanged.connect(self._on_network_host_override_changed)
+
         footer_row = QHBoxLayout()
         footer_row.setSpacing(BUTTON_ROW_SPACING)
         self._add_port_label = QLabel("Add port")
@@ -170,6 +179,11 @@ class PortsTabWidget(QWidget):
         self._add_port_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._add_port_btn.clicked.connect(self._on_add_row)
         footer_row.addWidget(self._add_port_btn)
+        self._network_host_sep = QLabel("::")
+        self._network_host_sep.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
+        footer_row.addWidget(self._network_host_sep)
+        footer_row.addWidget(QLabel("Network host"))
+        footer_row.addWidget(self._network_host_override_mode)
         footer_row.addStretch(1)
         self._mode_btn = QToolButton()
         self._mode_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -259,6 +273,19 @@ class PortsTabWidget(QWidget):
 
         return ports, False, bool(self._advanced_acknowledged), errors
 
+    def set_network_host_override(self, mode: str) -> None:
+        idx = self._network_host_override_mode.findData(mode)
+        if idx < 0:
+            idx = self._network_host_override_mode.findData("inherit")
+        if idx >= 0:
+            self._network_host_override_mode.setCurrentIndex(idx)
+
+    def get_network_host_override(self) -> str:
+        return str(self._network_host_override_mode.currentData() or "inherit")
+
+    def _on_network_host_override_changed(self, _index: int) -> None:
+        self.network_host_changed.emit()
+
     def _on_mode_clicked(self) -> None:
         if self._unlocked:
             self._switch_to_simple_mode()
@@ -277,6 +304,7 @@ class PortsTabWidget(QWidget):
             self._mode_btn.setToolTip("Switch to Simple mode (binds to 127.0.0.1 only).")
             self._add_port_label.setVisible(False)
             self._add_port_btn.setVisible(False)
+            self._network_host_sep.setVisible(False)
         else:
             self._stack.setCurrentIndex(0)
             self._mode_btn.setText("Advanced Mode")
@@ -285,6 +313,7 @@ class PortsTabWidget(QWidget):
             )
             self._add_port_label.setVisible(True)
             self._add_port_btn.setVisible(True)
+            self._network_host_sep.setVisible(True)
 
     def _switch_to_advanced_mode(self) -> None:
         if not self._advanced_acknowledged:
