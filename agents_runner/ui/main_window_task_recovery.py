@@ -575,7 +575,6 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
                     bool(task.gh_use_host_cli),
                     (str(task.gh_pr_metadata_path or "").strip() or None),
                     str(task.agent_cli or "").strip(),
-                    str(task.agent_cli_args or "").strip(),
                 )
             else:
                 self.host_log.emit(
