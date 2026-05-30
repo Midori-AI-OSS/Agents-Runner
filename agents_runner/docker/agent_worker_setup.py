@@ -45,9 +45,7 @@ from agents_runner.setup_agents import prepare_setup_agents_phase
 from agents_runner.setup_agents import missing_setup_agents_instruction
 
 
-INSTALL_PREFLIGHT_PATH_TEMPLATE = (
-    "/tmp/agents-runner-preflight-install-agent-{task_id}.sh"
-)
+INSTALL_PREFLIGHT_PATH_TEMPLATE = "/tmp/agents-runner-preflight-install-agent-{task_id}.sh"
 
 
 @dataclass(frozen=True)
@@ -104,21 +102,15 @@ class WorkerSetup:
         self._on_log = on_log
         self._on_state = on_state
 
-    def prepare_runtime_environment(
-        self, preflight_tmp_paths: list[str]
-    ) -> RuntimeEnvironment:
+    def prepare_runtime_environment(self, preflight_tmp_paths: list[str]) -> RuntimeEnvironment:
         """Prepare the complete runtime environment."""
         platform_config = self._setup_platform()
         workspace_config = self._resolve_workspace(platform_config.agent_cli)
-        template_detection = self._detect_and_persist_template(
-            workspace_config.host_mount
-        )
+        template_detection = self._detect_and_persist_template(workspace_config.host_mount)
         artifacts_staging_dir = self._create_artifacts_directory()
         setup_agents_script: str | None = None
         setup_agents_prompt_instruction: str | None = None
-        allow_missing_setup_agents_prompt = bool(
-            self._config.setup_agents_missing_prompt_enabled
-        )
+        allow_missing_setup_agents_prompt = bool(self._config.setup_agents_missing_prompt_enabled)
         try:
             setup_agents = prepare_setup_agents_phase(
                 host_workdir=workspace_config.host_mount,
@@ -141,12 +133,8 @@ class WorkerSetup:
                 )
             )
             if allow_missing_setup_agents_prompt:
-                setup_agents_prompt_instruction = missing_setup_agents_instruction(
-                    launch_mode=self._config.launch_mode
-                )
-        self.pull_image_if_needed(
-            platform_config.forced_platform, platform_config.platform_args
-        )
+                setup_agents_prompt_instruction = missing_setup_agents_instruction(launch_mode=self._config.launch_mode)
+        self.pull_image_if_needed(platform_config.forced_platform, platform_config.platform_args)
 
         agent_probe_available: bool | None = None
         install_plan = None
@@ -173,12 +161,8 @@ class WorkerSetup:
                     agent_cli=platform_config.agent_cli,
                     include_internal=False,
                 )
-        install_script = (
-            str(install_plan.script_content or "").strip() if install_plan else ""
-        )
-        install_phase_name = (
-            str(install_plan.phase_name or "").strip() if install_plan else ""
-        )
+        install_script = str(install_plan.script_content or "").strip() if install_plan else ""
+        install_phase_name = str(install_plan.phase_name or "").strip() if install_plan else ""
         preflight_config = self._prepare_preflight_scripts(
             preflight_tmp_paths,
             install_script=install_script,
@@ -203,10 +187,7 @@ class WorkerSetup:
             caching_config.desktop_enabled,
             caching_config.desktop_display,
         )
-        if (
-            not allow_missing_setup_agents_prompt
-            and not str(setup_agents_script or "").strip()
-        ):
+        if not allow_missing_setup_agents_prompt and not str(setup_agents_script or "").strip():
             setup_agents_prompt_instruction = None
             self._on_log(
                 format_log(
@@ -232,9 +213,7 @@ class WorkerSetup:
             config_extra_mounts=workspace_config.config_extra_mounts,
             template_detection=template_detection,
             container_name=(
-                self._config.container_name
-                if self._config.container_name
-                else f"agents-runner-{uuid.uuid4().hex[:10]}"
+                self._config.container_name if self._config.container_name else f"agents-runner-{uuid.uuid4().hex[:10]}"
             ),
             task_token=self._config.task_id or "task",
             artifacts_staging_dir=artifacts_staging_dir,
@@ -258,9 +237,7 @@ class WorkerSetup:
             agent_cli=platform_config.agent_cli,
             prompt_for_agent=final_prompt,
             launch_mode=str(self._config.launch_mode or "agent"),
-            custom_command_argv=[
-                str(part) for part in self._config.custom_command_argv
-            ],
+            custom_command_argv=[str(part) for part in self._config.custom_command_argv],
             custom_verify_executable=str(self._config.custom_verify_executable or ""),
         )
 
@@ -331,29 +308,19 @@ class WorkerSetup:
 
     def _resolve_workspace(self, agent_cli: str) -> _WorkspaceConfig:
         """Resolve workspace mount points."""
-        host_mount = os.path.abspath(
-            os.path.expanduser(str(self._config.host_workdir or "").strip())
-        )
-        container_cwd = (
-            str(self._config.container_workdir or "").strip()
-            or "/home/midori-ai/workspace"
-        )
+        host_mount = os.path.abspath(os.path.expanduser(str(self._config.host_workdir or "").strip()))
+        container_cwd = str(self._config.container_workdir or "").strip() or "/home/midori-ai/workspace"
 
         return self._WorkspaceConfig(
             host_mount=host_mount,
             container_cwd=container_cwd,
             config_container_dir=(
-                str(self._config.container_config_dir or "").strip()
-                or container_config_dir(agent_cli)
+                str(self._config.container_config_dir or "").strip() or container_config_dir(agent_cli)
             ),
-            config_extra_mounts=additional_config_mounts(
-                agent_cli, self._config.host_config_dir
-            ),
+            config_extra_mounts=additional_config_mounts(agent_cli, self._config.host_config_dir),
         )
 
-    def _detect_and_persist_template(
-        self, host_mount: str
-    ) -> MidoriAITemplateDetection:
+    def _detect_and_persist_template(self, host_mount: str) -> MidoriAITemplateDetection:
         """Detect and persist Midori AI template."""
         template_detection = scan_midoriai_agents_template(host_mount)
 
@@ -364,15 +331,9 @@ class WorkerSetup:
                 env = load_environments().get(str(self._config.environment_id))
                 if env is not None:
                     if env.midoriai_template_likelihood == 0.0:
-                        env.midoriai_template_likelihood = (
-                            template_detection.midoriai_template_likelihood
-                        )
-                        env.midoriai_template_detected = (
-                            template_detection.midoriai_template_detected
-                        )
-                        env.midoriai_template_detected_path = (
-                            template_detection.midoriai_template_detected_path
-                        )
+                        env.midoriai_template_likelihood = template_detection.midoriai_template_likelihood
+                        env.midoriai_template_detected = template_detection.midoriai_template_detected
+                        env.midoriai_template_detected_path = template_detection.midoriai_template_detected_path
                         save_environment(env)
                     else:
                         template_detection = MidoriAITemplateDetection(
@@ -405,19 +366,10 @@ class WorkerSetup:
     def _create_artifacts_directory(self) -> Path:
         """Create artifacts staging directory."""
         artifacts_staging_dir = (
-            Path.home()
-            / ".midoriai"
-            / "agents-runner"
-            / "artifacts"
-            / (self._config.task_id or "task")
-            / "staging"
+            Path.home() / ".midoriai" / "agents-runner" / "artifacts" / (self._config.task_id or "task") / "staging"
         )
         artifacts_staging_dir.mkdir(parents=True, exist_ok=True)
-        self._on_log(
-            format_log(
-                "host", "none", "INFO", f"artifacts staging: {artifacts_staging_dir}"
-            )
-        )
+        self._on_log(format_log("host", "none", "INFO", f"artifacts staging: {artifacts_staging_dir}"))
         return artifacts_staging_dir
 
     @dataclass(frozen=True)
@@ -475,12 +427,8 @@ class WorkerSetup:
                 )
                 setup_agents_preflight_tmp_path = None
         return self._PreflightConfig(
-            install_container_path=INSTALL_PREFLIGHT_PATH_TEMPLATE.replace(
-                "{task_id}", task_token
-            ),
-            settings_container_path=self._config.container_settings_preflight_path.replace(
-                "{task_id}", task_token
-            ),
+            install_container_path=INSTALL_PREFLIGHT_PATH_TEMPLATE.replace("{task_id}", task_token),
+            settings_container_path=self._config.container_settings_preflight_path.replace("{task_id}", task_token),
             setup_agents_container_path=self._config.container_setup_agents_preflight_path.replace(
                 "{task_id}", task_token
             ),
@@ -489,16 +437,11 @@ class WorkerSetup:
             setup_agents_preflight_tmp_path=setup_agents_preflight_tmp_path,
         )
 
-    def pull_image_if_needed(
-        self, forced_platform: str | None, platform_args: list[str]
-    ) -> None:
+    def pull_image_if_needed(self, forced_platform: str | None, platform_args: list[str]) -> None:
         """Pull Docker image if needed."""
         should_pull = (
             self._config.pull_before_run
-            or (
-                forced_platform
-                and not has_platform_image(self._config.image, forced_platform)
-            )
+            or (forced_platform and not has_platform_image(self._config.image, forced_platform))
             or (not forced_platform and not has_image(self._config.image))
         )
 
@@ -544,9 +487,7 @@ class WorkerSetup:
         system_preflight_script = ""
         if system_preflight_path.is_file():
             try:
-                system_preflight_script = system_preflight_path.read_text(
-                    encoding="utf-8"
-                )
+                system_preflight_script = system_preflight_path.read_text(encoding="utf-8")
             except Exception:
                 system_preflight_script = ""
 
@@ -588,11 +529,7 @@ class WorkerSetup:
             runtime_image = next_image
 
         # system
-        if (
-            container_caching_enabled
-            and self._config.cache_system_preflight_enabled
-            and system_preflight_enabled
-        ):
+        if container_caching_enabled and self._config.cache_system_preflight_enabled and system_preflight_enabled:
             self._on_log(
                 format_log(
                     "phase",
@@ -644,9 +581,7 @@ class WorkerSetup:
             )
             settings_preflight_cached = next_image != runtime_image
             runtime_image = next_image
-        elif (
-            container_caching_enabled and self._config.cache_settings_preflight_enabled
-        ):
+        elif container_caching_enabled and self._config.cache_settings_preflight_enabled:
             self._on_log(
                 format_log(
                     "phase",
@@ -668,9 +603,7 @@ class WorkerSetup:
                 )
             )
             try:
-                runtime_image = ensure_desktop_image(
-                    desktop_base_image, on_log=self._on_log
-                )
+                runtime_image = ensure_desktop_image(desktop_base_image, on_log=self._on_log)
                 if runtime_image != desktop_base_image:
                     desktop_cached = True
                     self._on_log(

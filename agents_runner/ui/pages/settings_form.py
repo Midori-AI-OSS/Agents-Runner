@@ -210,27 +210,19 @@ class SettingsFormMixin:
             self._shell.addItem(label, value)
 
         self._interactive_terminal = QComboBox()
-        self._interactive_terminal.setToolTip(
-            "Default terminal used by Run Interactive and Get Agent Help."
-        )
+        self._interactive_terminal.setToolTip("Default terminal used by Run Interactive and Get Agent Help.")
         self._refresh_terminal_options(selected_terminal_id="")
 
         self._refresh_interactive_terminal = QToolButton()
         self._refresh_interactive_terminal.setText("Refresh")
-        self._refresh_interactive_terminal.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-        )
-        self._refresh_interactive_terminal.clicked.connect(
-            self._on_refresh_terminal_options_clicked
-        )
+        self._refresh_interactive_terminal.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._refresh_interactive_terminal.clicked.connect(self._on_refresh_terminal_options_clicked)
 
         self._opencode_interactive_mode = QComboBox()
         self._opencode_interactive_mode.addItem("Terminal", "terminal")
         self._opencode_interactive_mode.addItem("Web", "web")
         self._opencode_interactive_mode.addItem("Ask", "ask")
-        self._opencode_interactive_mode.setToolTip(
-            "Default OpenCode launch mode for Run Interactive."
-        )
+        self._opencode_interactive_mode.setToolTip("Default OpenCode launch mode for Run Interactive.")
 
         self._agent_configs: list[AgentConfig] = []
         self._agent_configs_by_id: dict[str, AgentConfig] = {}
@@ -240,49 +232,35 @@ class SettingsFormMixin:
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
-        self._agent_configs_list.currentRowChanged.connect(
-            lambda _row=0: self._sync_agent_configs_actions()
-        )
-        self._agent_configs_list.itemDoubleClicked.connect(
-            lambda _item=None: self._on_agent_configs_edit_clicked()
-        )
+        self._agent_configs_list.currentRowChanged.connect(lambda _row=0: self._sync_agent_configs_actions())
+        self._agent_configs_list.itemDoubleClicked.connect(lambda _item=None: self._on_agent_configs_edit_clicked())
         self._agent_configs_list.setStyleSheet(
             "QListWidget::item:selected { background-color: rgba(148, 163, 184, 50); }"
         )
 
         self._agent_configs_add = QToolButton()
         self._agent_configs_add.setText("Add")
-        self._agent_configs_add.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-        )
+        self._agent_configs_add.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._agent_configs_add.clicked.connect(self._on_agent_configs_add_clicked)
 
         self._agent_configs_edit = QToolButton()
         self._agent_configs_edit.setText("Edit")
-        self._agent_configs_edit.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-        )
+        self._agent_configs_edit.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._agent_configs_edit.clicked.connect(self._on_agent_configs_edit_clicked)
 
         self._agent_configs_delete = QToolButton()
         self._agent_configs_delete.setText("Delete")
-        self._agent_configs_delete.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-        )
-        self._agent_configs_delete.clicked.connect(
-            self._on_agent_configs_delete_clicked
-        )
+        self._agent_configs_delete.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._agent_configs_delete.clicked.connect(self._on_agent_configs_delete_clicked)
         self._sync_agent_configs_actions()
 
         self._ui_theme = QComboBox()
         self._ui_theme.setToolTip(
-            "Auto syncs background theme to the active agent.\n"
-            "Select a specific theme to force an override."
+            "Auto syncs background theme to the active agent.\nSelect a specific theme to force an override."
         )
         self._popup_theme_animation_enabled = QCheckBox("Enabled")
         self._popup_theme_animation_enabled.setToolTip(
-            "When enabled, themed popup backgrounds stay animated. "
-            "Disable to render popups as static backgrounds."
+            "When enabled, themed popup backgrounds stay animated. Disable to render popups as static backgrounds."
         )
         self._popup_theme_animation_enabled.setChecked(True)
         self._theme_preview_tiles: dict[str, ThemePreviewTile] = {}
@@ -294,18 +272,13 @@ class SettingsFormMixin:
 
         self._preflight_enabled = QToolButton()
         self._preflight_enabled.setCheckable(True)
-        self._preflight_enabled.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-        )
-        self._preflight_enabled.setToolTip(
-            "Run global preflight before setup-agents.sh."
-        )
+        self._preflight_enabled.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._preflight_enabled.setToolTip("Run global preflight before setup-agents.sh.")
         self._preflight_enabled.toggled.connect(self._on_preflight_enabled_toggled)
 
         self._append_pixelarch_context = QCheckBox("Enabled")
         self._append_pixelarch_context.setToolTip(
-            "When enabled, appends a short note to prompts passed to Run Agent.\n"
-            "This does not affect Run Interactive."
+            "When enabled, appends a short note to prompts passed to Run Agent.\nThis does not affect Run Interactive."
         )
 
         self._headless_desktop_enabled = QCheckBox("Enabled")
@@ -314,8 +287,13 @@ class SettingsFormMixin:
         )
         self._gpu_enabled = QCheckBox("Enabled")
         self._gpu_enabled.setToolTip(
-            "When enabled, task containers request GPU runtime access (`--gpus all`) "
-            "for Agent and Interactive runs."
+            "When enabled, task containers request GPU runtime access (`--gpus all`) for Agent and Interactive runs."
+        )
+        self._network_host = QCheckBox("Enabled")
+        self._network_host.setToolTip(
+            "When enabled, task containers use host networking (`--network host`). "
+            "This gives containers direct access to the host's network interfaces. "
+            "May require sudo/privileged access."
         )
         self._auto_navigate_on_run_agent_start = QCheckBox("Enabled")
         self._auto_navigate_on_run_agent_start.setToolTip(
@@ -337,23 +315,13 @@ class SettingsFormMixin:
         )
 
         self._mount_host_cache = QCheckBox("Enabled")
-        self._mount_host_cache.setToolTip(
-            "Mounts ~/.cache to speed up package manager installs across environments."
-        )
+        self._mount_host_cache.setToolTip("Mounts ~/.cache to speed up package manager installs across environments.")
 
         self._task_workspace_location = QComboBox()
-        self._task_workspace_location.addItem(
-            "App data", TASK_WORKSPACE_LOCATION_APP_DATA
-        )
-        self._task_workspace_location.addItem(
-            "Scratch drive", TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
-        )
-        self._task_workspace_location.setToolTip(
-            "Controls where cloned task workspaces are stored on the host."
-        )
-        self._task_workspace_location.currentIndexChanged.connect(
-            self._refresh_task_workspace_controls
-        )
+        self._task_workspace_location.addItem("App data", TASK_WORKSPACE_LOCATION_APP_DATA)
+        self._task_workspace_location.addItem("Scratch drive", TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE)
+        self._task_workspace_location.setToolTip("Controls where cloned task workspaces are stored on the host.")
+        self._task_workspace_location.currentIndexChanged.connect(self._refresh_task_workspace_controls)
 
         self._scratch_drive_status = QLabel("")
         self._scratch_drive_status.setObjectName("SettingsPaneSubtitle")
@@ -364,9 +332,7 @@ class SettingsFormMixin:
 
         self._move_task_workspaces = QToolButton()
         self._move_task_workspaces.setText("Move all tasks")
-        self._move_task_workspaces.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-        )
+        self._move_task_workspaces.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._move_task_workspaces.clicked.connect(self._on_move_task_workspaces)
         self._move_task_workspaces.installEventFilter(self)
         self._task_workspace_migration_blocked = False
@@ -374,9 +340,7 @@ class SettingsFormMixin:
         self._move_task_workspaces_shift_click_force = False
         self._move_task_workspaces_shift_poll_timer = QTimer(self)
         self._move_task_workspaces_shift_poll_timer.setInterval(50)
-        self._move_task_workspaces_shift_poll_timer.timeout.connect(
-            self._poll_move_task_workspaces_shift_state
-        )
+        self._move_task_workspaces_shift_poll_timer.timeout.connect(self._poll_move_task_workspaces_shift_state)
 
         self._task_workspace_cleanup_retention_days = QSpinBox()
         self._task_workspace_cleanup_retention_days.setRange(1, 365)
@@ -421,8 +385,7 @@ class SettingsFormMixin:
         )
         self._github_write_confirmation_mode.addItem("No confirmations", "never")
         self._github_write_confirmation_mode.setToolTip(
-            "Controls confirmation prompts for GitHub write actions "
-            "(open/close, comments, reaction markers)."
+            "Controls confirmation prompts for GitHub write actions (open/close, comments, reaction markers)."
         )
 
         self._agentsnova_auto_review_enabled = QCheckBox("Enabled")
@@ -443,8 +406,7 @@ class SettingsFormMixin:
             "disabled",
         )
         self._agentsnova_auto_marker_comments_mode.setToolTip(
-            "Default mode for @agentsnova marker comments. Environments can inherit "
-            "this mode or override it."
+            "Default mode for @agentsnova marker comments. Environments can inherit this mode or override it."
         )
         self._agentsnova_auto_reactions_enabled = QCheckBox("Enabled")
         self._agentsnova_auto_reactions_enabled.setToolTip(
@@ -467,20 +429,14 @@ class SettingsFormMixin:
             QSizePolicy.Policy.Expanding,
         )
         self._agentsnova_trusted_users_global.set_add_button_visible(False)
-        self._add_trusted_user_global = (
-            self._agentsnova_trusted_users_global.create_add_button(self)
-        )
+        self._add_trusted_user_global = self._agentsnova_trusted_users_global.create_add_button(self)
         self._setup_github_defaults_global = QToolButton()
         self._setup_github_defaults_global.setText("Setup Defaults")
-        self._setup_github_defaults_global.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextOnly
-        )
+        self._setup_github_defaults_global.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._setup_github_defaults_global.setToolTip(
             "Seed trusted users from cloned environment owners/org members and current gh login."
         )
-        self._setup_github_defaults_global.clicked.connect(
-            self._on_setup_global_github_defaults
-        )
+        self._setup_github_defaults_global.clicked.connect(self._on_setup_global_github_defaults)
 
         self._preflight_script = QPlainTextEdit()
         self._preflight_script.setPlaceholderText(
@@ -494,47 +450,31 @@ class SettingsFormMixin:
         self._preflight_script.setTabChangesFocus(True)
         self._preflight_script.setEnabled(False)
         self._on_preflight_enabled_toggled(bool(self._preflight_enabled.isChecked()))
-        self._preflight_script.textChanged.connect(
-            self._on_preflight_script_text_changed
-        )
-        self._preflight_script_highlighter = ArtifactSyntaxHighlighter(
-            self._preflight_script.document()
-        )
-        self._refresh_preflight_script_highlighting(
-            str(self._preflight_script.toPlainText() or "")
-        )
+        self._preflight_script.textChanged.connect(self._on_preflight_script_text_changed)
+        self._preflight_script_highlighter = ArtifactSyntaxHighlighter(self._preflight_script.document())
+        self._refresh_preflight_script_highlighting(str(self._preflight_script.toPlainText() or ""))
 
         self._recommended_preflights = QComboBox()
         self._recommended_preflights.setToolTip("Load a recommended preflight script.")
         self._populate_recommended_preflights()
-        self._recommended_preflights.currentIndexChanged.connect(
-            self._on_recommended_preflight_selected
-        )
+        self._recommended_preflights.currentIndexChanged.connect(self._on_recommended_preflight_selected)
 
         self._test_preflights = QToolButton()
         self._test_preflights.setText("Run preflight checks")
         self._test_preflights.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-        self._test_preflights.setToolTip(
-            "Run preflight smoke test for all environments."
-        )
+        self._test_preflights.setToolTip("Run preflight smoke test for all environments.")
         self._test_preflights.clicked.connect(self._on_test_preflight)
 
         self._radio_enabled = QCheckBox("Enabled")
-        self._radio_enabled.setToolTip(
-            "Controls whether the navbar radio system is enabled."
-        )
+        self._radio_enabled.setToolTip("Controls whether the navbar radio system is enabled.")
         self._radio_autostart = QCheckBox("Enabled")
-        self._radio_autostart.setToolTip(
-            "Starts playback automatically at launch when radio is enabled."
-        )
+        self._radio_autostart.setToolTip("Starts playback automatically at launch when radio is enabled.")
         self._radio_autostart.setEnabled(False)
 
         self._radio_channel_values: list[str] = []
         self._radio_channel_enabled = False
         self._radio_channel = QComboBox()
-        self._radio_channel.setToolTip(
-            "Select a radio channel. All channels uses the server default behavior."
-        )
+        self._radio_channel.setToolTip("Select a radio channel. All channels uses the server default behavior.")
         self._radio_channel.setEnabled(False)
         self.set_radio_channel_options([], selected="", enabled=False)
 
@@ -552,12 +492,8 @@ class SettingsFormMixin:
         self._radio_volume.valueChanged.connect(self._on_radio_volume_value_changed)
 
         self._radio_loudness_boost_enabled = QCheckBox("Enabled")
-        self._radio_loudness_boost_enabled.setToolTip(
-            "Applies a gain multiplier to radio volume mapping."
-        )
-        self._radio_loudness_boost_enabled.toggled.connect(
-            self._on_radio_loudness_boost_toggled
-        )
+        self._radio_loudness_boost_enabled.setToolTip("Applies a gain multiplier to radio volume mapping.")
+        self._radio_loudness_boost_enabled.toggled.connect(self._on_radio_loudness_boost_toggled)
 
         self._radio_loudness_boost_factor = QDoubleSpinBox()
         self._radio_loudness_boost_factor.setObjectName("SettingsBoostSpinBox")
@@ -565,31 +501,22 @@ class SettingsFormMixin:
             RadioController.LOUDNESS_BOOST_MIN,
             RadioController.LOUDNESS_BOOST_MAX,
         )
-        self._radio_loudness_boost_factor.setSingleStep(
-            RadioController.LOUDNESS_BOOST_STEP
-        )
+        self._radio_loudness_boost_factor.setSingleStep(RadioController.LOUDNESS_BOOST_STEP)
         self._radio_loudness_boost_factor.setDecimals(2)
-        self._radio_loudness_boost_factor.setValue(
-            RadioController.LOUDNESS_BOOST_DEFAULT
-        )
+        self._radio_loudness_boost_factor.setValue(RadioController.LOUDNESS_BOOST_DEFAULT)
         self._radio_loudness_boost_factor.setSuffix("x")
         self._radio_loudness_boost_factor.setEnabled(False)
         self._radio_loudness_boost_factor.setToolTip(
-            "Boost multiplier for radio loudness. Effective output is capped by Qt "
-            "audio output at 100%."
+            "Boost multiplier for radio loudness. Effective output is capped by Qt audio output at 100%."
         )
-        self._radio_loudness_boost_factor.valueChanged.connect(
-            self._on_radio_loudness_boost_factor_changed
-        )
+        self._radio_loudness_boost_factor.valueChanged.connect(self._on_radio_loudness_boost_factor_changed)
 
         self._radio_enabled.toggled.connect(self._radio_autostart.setEnabled)
 
     def _build_pages(self) -> None:
         specs_by_key = {spec.key: spec for spec in self._pane_specs}
 
-        general_page, general_body = self._create_page(
-            specs_by_key["general_preferences"]
-        )
+        general_page, general_body = self._create_page(specs_by_key["general_preferences"])
         terminal_layout = QGridLayout()
         configure_form_grid(terminal_layout)
         add_grid_row(terminal_layout, 0, QLabel("Spellcheck"), self._spellcheck_enabled)
@@ -638,9 +565,7 @@ class SettingsFormMixin:
             self._scratch_drive_status_label,
             self._scratch_drive_status_row,
         )
-        add_grid_row(
-            workspaces_grid, 2, QLabel("Move all tasks"), self._move_task_workspaces
-        )
+        add_grid_row(workspaces_grid, 2, QLabel("Move all tasks"), self._move_task_workspaces)
         storage_body.addLayout(workspaces_grid)
         storage_body.addStretch(1)
         self._register_page("storage", storage_page)
@@ -712,9 +637,7 @@ class SettingsFormMixin:
         agent_body.addStretch(1)
         self._register_page("agent_defaults", agent_page)
 
-        agent_configs_page, agent_configs_body = self._create_page(
-            specs_by_key["agent_configs"]
-        )
+        agent_configs_page, agent_configs_body = self._create_page(specs_by_key["agent_configs"])
         agent_configs_body.addWidget(self._agent_configs_list, 1)
         agent_configs_actions = QHBoxLayout()
         agent_configs_actions.setSpacing(BUTTON_ROW_SPACING)
@@ -725,9 +648,7 @@ class SettingsFormMixin:
         agent_configs_body.addLayout(agent_configs_actions)
         self._register_page("agent_configs", agent_configs_page)
 
-        github_config_page, github_config_body = self._create_page(
-            specs_by_key["github_config"]
-        )
+        github_config_page, github_config_body = self._create_page(specs_by_key["github_config"])
         github_grid = QGridLayout()
         configure_form_grid(github_grid)
         add_grid_row(
@@ -776,9 +697,7 @@ class SettingsFormMixin:
         github_config_body.addStretch(1)
         self._register_page("github_config", github_config_page)
 
-        github_trusted_page, github_trusted_body = self._create_page(
-            specs_by_key["github_trusted_users"]
-        )
+        github_trusted_page, github_trusted_body = self._create_page(specs_by_key["github_trusted_users"])
         github_trusted_body.addWidget(self._agentsnova_trusted_users_global, 1)
 
         github_actions = QHBoxLayout()
@@ -807,18 +726,24 @@ class SettingsFormMixin:
         add_grid_row(
             runtime_grid,
             2,
+            QLabel("Network host"),
+            self._network_host,
+        )
+        add_grid_row(
+            runtime_grid,
+            3,
             QLabel("Navigate Home on Run Agent start"),
             self._auto_navigate_on_run_agent_start,
         )
         add_grid_row(
             runtime_grid,
-            3,
+            4,
             QLabel("Navigate Home on Run Interactive start"),
             self._auto_navigate_on_run_interactive_start,
         )
         add_grid_row(
             runtime_grid,
-            4,
+            5,
             QLabel("Mount host cache"),
             self._mount_host_cache,
         )
@@ -826,9 +751,7 @@ class SettingsFormMixin:
         runtime_body.addStretch(1)
         self._register_page("runtime_behavior", runtime_page)
 
-        preflight_page, preflight_body = self._create_page(
-            specs_by_key["preflight_script"]
-        )
+        preflight_page, preflight_body = self._create_page(specs_by_key["preflight_script"])
         preflight_body.addWidget(self._preflight_script, 1)
         preflight_actions = QHBoxLayout()
         preflight_actions.setSpacing(BUTTON_ROW_SPACING)
@@ -848,9 +771,7 @@ class SettingsFormMixin:
             radio_grid = QGridLayout()
             configure_form_grid(radio_grid)
             add_grid_row(radio_grid, 0, QLabel("Midori AI Radio"), self._radio_enabled)
-            add_grid_row(
-                radio_grid, 1, QLabel("Radio auto-start"), self._radio_autostart
-            )
+            add_grid_row(radio_grid, 1, QLabel("Radio auto-start"), self._radio_autostart)
             add_grid_row(radio_grid, 2, QLabel("Channel"), self._radio_channel)
             add_grid_row(radio_grid, 3, QLabel("Stream quality"), self._radio_quality)
 
@@ -886,9 +807,7 @@ class SettingsFormMixin:
             for spec in specs:
                 button = QToolButton()
                 button.setObjectName("SettingsNavButton")
-                button_label = (
-                    "Preferences" if spec.key == "general_preferences" else spec.title
-                )
+                button_label = "Preferences" if spec.key == "general_preferences" else spec.title
                 button.setText(button_label)
                 button.setToolTip(spec.subtitle)
                 button.setCheckable(True)
@@ -899,9 +818,7 @@ class SettingsFormMixin:
                     QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Fixed,
                 )
-                button.clicked.connect(
-                    lambda checked=False, key=spec.key: self._on_nav_button_clicked(key)
-                )
+                button.clicked.connect(lambda checked=False, key=spec.key: self._on_nav_button_clicked(key))
                 nav_layout.addWidget(button)
                 self._nav_buttons[spec.key] = button
                 self._compact_nav.addItem(button_label, spec.key)
@@ -952,9 +869,7 @@ class SettingsFormMixin:
 
         self._agent_configs = list(configs)
         self._agent_configs_by_id = {
-            str(cfg.config_id or "").strip(): cfg
-            for cfg in configs
-            if str(getattr(cfg, "config_id", "") or "").strip()
+            str(cfg.config_id or "").strip(): cfg for cfg in configs if str(getattr(cfg, "config_id", "") or "").strip()
         }
 
         usage_counts = self._agent_config_usage_counts()
@@ -971,9 +886,7 @@ class SettingsFormMixin:
         for index, cfg in enumerate(configs):
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, str(cfg.config_id or ""))
-            widget = self._create_agent_config_row_widget(
-                cfg, usage_counts=usage_counts
-            )
+            widget = self._create_agent_config_row_widget(cfg, usage_counts=usage_counts)
             item.setSizeHint(widget.sizeHint())
             self._agent_configs_list.addItem(item)
             self._agent_configs_list.setItemWidget(item, widget)
@@ -1018,9 +931,7 @@ class SettingsFormMixin:
         title_row.setSpacing(0)
 
         title = QLabel(str(getattr(config, "config_id", "") or "").strip())
-        title.setStyleSheet(
-            "font-size: 12px; font-weight: 650; color: rgba(237, 239, 245, 230);"
-        )
+        title.setStyleSheet("font-size: 12px; font-weight: 650; color: rgba(237, 239, 245, 230);")
 
         config_id = str(getattr(config, "config_id", "") or "").strip()
         count = (usage_counts or {}).get(config_id, 0)
@@ -1115,9 +1026,7 @@ class SettingsFormMixin:
         except Exception:
             referenced = []
 
-        referenced = [
-            str(item or "").strip() for item in referenced if str(item or "").strip()
-        ]
+        referenced = [str(item or "").strip() for item in referenced if str(item or "").strip()]
         referenced.sort(key=str.casefold)
 
         if referenced:
@@ -1217,9 +1126,7 @@ class SettingsFormMixin:
             self._rebuild_theme_preview_tiles(theme_names)
 
         for theme_name, tile in self._theme_preview_tiles.items():
-            tile.set_selected(
-                normalized_selected != "auto" and theme_name == normalized_selected
-            )
+            tile.set_selected(normalized_selected != "auto" and theme_name == normalized_selected)
 
     def _rebuild_theme_preview_tiles(self, theme_names: list[str]) -> None:
         if self._theme_preview_grid is None:
@@ -1361,9 +1268,7 @@ class SettingsFormMixin:
         raw = max(0, min(100, int(value)))
         if not self._radio_loudness_boost_enabled.isChecked():
             return raw
-        factor = RadioController.normalize_loudness_boost_factor(
-            self._radio_loudness_boost_factor.value()
-        )
+        factor = RadioController.normalize_loudness_boost_factor(self._radio_loudness_boost_factor.value())
         return max(0, int(round(raw * factor)))
 
     def set_settings(self, settings: dict[str, Any]) -> None:
@@ -1381,36 +1286,24 @@ class SettingsFormMixin:
             self._set_combo_value(self._shell, shell_value, fallback="bash")
             self._set_combo_value(
                 self._opencode_interactive_mode,
-                normalize_opencode_interactive_mode(
-                    str(settings.get("opencode_interactive_mode") or "terminal")
-                ),
+                normalize_opencode_interactive_mode(str(settings.get("opencode_interactive_mode") or "terminal")),
                 fallback="terminal",
             )
             self._refresh_terminal_options(
-                selected_terminal_id=str(
-                    settings.get("interactive_terminal_id") or ""
-                ).strip()
+                selected_terminal_id=str(settings.get("interactive_terminal_id") or "").strip()
             )
             enabled = bool(settings.get("preflight_enabled") or False)
             self._preflight_enabled.setChecked(enabled)
             self._preflight_script.setEnabled(enabled)
-            self._preflight_script.setPlainText(
-                str(settings.get("preflight_script") or "")
-            )
-            self._refresh_preflight_script_highlighting(
-                str(self._preflight_script.toPlainText() or "")
-            )
+            self._preflight_script.setPlainText(str(settings.get("preflight_script") or ""))
+            self._refresh_preflight_script_highlighting(str(self._preflight_script.toPlainText() or ""))
             self._reset_recommended_preflight_selection()
 
-            self._append_pixelarch_context.setChecked(
-                bool(settings.get("append_pixelarch_context") or False)
-            )
+            self._append_pixelarch_context.setChecked(bool(settings.get("append_pixelarch_context") or False))
             self._github_workroom_prefer_browser.setChecked(
                 bool(settings.get("github_workroom_prefer_browser") or False)
             )
-            self._agentsnova_auto_review_enabled.setChecked(
-                bool(settings.get("agentsnova_auto_review_enabled", True))
-            )
+            self._agentsnova_auto_review_enabled.setChecked(bool(settings.get("agentsnova_auto_review_enabled", True)))
             self._set_combo_value(
                 self._agentsnova_auto_marker_comments_mode,
                 normalize_default_marker_comment_mode(
@@ -1424,51 +1317,34 @@ class SettingsFormMixin:
             self._agentsnova_auto_reactions_enabled.setChecked(
                 bool(settings.get("agentsnova_auto_reactions_enabled", True))
             )
-            self._github_polling_enabled.setChecked(
-                bool(settings.get("github_polling_enabled") or False)
-            )
+            self._github_polling_enabled.setChecked(bool(settings.get("github_polling_enabled") or False))
             try:
-                poll_startup_delay_s = max(
-                    0, int(settings.get("github_poll_startup_delay_s", 35))
-                )
+                poll_startup_delay_s = max(0, int(settings.get("github_poll_startup_delay_s", 35)))
             except Exception:
                 poll_startup_delay_s = 35
             self._github_poll_startup_delay_s.setText(str(poll_startup_delay_s))
             trusted_users_raw = settings.get("agentsnova_trusted_users_global", [])
-            trusted_users = (
-                trusted_users_raw if isinstance(trusted_users_raw, list) else []
-            )
+            trusted_users = trusted_users_raw if isinstance(trusted_users_raw, list) else []
             self._agentsnova_trusted_users_global.set_usernames(trusted_users)
-            self._headless_desktop_enabled.setChecked(
-                bool(settings.get("headless_desktop_enabled") or False)
-            )
+            self._headless_desktop_enabled.setChecked(bool(settings.get("headless_desktop_enabled") or False))
             self._gpu_enabled.setChecked(bool(settings.get("gpu_enabled") or False))
+            self._network_host.setChecked(bool(settings.get("network_host") or False))
             self._auto_navigate_on_run_agent_start.setChecked(
                 bool(settings.get("auto_navigate_on_run_agent_start") or False)
             )
             self._auto_navigate_on_run_interactive_start.setChecked(
                 bool(settings.get("auto_navigate_on_run_interactive_start") or False)
             )
-            confirmation_mode = str(
-                settings.get("github_write_confirmation_mode") or "always"
-            ).strip()
+            confirmation_mode = str(settings.get("github_write_confirmation_mode") or "always").strip()
             self._set_combo_value(
                 self._github_write_confirmation_mode,
                 confirmation_mode,
                 fallback="always",
             )
-            self._gh_context_default.setChecked(
-                bool(settings.get("gh_context_default_enabled") or False)
-            )
-            self._spellcheck_enabled.setChecked(
-                bool(settings.get("spellcheck_enabled", True))
-            )
-            self._mount_host_cache.setChecked(
-                bool(settings.get("mount_host_cache", False))
-            )
-            workspace_location = normalize_task_workspace_location(
-                settings.get("task_workspace_location")
-            )
+            self._gh_context_default.setChecked(bool(settings.get("gh_context_default_enabled") or False))
+            self._spellcheck_enabled.setChecked(bool(settings.get("spellcheck_enabled", True)))
+            self._mount_host_cache.setChecked(bool(settings.get("mount_host_cache", False)))
+            workspace_location = normalize_task_workspace_location(settings.get("task_workspace_location"))
             with QSignalBlocker(self._task_workspace_location):
                 self._set_combo_value(
                     self._task_workspace_location,
@@ -1500,42 +1376,28 @@ class SettingsFormMixin:
                 )
             )
             self._refresh_task_workspace_controls()
-            theme_value = normalize_ui_theme_name(
-                settings.get("ui_theme"), allow_auto=True
-            )
+            theme_value = normalize_ui_theme_name(settings.get("ui_theme"), allow_auto=True)
             self._refresh_theme_options(selected=theme_value)
-            self._popup_theme_animation_enabled.setChecked(
-                bool(settings.get("popup_theme_animation_enabled", True))
-            )
+            self._popup_theme_animation_enabled.setChecked(bool(settings.get("popup_theme_animation_enabled", True)))
 
             radio_enabled = bool(settings.get("radio_enabled") or False)
             self._radio_enabled.setChecked(radio_enabled)
-            self._radio_autostart.setChecked(
-                bool(settings.get("radio_autostart") or False)
-            )
+            self._radio_autostart.setChecked(bool(settings.get("radio_autostart") or False))
             self._radio_autostart.setEnabled(radio_enabled)
-            radio_channel = RadioController.normalize_channel(
-                settings.get("radio_channel")
-            )
+            radio_channel = RadioController.normalize_channel(settings.get("radio_channel"))
             self.set_radio_channel_options(
                 self._radio_channel_values,
                 selected=radio_channel,
                 enabled=self._radio_channel_enabled,
             )
-            radio_quality = RadioController.normalize_quality(
-                settings.get("radio_quality")
-            )
+            radio_quality = RadioController.normalize_quality(settings.get("radio_quality"))
             self._set_combo_value(self._radio_quality, radio_quality, fallback="medium")
             radio_volume = RadioController.clamp_volume(settings.get("radio_volume"))
             self._radio_volume.setValue(radio_volume)
-            radio_loudness_boost_enabled = bool(
-                settings.get("radio_loudness_boost_enabled") or False
-            )
+            radio_loudness_boost_enabled = bool(settings.get("radio_loudness_boost_enabled") or False)
             self._radio_loudness_boost_enabled.setChecked(radio_loudness_boost_enabled)
-            radio_loudness_boost_factor = (
-                RadioController.normalize_loudness_boost_factor(
-                    settings.get("radio_loudness_boost_factor")
-                )
+            radio_loudness_boost_factor = RadioController.normalize_loudness_boost_factor(
+                settings.get("radio_loudness_boost_factor")
             )
             self._radio_loudness_boost_factor.setValue(radio_loudness_boost_factor)
             self._radio_loudness_boost_factor.setEnabled(radio_loudness_boost_enabled)
@@ -1548,16 +1410,12 @@ class SettingsFormMixin:
             self._suppress_autosave = False
 
     def _on_preflight_enabled_toggled(self, enabled: bool) -> None:
-        self._preflight_enabled.setText(
-            "Preflight Enabled" if bool(enabled) else "Enable Preflight"
-        )
+        self._preflight_enabled.setText("Preflight Enabled" if bool(enabled) else "Enable Preflight")
         if hasattr(self, "_preflight_script"):
             self._preflight_script.setEnabled(bool(enabled))
 
     def _on_preflight_script_text_changed(self) -> None:
-        self._refresh_preflight_script_highlighting(
-            str(self._preflight_script.toPlainText() or "")
-        )
+        self._refresh_preflight_script_highlighting(str(self._preflight_script.toPlainText() or ""))
 
     @staticmethod
     def _detect_preflight_script_language(script: str) -> str:
@@ -1570,16 +1428,11 @@ class SettingsFormMixin:
         return "bash"
 
     def _refresh_preflight_script_highlighting(self, script: str) -> None:
-        self._preflight_script_highlighter.set_language(
-            self._detect_preflight_script_language(script)
-        )
+        self._preflight_script_highlighter.set_language(self._detect_preflight_script_language(script))
 
     @staticmethod
     def _recommended_preflights_dir() -> Path:
-        return (
-            Path(__file__).resolve().parents[2]
-            / SettingsFormMixin._PREFLIGHT_PRESETS_DIRNAME
-        )
+        return Path(__file__).resolve().parents[2] / SettingsFormMixin._PREFLIGHT_PRESETS_DIRNAME
 
     def _load_recommended_preflights(self) -> list[tuple[str, str]]:
         scripts_dir = self._recommended_preflights_dir()
@@ -1640,9 +1493,7 @@ class SettingsFormMixin:
         self._reset_recommended_preflight_selection()
 
     def get_settings(self) -> dict[str, Any]:
-        poll_startup_delay_text = str(
-            self._github_poll_startup_delay_s.text() or "35"
-        ).strip()
+        poll_startup_delay_text = str(self._github_poll_startup_delay_s.text() or "35").strip()
         try:
             poll_startup_delay_s = max(0, int(poll_startup_delay_text or "35"))
         except Exception:
@@ -1653,88 +1504,47 @@ class SettingsFormMixin:
             "opencode_interactive_mode": normalize_opencode_interactive_mode(
                 str(self._opencode_interactive_mode.currentData() or "terminal")
             ),
-            "interactive_terminal_id": str(
-                self._interactive_terminal.currentData() or ""
-            ),
-            "ui_theme": normalize_ui_theme_name(
-                str(self._ui_theme.currentData() or "auto"), allow_auto=True
-            ),
-            "popup_theme_animation_enabled": bool(
-                self._popup_theme_animation_enabled.isChecked()
-            ),
+            "interactive_terminal_id": str(self._interactive_terminal.currentData() or ""),
+            "ui_theme": normalize_ui_theme_name(str(self._ui_theme.currentData() or "auto"), allow_auto=True),
+            "popup_theme_animation_enabled": bool(self._popup_theme_animation_enabled.isChecked()),
             "preflight_enabled": bool(self._preflight_enabled.isChecked()),
             "preflight_script": str(self._preflight_script.toPlainText() or ""),
-            "append_pixelarch_context": bool(
-                self._append_pixelarch_context.isChecked()
-            ),
-            "github_workroom_prefer_browser": bool(
-                self._github_workroom_prefer_browser.isChecked()
-            ),
-            "github_write_confirmation_mode": str(
-                self._github_write_confirmation_mode.currentData() or "always"
-            ),
-            "agentsnova_auto_review_enabled": bool(
-                self._agentsnova_auto_review_enabled.isChecked()
-            ),
+            "append_pixelarch_context": bool(self._append_pixelarch_context.isChecked()),
+            "github_workroom_prefer_browser": bool(self._github_workroom_prefer_browser.isChecked()),
+            "github_write_confirmation_mode": str(self._github_write_confirmation_mode.currentData() or "always"),
+            "agentsnova_auto_review_enabled": bool(self._agentsnova_auto_review_enabled.isChecked()),
             "agentsnova_auto_marker_comments_mode": (
-                normalize_default_marker_comment_mode(
-                    self._agentsnova_auto_marker_comments_mode.currentData()
-                )
+                normalize_default_marker_comment_mode(self._agentsnova_auto_marker_comments_mode.currentData())
             ),
-            "agentsnova_auto_reactions_enabled": bool(
-                self._agentsnova_auto_reactions_enabled.isChecked()
-            ),
+            "agentsnova_auto_reactions_enabled": bool(self._agentsnova_auto_reactions_enabled.isChecked()),
             "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
             "github_poll_startup_delay_s": poll_startup_delay_s,
             "agentsnova_trusted_users_global": self._agentsnova_trusted_users_global.get_usernames(),
-            "headless_desktop_enabled": bool(
-                self._headless_desktop_enabled.isChecked()
-            ),
+            "headless_desktop_enabled": bool(self._headless_desktop_enabled.isChecked()),
             "gpu_enabled": bool(self._gpu_enabled.isChecked()),
-            "auto_navigate_on_run_agent_start": bool(
-                self._auto_navigate_on_run_agent_start.isChecked()
-            ),
-            "auto_navigate_on_run_interactive_start": bool(
-                self._auto_navigate_on_run_interactive_start.isChecked()
-            ),
+            "network_host": bool(self._network_host.isChecked()),
+            "auto_navigate_on_run_agent_start": bool(self._auto_navigate_on_run_agent_start.isChecked()),
+            "auto_navigate_on_run_interactive_start": bool(self._auto_navigate_on_run_interactive_start.isChecked()),
             "gh_context_default_enabled": bool(self._gh_context_default.isChecked()),
             "spellcheck_enabled": bool(self._spellcheck_enabled.isChecked()),
             "mount_host_cache": bool(self._mount_host_cache.isChecked()),
-            "task_workspace_location": normalize_task_workspace_location(
-                self._task_workspace_location.currentData()
-            ),
-            "task_workspace_cleanup_retention_days": int(
-                self._task_workspace_cleanup_retention_days.value()
-            ),
-            "task_workspace_cleanup_interval_minutes": int(
-                self._task_workspace_cleanup_interval_minutes.value()
-            ),
-            "task_workspace_cleanup_scan_delay_seconds": int(
-                self._task_workspace_cleanup_scan_delay_seconds.value()
-            ),
+            "task_workspace_location": normalize_task_workspace_location(self._task_workspace_location.currentData()),
+            "task_workspace_cleanup_retention_days": int(self._task_workspace_cleanup_retention_days.value()),
+            "task_workspace_cleanup_interval_minutes": int(self._task_workspace_cleanup_interval_minutes.value()),
+            "task_workspace_cleanup_scan_delay_seconds": int(self._task_workspace_cleanup_scan_delay_seconds.value()),
             "radio_enabled": bool(self._radio_enabled.isChecked()),
             "radio_autostart": bool(self._radio_autostart.isChecked()),
-            "radio_channel": RadioController.normalize_channel(
-                str(self._radio_channel.currentData() or "")
-            ),
-            "radio_quality": RadioController.normalize_quality(
-                str(self._radio_quality.currentData() or "medium")
-            ),
+            "radio_channel": RadioController.normalize_channel(str(self._radio_channel.currentData() or "")),
+            "radio_quality": RadioController.normalize_quality(str(self._radio_quality.currentData() or "medium")),
             "radio_volume": RadioController.clamp_volume(self._radio_volume.value()),
-            "radio_loudness_boost_enabled": bool(
-                self._radio_loudness_boost_enabled.isChecked()
-            ),
+            "radio_loudness_boost_enabled": bool(self._radio_loudness_boost_enabled.isChecked()),
             "radio_loudness_boost_factor": (
-                RadioController.normalize_loudness_boost_factor(
-                    self._radio_loudness_boost_factor.value()
-                )
+                RadioController.normalize_loudness_boost_factor(self._radio_loudness_boost_factor.value())
             ),
         }
 
     @staticmethod
-    def _clamp_spin_value(
-        value: object, *, minimum: int, maximum: int, default: int
-    ) -> int:
+    def _clamp_spin_value(value: object, *, minimum: int, maximum: int, default: int) -> int:
         try:
             parsed = int(str(value).strip())
         except Exception:
@@ -1760,9 +1570,7 @@ class SettingsFormMixin:
         worker.finished.connect(self._on_workspace_status_check_finished)
         worker.start()
 
-    def _on_workspace_status_check_finished(
-        self, request_id: int, status: object
-    ) -> None:
+    def _on_workspace_status_check_finished(self, request_id: int, status: object) -> None:
         self._workspace_status_running = False
         worker = getattr(self, "_workspace_status_worker", None)
         if worker is not None:
@@ -1770,9 +1578,7 @@ class SettingsFormMixin:
         self._workspace_status_worker = None
         if bool(getattr(self, "_workspace_status_pending", False)):
             self._workspace_status_pending = False
-            self._launch_workspace_status_check(
-                int(getattr(self, "_workspace_status_request_id", 0))
-            )
+            self._launch_workspace_status_check(int(getattr(self, "_workspace_status_request_id", 0)))
             return
         if int(request_id) != int(getattr(self, "_workspace_status_request_id", 0)):
             return
@@ -1798,9 +1604,7 @@ class SettingsFormMixin:
         else:
             self._workspace_status_spinner.stop()
         scratch_selected = (
-            normalize_task_workspace_location(
-                self._task_workspace_location.currentData()
-            )
+            normalize_task_workspace_location(self._task_workspace_location.currentData())
             == TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
         )
         status_visible = bool(checking or scratch_selected)
@@ -1810,9 +1614,7 @@ class SettingsFormMixin:
         self._refresh_move_task_workspaces_button()
 
     def _apply_task_workspace_status(self, status: ScratchDriveStatus) -> None:
-        location = normalize_task_workspace_location(
-            self._task_workspace_location.currentData()
-        )
+        location = normalize_task_workspace_location(self._task_workspace_location.currentData())
         scratch_selected = location == TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE
         self._scratch_drive_status_row.setVisible(scratch_selected)
         self._scratch_drive_status.setVisible(scratch_selected)
@@ -1840,9 +1642,7 @@ class SettingsFormMixin:
         for widget in self._task_workspace_cleanup_controls:
             widget.setEnabled(not cleanup_disabled)
         if cleanup_disabled:
-            self._task_workspace_cleanup_note.setText(
-                "Cleanup is not needed while Scratch drive is using a RAM drive."
-            )
+            self._task_workspace_cleanup_note.setText("Cleanup is not needed while Scratch drive is using a RAM drive.")
             self._task_workspace_cleanup_note.setVisible(True)
         elif scratch_selected:
             self._task_workspace_cleanup_note.setText(
@@ -1861,12 +1661,9 @@ class SettingsFormMixin:
         if blocked:
             self._move_task_workspaces.setToolTip("Active tasks must finish first.")
         else:
-            self._move_task_workspaces.setToolTip(
-                "Moves cloned task workspaces to the selected location."
-            )
+            self._move_task_workspaces.setToolTip("Moves cloned task workspaces to the selected location.")
         force_tint = bool(
-            getattr(self, "_move_task_workspaces_shift_pressed", False)
-            and self._move_task_workspaces.isEnabled()
+            getattr(self, "_move_task_workspaces_shift_pressed", False) and self._move_task_workspaces.isEnabled()
         )
         self._move_task_workspaces.setStyleSheet(
             (
@@ -1905,9 +1702,7 @@ class SettingsFormMixin:
         }:
             self._set_move_task_workspaces_shift_pressed(False)
         if watched is getattr(self, "_move_task_workspaces", None):
-            if event.type() == QEvent.Type.MouseButtonPress and isinstance(
-                event, QMouseEvent
-            ):
+            if event.type() == QEvent.Type.MouseButtonPress and isinstance(event, QMouseEvent):
                 self._move_task_workspaces_shift_click_force = bool(
                     event.modifiers() & Qt.KeyboardModifier.ShiftModifier
                 )
@@ -1936,9 +1731,7 @@ class SettingsFormMixin:
             return
         if event.key() != Qt.Key.Key_Shift:
             return
-        self._set_move_task_workspaces_shift_pressed(
-            event.type() == QEvent.Type.KeyPress
-        )
+        self._set_move_task_workspaces_shift_pressed(event.type() == QEvent.Type.KeyPress)
 
     def _set_move_task_workspaces_shift_pressed(self, pressed: bool) -> None:
         pressed = bool(pressed)
@@ -1962,9 +1755,7 @@ class SettingsFormMixin:
             self._stop_move_task_workspaces_shift_polling()
             return
         modifiers = QApplication.keyboardModifiers()
-        self._set_move_task_workspaces_shift_pressed(
-            bool(modifiers & Qt.KeyboardModifier.ShiftModifier)
-        )
+        self._set_move_task_workspaces_shift_pressed(bool(modifiers & Qt.KeyboardModifier.ShiftModifier))
 
     def _on_application_state_changed(self, state: object) -> None:
         if state != Qt.ApplicationState.ApplicationActive:
@@ -2006,11 +1797,7 @@ class SettingsFormMixin:
             )
 
     def _on_refresh_terminal_options_clicked(self) -> None:
-        self._refresh_terminal_options(
-            selected_terminal_id=str(
-                self._interactive_terminal.currentData() or ""
-            ).strip()
-        )
+        self._refresh_terminal_options(selected_terminal_id=str(self._interactive_terminal.currentData() or "").strip())
         self._queue_debounced_autosave()
 
     @staticmethod

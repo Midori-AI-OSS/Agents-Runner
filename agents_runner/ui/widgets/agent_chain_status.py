@@ -41,9 +41,7 @@ class AgentStatusIndicator(QWidget):
 
         # Position indicator
         position_label = QLabel(f"{position}.")
-        position_label.setStyleSheet(
-            "color: rgba(237, 239, 245, 120); font-weight: 600;"
-        )
+        position_label.setStyleSheet("color: rgba(237, 239, 245, 120); font-weight: 600;")
         layout.addWidget(position_label)
 
         # Agent name
@@ -95,9 +93,7 @@ class AgentStatusIndicator(QWidget):
         # Logged in indicator
         if self._status.installed:
             if self._status.status_type == StatusType.UNKNOWN:
-                self._add_indicator(
-                    "?", self._status.status_text, "rgba(160, 160, 160, 255)"
-                )
+                self._add_indicator("?", self._status.status_text, "rgba(160, 160, 160, 255)")
             elif self._status.logged_in:
                 self._add_indicator("✓", "Logged in", "rgba(95, 205, 143, 255)")
             else:

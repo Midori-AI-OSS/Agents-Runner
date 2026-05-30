@@ -6,9 +6,7 @@ from PySide6.QtWidgets import QWidget
 
 
 class GlassCard(QFrame):
-    def __init__(
-        self, parent: QWidget | None = None, animate_entrance: bool = False
-    ) -> None:
+    def __init__(self, parent: QWidget | None = None, animate_entrance: bool = False) -> None:
         super().__init__(parent)
         self.setObjectName("GlassCard")
         self.setFrameShape(QFrame.NoFrame)

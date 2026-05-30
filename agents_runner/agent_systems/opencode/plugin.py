@@ -180,10 +180,7 @@ class OpenCodeAgentSystemPlugin:
         return "opencode providers login; read -p 'Press Enter to close...'"
 
     def config_command(self) -> str | None:
-        return (
-            "opencode providers list; opencode debug paths; opencode debug config; "
-            "read -p 'Press Enter to close...'"
-        )
+        return "opencode providers list; opencode debug paths; opencode debug config; read -p 'Press Enter to close...'"
 
     def verify_command(self) -> list[str]:
         return ["opencode", "--version"]
@@ -218,9 +215,7 @@ class OpenCodeAgentSystemPlugin:
                 status_type=StatusType.UNKNOWN,
             )
 
-        combined = "\n".join(
-            part.strip() for part in (result.stdout, result.stderr) if str(part).strip()
-        )
+        combined = "\n".join(part.strip() for part in (result.stdout, result.stderr) if str(part).strip())
         normalized = combined.lower()
         has_credentials = bool(
             re.search(r"\b[1-9]\d*\s+credentials?\b", normalized)

@@ -45,9 +45,7 @@ class SpellHighlighter(QSyntaxHighlighter):
         # Format for misspelled words
         self._error_format = QTextCharFormat()
         self._error_format.setUnderlineColor(QColor("#E06C75"))  # Red color
-        self._error_format.setUnderlineStyle(
-            QTextCharFormat.UnderlineStyle.WaveUnderline
-        )
+        self._error_format.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
 
     def set_enabled(self, enabled: bool) -> None:
         """Enable or disable spell checking."""

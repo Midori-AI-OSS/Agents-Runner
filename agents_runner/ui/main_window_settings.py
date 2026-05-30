@@ -405,6 +405,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         )
         merged["headless_desktop_enabled"] = bool(merged.get("headless_desktop_enabled") or False)
         merged["gpu_enabled"] = bool(merged.get("gpu_enabled") or False)
+        merged["network_host"] = bool(merged.get("network_host") or False)
         merged["opencode_interactive_mode"] = normalize_opencode_interactive_mode(
             str(merged.get("opencode_interactive_mode") or "terminal")
         )
@@ -857,6 +858,23 @@ class MainWindowSettingsMixin(_MainWindowHints):
         if env is None:
             return global_enabled
         mode = normalize_gpu_override_mode(str(getattr(env, "gpu_override_mode", "inherit") or "inherit"))
+        if mode == "enabled":
+            return True
+        if mode == "disabled":
+            return False
+        return global_enabled
+
+    def _effective_network_host(
+        self,
+        *,
+        env: Environment | None,
+        settings: dict[str, object] | None = None,
+    ) -> bool:
+        settings_data = settings or self._settings_data
+        global_enabled = bool(settings_data.get("network_host") or False)
+        if env is None:
+            return global_enabled
+        mode = normalize_gpu_override_mode(str(getattr(env, "network_host_override_mode", "inherit") or "inherit"))
         if mode == "enabled":
             return True
         if mode == "disabled":

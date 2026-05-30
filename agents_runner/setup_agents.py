@@ -100,9 +100,7 @@ def _write_script(path: Path, text: str, *, executable: bool) -> bool:
         return False
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(
-        prefix="setup-agents-", suffix=".sh", dir=str(path.parent)
-    )
+    fd, tmp_path = tempfile.mkstemp(prefix="setup-agents-", suffix=".sh", dir=str(path.parent))
     tmp_file = Path(tmp_path)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -281,13 +279,11 @@ def resolve_setup_agents_preview(
     gh_repo: str | None = None,
     data_dir: str | None = None,
 ) -> SetupAgentsPreviewResult:
-    repo_root, primary, fallback, mirror_path, selected_repo_path = (
-        _resolve_repo_and_mirror_paths(
-            host_workdir=host_workdir,
-            environment_id=environment_id,
-            gh_repo=gh_repo,
-            data_dir=data_dir,
-        )
+    repo_root, primary, fallback, mirror_path, selected_repo_path = _resolve_repo_and_mirror_paths(
+        host_workdir=host_workdir,
+        environment_id=environment_id,
+        gh_repo=gh_repo,
+        data_dir=data_dir,
     )
     repo_script_path: Path | None = None
     if primary.is_file():
@@ -307,10 +303,7 @@ def resolve_setup_agents_preview(
         effective_script_path = repo_script_path
         setup_script, script_error = _read_script(repo_script_path)
         if script_error:
-            read_error = (
-                f"failed to read setup-agents script at {repo_script_path}: "
-                f"{script_error}"
-            )
+            read_error = f"failed to read setup-agents script at {repo_script_path}: {script_error}"
             if mirror_exists:
                 mirror_script, mirror_error = _read_mirror_script(
                     mirror_path=mirror_path,
@@ -336,17 +329,10 @@ def resolve_setup_agents_preview(
             host_workdir=host_workdir,
         )
         if script_error:
-            read_error = (
-                f"failed to read setup-agents mirror at {mirror_path}: {script_error}"
-            )
+            read_error = f"failed to read setup-agents mirror at {mirror_path}: {script_error}"
 
-    preferred_rel = _path_relative_to_repo(
-        repo_root=repo_root, path=preferred_repo_path
-    )
-    guidance = (
-        "This script preview is read-only. "
-        f"Edit `{preferred_rel}` in your repository and commit the change."
-    )
+    preferred_rel = _path_relative_to_repo(repo_root=repo_root, path=preferred_repo_path)
+    guidance = f"This script preview is read-only. Edit `{preferred_rel}` in your repository and commit the change."
     if source == "none":
         guidance = (
             "setup-agents script is missing. "
@@ -358,9 +344,7 @@ def resolve_setup_agents_preview(
         repo_script_path=str(repo_script_path) if repo_script_path else None,
         preferred_repo_script_path=str(preferred_repo_path),
         mirror_script_path=str(mirror_path),
-        effective_script_path=str(effective_script_path)
-        if effective_script_path
-        else None,
+        effective_script_path=str(effective_script_path) if effective_script_path else None,
         setup_script=setup_script,
         source=source,
         guidance=guidance,
@@ -406,9 +390,7 @@ def prepare_setup_agents_phase(
     setup_script: str | None = None
     if repo_script_path is not None and repo_script_path.is_file():
         try:
-            setup_script = _normalize_script_text(
-                repo_script_path.read_text(encoding="utf-8")
-            )
+            setup_script = _normalize_script_text(repo_script_path.read_text(encoding="utf-8"))
         except Exception as exc:
             _log(
                 "WARN",
@@ -439,10 +421,7 @@ def prepare_setup_agents_phase(
     elif mirror_exists:
         _log(
             "INFO",
-            (
-                "repo setup script missing; skipping mirror restore "
-                "(repo delete authority is active)"
-            ),
+            ("repo setup script missing; skipping mirror restore (repo delete authority is active)"),
         )
 
     prompt_instruction = None

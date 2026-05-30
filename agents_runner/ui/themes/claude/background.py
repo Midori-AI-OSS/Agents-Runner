@@ -35,9 +35,7 @@ class _ClaudeBranchSegment:
     tone: int
 
 
-def claude_palette(
-    palette_phase: float, blend_colors_fn
-) -> tuple[QColor, QColor, QColor, QColor]:
+def claude_palette(palette_phase: float, blend_colors_fn) -> tuple[QColor, QColor, QColor, QColor]:
     """
     Warm dark palette blended between "browser dark" and "code" moods.
     Returns: (top, bottom, accent, accent_dim)
@@ -147,9 +145,7 @@ def tick_claude_tree(
         return claude_tips, claude_segments, palette_phase, next_reset_s
 
     if not claude_tips or now_s >= next_reset_s:
-        claude_tips, next_reset_s = reset_claude_tree(
-            claude_rng, width, height, now_s=now_s
-        )
+        claude_tips, next_reset_s = reset_claude_tree(claude_rng, width, height, now_s=now_s)
 
     for seg in claude_segments:
         seg.age_s += float(dt_s)
@@ -253,9 +249,7 @@ def paint_claude_background(
     if w <= 0 or h <= 0:
         return claude_tips, now_s + 60.0
 
-    claude_tips, next_reset_s = ensure_claude_tree(
-        claude_tips, claude_rng, width, height, now_s
-    )
+    claude_tips, next_reset_s = ensure_claude_tree(claude_tips, claude_rng, width, height, now_s)
     top, bottom, accent, accent_dim = claude_palette(palette_phase, blend_colors_fn)
 
     grad = QLinearGradient(0, 0, w, h)
@@ -362,9 +356,7 @@ class _ClaudeBackground:
         runtime.next_reset_s = time.monotonic()
 
     @classmethod
-    def tick(
-        cls, *, runtime: object, widget: QWidget, now_s: float, dt_s: float
-    ) -> bool:
+    def tick(cls, *, runtime: object, widget: QWidget, now_s: float, dt_s: float) -> bool:
         if not isinstance(runtime, _ClaudeRuntime):
             return True
 

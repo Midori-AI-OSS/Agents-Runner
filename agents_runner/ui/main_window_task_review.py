@@ -105,9 +105,7 @@ class MainWindowTaskReviewMixin(_MainWindowHints):
                     fallback_path = str(task.host_workdir or "").strip()
                     if fallback_path:
                         task.gh_repo_root = fallback_path
-                        repo_root = (
-                            fallback_path  # Update local variable for consistency
-                        )
+                        repo_root = fallback_path  # Update local variable for consistency
                 self._schedule_save()
 
         if not repo_root:
@@ -154,10 +152,7 @@ class MainWindowTaskReviewMixin(_MainWindowHints):
             return
         base_display = base_branch or "auto"
         message = f"Create a PR from {branch} -> {base_display}?\n\nThis will commit and push any local changes."
-        if (
-            QMessageBox.question(self, "Create pull request?", message)
-            != QMessageBox.StandardButton.Yes
-        ):
+        if QMessageBox.question(self, "Create pull request?", message) != QMessageBox.StandardButton.Yes:
             return
 
         prompt_text = str(task.prompt or "")
@@ -167,9 +162,7 @@ class MainWindowTaskReviewMixin(_MainWindowHints):
 
         self._on_task_log(
             task_id,
-            format_log(
-                "gh", "pr", "INFO", f"PR requested ({branch} -> {base_display})"
-            ),
+            format_log("gh", "pr", "INFO", f"PR requested ({branch} -> {base_display})"),
         )
         threading.Thread(
             target=self._finalize_gh_management_worker,
@@ -183,7 +176,6 @@ class MainWindowTaskReviewMixin(_MainWindowHints):
                 bool(task.gh_use_host_cli),
                 pr_metadata_path,
                 str(task.agent_cli or "").strip(),
-                str(task.agent_cli_args or "").strip(),
                 is_override,
             ),
             daemon=True,

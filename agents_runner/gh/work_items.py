@@ -155,9 +155,7 @@ def run_gh_gh_json(args: list[str], *, timeout_s: float = 45.0) -> object:
     try:
         return json.loads(payload)
     except Exception as exc:
-        raise GhManagementError(
-            f"failed to parse gh json output for: {' '.join(args)}"
-        ) from exc
+        raise GhManagementError(f"failed to parse gh json output for: {' '.join(args)}") from exc
 
 
 def run_gh_gh(args: list[str], *, timeout_s: float = 45.0) -> None:
@@ -185,9 +183,7 @@ def _is_retryable_read_error(exc: Exception) -> bool:
     return any(marker in text for marker in _TRANSIENT_GH_ERROR_MARKERS)
 
 
-def run_gh_gh_json_read(
-    args: list[str], *, timeout_s: float = 45.0, retry_on_transient: bool = True
-) -> object:
+def run_gh_gh_json_read(args: list[str], *, timeout_s: float = 45.0, retry_on_transient: bool = True) -> object:
     max_attempts = _READ_RETRY_MAX_ATTEMPTS if retry_on_transient else 1
     last_exc: Exception | None = None
 

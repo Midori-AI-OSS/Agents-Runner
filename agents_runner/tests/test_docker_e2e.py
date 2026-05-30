@@ -156,6 +156,7 @@ def test_config(temp_state_dir, request):
         agent_cli_args=[],
         environment_id="test-env",
         headless_desktop_enabled=False,
+        network_host=False,
         container_name=container_name,
     )
 
@@ -213,9 +214,7 @@ def test_task_lifecycle_completes_successfully(test_config):
 
     # Verify fixture isolation: ensure unique task_id
     assert task_id.startswith("test-task-"), "task_id should have expected prefix"
-    assert len(task_id) > len("test-task-"), (
-        "task_id should be unique (timestamp-based)"
-    )
+    assert len(task_id) > len("test-task-"), "task_id should be unique (timestamp-based)"
 
     # Modify config to use a more robust command that avoids Docker stream race conditions
     # Add 20s sleep before echo to ensure container has time to start and report state

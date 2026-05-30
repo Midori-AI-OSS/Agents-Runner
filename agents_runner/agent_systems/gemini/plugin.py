@@ -139,10 +139,7 @@ class GeminiAgentSystemPlugin:
         )
 
     def default_interactive_command(self) -> str:
-        return (
-            "--no-sandbox --approval-mode yolo --include-directories "
-            "/home/midori-ai/workspace"
-        )
+        return "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace"
 
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         return list(cmd_parts)
@@ -179,11 +176,7 @@ class GeminiAgentSystemPlugin:
             if "--no-sandbox" not in parts:
                 parts[1:1] = ["--no-sandbox"]
 
-        if (
-            "--sandbox" not in parts
-            and "--no-sandbox" not in parts
-            and "-s" not in parts
-        ):
+        if "--sandbox" not in parts and "--no-sandbox" not in parts and "-s" not in parts:
             parts[1:1] = ["--no-sandbox"]
 
         if "--approval-mode" not in parts:

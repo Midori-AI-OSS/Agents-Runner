@@ -62,8 +62,7 @@ class TestChainDialog(ThemedDialog):
 
         # Info label
         info = QLabel(
-            "Testing agent availability. This checks if agents are installed "
-            "and logged in using safe status commands."
+            "Testing agent availability. This checks if agents are installed and logged in using safe status commands."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: rgba(237, 239, 245, 160);")
@@ -129,10 +128,6 @@ class TestChainDialog(ThemedDialog):
 
         # Color the summary
         if "Available:" in summary:
-            self._summary.setStyleSheet(
-                "font-weight: 600; margin-top: 8px; color: rgba(95, 205, 143, 255);"
-            )
+            self._summary.setStyleSheet("font-weight: 600; margin-top: 8px; color: rgba(95, 205, 143, 255);")
         else:
-            self._summary.setStyleSheet(
-                "font-weight: 600; margin-top: 8px; color: rgba(249, 226, 175, 255);"
-            )
+            self._summary.setStyleSheet("font-weight: 600; margin-top: 8px; color: rgba(249, 226, 175, 255);")

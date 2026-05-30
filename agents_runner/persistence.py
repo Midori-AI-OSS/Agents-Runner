@@ -123,9 +123,7 @@ def save_state(path: str, payload: dict[str, Any]) -> None:
     payload = dict(payload)
     payload["version"] = STATE_VERSION
 
-    fd, tmp_path = tempfile.mkstemp(
-        prefix="state-", suffix=".toml", dir=os.path.dirname(path)
-    )
+    fd, tmp_path = tempfile.mkstemp(prefix="state-", suffix=".toml", dir=os.path.dirname(path))
     try:
         with os.fdopen(fd, "wb") as f:
             tomli_w.dump(strip_none_for_toml(payload), f)
@@ -155,9 +153,7 @@ def ensure_task_dirs(state_path: str) -> tuple[str, str]:
 
 
 def _safe_task_filename(task_id: str) -> str:
-    cleaned = "".join(
-        ch for ch in str(task_id or "") if ch.isalnum() or ch in {"-", "_"}
-    ).strip()
+    cleaned = "".join(ch for ch in str(task_id or "") if ch.isalnum() or ch in {"-", "_"}).strip()
     if not cleaned:
         cleaned = f"task-{time.time_ns()}"
     return f"{cleaned}.toml"
@@ -209,9 +205,7 @@ def _archive_active_task_file_if_present(state_path: str, task_id: str) -> None:
         pass
 
 
-def save_task_payload(
-    state_path: str, payload: dict[str, Any], *, archived: bool
-) -> None:
+def save_task_payload(state_path: str, payload: dict[str, Any], *, archived: bool) -> None:
     task_id = str(payload.get("task_id") or "").strip()
     if not task_id:
         return
@@ -242,9 +236,7 @@ def load_active_task_payloads(state_path: str) -> list[dict[str, Any]]:
     return payloads
 
 
-def load_task_payload(
-    state_path: str, task_id: str, *, archived: bool
-) -> dict[str, Any] | None:
+def load_task_payload(state_path: str, task_id: str, *, archived: bool) -> dict[str, Any] | None:
     task_id = str(task_id or "").strip()
     if not task_id:
         return None
@@ -259,9 +251,7 @@ def load_task_payload(
     return payload if isinstance(payload, dict) else None
 
 
-def load_done_task_payloads(
-    state_path: str, *, offset: int = 0, limit: int = 10
-) -> list[dict[str, Any]]:
+def load_done_task_payloads(state_path: str, *, offset: int = 0, limit: int = 10) -> list[dict[str, Any]]:
     try:
         offset = max(0, int(offset))
     except Exception:
@@ -398,16 +388,12 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "launch_mode": getattr(task, "launch_mode", "agent"),
         "ide_system": getattr(task, "ide_system", ""),
         "ide_display_target": getattr(task, "ide_display_target", ""),
-        "headless_desktop_enabled": bool(
-            getattr(task, "headless_desktop_enabled", False)
-        ),
+        "headless_desktop_enabled": bool(getattr(task, "headless_desktop_enabled", False)),
         "novnc_url": getattr(task, "novnc_url", ""),
         "opencode_web_url": getattr(task, "opencode_web_url", ""),
         "artifacts": list(getattr(task, "artifacts", [])),
         "attempt_history": list(getattr(task, "attempt_history", [])),
-        "finalization_state": str(
-            getattr(task, "finalization_state", "pending") or "pending"
-        ),
+        "finalization_state": str(getattr(task, "finalization_state", "pending") or "pending"),
         "finalization_error": str(getattr(task, "finalization_error", "") or ""),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
@@ -448,9 +434,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         container_id=data.get("container_id"),
         started_at=_dt_from_str(data.get("started_at")),
         finished_at=_dt_from_str(data.get("finished_at")),
-        gh_use_host_cli=bool(
-            data.get("gh_use_host_cli") if "gh_use_host_cli" in data else True
-        ),
+        gh_use_host_cli=bool(data.get("gh_use_host_cli") if "gh_use_host_cli" in data else True),
         workspace_type=workspace_type,
         gh_repo_root=str(data.get("gh_repo_root") or ""),
         gh_base_branch=str(data.get("gh_base_branch") or ""),
@@ -485,9 +469,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
             pass
     raw_runner_config = data.get("runner_config")
     if isinstance(raw_runner_config, dict):
-        runner_config = _deserialize_runner_config(
-            raw_runner_config, task_id=str(task.task_id or "")
-        )
+        runner_config = _deserialize_runner_config(raw_runner_config, task_id=str(task.task_id or ""))
         if runner_config is not None:
             try:
                 task._runner_config = runner_config
@@ -529,9 +511,7 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
         custom_command_argv: list[str] = []
         raw_custom_command = payload.get("custom_command_argv")
         if isinstance(raw_custom_command, list):
-            custom_command_argv = [
-                str(item) for item in raw_custom_command if str(item).strip()
-            ]
+            custom_command_argv = [str(item) for item in raw_custom_command if str(item).strip()]
 
         artifact_collection_timeout_s = 30.0
         raw_timeout = payload.get("artifact_collection_timeout_s")
@@ -554,41 +534,22 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             state_path=str(payload.get("state_path") or ""),
             agent_cli=agent_cli,
             container_config_dir=container_config_dir,
-            container_workdir=str(
-                payload.get("container_workdir") or "/home/midori-ai/workspace"
-            ),
-            auto_remove=bool(
-                payload.get("auto_remove") if "auto_remove" in payload else True
-            ),
-            pull_before_run=bool(
-                payload.get("pull_before_run") if "pull_before_run" in payload else True
-            ),
-            settings_preflight_script=str(
-                payload.get("settings_preflight_script") or ""
-            ).strip()
-            or None,
-            headless_desktop_enabled=bool(
-                payload.get("headless_desktop_enabled") or False
-            ),
+            container_workdir=str(payload.get("container_workdir") or "/home/midori-ai/workspace"),
+            auto_remove=bool(payload.get("auto_remove") if "auto_remove" in payload else True),
+            pull_before_run=bool(payload.get("pull_before_run") if "pull_before_run" in payload else True),
+            settings_preflight_script=str(payload.get("settings_preflight_script") or "").strip() or None,
+            headless_desktop_enabled=bool(payload.get("headless_desktop_enabled") or False),
             desktop_cache_enabled=bool(payload.get("desktop_cache_enabled") or False),
-            container_caching_enabled=bool(
-                payload.get("container_caching_enabled") or False
-            ),
-            cache_system_preflight_enabled=bool(
-                payload.get("cache_system_preflight_enabled") or False
-            ),
-            cache_settings_preflight_enabled=bool(
-                payload.get("cache_settings_preflight_enabled") or False
-            ),
+            container_caching_enabled=bool(payload.get("container_caching_enabled") or False),
+            cache_system_preflight_enabled=bool(payload.get("cache_system_preflight_enabled") or False),
+            cache_settings_preflight_enabled=bool(payload.get("cache_settings_preflight_enabled") or False),
             gpu_enabled=bool(payload.get("gpu_enabled") or False),
-            setup_agents_missing_prompt_enabled=bool(
-                payload.get("setup_agents_missing_prompt_enabled") or False
-            ),
+            network_host=bool(payload.get("network_host") or False),
+            setup_agents_missing_prompt_enabled=bool(payload.get("setup_agents_missing_prompt_enabled") or False),
             workspace_type=str(payload.get("workspace_type") or "none"),
             workspace_target=str(payload.get("workspace_target") or ""),
             container_settings_preflight_path=str(
-                payload.get("container_settings_preflight_path")
-                or "/tmp/agents-runner-preflight-settings-{task_id}.sh"
+                payload.get("container_settings_preflight_path") or "/tmp/agents-runner-preflight-settings-{task_id}.sh"
             ),
             container_setup_agents_preflight_path=str(
                 payload.get("container_setup_agents_preflight_path")
@@ -601,40 +562,21 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             environment_id=str(payload.get("environment_id") or ""),
             launch_mode=str(payload.get("launch_mode") or "agent"),
             custom_command_argv=custom_command_argv,
-            custom_verify_executable=str(
-                payload.get("custom_verify_executable") or ""
-            ).strip(),
-            gh_repo=(
-                str(payload.get("gh_repo") or "").strip()
-                if str(payload.get("gh_repo") or "").strip()
-                else None
-            ),
-            gh_prefer_gh_cli=bool(
-                payload.get("gh_prefer_gh_cli")
-                if "gh_prefer_gh_cli" in payload
-                else True
-            ),
+            custom_verify_executable=str(payload.get("custom_verify_executable") or "").strip(),
+            gh_repo=(str(payload.get("gh_repo") or "").strip() if str(payload.get("gh_repo") or "").strip() else None),
+            gh_prefer_gh_cli=bool(payload.get("gh_prefer_gh_cli") if "gh_prefer_gh_cli" in payload else True),
             gh_recreate_if_needed=bool(
-                payload.get("gh_recreate_if_needed")
-                if "gh_recreate_if_needed" in payload
-                else True
+                payload.get("gh_recreate_if_needed") if "gh_recreate_if_needed" in payload else True
             ),
             gh_base_branch=(
                 str(payload.get("gh_base_branch") or "").strip()
                 if str(payload.get("gh_base_branch") or "").strip()
                 else None
             ),
-            gh_branch_work_mode=str(
-                payload.get("gh_branch_work_mode") or "task_branch"
-            ).strip()
-            or "task_branch",
-            gh_task_branch_naming_style=str(
-                payload.get("gh_task_branch_naming_style") or "standard"
-            ).strip()
+            gh_branch_work_mode=str(payload.get("gh_branch_work_mode") or "task_branch").strip() or "task_branch",
+            gh_task_branch_naming_style=str(payload.get("gh_task_branch_naming_style") or "standard").strip()
             or "standard",
-            gh_task_branch_custom_template=str(
-                payload.get("gh_task_branch_custom_template") or "{task_id}"
-            ).strip()
+            gh_task_branch_custom_template=str(payload.get("gh_task_branch_custom_template") or "{task_id}").strip()
             or "{task_id}",
             gh_pr_head_ref=(
                 str(payload.get("gh_pr_head_ref") or "").strip()

@@ -24,9 +24,7 @@ class InteractivePrepBridge(QObject):
 
     @Slot(str, str, str)
     def on_stage(self, task_id: str, status: str, message: str) -> None:
-        self._on_stage(
-            str(task_id or "").strip(), str(status or ""), str(message or "")
-        )
+        self._on_stage(str(task_id or "").strip(), str(status or ""), str(message or ""))
 
     @Slot(str, str)
     def on_log(self, task_id: str, line: str) -> None:

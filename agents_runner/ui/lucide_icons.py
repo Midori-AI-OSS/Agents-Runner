@@ -65,9 +65,7 @@ def _render_lucide_icon(
         HiDPI-aware QPixmap
     """
     # Load SVG file
-    icon_path = (
-        Path(__file__).parent.parent / "assets" / "icons" / "lucide" / f"{name}.svg"
-    )
+    icon_path = Path(__file__).parent.parent / "assets" / "icons" / "lucide" / f"{name}.svg"
 
     if not icon_path.exists():
         # Return empty pixmap if icon not found

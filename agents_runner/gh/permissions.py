@@ -120,11 +120,7 @@ def check_pr_creation_capability(
 
     payload_dict = cast(dict[object, object], payload)
     permissions_raw = payload_dict.get("permissions")
-    permissions = (
-        cast(dict[object, object], permissions_raw)
-        if isinstance(permissions_raw, dict)
-        else {}
-    )
+    permissions = cast(dict[object, object], permissions_raw) if isinstance(permissions_raw, dict) else {}
     can_push = bool(permissions.get("push"))
     if can_push:
         return GitHubPrCapability(
@@ -139,8 +135,7 @@ def check_pr_creation_capability(
         status="read_only",
         can_create_pr=False,
         reason=(
-            "authenticated GitHub account does not have push access to "
-            f"{repo}; automatic PR creation is unavailable"
+            f"authenticated GitHub account does not have push access to {repo}; automatic PR creation is unavailable"
         ),
         repo_owner=owner,
         repo_name=name,

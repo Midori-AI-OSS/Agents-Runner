@@ -63,9 +63,7 @@ def installed_status(
 ) -> AgentStatus:
     resolved_status_type = status_type
     if resolved_status_type is None:
-        resolved_status_type = (
-            StatusType.LOGGED_IN if logged_in else StatusType.NOT_LOGGED_IN
-        )
+        resolved_status_type = StatusType.LOGGED_IN if logged_in else StatusType.NOT_LOGGED_IN
     return AgentStatus(
         agent=agent,
         installed=True,

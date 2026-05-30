@@ -79,9 +79,7 @@ def detect_port_conflicts(port_specs: Sequence[str] | None) -> list[PortConflict
     return conflicts
 
 
-def build_random_host_remaps(
-    port_specs: Sequence[str] | None, conflicts: Sequence[PortConflict]
-) -> list[PortRemap]:
+def build_random_host_remaps(port_specs: Sequence[str] | None, conflicts: Sequence[PortConflict]) -> list[PortRemap]:
     """Build runtime remaps for conflicting fixed host publishes."""
     normalized = normalize_port_specs(port_specs)
     remaps: list[PortRemap] = []
@@ -103,9 +101,7 @@ def build_random_host_remaps(
     return remaps
 
 
-def apply_port_remaps(
-    port_specs: Sequence[str] | None, remaps: Sequence[PortRemap]
-) -> list[str]:
+def apply_port_remaps(port_specs: Sequence[str] | None, remaps: Sequence[PortRemap]) -> list[str]:
     """Return port specs with remaps applied by index."""
     resolved = normalize_port_specs(port_specs)
     for remap in remaps:
@@ -215,8 +211,5 @@ def _can_bind_host_port(*, host: str, host_port: int, protocol: str) -> bool:
 
 def _to_random_host_publish(publish: FixedHostPublish) -> str:
     if publish.host_scope:
-        return (
-            f"{publish.host_scope}::{publish.container_segment}"
-            f"{publish.protocol_suffix}"
-        )
+        return f"{publish.host_scope}::{publish.container_segment}{publish.protocol_suffix}"
     return f"{publish.container_segment}{publish.protocol_suffix}"

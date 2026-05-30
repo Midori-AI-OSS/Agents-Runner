@@ -102,20 +102,15 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
             and task.workspace_type == WORKSPACE_CLONED
             and task.gh_repo_root
             and task.gh_branch
-            and str(task.gh_branch or "").strip()
-            != str(task.gh_base_branch or "").strip()
+            and str(task.gh_branch or "").strip() != str(task.gh_base_branch or "").strip()
             and not task.gh_pr_url
             and not str(getattr(task, "gh_pr_unavailable_reason", "") or "").strip()
         ):
             base = str(task.gh_base_branch or "").strip()
             base_display = base or "auto"
-            prompt_enabled = bool(
-                getattr(env, "interactive_pr_prompt_enabled", True) if env else True
-            )
+            prompt_enabled = bool(getattr(env, "interactive_pr_prompt_enabled", True) if env else True)
             no_prompt_mode = normalize_interactive_pr_no_prompt_mode(
-                getattr(env, "interactive_pr_no_prompt_mode", "auto_create_pr")
-                if env
-                else "auto_create_pr"
+                getattr(env, "interactive_pr_no_prompt_mode", "auto_create_pr") if env else "auto_create_pr"
             )
 
             def _queue_interactive_pr_creation() -> None:
@@ -131,20 +126,13 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
                         bool(task.gh_use_host_cli),
                         (str(task.gh_pr_metadata_path or "").strip() or None),
                         str(task.agent_cli or "").strip(),
-                        str(task.agent_cli_args or "").strip(),
                     ),
                     daemon=True,
                 ).start()
 
             if prompt_enabled:
-                message = (
-                    "Interactive run finished.\n\n"
-                    f"Create a PR from {task.gh_branch} -> {base_display}?"
-                )
-                if (
-                    QMessageBox.question(self, "Create pull request?", message)
-                    == QMessageBox.StandardButton.Yes
-                ):
+                message = f"Interactive run finished.\n\nCreate a PR from {task.gh_branch} -> {base_display}?"
+                if QMessageBox.question(self, "Create pull request?", message) == QMessageBox.StandardButton.Yes:
                     self.host_log.emit(
                         task_id,
                         format_log(
@@ -193,10 +181,7 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
                     "gh",
                     "pr",
                     "INFO",
-                    (
-                        "Interactive PR creation skipped: "
-                        f"{task.gh_pr_unavailable_reason}"
-                    ),
+                    (f"Interactive PR creation skipped: {task.gh_pr_unavailable_reason}"),
                 ),
             )
 
@@ -220,9 +205,7 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
         task_id: str,
         provided_path: str | None,
     ) -> str | None:
-        normalized_provided = os.path.abspath(
-            os.path.expanduser(str(provided_path or "").strip())
-        )
+        normalized_provided = os.path.abspath(os.path.expanduser(str(provided_path or "").strip()))
         if normalized_provided:
             if os.path.exists(normalized_provided):
                 return normalized_provided
@@ -249,11 +232,7 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
             )
             return None
 
-        fallback_path = os.path.abspath(
-            os.path.expanduser(
-                pr_metadata_host_path(os.path.dirname(state_path), task_id)
-            )
-        )
+        fallback_path = os.path.abspath(os.path.expanduser(pr_metadata_host_path(os.path.dirname(state_path), task_id)))
         if os.path.exists(fallback_path):
             if fallback_path != normalized_provided:
                 self.host_log.emit(
@@ -289,7 +268,6 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
         use_gh: bool,
         pr_metadata_path: str | None = None,
         agent_cli: str = "",
-        agent_cli_args: str = "",
         is_override: bool = False,
     ) -> None:
         if not repo_root or not branch:
@@ -321,23 +299,15 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
                 for name, msg in failed_checks:
                     self.host_log.emit(
                         task_id,
-                        format_log(
-                            "gh", "pr", "ERROR", f"validation failed: {name}: {msg}"
-                        ),
+                        format_log("gh", "pr", "ERROR", f"validation failed: {name}: {msg}"),
                     )
                 if task and any(name == "gh_cli" for name, _msg in failed_checks):
                     task.gh_pr_unavailable_status = "unavailable"
-                    task.gh_pr_unavailable_reason = "; ".join(
-                        msg for name, msg in failed_checks if name == "gh_cli"
-                    )
+                    task.gh_pr_unavailable_reason = "; ".join(msg for name, msg in failed_checks if name == "gh_cli")
                     self._schedule_save()
                 return
 
-            existing_skip_reason = (
-                str(getattr(task, "gh_pr_unavailable_reason", "") or "").strip()
-                if task
-                else ""
-            )
+            existing_skip_reason = str(getattr(task, "gh_pr_unavailable_reason", "") or "").strip() if task else ""
             if existing_skip_reason:
                 self.host_log.emit(
                     task_id,
@@ -370,9 +340,7 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
 
             self.host_log.emit(
                 task_id,
-                format_log(
-                    "gh", "pr", "INFO", "[2/6] No existing PR found, proceeding..."
-                ),
+                format_log("gh", "pr", "INFO", "[2/6] No existing PR found, proceeding..."),
             )
 
             remote_url = git_remote_url(repo_root) or ""
@@ -401,19 +369,13 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
                 format_log("gh", "pr", "INFO", "[3/6] Preparing PR metadata..."),
             )
 
-            prompt_line = (
-                (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
-            )
+            prompt_line = (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
             default_title = f"Agent Runner: {prompt_line or task_id}"
             default_title = normalize_pr_title(default_title, fallback=default_title)
 
             agent_display = get_agent_display_name(agent_cli) if agent_cli else "Agent"
-            agent_link = (
-                format_agent_markdown_link(agent_cli) if agent_cli else agent_display
-            )
-            runners_link = (
-                "[Agents Runner](https://github.com/Midori-AI-OSS/Agents-Runner)"
-            )
+            agent_link = format_agent_markdown_link(agent_cli) if agent_cli else agent_display
+            runners_link = "[Agents Runner](https://github.com/Midori-AI-OSS/Agents-Runner)"
 
             default_body = (
                 f"Automated by {runners_link}.\n\n"
@@ -424,22 +386,14 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
             )
             provided_metadata_path = (
                 str(pr_metadata_path or "").strip()
-                or (
-                    str(getattr(task, "gh_pr_metadata_path", "") or "").strip()
-                    if task
-                    else ""
-                )
+                or (str(getattr(task, "gh_pr_metadata_path", "") or "").strip() if task else "")
                 or None
             )
             resolved_pr_metadata_path = self._resolve_pr_metadata_path_for_finalize(
                 task_id=task_id,
                 provided_path=provided_metadata_path,
             )
-            metadata = (
-                load_pr_metadata(resolved_pr_metadata_path)
-                if resolved_pr_metadata_path
-                else None
-            )
+            metadata = load_pr_metadata(resolved_pr_metadata_path) if resolved_pr_metadata_path else None
             if metadata is not None and (metadata.title or metadata.body):
                 self.host_log.emit(
                     task_id,
@@ -499,26 +453,19 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
                     body=body,
                     use_gh=bool(use_gh),
                     agent_cli=agent_cli,
-                    agent_cli_args=agent_cli_args,
                     agent_display_name=display_name,
                 )
             except GhManagementError as exc:
-                self.host_log.emit(
-                    task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}")
-                )
+                self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}"))
                 return
             except Exception as exc:
-                self.host_log.emit(
-                    task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}")
-                )
+                self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}"))
                 return
 
             if pr_url is None:
                 self.host_log.emit(
                     task_id,
-                    format_log(
-                        "gh", "pr", "INFO", "[5/6] No changes to commit; skipping PR"
-                    ),
+                    format_log("gh", "pr", "INFO", "[5/6] No changes to commit; skipping PR"),
                 )
                 return
             if pr_url == "":
@@ -534,9 +481,7 @@ class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
                 return
             self.host_log.emit(
                 task_id,
-                format_log(
-                    "gh", "pr", "INFO", f"[6/6] PR created successfully: {pr_url}"
-                ),
+                format_log("gh", "pr", "INFO", f"[6/6] PR created successfully: {pr_url}"),
             )
             self.host_pr_url.emit(task_id, pr_url)
 

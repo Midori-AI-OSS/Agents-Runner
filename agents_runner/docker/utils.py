@@ -24,9 +24,7 @@ def normalize_host_mount_path(path: str) -> str:
     raw = str(path or "").strip()
     if not raw:
         return ""
-    return os.path.normpath(
-        os.path.abspath(os.path.expanduser(os.path.expandvars(raw)))
-    )
+    return os.path.normpath(os.path.abspath(os.path.expanduser(os.path.expandvars(raw))))
 
 
 def normalize_container_mount_path(path: str) -> str:
@@ -149,9 +147,7 @@ def resolve_workspace_mount(
         return host_workdir, container_mount
 
     def _has_markers(path: str) -> bool:
-        return os.path.exists(os.path.join(path, ".git")) or os.path.isfile(
-            os.path.join(path, "pyproject.toml")
-        )
+        return os.path.exists(os.path.join(path, ".git")) or os.path.isfile(os.path.join(path, "pyproject.toml"))
 
     mount_root = host_workdir
     if os.path.isdir(host_workdir):

@@ -58,10 +58,7 @@ def resolve_launch_port_decision(
         reply = QMessageBox.question(
             parent,
             "Host port conflict",
-            (
-                f"`{remap.original_publish}` is already in use.\n\n"
-                "Use random free host ports for this conflict?"
-            ),
+            (f"`{remap.original_publish}` is already in use.\n\nUse random free host ports for this conflict?"),
         )
         if reply != QMessageBox.StandardButton.Yes:
             return LaunchPortDecision(

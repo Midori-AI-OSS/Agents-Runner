@@ -61,9 +61,7 @@ class CooldownManager:
         watch_state = self.check_cooldown(agent_key)
         return bool(watch_state and watch_state.is_on_cooldown())
 
-    def set_cooldown(
-        self, agent_key: str, duration_seconds: int, reason: str = ""
-    ) -> AgentWatchState:
+    def set_cooldown(self, agent_key: str, duration_seconds: int, reason: str = "") -> AgentWatchState:
         """Set cooldown for an agent selection key.
 
         Args:

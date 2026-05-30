@@ -102,9 +102,7 @@ def _cleanup_stale_temp_files() -> None:
                     pass
 
         if removed_count > 0:
-            logger.rprint(
-                f"Removed {removed_count} stale temporary file(s)", mode="info"
-            )
+            logger.rprint(f"Removed {removed_count} stale temporary file(s)", mode="info")
     except Exception as exc:
         # Don't fail app startup if cleanup fails
         logger.rprint(f"Failed to clean stale temp files: {exc}", mode="warn")
@@ -127,9 +125,7 @@ def _upsert_qt_logging_rules(existing: str, required_rules: list[str]) -> str:
     tokens: list[str] = []
     existing_rules = (existing or "").replace("\n", ";").strip()
     if existing_rules:
-        tokens.extend(
-            rule.strip() for rule in existing_rules.split(";") if rule.strip()
-        )
+        tokens.extend(rule.strip() for rule in existing_rules.split(";") if rule.strip())
 
     # Keep the last seen index for each key so we can replace effective rules.
     key_to_index: dict[str, int] = {}

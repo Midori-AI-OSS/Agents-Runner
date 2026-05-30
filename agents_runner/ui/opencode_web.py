@@ -124,8 +124,7 @@ def schedule_open_opencode_web_url(
                     "opencode",
                     "web",
                     "WARN",
-                    "web server never returned an HTTP status after 10 minutes; "
-                    f"stopped browser open retry: {url}",
+                    f"web server never returned an HTTP status after 10 minutes; stopped browser open retry: {url}",
                 ),
             )
             return

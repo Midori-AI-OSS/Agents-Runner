@@ -109,9 +109,7 @@ def save_setup_state(state: dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
     # Write to temporary file first
-    fd, tmp_path = tempfile.mkstemp(
-        prefix="setup-state-", suffix=".json", dir=os.path.dirname(path)
-    )
+    fd, tmp_path = tempfile.mkstemp(prefix="setup-state-", suffix=".json", dir=os.path.dirname(path))
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(state, f, indent=2)
@@ -181,9 +179,7 @@ def launch_terminal_and_wait(
     cwd = os.path.abspath(os.path.expanduser(cwd)) if cwd else None
 
     if option.kind == "linux-exe":
-        args = linux_terminal_args(
-            option.terminal_id, option.exe or option.terminal_id, bash_script, cwd=cwd
-        )
+        args = linux_terminal_args(option.terminal_id, option.exe or option.terminal_id, bash_script, cwd=cwd)
         return subprocess.run(args, start_new_session=True)
 
     if option.kind in {"mac-terminal", "mac-iterm"}:
@@ -274,9 +270,7 @@ class SetupOrchestrator:
             # Launch terminal and wait (blocking)
             # We need to run this in a thread to keep UI responsive
             loop = asyncio.get_event_loop()
-            success = await loop.run_in_executor(
-                None, launch_agent_setup_terminal, agent, terminal
-            )
+            success = await loop.run_in_executor(None, launch_agent_setup_terminal, agent, terminal)
             results[agent] = success
 
             # Update progress: complete

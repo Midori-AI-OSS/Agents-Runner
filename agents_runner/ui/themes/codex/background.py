@@ -50,9 +50,7 @@ def blend_colors(color1: QColor | str, color2: QColor | str, t: float) -> QColor
     return QColor(r, g, b)
 
 
-def get_top_band_color(
-    phase: float, cached_color: QColor | None, cached_phase: float
-) -> tuple[QColor, float]:
+def get_top_band_color(phase: float, cached_color: QColor | None, cached_phase: float) -> tuple[QColor, float]:
     """
     Get top band color by blending blue and green based on phase.
 
@@ -72,9 +70,7 @@ def get_top_band_color(
     return color, phase
 
 
-def get_bottom_band_color(
-    phase: float, cached_color: QColor | None, cached_phase: float
-) -> tuple[QColor, float]:
+def get_bottom_band_color(phase: float, cached_color: QColor | None, cached_phase: float) -> tuple[QColor, float]:
     """
     Get bottom band color by blending between violet and orange based on phase.
 
@@ -168,12 +164,8 @@ def paint_codex_background(
         Tuple of (top_color, top_phase, bottom_color, bottom_phase) for caching
     """
     # Calculate colors based on phase (with caching)
-    top_color, new_top_phase = get_top_band_color(
-        top_phase, cached_top_color, cached_top_phase
-    )
-    bottom_color, new_bottom_phase = get_bottom_band_color(
-        bottom_phase, cached_bottom_color, cached_bottom_phase
-    )
+    top_color, new_top_phase = get_top_band_color(top_phase, cached_top_color, cached_top_phase)
+    bottom_color, new_bottom_phase = get_bottom_band_color(bottom_phase, cached_bottom_color, cached_bottom_phase)
 
     w = int(rect.width())
     h = int(rect.height())
@@ -345,9 +337,7 @@ def paint_codex_blobs(painter: QPainter, rect: QRect) -> None:
 
         grad = QRadialGradient(QPointF(0.0, 0.0), 1.0)
         grad.setColorAt(0.0, c)
-        grad.setColorAt(
-            0.45, QColor(c.red(), c.green(), c.blue(), int(c.alpha() * 0.28))
-        )
+        grad.setColorAt(0.45, QColor(c.red(), c.green(), c.blue(), int(c.alpha() * 0.28)))
         grad.setColorAt(1.0, QColor(c.red(), c.green(), c.blue(), 0))
 
         painter.setBrush(grad)

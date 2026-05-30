@@ -118,9 +118,7 @@ class DockerAgentWorker:
 
             # Step 2: Prepare runtime environment
             os.makedirs(self._config.host_config_dir, exist_ok=True)
-            setup = WorkerSetup(
-                self._config, self._prompt, self._on_log, self._on_state
-            )
+            setup = WorkerSetup(self._config, self._prompt, self._on_log, self._on_state)
             runtime_env = setup.prepare_runtime_environment(preflight_tmp_paths)
 
             # Step 3: Execute container

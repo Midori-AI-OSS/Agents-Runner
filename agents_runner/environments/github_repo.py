@@ -58,9 +58,7 @@ def resolve_environment_github_repo(
         repo = str(git_info.repo_name or "").strip()
         if not owner or not repo:
             return None
-        repo_url = str(git_info.repo_url or "").strip() or (
-            f"https://github.com/{owner}/{repo}"
-        )
+        repo_url = str(git_info.repo_url or "").strip() or (f"https://github.com/{owner}/{repo}")
         return GitHubRepoContext(
             repo_owner=owner,
             repo_name=repo,

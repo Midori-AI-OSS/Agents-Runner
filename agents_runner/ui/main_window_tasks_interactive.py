@@ -62,12 +62,8 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
         dialog.setIcon(QMessageBox.Icon.Question)
         dialog.setWindowTitle("OpenCode launch mode")
         dialog.setText("How would you like to launch OpenCode?")
-        dialog.setInformativeText(
-            "Choose Terminal for the TUI or Web for the browser UI."
-        )
-        terminal_button = dialog.addButton(
-            "Terminal", QMessageBox.ButtonRole.AcceptRole
-        )
+        dialog.setInformativeText("Choose Terminal for the TUI or Web for the browser UI.")
+        terminal_button = dialog.addButton("Terminal", QMessageBox.ButtonRole.AcceptRole)
         web_button = dialog.addButton("Web", QMessageBox.ButtonRole.AcceptRole)
         cancel_button = dialog.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
         dialog.setDefaultButton(terminal_button)
@@ -94,9 +90,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
     ) -> None:
         del host_config_dir
         if shutil.which("docker") is None:
-            QMessageBox.critical(
-                self, "Docker not found", "Could not find `docker` in PATH."
-            )
+            QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
             return
 
         prompt = sanitize_prompt((prompt or "").strip())
@@ -113,21 +107,24 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
 
         env_id = str(env_id or "").strip() or self._active_environment_id()
         if env_id not in self._environments:
-            QMessageBox.warning(
-                self, "Unknown environment", "Pick an environment first."
-            )
+            QMessageBox.warning(self, "Unknown environment", "Pick an environment first.")
             return
         env = self._environments.get(env_id)
         gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
+        network_host = self._effective_network_host(env=env, settings=self._settings_data)
 
-        port_decision = resolve_launch_port_decision(
-            parent=self,
-            port_specs=(getattr(env, "ports", []) if env else []),
-        )
-        if port_decision.outcome == "conflict_cancel":
-            return
-        ports_for_task = list(port_decision.ports_for_task)
-        port_remaps_for_log = list(port_decision.remaps)
+        if network_host:
+            ports_for_task = []
+            port_remaps_for_log = []
+        else:
+            port_decision = resolve_launch_port_decision(
+                parent=self,
+                port_specs=(getattr(env, "ports", []) if env else []),
+            )
+            if port_decision.outcome == "conflict_cancel":
+                return
+            ports_for_task = list(port_decision.ports_for_task)
+            port_remaps_for_log = list(port_decision.remaps)
 
         task_id = uuid4().hex[:10]
         task_token = f"interactive-{task_id}"
@@ -152,15 +149,9 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                 # For cloned workspaces, we scan once and persist the result
                 if env.midoriai_template_likelihood == 0.0:
                     detection = scan_midoriai_agents_template(host_workdir)
-                    env.midoriai_template_likelihood = (
-                        detection.midoriai_template_likelihood
-                    )
-                    env.midoriai_template_detected = (
-                        detection.midoriai_template_detected
-                    )
-                    env.midoriai_template_detected_path = (
-                        detection.midoriai_template_detected_path
-                    )
+                    env.midoriai_template_likelihood = detection.midoriai_template_likelihood
+                    env.midoriai_template_detected = detection.midoriai_template_detected
+                    env.midoriai_template_detected_path = detection.midoriai_template_detected_path
                     save_environment(env)
                     self._environments[env.env_id] = env
             except Exception:
@@ -174,23 +165,13 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
         agent_cli_args: list[str] = []
         gh_use_host_cli = bool(getattr(env, "gh_use_host_cli", True)) if env else True
         gh_use_host_cli = bool(gh_use_host_cli and is_gh_available())
-        gh_repo = (
-            str(env.workspace_target or "").strip()
-            if workspace_type == WORKSPACE_CLONED and env
-            else ""
-        )
+        gh_repo = str(env.workspace_target or "").strip() if workspace_type == WORKSPACE_CLONED and env else ""
         branch_work_mode = (
-            str(getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch")
-            if env
-            else "task_branch"
+            str(getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch") if env else "task_branch"
         ).strip()
         gh_pr_unavailable_reason = ""
         gh_pr_unavailable_status = ""
-        if (
-            workspace_type == WORKSPACE_CLONED
-            and gh_repo
-            and branch_work_mode != "direct_base"
-        ):
+        if workspace_type == WORKSPACE_CLONED and gh_repo and branch_work_mode != "direct_base":
             capability = check_pr_creation_capability_for_repo_ref(
                 gh_repo,
                 use_gh=gh_use_host_cli,
@@ -200,29 +181,19 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                 gh_pr_unavailable_status = capability.status
 
         override = self._coerce_agent_override(agent_override)
-        shell_mode = bool(
-            override and str(override.get("mode") or "").strip().lower() == "shell"
-        )
+        shell_mode = bool(override and str(override.get("mode") or "").strip().lower() == "shell")
         shell = str(override.get("shell") or "bash").strip() if shell_mode else "bash"
         uses_environment_agent_selection = bool(
-            not override
-            and env
-            and env.agent_selection
-            and getattr(env.agent_selection, "agents", None)
+            not override and env and env.agent_selection and getattr(env.agent_selection, "agents", None)
         )
 
         if (
             not override
             and env
             and env.agent_selection
-            and str(getattr(env.agent_selection, "selection_mode", "") or "")
-            .strip()
-            .lower()
-            == "pinned"
+            and str(getattr(env.agent_selection, "selection_mode", "") or "").strip().lower() == "pinned"
         ):
-            pinned_id = str(
-                getattr(env.agent_selection, "pinned_agent_id", "") or ""
-            ).strip()
+            pinned_id = str(getattr(env.agent_selection, "pinned_agent_id", "") or "").strip()
             pinned_lower = pinned_id.lower()
             pinned_inst = next(
                 (
@@ -235,8 +206,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                 (
                     inst
                     for inst in list(getattr(env.agent_selection, "agents", []) or [])
-                    if str(getattr(inst, "agent_id", "") or "").strip().lower()
-                    == pinned_lower
+                    if str(getattr(inst, "agent_id", "") or "").strip().lower() == pinned_lower
                 ),
                 None,
             )
@@ -261,24 +231,18 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                 settings=self._settings_data,
             )
             host_config_dir = auto_config_dir
-        elif (
-            env and env.agent_selection and getattr(env.agent_selection, "agents", None)
-        ):
-            agent_cli, auto_config_dir, agent_instance_id, selected_cli_flags = (
-                self._select_agent_instance_for_env(
-                    env=env,
-                    settings=self._settings_data,
-                    advance_round_robin=False,
-                )
+        elif env and env.agent_selection and getattr(env.agent_selection, "agents", None):
+            agent_cli, auto_config_dir, agent_instance_id, selected_cli_flags = self._select_agent_instance_for_env(
+                env=env,
+                settings=self._settings_data,
+                advance_round_robin=False,
             )
         else:
-            agent_cli, auto_config_dir, selected_cli_flags = (
-                self._effective_agent_and_config(env=env, advance_round_robin=True)
+            agent_cli, auto_config_dir, selected_cli_flags = self._effective_agent_and_config(
+                env=env, advance_round_robin=True
             )
         host_config_dir = auto_config_dir
-        if not shell_mode and not self._ensure_agent_config_dir(
-            agent_cli, host_config_dir
-        ):
+        if not shell_mode and not self._ensure_agent_config_dir(agent_cli, host_config_dir):
             return
         if override and not agent_instance_id:
             agent_instance_id = str(agent_cli or "").strip()
@@ -301,20 +265,14 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
             env=env,
             settings=self._settings_data,
         )
-        if (
-            not shell_mode
-            and str(agent_cli or "").strip().lower() == "opencode"
-            and opencode_interactive_mode == "ask"
-        ):
+        if not shell_mode and str(agent_cli or "").strip().lower() == "opencode" and opencode_interactive_mode == "ask":
             selected_mode = self._ask_opencode_interactive_launch_mode()
             if selected_mode is None:
                 return
             opencode_interactive_mode = selected_mode
 
         opencode_web_mode = bool(
-            not shell_mode
-            and str(agent_cli or "").strip().lower() == "opencode"
-            and opencode_interactive_mode == "web"
+            not shell_mode and str(agent_cli or "").strip().lower() == "opencode" and opencode_interactive_mode == "web"
         )
         if opencode_web_mode:
             command = "opencode web"
@@ -322,9 +280,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
         launch_mode = "opencode_web" if opencode_web_mode else "interactive_agent"
 
         extra_preflight_script = str(extra_preflight_script or "")
-        is_help_launch = self._is_agent_help_interactive_launch(
-            prompt=prompt, command=command
-        )
+        is_help_launch = self._is_agent_help_interactive_launch(prompt=prompt, command=command)
         if extra_preflight_script.strip() and "clone_repo" in extra_preflight_script:
             is_help_launch = True
         if is_help_launch:
@@ -336,9 +292,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                 ]
             ).strip()
 
-        apply_full_prompting = bool(
-            has_typed_prompt and not is_help_launch and not opencode_web_mode
-        )
+        apply_full_prompting = bool(has_typed_prompt and not is_help_launch and not opencode_web_mode)
         prompt_for_agent = "" if opencode_web_mode else str(prompt or "")
         if apply_full_prompting:
             prompt_for_agent = self._build_interactive_base_prompt(
@@ -361,9 +315,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
             self._settings_data.get("preflight_enabled")
             and str(self._settings_data.get("preflight_script") or "").strip()
         ):
-            settings_preflight_script = str(
-                self._settings_data.get("preflight_script") or ""
-            )
+            settings_preflight_script = str(self._settings_data.get("preflight_script") or "")
 
         desktop_enabled = bool(
             "websockify" in extra_preflight_script
@@ -431,10 +383,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                     "gh",
                     "pr",
                     "WARN",
-                    (
-                        "PR creation unavailable; running in recommendation-only "
-                        f"mode: {gh_pr_unavailable_reason}"
-                    ),
+                    (f"PR creation unavailable; running in recommendation-only mode: {gh_pr_unavailable_reason}"),
                 ),
             )
 
@@ -467,40 +416,21 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
             settings_preflight_script=settings_preflight_script,
             extra_preflight_script=extra_preflight_script,
             launch_mode=launch_mode,
-            container_caching_enabled=bool(
-                env and getattr(env, "container_caching_enabled", False)
-            ),
-            cache_system_preflight_enabled=bool(
-                env and getattr(env, "cache_system_preflight_enabled", False)
-            ),
-            cache_settings_preflight_enabled=bool(
-                env and getattr(env, "cache_settings_preflight_enabled", False)
-            ),
-            cache_desktop_build=bool(
-                env and getattr(env, "cache_desktop_build", False)
-            ),
+            container_caching_enabled=bool(env and getattr(env, "container_caching_enabled", False)),
+            cache_system_preflight_enabled=bool(env and getattr(env, "cache_system_preflight_enabled", False)),
+            cache_settings_preflight_enabled=bool(env and getattr(env, "cache_settings_preflight_enabled", False)),
+            cache_desktop_build=bool(env and getattr(env, "cache_desktop_build", False)),
             setup_agents_missing_prompt_enabled=bool(
                 env and getattr(env, "setup_agents_missing_prompt_enabled", False)
             ),
-            pull_before_run=bool(
-                True
-                if env is None
-                else getattr(env, "interactive_pull_before_run_enabled", True)
-            ),
-            branch_work_mode=str(
-                getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch"
-            )
+            pull_before_run=bool(True if env is None else getattr(env, "interactive_pull_before_run_enabled", True)),
+            branch_work_mode=str(getattr(env, "gh_branch_work_mode", "task_branch") or "task_branch")
             if env
             else "task_branch",
-            task_branch_naming_style=str(
-                getattr(env, "gh_task_branch_naming_style", "standard") or "standard"
-            )
+            task_branch_naming_style=str(getattr(env, "gh_task_branch_naming_style", "standard") or "standard")
             if env
             else "standard",
-            task_branch_custom_template=str(
-                getattr(env, "gh_task_branch_custom_template", "{task_id}")
-                or "{task_id}"
-            )
+            task_branch_custom_template=str(getattr(env, "gh_task_branch_custom_template", "{task_id}") or "{task_id}")
             if env
             else "{task_id}",
             prep_id=prep_id,
@@ -533,6 +463,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
             "shell": shell,
             "opencode_web_mode": opencode_web_mode,
             "gpu_enabled": gpu_enabled,
+            "network_host": network_host,
             "ports_for_task": list(ports_for_task),
             "selected_cli_flags": selected_cli_flags,
         }
@@ -551,30 +482,16 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
         self._interactive_prep_threads[task_id] = prep_thread
         self._interactive_prep_bridges[task_id] = prep_bridge
 
-        prep_worker.stage.connect(
-            prep_bridge.on_stage, Qt.ConnectionType.QueuedConnection
-        )
+        prep_worker.stage.connect(prep_bridge.on_stage, Qt.ConnectionType.QueuedConnection)
         prep_worker.log.connect(prep_bridge.on_log, Qt.ConnectionType.QueuedConnection)
-        prep_worker.succeeded.connect(
-            prep_bridge.on_succeeded, Qt.ConnectionType.QueuedConnection
-        )
-        prep_worker.failed.connect(
-            prep_bridge.on_failed, Qt.ConnectionType.QueuedConnection
-        )
-        prep_worker.succeeded.connect(
-            prep_thread.quit, Qt.ConnectionType.QueuedConnection
-        )
+        prep_worker.succeeded.connect(prep_bridge.on_succeeded, Qt.ConnectionType.QueuedConnection)
+        prep_worker.failed.connect(prep_bridge.on_failed, Qt.ConnectionType.QueuedConnection)
+        prep_worker.succeeded.connect(prep_thread.quit, Qt.ConnectionType.QueuedConnection)
         prep_worker.failed.connect(prep_thread.quit, Qt.ConnectionType.QueuedConnection)
-        prep_worker.succeeded.connect(
-            prep_worker.deleteLater, Qt.ConnectionType.QueuedConnection
-        )
-        prep_worker.failed.connect(
-            prep_worker.deleteLater, Qt.ConnectionType.QueuedConnection
-        )
+        prep_worker.succeeded.connect(prep_worker.deleteLater, Qt.ConnectionType.QueuedConnection)
+        prep_worker.failed.connect(prep_worker.deleteLater, Qt.ConnectionType.QueuedConnection)
         prep_thread.finished.connect(prep_thread.deleteLater)
-        prep_thread.finished.connect(
-            prep_bridge.deleteLater, Qt.ConnectionType.QueuedConnection
-        )
+        prep_thread.finished.connect(prep_bridge.deleteLater, Qt.ConnectionType.QueuedConnection)
 
         prep_thread.start()
 
@@ -635,9 +552,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                 return prep_id
         return "unknown"
 
-    def _interactive_prep_diag_log(
-        self, task_id: str, level: str, message: str
-    ) -> None:
+    def _interactive_prep_diag_log(self, task_id: str, level: str, message: str) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
             return
@@ -678,9 +593,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
         status_text = str(status or "").strip().lower()
         task = self._tasks.get(task_id)
         if task is None:
-            self._interactive_prep_diag_log(
-                task_id, "WARN", "bridge stage callback ignored: task missing"
-            )
+            self._interactive_prep_diag_log(task_id, "WARN", "bridge stage callback ignored: task missing")
             return
         if status_text:
             task.status = status_text
@@ -699,9 +612,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
             return
         task = self._tasks.get(task_id)
         if task is None:
-            self._interactive_prep_diag_log(
-                task_id, "WARN", "bridge failed callback ignored: task missing"
-            )
+            self._interactive_prep_diag_log(task_id, "WARN", "bridge failed callback ignored: task missing")
             self._clear_interactive_prep_refs(task_id)
             return
         task.status = "failed"
@@ -717,44 +628,32 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
         self._refresh_new_task_agent_info()
         self._clear_interactive_prep_refs(task_id)
 
-    def _on_interactive_prep_succeeded(
-        self, task_id: str, payload: dict[str, Any]
-    ) -> None:
+    def _on_interactive_prep_succeeded(self, task_id: str, payload: dict[str, Any]) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
             return
         task = self._tasks.get(task_id)
         if task is None:
-            self._interactive_prep_diag_log(
-                task_id, "WARN", "bridge success callback ignored: task missing"
-            )
+            self._interactive_prep_diag_log(task_id, "WARN", "bridge success callback ignored: task missing")
             self._clear_interactive_prep_refs(task_id)
             return
 
         cmd_parts = payload.get("cmd_parts")
         if not isinstance(cmd_parts, list) or not cmd_parts:
-            self._on_interactive_prep_failed(
-                task_id, "Interactive prep returned no command."
-            )
+            self._on_interactive_prep_failed(task_id, "Interactive prep returned no command.")
             return
 
         task.gh_repo_root = str(payload.get("gh_repo_root") or "").strip()
         task.gh_base_branch = str(payload.get("gh_base_branch") or "").strip()
         task.gh_branch = str(payload.get("gh_branch") or "").strip()
         task.gh_pr_metadata_path = str(payload.get("gh_pr_metadata_path") or "").strip()
-        task.gh_pr_unavailable_reason = str(
-            payload.get("gh_pr_unavailable_reason") or ""
-        ).strip()
-        task.gh_pr_unavailable_status = str(
-            payload.get("gh_pr_unavailable_status") or ""
-        ).strip()
+        task.gh_pr_unavailable_reason = str(payload.get("gh_pr_unavailable_reason") or "").strip()
+        task.gh_pr_unavailable_status = str(payload.get("gh_pr_unavailable_status") or "").strip()
         task.error = None
 
         context = self._interactive_prep_context.get(task_id)
         if not isinstance(context, dict):
-            self._on_interactive_prep_failed(
-                task_id, "Interactive prep context is unavailable."
-            )
+            self._on_interactive_prep_failed(task_id, "Interactive prep context is unavailable.")
             return
         if not task.gh_base_branch:
             task.gh_base_branch = str(context.get("desired_base") or "").strip()
@@ -773,28 +672,18 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
             "settings_preflight_cached",
         }
         has_runtime_cache_overrides = all(
-            key in payload and payload.get(key) is not None
-            for key in cache_override_keys
+            key in payload and payload.get(key) is not None for key in cache_override_keys
         )
         runtime_image = str(payload.get("runtime_image") or context.get("image") or "")
         resolved_extra_preflight_script = str(
-            payload.get("resolved_extra_preflight_script")
-            or context.get("extra_preflight_script")
-            or ""
+            payload.get("resolved_extra_preflight_script") or context.get("extra_preflight_script") or ""
         )
-        resolved_install_preflight_script = str(
-            payload.get("install_preflight_script") or ""
-        )
+        resolved_install_preflight_script = str(payload.get("install_preflight_script") or "")
         resolved_install_phase_name = str(payload.get("install_phase_name") or "")
         agent_probe_available_override: bool | None = None
-        if (
-            "agent_probe_available" in payload
-            and payload.get("agent_probe_available") is not None
-        ):
+        if "agent_probe_available" in payload and payload.get("agent_probe_available") is not None:
             agent_probe_available_override = bool(payload.get("agent_probe_available"))
-        skip_system_preflight_override = bool(
-            payload.get("skip_system_preflight", False)
-        )
+        skip_system_preflight_override = bool(payload.get("skip_system_preflight", False))
 
         try:
             launch_docker_terminal_task(
@@ -825,27 +714,17 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                 spinner=context.get("spinner"),
                 desired_base=context.get("desired_base") or "",
                 skip_image_pull=True,
-                runtime_image_override=runtime_image
+                runtime_image_override=runtime_image if has_runtime_cache_overrides else None,
+                system_preflight_cached_override=bool(payload.get("system_preflight_cached"))
                 if has_runtime_cache_overrides
                 else None,
-                system_preflight_cached_override=bool(
-                    payload.get("system_preflight_cached")
-                )
+                desktop_preflight_cached_override=bool(payload.get("desktop_preflight_cached"))
                 if has_runtime_cache_overrides
                 else None,
-                desktop_preflight_cached_override=bool(
-                    payload.get("desktop_preflight_cached")
-                )
+                settings_preflight_cached_override=bool(payload.get("settings_preflight_cached"))
                 if has_runtime_cache_overrides
                 else None,
-                settings_preflight_cached_override=bool(
-                    payload.get("settings_preflight_cached")
-                )
-                if has_runtime_cache_overrides
-                else None,
-                install_preflight_cached_override=bool(
-                    payload.get("install_preflight_cached")
-                )
+                install_preflight_cached_override=bool(payload.get("install_preflight_cached"))
                 if has_runtime_cache_overrides
                 else None,
                 agent_probe_available_override=agent_probe_available_override,
@@ -857,6 +736,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                 shell=str(context.get("shell") or "bash"),
                 opencode_web_mode=bool(context.get("opencode_web_mode")),
                 gpu_enabled=bool(context.get("gpu_enabled") or False),
+                network_host=bool(context.get("network_host") or False),
                 ports_for_task=list(context.get("ports_for_task") or []),
             )
         except Exception as exc:
@@ -869,15 +749,9 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
         self, task_id: str, finish_path: str, error_log_path: str | None = None
     ) -> None:
         task_id = str(task_id or "").strip()
-        finish_path = os.path.abspath(
-            os.path.expanduser(str(finish_path or "").strip())
-        )
+        finish_path = os.path.abspath(os.path.expanduser(str(finish_path or "").strip()))
         error_candidate = str(error_log_path or "").strip()
-        resolved_error_log_path = (
-            os.path.abspath(os.path.expanduser(error_candidate))
-            if error_candidate
-            else ""
-        )
+        resolved_error_log_path = os.path.abspath(os.path.expanduser(error_candidate)) if error_candidate else ""
         if not task_id or not finish_path:
             return
 
@@ -950,9 +824,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                         mode="warn",
                     )
             except Exception as exc:
-                logger.rprint(
-                    f"[finish] Error encrypting finish file: {exc!r}", mode="error"
-                )
+                logger.rprint(f"[finish] Error encrypting finish file: {exc!r}", mode="error")
 
             # Delete plaintext finish file
             try:
@@ -963,9 +835,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
                         mode="normal",
                     )
             except Exception as exc:
-                logger.rprint(
-                    f"[finish] Failed to delete finish file: {exc!r}", mode="warn"
-                )
+                logger.rprint(f"[finish] Failed to delete finish file: {exc!r}", mode="warn")
 
             if resolved_error_log_path:
                 try:

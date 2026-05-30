@@ -132,9 +132,7 @@ class ArtifactsTab(QWidget):
         splitter.setChildrenCollapsible(False)
 
         left_panel = GlassCard()
-        left_panel.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        left_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(18, 16, 18, 16)
         left_layout.setSpacing(10)
@@ -148,9 +146,7 @@ class ArtifactsTab(QWidget):
 
         # Add mode indicator
         self._mode_label = QLabel("Archived Artifacts")
-        self._mode_label.setStyleSheet(
-            "color: rgba(237, 239, 245, 160); font-size: 11px;"
-        )
+        self._mode_label.setStyleSheet("color: rgba(237, 239, 245, 160); font-size: 11px;")
 
         list_header.addWidget(list_title)
         list_header.addWidget(self._artifact_count)
@@ -171,9 +167,7 @@ class ArtifactsTab(QWidget):
         left_layout.addWidget(self._artifact_list, 1)
 
         right_panel = GlassCard()
-        right_panel.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        right_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(18, 16, 18, 16)
         right_layout.setSpacing(12)
@@ -182,9 +176,7 @@ class ArtifactsTab(QWidget):
         preview_title.setStyleSheet("font-size: 14px; font-weight: 650;")
 
         self._preview_area = QWidget()
-        self._preview_area.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._preview_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         preview_layout = QVBoxLayout(self._preview_area)
         preview_layout.setContentsMargins(0, 0, 0, 0)
         preview_layout.setSpacing(8)
@@ -193,15 +185,11 @@ class ArtifactsTab(QWidget):
         self._preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._preview_label.setStyleSheet("color: rgba(237, 239, 245, 160);")
         self._preview_label.setWordWrap(True)
-        self._preview_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
-        )
+        self._preview_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         self._thumbnail = QLabel()
         self._thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._thumbnail.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._thumbnail.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._thumbnail.setMinimumSize(1, 1)
         self._thumbnail.installEventFilter(self)
         self._thumbnail.hide()
@@ -210,9 +198,7 @@ class ArtifactsTab(QWidget):
         self._text_preview.setReadOnly(True)
         self._text_preview.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
         self._text_preview.setMaximumBlockCount(5000)
-        self._text_preview.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._text_preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Set monospace font
         font = QFont("Monospace", 9)
@@ -238,9 +224,7 @@ class ArtifactsTab(QWidget):
 
         self._empty_state = QLabel("No artifacts collected for this task")
         self._empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_state.setStyleSheet(
-            "color: rgba(237, 239, 245, 120); font-size: 13px;"
-        )
+        self._empty_state.setStyleSheet("color: rgba(237, 239, 245, 120); font-size: 13px;")
         self._empty_state.setWordWrap(True)
 
         button_row = QHBoxLayout()
@@ -294,9 +278,7 @@ class ArtifactsTab(QWidget):
                 self._preview_loader.update_thumbnail_scale()
         return super().eventFilter(watched, event)
 
-    def _artifact_relative_path(
-        self, artifact: ArtifactMeta | StagingArtifactMeta
-    ) -> str:
+    def _artifact_relative_path(self, artifact: ArtifactMeta | StagingArtifactMeta) -> str:
         if isinstance(artifact, StagingArtifactMeta):
             return artifact.filename
         return artifact.original_filename
@@ -316,9 +298,7 @@ class ArtifactsTab(QWidget):
                 child = node.folders.get(part)
                 if child is None:
                     child_path = f"{node.path}/{part}" if node.path else part
-                    child = _FolderNode(
-                        name=part, path=child_path, folders={}, files=[]
-                    )
+                    child = _FolderNode(name=part, path=child_path, folders={}, files=[])
                     node.folders[part] = child
                 node = child
             node.files.append(artifact)
@@ -347,9 +327,7 @@ class ArtifactsTab(QWidget):
             node = self._get_folder_node(self._current_folder_path)
         return node
 
-    def _artifact_modified_at(
-        self, artifact: ArtifactMeta | StagingArtifactMeta
-    ) -> datetime | None:
+    def _artifact_modified_at(self, artifact: ArtifactMeta | StagingArtifactMeta) -> datetime | None:
         if isinstance(artifact, StagingArtifactMeta):
             return artifact.modified_at
         try:
@@ -357,9 +335,7 @@ class ArtifactsTab(QWidget):
         except Exception:
             return None
 
-    def _summarize_folder(
-        self, node: _FolderNode
-    ) -> tuple[int, int, int, datetime | None, list[str]]:
+    def _summarize_folder(self, node: _FolderNode) -> tuple[int, int, int, datetime | None, list[str]]:
         folder_count = 0
         file_count = 0
         total_size = 0
@@ -371,9 +347,7 @@ class ArtifactsTab(QWidget):
 
             for artifact in sorted(
                 current.files,
-                key=lambda entry: Path(
-                    self._artifact_relative_path(entry)
-                ).name.lower(),
+                key=lambda entry: Path(self._artifact_relative_path(entry)).name.lower(),
             ):
                 file_count += 1
                 total_size += int(artifact.size_bytes)
@@ -398,14 +372,8 @@ class ArtifactsTab(QWidget):
         if node is None:
             return
 
-        folder_count, file_count, total_size, latest_modified, samples = (
-            self._summarize_folder(node)
-        )
-        latest_text = (
-            format_timestamp(latest_modified.isoformat())
-            if latest_modified is not None
-            else "—"
-        )
+        folder_count, file_count, total_size, latest_modified, samples = self._summarize_folder(node)
+        latest_text = format_timestamp(latest_modified.isoformat()) if latest_modified is not None else "—"
         sample_text = "\n".join(samples) if samples else "—"
 
         header = node.name if folder_path else "Artifacts"
@@ -419,9 +387,7 @@ class ArtifactsTab(QWidget):
         )
 
         self._preview_area.show()
-        self._preview_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
-        )
+        self._preview_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self._preview_label.setText(summary)
         self._preview_label.show()
         self._thumbnail.hide()
@@ -504,10 +470,7 @@ class ArtifactsTab(QWidget):
             return
 
         task_id = str(self._current_task.task_id) if self._current_task else ""
-        _emit_watcher_lifecycle_debug(
-            "[watcher-lifecycle] "
-            f"stop reason={reason} task_id={task_id} mode={self._mode}"
-        )
+        _emit_watcher_lifecycle_debug(f"[watcher-lifecycle] stop reason={reason} task_id={task_id} mode={self._mode}")
         try:
             # Disconnect signal to prevent queued callbacks from firing during/after stop.
             # This prevents QTimer cross-thread warnings when filesystem callbacks arrive
@@ -525,9 +488,7 @@ class ArtifactsTab(QWidget):
         """Switch to staging (live) mode."""
         self._mode = "staging"
         self._mode_label.setText("Live Artifacts")
-        self._mode_label.setStyleSheet(
-            "color: rgba(100, 255, 100, 200); font-weight: 600; font-size: 11px;"
-        )
+        self._mode_label.setStyleSheet("color: rgba(100, 255, 100, 200); font-weight: 600; font-size: 11px;")
 
         # Start file watcher
         if self._current_task:
@@ -535,15 +496,13 @@ class ArtifactsTab(QWidget):
             if self._file_watcher:
                 self._stop_file_watcher(reason="switch_to_staging_mode")
             _emit_watcher_lifecycle_debug(
-                "[watcher-lifecycle] "
-                f"create task_id={self._current_task.task_id} staging_dir={staging_dir}"
+                f"[watcher-lifecycle] create task_id={self._current_task.task_id} staging_dir={staging_dir}"
             )
             self._file_watcher = ArtifactFileWatcher(staging_dir, parent=self)
             self._file_watcher.files_changed.connect(self._on_files_changed)
             self._file_watcher.start()
             _emit_watcher_lifecycle_debug(
-                "[watcher-lifecycle] "
-                f"started task_id={self._current_task.task_id} staging_dir={staging_dir}"
+                f"[watcher-lifecycle] started task_id={self._current_task.task_id} staging_dir={staging_dir}"
             )
 
         # Load staging artifacts
@@ -553,9 +512,7 @@ class ArtifactsTab(QWidget):
         """Switch to encrypted (archived) mode."""
         self._mode = "encrypted"
         self._mode_label.setText("Archived Artifacts")
-        self._mode_label.setStyleSheet(
-            "color: rgba(237, 239, 245, 160); font-size: 11px;"
-        )
+        self._mode_label.setStyleSheet("color: rgba(237, 239, 245, 160); font-size: 11px;")
 
         # Stop file watcher
         if self._file_watcher:
@@ -608,9 +565,7 @@ class ArtifactsTab(QWidget):
         folders = sorted(folder.folders.values(), key=lambda entry: entry.name.lower())
         files = sorted(
             folder.files,
-            key=lambda artifact: Path(
-                self._artifact_relative_path(artifact)
-            ).name.lower(),
+            key=lambda artifact: Path(self._artifact_relative_path(artifact)).name.lower(),
         )
 
         self._artifact_count.setText(f"({len(files)})")
@@ -618,14 +573,8 @@ class ArtifactsTab(QWidget):
         if not folders and not files:
             if self._mode == "staging" and self._current_task:
                 staging_dir = get_staging_dir(self._current_task.task_id)
-                watch_target = (
-                    staging_dir / self._current_folder_path
-                    if self._current_folder_path
-                    else staging_dir
-                )
-                self._empty_state.setText(
-                    f"No artifacts yet\n\nWatching: {watch_target}"
-                )
+                watch_target = staging_dir / self._current_folder_path if self._current_folder_path else staging_dir
+                self._empty_state.setText(f"No artifacts yet\n\nWatching: {watch_target}")
             else:
                 empty_text = (
                     "No artifacts in this folder"
@@ -655,11 +604,7 @@ class ArtifactsTab(QWidget):
             )
             item.setData(Qt.ItemDataRole.UserRole, item_data)
 
-            info_text = (
-                f"{item_data.item_count} items"
-                if item_data.item_count != 1
-                else "1 item"
-            )
+            info_text = f"{item_data.item_count} items" if item_data.item_count != 1 else "1 item"
             widget = ArtifactRowWidget(
                 folder_entry.name,
                 info_text,
@@ -677,16 +622,10 @@ class ArtifactsTab(QWidget):
             display_name = Path(self._artifact_relative_path(artifact)).name
             if isinstance(artifact, StagingArtifactMeta):
                 name_style = "font-weight: 600; color: rgba(100, 255, 100, 235);"
-                info_text = (
-                    f"{format_size(artifact.size_bytes)} • "
-                    f"{format_timestamp(artifact.modified_at.isoformat())}"
-                )
+                info_text = f"{format_size(artifact.size_bytes)} • {format_timestamp(artifact.modified_at.isoformat())}"
             else:
                 name_style = "font-weight: 600; color: rgba(237, 239, 245, 235);"
-                info_text = (
-                    f"{format_size(artifact.size_bytes)} • "
-                    f"{format_timestamp(artifact.encrypted_at)}"
-                )
+                info_text = f"{format_size(artifact.size_bytes)} • {format_timestamp(artifact.encrypted_at)}"
 
             widget = ArtifactRowWidget(
                 display_name,
@@ -772,9 +711,7 @@ class ArtifactsTab(QWidget):
                 "image/webp",
             ):
                 # Load and display image thumbnail
-                self._preview_label.setText(
-                    f"{artifact.filename}\n{artifact.mime_type}"
-                )
+                self._preview_label.setText(f"{artifact.filename}\n{artifact.mime_type}")
                 QTimer.singleShot(0, lambda: self._load_staging_thumbnail(artifact))
             else:
                 # Show info only, keep Open button as fallback
@@ -798,9 +735,7 @@ class ArtifactsTab(QWidget):
                 "image/webp",
             ):
                 # Load and display image thumbnail
-                self._preview_label.setText(
-                    f"{artifact.original_filename}\n{artifact.mime_type}"
-                )
+                self._preview_label.setText(f"{artifact.original_filename}\n{artifact.mime_type}")
                 QTimer.singleShot(0, lambda: self._load_thumbnail(artifact))
             else:
                 # Show info only, keep Open button as fallback
@@ -872,9 +807,7 @@ class ArtifactsTab(QWidget):
 
         # Only allow editing for text files
         if not artifact.mime_type.startswith("text/"):
-            logger.rprint(
-                f"Cannot edit non-text file: {artifact.mime_type}", mode="warn"
-            )
+            logger.rprint(f"Cannot edit non-text file: {artifact.mime_type}", mode="warn")
             return
 
         edit_staging_artifact(artifact)
@@ -887,9 +820,7 @@ class ArtifactsTab(QWidget):
         artifact = item.data(Qt.ItemDataRole.UserRole)
         if not isinstance(artifact, ArtifactMeta):
             return
-        dest_path, _ = QFileDialog.getSaveFileName(
-            self, "Save Artifact", artifact.original_filename, "All Files (*.*)"
-        )
+        dest_path, _ = QFileDialog.getSaveFileName(self, "Save Artifact", artifact.original_filename, "All Files (*.*)")
 
         if not dest_path:
             return

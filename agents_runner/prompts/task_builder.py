@@ -21,9 +21,7 @@ def build_task_prompt(base_prompt: str, *, retry_context: RetryContext | None) -
         return prompt
 
     total = (
-        int(retry_context.total_configured_attempts)
-        if retry_context.total_configured_attempts is not None
-        else None
+        int(retry_context.total_configured_attempts) if retry_context.total_configured_attempts is not None else None
     )
     attempt_line = (
         f"attempt {retry_context.attempt_number} of {total}"

@@ -47,9 +47,7 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
             Literal,
         )
 
-        def fmt(
-            color: QColor, bold: bool = False, italic: bool = False
-        ) -> QTextCharFormat:
+        def fmt(color: QColor, bold: bool = False, italic: bool = False) -> QTextCharFormat:
             f = QTextCharFormat()
             f.setForeground(color)
             if bold:

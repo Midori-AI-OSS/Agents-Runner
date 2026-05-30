@@ -66,15 +66,11 @@ class AgentsTabWidget(QWidget):
 
         self._agent_table = QTableWidget()
         self._agent_table.setColumnCount(5)
-        self._agent_table.setHorizontalHeaderLabels(
-            ["Priority", "Config ID", "Fallback", "Cross", ""]
-        )
+        self._agent_table.setHorizontalHeaderLabels(["Priority", "Config ID", "Fallback", "Cross", ""])
         self._agent_table.horizontalHeader().setSectionResizeMode(
             self._COL_PRIORITY, QHeaderView.ResizeMode.ResizeToContents
         )
-        self._agent_table.horizontalHeader().setSectionResizeMode(
-            self._COL_CONFIG_ID, QHeaderView.ResizeMode.Stretch
-        )
+        self._agent_table.horizontalHeader().setSectionResizeMode(self._COL_CONFIG_ID, QHeaderView.ResizeMode.Stretch)
         self._agent_table.horizontalHeader().setSectionResizeMode(
             self._COL_FALLBACK, QHeaderView.ResizeMode.ResizeToContents
         )
@@ -116,9 +112,7 @@ class AgentsTabWidget(QWidget):
         controls_row.addWidget(self._add_agent_btn)
 
         sep1 = QLabel("::")
-        sep1.setStyleSheet(
-            "color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;"
-        )
+        sep1.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
         controls_row.addWidget(sep1)
 
         controls_row.addWidget(QLabel("Selection mode"))
@@ -128,9 +122,7 @@ class AgentsTabWidget(QWidget):
         self._selection_mode.addItem("Fallback (show mapping)", "fallback")
         self._selection_mode.addItem("Pinned (use one agent)", "pinned")
         self._selection_mode.setMaximumWidth(340)
-        self._selection_mode.currentIndexChanged.connect(
-            self._on_selection_mode_changed
-        )
+        self._selection_mode.currentIndexChanged.connect(self._on_selection_mode_changed)
         controls_row.addWidget(self._selection_mode)
 
         self._pinned_agent_label = QLabel("Pinned agent")
@@ -142,9 +134,7 @@ class AgentsTabWidget(QWidget):
         controls_row.addWidget(self._pinned_agent)
 
         sep2 = QLabel("::")
-        sep2.setStyleSheet(
-            "color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;"
-        )
+        sep2.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
         controls_row.addWidget(sep2)
 
         test_chain_btn = QToolButton()
@@ -272,9 +262,7 @@ class AgentsTabWidget(QWidget):
         self.agents_changed.emit()
 
     def _refresh_fallback_visibility(self) -> None:
-        is_fallback_mode = (
-            str(self._selection_mode.currentData() or "round-robin") == "fallback"
-        )
+        is_fallback_mode = str(self._selection_mode.currentData() or "round-robin") == "fallback"
         self._agent_table.setColumnHidden(self._COL_FALLBACK, not is_fallback_mode)
 
     def _refresh_pinned_visibility(self) -> None:
@@ -298,9 +286,7 @@ class AgentsTabWidget(QWidget):
         self._agent_table.setColumnHidden(self._COL_PRIORITY, len(self._rows) <= 1)
 
     def _refresh_cross_agent_visibility(self) -> None:
-        self._agent_table.setColumnHidden(
-            self._COL_CROSS_AGENT, not self._cross_agents_enabled
-        )
+        self._agent_table.setColumnHidden(self._COL_CROSS_AGENT, not self._cross_agents_enabled)
 
     def _render_table(self) -> None:
         config_options = self._load_configs()
@@ -311,23 +297,15 @@ class AgentsTabWidget(QWidget):
 
         for row_index, inst in enumerate(self._rows):
             self._agent_table.setRowHeight(row_index, TABLE_ROW_HEIGHT)
-            self._agent_table.setCellWidget(
-                row_index, self._COL_PRIORITY, self._priority_widget(row_index)
-            )
+            self._agent_table.setCellWidget(row_index, self._COL_PRIORITY, self._priority_widget(row_index))
             self._agent_table.setCellWidget(
                 row_index,
                 self._COL_CONFIG_ID,
                 self._config_id_widget(row_index, inst, config_options),
             )
-            self._agent_table.setCellWidget(
-                row_index, self._COL_FALLBACK, self._fallback_widget(row_index)
-            )
-            self._agent_table.setCellWidget(
-                row_index, self._COL_CROSS_AGENT, self._cross_agent_widget(inst)
-            )
-            self._agent_table.setCellWidget(
-                row_index, self._COL_REMOVE, self._remove_widget(row_index)
-            )
+            self._agent_table.setCellWidget(row_index, self._COL_FALLBACK, self._fallback_widget(row_index))
+            self._agent_table.setCellWidget(row_index, self._COL_CROSS_AGENT, self._cross_agent_widget(inst))
+            self._agent_table.setCellWidget(row_index, self._COL_REMOVE, self._remove_widget(row_index))
 
         self._update_fallback_options()
         self._update_pinned_options()
@@ -339,12 +317,8 @@ class AgentsTabWidget(QWidget):
         if self._cross_agents_enabled:
             self._update_allowlist_validation()
 
-    def _refresh_add_agent_options(
-        self, config_options: list[tuple[str, str]] | None = None
-    ) -> None:
-        available = (
-            config_options if config_options is not None else self._load_configs()
-        )
+    def _refresh_add_agent_options(self, config_options: list[tuple[str, str]] | None = None) -> None:
+        available = config_options if config_options is not None else self._load_configs()
         used_config_ids = self._config_ids_in_use()
         current = str(self._add_agent_config_id.currentData() or "").strip()
         has_choices = False
@@ -368,16 +342,12 @@ class AgentsTabWidget(QWidget):
             self._add_agent_config_id.blockSignals(False)
 
         self._add_agent_config_id.setEnabled(has_choices)
-        self._add_agent_btn.setEnabled(
-            bool(str(self._add_agent_config_id.currentData() or "").strip())
-        )
+        self._add_agent_btn.setEnabled(bool(str(self._add_agent_config_id.currentData() or "").strip()))
 
     def _on_test_chain(self) -> None:
         config_cli_map = self._load_config_cli_map()
         agent_names = [
-            agent_cli
-            for inst in self._rows
-            if (agent_cli := str(config_cli_map.get(inst.config_id, "") or "").strip())
+            agent_cli for inst in self._rows if (agent_cli := str(config_cli_map.get(inst.config_id, "") or "").strip())
         ]
         if not agent_names:
             QMessageBox.information(
@@ -427,12 +397,7 @@ class AgentsTabWidget(QWidget):
 
     def _move_row(self, row_index: int, delta: int) -> None:
         new_index = row_index + int(delta)
-        if (
-            row_index < 0
-            or new_index < 0
-            or row_index >= len(self._rows)
-            or new_index >= len(self._rows)
-        ):
+        if row_index < 0 or new_index < 0 or row_index >= len(self._rows) or new_index >= len(self._rows):
             return
         self._rows[row_index], self._rows[new_index] = (
             self._rows[new_index],
@@ -512,9 +477,7 @@ class AgentsTabWidget(QWidget):
 
         current = self._rows[row_index]
         next_config_id = str(config_id or "").strip()
-        if next_config_id and next_config_id in self._config_ids_in_use(
-            exclude_row=row_index
-        ):
+        if next_config_id and next_config_id in self._config_ids_in_use(exclude_row=row_index):
             if rerender:
                 QMessageBox.warning(
                     self,
@@ -525,13 +488,9 @@ class AgentsTabWidget(QWidget):
             return False
 
         if next_config_id:
-            next_agent_id = self._generate_agent_id(
-                next_config_id, exclude_row=row_index
-            )
+            next_agent_id = self._generate_agent_id(next_config_id, exclude_row=row_index)
         else:
-            next_agent_id = str(
-                current.agent_id or ""
-            ).strip() or self._generate_agent_id(
+            next_agent_id = str(current.agent_id or "").strip() or self._generate_agent_id(
                 "agent",
                 exclude_row=row_index,
             )
@@ -582,9 +541,7 @@ class AgentsTabWidget(QWidget):
         current_value = str(self._fallbacks.get(inst.agent_id, "") or "").strip()
         next_value = str(fallback_id or "").strip()
 
-        valid_ids = {
-            row.agent_id for row in self._rows if row.agent_id != inst.agent_id
-        }
+        valid_ids = {row.agent_id for row in self._rows if row.agent_id != inst.agent_id}
         if next_value and next_value not in valid_ids:
             next_value = ""
 
@@ -607,9 +564,7 @@ class AgentsTabWidget(QWidget):
         layout.setSpacing(0)
 
         checkbox = QCheckBox()
-        checkbox.setToolTip(
-            "Allow this config to be used as a cross-agent (one per CLI)"
-        )
+        checkbox.setToolTip("Allow this config to be used as a cross-agent (one per CLI)")
         checkbox.blockSignals(True)
         checkbox.setChecked(inst.agent_id in self._cross_agent_allowlist)
         checkbox.blockSignals(False)
@@ -666,11 +621,7 @@ class AgentsTabWidget(QWidget):
                     self._row_display_label(inst),
                     inst.agent_id,
                 )
-            if (
-                not pinned
-                and ids
-                and str(self._selection_mode.currentData() or "") == "pinned"
-            ):
+            if not pinned and ids and str(self._selection_mode.currentData() or "") == "pinned":
                 pinned = ids[0]
             if pinned:
                 idx = self._pinned_agent.findData(pinned)
@@ -728,9 +679,7 @@ class AgentsTabWidget(QWidget):
             self._update_allowlist_validation()
 
         for row_index in range(len(self._rows)):
-            fallback_widget = self._agent_table.cellWidget(
-                row_index, self._COL_FALLBACK
-            )
+            fallback_widget = self._agent_table.cellWidget(row_index, self._COL_FALLBACK)
             if isinstance(fallback_widget, QComboBox):
                 self._sync_row_fallback(
                     row_index,
@@ -744,9 +693,7 @@ class AgentsTabWidget(QWidget):
         if self._cross_agents_enabled:
             self._update_allowlist_validation()
 
-    def _normalized_rows(
-        self, agents: list[AgentInstance]
-    ) -> tuple[list[AgentInstance], dict[str, str]]:
+    def _normalized_rows(self, agents: list[AgentInstance]) -> tuple[list[AgentInstance], dict[str, str]]:
         rows: list[AgentInstance] = []
         remapped_ids: dict[str, str] = {}
         seen_ids: set[str] = set()
@@ -790,9 +737,7 @@ class AgentsTabWidget(QWidget):
                 self._cross_agent_allowlist = set()
                 self._selection_mode.setCurrentIndex(0)
             else:
-                self._rows, remapped_ids = self._normalized_rows(
-                    list(agent_selection.agents or [])
-                )
+                self._rows, remapped_ids = self._normalized_rows(list(agent_selection.agents or []))
                 known_ids = {row.agent_id for row in self._rows}
 
                 incoming_fallbacks = dict(agent_selection.agent_fallbacks or {})
@@ -804,11 +749,7 @@ class AgentsTabWidget(QWidget):
                         remapped_ids,
                         known_ids,
                     )
-                    if (
-                        mapped_source
-                        and mapped_fallback
-                        and mapped_source != mapped_fallback
-                    ):
+                    if mapped_source and mapped_fallback and mapped_source != mapped_fallback:
                         cleaned_fallbacks[mapped_source] = mapped_fallback
 
                 self._fallbacks = cleaned_fallbacks
@@ -829,9 +770,7 @@ class AgentsTabWidget(QWidget):
                     )
                 }
 
-                idx = self._selection_mode.findData(
-                    str(agent_selection.selection_mode or "round-robin")
-                )
+                idx = self._selection_mode.findData(str(agent_selection.selection_mode or "round-robin"))
                 self._selection_mode.setCurrentIndex(idx if idx >= 0 else 0)
         finally:
             self._selection_mode.blockSignals(False)
@@ -863,11 +802,7 @@ class AgentsTabWidget(QWidget):
         for source_id, fallback_id in (self._fallbacks or {}).items():
             mapped_source = str(source_id or "").strip()
             mapped_fallback = str(fallback_id or "").strip()
-            if (
-                mapped_source in known_ids
-                and mapped_fallback in known_ids
-                and mapped_source != mapped_fallback
-            ):
+            if mapped_source in known_ids and mapped_fallback in known_ids and mapped_source != mapped_fallback:
                 cleaned_fallbacks[mapped_source] = mapped_fallback
 
         mode = str(self._selection_mode.currentData() or "round-robin")
@@ -890,9 +825,7 @@ class AgentsTabWidget(QWidget):
 
     def set_cross_agent_allowlist(self, allowlist: list[str]) -> None:
         self._cross_agent_allowlist = {
-            str(agent_id or "").strip()
-            for agent_id in (allowlist or [])
-            if str(agent_id or "").strip()
+            str(agent_id or "").strip() for agent_id in (allowlist or []) if str(agent_id or "").strip()
         }
         for inst in self._rows:
             checkbox = self._allowlist_checkboxes.get(inst.agent_id)
@@ -906,11 +839,7 @@ class AgentsTabWidget(QWidget):
 
     def get_cross_agent_allowlist(self) -> list[str]:
         known_ids = {a.agent_id for a in self._rows}
-        return [
-            agent_id
-            for agent_id in sorted(self._cross_agent_allowlist)
-            if agent_id in known_ids
-        ]
+        return [agent_id for agent_id in sorted(self._cross_agent_allowlist) if agent_id in known_ids]
 
     def _on_allowlist_checkbox_changed(self, agent_id: str, state: int) -> None:
         is_checked = state == Qt.CheckState.Checked.value

@@ -26,9 +26,7 @@ class LogHighlighter(QSyntaxHighlighter):
     # Aligned (from format_log_display): [ {scope}/{subscope}     ][{LEVEL} ] {message}
     # The regex allows optional spaces after opening bracket and before closing bracket
     # to match both the tight canonical format and the padded display format.
-    CANONICAL_LOG_RE = re.compile(
-        r"^\[\s*([^/\]]+)/([^\]]+?)\s*\]\[\s*([A-Z]+)\s*\]\s(.*)$"
-    )
+    CANONICAL_LOG_RE = re.compile(r"^\[\s*([^/\]]+)/([^\]]+?)\s*\]\[\s*([A-Z]+)\s*\]\s(.*)$")
 
     def __init__(self, document: QTextDocument) -> None:
         super().__init__(document)
@@ -69,9 +67,7 @@ class LogHighlighter(QSyntaxHighlighter):
 
         # Color mappings for canonical log format
         self._host_scope_color = slate  # Neutral color for host scopes
-        self._container_scope_color = QColor(
-            56, 189, 248
-        )  # Blue/cyan for container IDs
+        self._container_scope_color = QColor(56, 189, 248)  # Blue/cyan for container IDs
         self._level_colors = {
             "DEBUG": QColor(107, 114, 128),  # Gray/muted
             "INFO": QColor(209, 213, 219),  # Neutral/normal

@@ -37,9 +37,7 @@ def _upsert_qt_logging_rules(existing: str, required_rules: list[str]) -> str:
     tokens: list[str] = []
     existing_rules = (existing or "").replace("\n", ";").strip()
     if existing_rules:
-        tokens.extend(
-            rule.strip() for rule in existing_rules.split(";") if rule.strip()
-        )
+        tokens.extend(rule.strip() for rule in existing_rules.split(";") if rule.strip())
 
     # Keep the last seen index for each key so we can replace effective rules.
     key_to_index: dict[str, int] = {}
@@ -118,7 +116,5 @@ def main() -> None:
                 file=sys.stderr,
                 flush=True,
             )
-        traceback.print_exception(
-            type(error), error, error.__traceback__, file=sys.stderr
-        )
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
         sys.exit(1)

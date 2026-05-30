@@ -191,9 +191,7 @@ def _ensure_contrast(fill: QColor, text: QColor, *, min_ratio: float) -> QColor:
         if _contrast_ratio(candidate, text) >= min_ratio:
             return candidate
         darkened = blend_rgb(candidate, QColor(0, 0, 0), 0.16)
-        candidate = QColor(
-            darkened.red(), darkened.green(), darkened.blue(), fill.alpha()
-        )
+        candidate = QColor(darkened.red(), darkened.green(), darkened.blue(), fill.alpha())
     return candidate
 
 
@@ -217,9 +215,7 @@ def username_bubble_color(
     hue = fallback.hslHue()
     if hue < 0:
         hue = 210
-    rotated = QColor.fromHsl(
-        (hue + 120) % 360, fallback.hslSaturation(), fallback.lightness()
-    )
+    rotated = QColor.fromHsl((hue + 120) % 360, fallback.hslSaturation(), fallback.lightness())
     return rotated
 
 

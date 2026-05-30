@@ -23,6 +23,7 @@ Usage Example:
 
 import os
 import shlex
+import socket
 import time
 import selectors
 import subprocess
@@ -63,9 +64,7 @@ def _is_gh_context_enabled(environment_id: str | None, state_path: str = "") -> 
     return bool(getattr(env, "gh_context_enabled", False))
 
 
-def _needs_cross_agent_gh_token(
-    environment_id: str | None, state_path: str = ""
-) -> bool:
+def _needs_cross_agent_gh_token(environment_id: str | None, state_path: str = "") -> bool:
     """Check if any cross-agent allowlisted agent requires a GitHub token."""
     env = _load_environment(environment_id, state_path)
     if env is None or not env.cross_agent_allowlist:
@@ -87,9 +86,7 @@ def _needs_cross_agent_gh_token(
     agent_cli_by_id: dict[str, str] = {
         str(agent.agent_id or "").strip(): str(
             getattr(
-                resolve_agent_config(
-                    str(getattr(agent, "config_id", "") or "").strip(), agent_configs
-                ),
+                resolve_agent_config(str(getattr(agent, "config_id", "") or "").strip(), agent_configs),
                 "agent_cli",
                 "",
             )
@@ -132,6 +129,7 @@ class ContainerExecutor:
         self._on_log = on_log
         self._stop = stop_event
         self._container_id: str | None = None
+        self._desktop_novnc_port: int | None = None
 
     @property
     def container_id(self) -> str | None:
@@ -155,9 +153,7 @@ class ContainerExecutor:
             desktop_state: dict[str, Any] = {}
 
             # Build preflight clause and mounts
-            preflight_clause, preflight_mounts, desktop_start_clause = (
-                self._build_preflight_clause(desktop_state)
-            )
+            preflight_clause, preflight_mounts, desktop_start_clause = self._build_preflight_clause(desktop_state)
 
             # Build environment variables
             env_args, docker_env = self._build_env_args()
@@ -184,9 +180,7 @@ class ContainerExecutor:
             # Start container
             self._container_id = run_docker(args, timeout_s=60.0, env=docker_env)
             if not self._container_id:
-                raise RuntimeError(
-                    "Failed to start container: no container ID returned"
-                )
+                raise RuntimeError("Failed to start container: no container ID returned")
 
             # Setup desktop port mapping if enabled
             if self._runtime_env.desktop_enabled:
@@ -224,9 +218,9 @@ class ContainerExecutor:
     def _build_verify_clause(self, command_argv: list[str]) -> str:
         """Build executable verification clause."""
         if self._runtime_env.custom_command_argv:
-            verify_target = str(
-                self._runtime_env.custom_verify_executable or ""
-            ).strip() or (str(command_argv[0]).strip() if command_argv else "")
+            verify_target = str(self._runtime_env.custom_verify_executable or "").strip() or (
+                str(command_argv[0]).strip() if command_argv else ""
+            )
             if verify_target:
                 verify_target_quoted = shlex.quote(verify_target)
                 return (
@@ -243,9 +237,7 @@ class ContainerExecutor:
         """Build the command execution clause."""
         return f"exec {agent_cmd}"
 
-    def _build_preflight_clause(
-        self, desktop_state: dict[str, Any]
-    ) -> tuple[str, list[str], str]:
+    def _build_preflight_clause(self, desktop_state: dict[str, Any]) -> tuple[str, list[str], str]:
         """Build phase clauses and mounts.
 
         Returns:
@@ -256,20 +248,14 @@ class ContainerExecutor:
         desktop_start_clause = ""
 
         # Agent install preflight
-        if (
-            self._runtime_env.install_preflight_tmp_path is not None
-            and not self._runtime_env.install_preflight_cached
-        ):
+        if self._runtime_env.install_preflight_tmp_path is not None and not self._runtime_env.install_preflight_cached:
             clause, mounts = self._build_install_preflight(
                 self._runtime_env.install_preflight_tmp_path,
                 self._runtime_env.install_container_path,
             )
             preflight_clause += clause
             preflight_mounts.extend(mounts)
-        elif (
-            self._runtime_env.install_preflight_tmp_path is not None
-            and self._runtime_env.install_preflight_cached
-        ):
+        elif self._runtime_env.install_preflight_tmp_path is not None and self._runtime_env.install_preflight_cached:
             self._on_log(
                 format_log(
                     "phase",
@@ -280,10 +266,7 @@ class ContainerExecutor:
             )
 
         # System preflight
-        if (
-            self._runtime_env.system_preflight_enabled
-            and not self._runtime_env.system_preflight_cached
-        ):
+        if self._runtime_env.system_preflight_enabled and not self._runtime_env.system_preflight_cached:
             clause, mounts = self._build_system_preflight()
             preflight_clause += clause
             preflight_mounts.extend(mounts)
@@ -303,9 +286,7 @@ class ContainerExecutor:
         # Desktop install preflight
         if self._runtime_env.desktop_enabled:
             preflight_clause += self._build_desktop_install_preflight_clause()
-            desktop_start_clause = self._build_desktop_start_clause(
-                self._runtime_env.desktop_display
-            )
+            desktop_start_clause = self._build_desktop_start_clause(self._runtime_env.desktop_display)
             desktop_state.update(
                 {
                     "DesktopEnabled": True,
@@ -324,9 +305,7 @@ class ContainerExecutor:
 
         return preflight_clause, preflight_mounts, desktop_start_clause
 
-    def _build_install_preflight(
-        self, tmp_path: str, container_path: str
-    ) -> tuple[str, list[str]]:
+    def _build_install_preflight(self, tmp_path: str, container_path: str) -> tuple[str, list[str]]:
         """Build install preflight clause and mounts."""
         self._on_log(
             format_log(
@@ -380,12 +359,8 @@ class ContainerExecutor:
                     "using pre-installed desktop from cached image",
                 )
             )
-            return self._build_desktop_cached_install_preflight(
-                self._runtime_env.desktop_display
-            )
-        return self._build_desktop_runtime_install_preflight(
-            self._runtime_env.desktop_display
-        )
+            return self._build_desktop_cached_install_preflight(self._runtime_env.desktop_display)
+        return self._build_desktop_runtime_install_preflight(self._runtime_env.desktop_display)
 
     def _build_desktop_cached_install_preflight(self, _desktop_display: str) -> str:
         """Build install preflight clause for cached desktop image."""
@@ -409,6 +384,8 @@ class ContainerExecutor:
             'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
             'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
             'mkdir -p "${XDG_RUNTIME_DIR}"; '
+            'VNC_PORT="${VNC_PORT:-5901}"; '
+            'NOVNC_PORT="${NOVNC_PORT:-6080}"; '
             'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
             'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
         )
@@ -419,24 +396,19 @@ class ContainerExecutor:
             "if [ -f /etc/profile.d/desktop-env.sh ]; then source /etc/profile.d/desktop-env.sh; fi; "
         )
         service_start = (
-            'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & sleep 0.25; '
+            'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport "${VNC_PORT}" >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & sleep 0.25; '
             '(fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true; '
             '(xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true; '
-            'if [ -n "${NOVNC_WEB}" ]; then websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
+            'if [ -n "${NOVNC_WEB}" ]; then websockify --web="${NOVNC_WEB}" "${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
             f"else {shell_log_statement('desktop', 'vnc', 'ERROR', 'noVNC web root not found')} >&2; fi; "
         )
         return (
-            common_setup
-            + novnc_setup
-            + service_start
-            + f"{shell_log_statement('desktop', 'vnc', 'INFO', 'ready')}; "
+            common_setup + novnc_setup + service_start + f"{shell_log_statement('desktop', 'vnc', 'INFO', 'ready')}; "
             f"{shell_log_statement('desktop', 'vnc', 'INFO', 'DISPLAY=${DISPLAY}')}; "
             f"{shell_log_statement('desktop', 'vnc', 'INFO', 'screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png')}; "
         )
 
-    def _build_settings_preflight(
-        self, tmp_path: str, container_path: str
-    ) -> tuple[str, list[str]]:
+    def _build_settings_preflight(self, tmp_path: str, container_path: str) -> tuple[str, list[str]]:
         """Build settings preflight clause and mounts."""
         self._on_log(
             format_log(
@@ -454,9 +426,7 @@ class ContainerExecutor:
             ["-v", f"{tmp_path}:{container_path}:ro"],
         )
 
-    def _build_setup_agents_preflight(
-        self, tmp_path: str, container_path: str
-    ) -> tuple[str, list[str]]:
+    def _build_setup_agents_preflight(self, tmp_path: str, container_path: str) -> tuple[str, list[str]]:
         """Build setup-agents preflight clause and mounts."""
         self._on_log(
             format_log(
@@ -518,6 +488,20 @@ class ContainerExecutor:
 
         # Add desktop env vars if enabled
         if self._runtime_env.desktop_enabled:
+            if bool(self._config.network_host):
+                if self._desktop_novnc_port is None:
+                    self._desktop_novnc_port = self._allocate_localhost_port()
+                desktop_vnc_port = self._allocate_localhost_port()
+                while desktop_vnc_port == self._desktop_novnc_port:
+                    desktop_vnc_port = self._allocate_localhost_port()
+                env_args.extend(
+                    [
+                        "-e",
+                        f"VNC_PORT={desktop_vnc_port}",
+                        "-e",
+                        f"NOVNC_PORT={self._desktop_novnc_port}",
+                    ]
+                )
             env_args.extend(
                 [
                     "-e",
@@ -530,14 +514,14 @@ class ContainerExecutor:
 
     def _build_port_args(self) -> list[str]:
         """Build port mapping arguments."""
+        if bool(self._config.network_host):
+            return []
         port_args: list[str] = []
         for port_spec in self._config.ports or []:
             spec = str(port_spec or "").strip()
             if not spec:
                 continue
-            if self._runtime_env.desktop_enabled and self._publishes_container_port(
-                spec, 6080
-            ):
+            if self._runtime_env.desktop_enabled and self._publishes_container_port(spec, 6080):
                 continue
             port_args.extend(["-p", spec])
         if self._runtime_env.desktop_enabled:
@@ -570,19 +554,13 @@ class ContainerExecutor:
         all_mounts: list[str] = []
 
         # Add primary config mount
-        all_mounts.append(
-            f"{self._config.host_config_dir}:{self._runtime_env.config_container_dir}"
-        )
+        all_mounts.append(f"{self._config.host_config_dir}:{self._runtime_env.config_container_dir}")
 
         # Add workspace mount
-        all_mounts.append(
-            f"{self._runtime_env.host_mount}:{self._config.container_workdir}"
-        )
+        all_mounts.append(f"{self._runtime_env.host_mount}:{self._config.container_workdir}")
 
         # Add artifacts mount
-        all_mounts.append(
-            f"{self._runtime_env.artifacts_staging_dir}:/tmp/agents-artifacts"
-        )
+        all_mounts.append(f"{self._runtime_env.artifacts_staging_dir}:/tmp/agents-artifacts")
 
         # Add extra mounts from config
         for mount in self._config.extra_mounts or []:
@@ -620,10 +598,12 @@ class ContainerExecutor:
     ) -> list[str]:
         """Build complete Docker run command arguments."""
         gpu_args = ["--gpus", "all"] if bool(self._config.gpu_enabled) else []
+        network_args = ["--network", "host"] if bool(self._config.network_host) else []
         return [
             "run",
             *platform_args,
             *gpu_args,
+            *network_args,
             "-d",
             "-t",
             "--name",
@@ -645,20 +625,24 @@ class ContainerExecutor:
             f"{command_clause}",
         ]
 
-    def _setup_desktop_port_mapping(
-        self, desktop_state: dict[str, Any], docker_env: dict[str, str] | None
-    ) -> None:
+    def _setup_desktop_port_mapping(self, desktop_state: dict[str, Any], docker_env: dict[str, str] | None) -> None:
         """Setup desktop port mapping and noVNC URL."""
         assert self._container_id is not None
+        if bool(self._config.network_host):
+            host_port = int(self._desktop_novnc_port or 6080)
+            desktop_state["NoVncUrl"] = f"http://127.0.0.1:{host_port}/vnc.html"
+            self._on_log(
+                format_log(
+                    "desktop",
+                    "vnc",
+                    "INFO",
+                    f"noVNC URL: {desktop_state['NoVncUrl']}",
+                )
+            )
+            return
         try:
-            mapping = run_docker(
-                ["port", self._container_id, "6080/tcp"], timeout_s=10.0, env=docker_env
-            )
-            first = (
-                (mapping or "").strip().splitlines()[0]
-                if (mapping or "").strip()
-                else ""
-            )
+            mapping = run_docker(["port", self._container_id, "6080/tcp"], timeout_s=10.0, env=docker_env)
+            first = (mapping or "").strip().splitlines()[0] if (mapping or "").strip() else ""
             host_port = first.rsplit(":", 1)[-1].strip() if ":" in first else ""
             if host_port.isdigit():
                 desktop_state["NoVncUrl"] = f"http://127.0.0.1:{host_port}/vnc.html"
@@ -672,6 +656,12 @@ class ContainerExecutor:
                 )
         except Exception as exc:
             self._on_log(format_log("desktop", "vnc", "ERROR", str(exc)))
+
+    @staticmethod
+    def _allocate_localhost_port() -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            return int(sock.getsockname()[1])
 
     def _report_state(self, desktop_state: dict[str, Any]) -> None:
         """Report current container state."""
@@ -731,16 +721,8 @@ class ContainerExecutor:
                     try:
                         chunk = key.fileobj.readline()
                         if chunk:
-                            stream = (
-                                "stdout"
-                                if key.fileobj == logs_proc.stdout
-                                else "stderr"
-                            )
-                            self._on_log(
-                                wrap_container_log(
-                                    self._container_id, stream, chunk.rstrip("\n")
-                                )
-                            )
+                            stream = "stdout" if key.fileobj == logs_proc.stdout else "stderr"
+                            self._on_log(wrap_container_log(self._container_id, stream, chunk.rstrip("\n")))
                     except Exception:
                         pass
         finally:

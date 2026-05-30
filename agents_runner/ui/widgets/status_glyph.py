@@ -48,9 +48,7 @@ class StatusGlyph(QWidget):
                 t = (i / 12.0) * math.tau
                 angle_deg = math.degrees(t) + self._angle
                 alpha = int(30 + (i / 12.0) * 200)
-                color = QColor(
-                    self._color.red(), self._color.green(), self._color.blue(), alpha
-                )
+                color = QColor(self._color.red(), self._color.green(), self._color.blue(), alpha)
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(color)
 
@@ -61,16 +59,12 @@ class StatusGlyph(QWidget):
             return
 
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(
-            QColor(self._color.red(), self._color.green(), self._color.blue(), 45)
-        )
+        painter.setBrush(QColor(self._color.red(), self._color.green(), self._color.blue(), 45))
         painter.drawEllipse(rect.adjusted(1, 1, -1, -1))
 
         pen = painter.pen()
         pen.setWidthF(max(1.6, size * 0.12))
-        pen.setColor(
-            QColor(self._color.red(), self._color.green(), self._color.blue(), 220)
-        )
+        pen.setColor(QColor(self._color.red(), self._color.green(), self._color.blue(), 220))
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)

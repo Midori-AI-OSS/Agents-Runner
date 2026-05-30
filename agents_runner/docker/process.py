@@ -4,9 +4,7 @@ import subprocess
 from typing import Any
 
 
-def run_docker(
-    args: list[str], timeout_s: float = 30.0, *, env: dict[str, str] | None = None
-) -> str:
+def run_docker(args: list[str], timeout_s: float = 30.0, *, env: dict[str, str] | None = None) -> str:
     completed = subprocess.run(
         ["docker", *args],
         capture_output=True,

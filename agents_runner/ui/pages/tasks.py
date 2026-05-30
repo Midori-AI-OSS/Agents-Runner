@@ -99,9 +99,7 @@ class TasksPage(QWidget):
         self._env_label = QLabel("Environments")
         self._env_select = QComboBox()
         self._env_select.setFixedWidth(240)
-        self._env_select.currentIndexChanged.connect(
-            self._on_header_environment_changed
-        )
+        self._env_select.currentIndexChanged.connect(self._on_header_environment_changed)
         self._base_branch_controls = self._new_task.base_branch_controls_widget()
 
         header_layout.addWidget(self._title)
@@ -154,26 +152,18 @@ class TasksPage(QWidget):
         card_layout.addLayout(panes_layout, 1)
         layout.addWidget(card, 1)
 
-        self._prs = GitHubWorkListPage(
-            item_type="pr", coordinator=self._github_work_coordinator
-        )
-        self._issues = GitHubWorkListPage(
-            item_type="issue", coordinator=self._github_work_coordinator
-        )
+        self._prs = GitHubWorkListPage(item_type="pr", coordinator=self._github_work_coordinator)
+        self._issues = GitHubWorkListPage(item_type="issue", coordinator=self._github_work_coordinator)
 
         self._build_pages()
         self._build_navigation(nav_layout)
 
-        self._new_task.environment_changed.connect(
-            self._on_new_task_environment_changed
-        )
+        self._new_task.environment_changed.connect(self._on_new_task_environment_changed)
 
         self._prs.prompt_append_requested.connect(self._append_prompt_to_new_task)
         self._issues.prompt_append_requested.connect(self._append_prompt_to_new_task)
 
-        self._github_work_coordinator.auto_review_requested.connect(
-            self.auto_review_requested.emit
-        )
+        self._github_work_coordinator.auto_review_requested.connect(self.auto_review_requested.emit)
 
         self._set_current_pane("new_task", animate=False)
         self._set_active_navigation("new_task")
@@ -242,11 +232,7 @@ class TasksPage(QWidget):
                 QSizePolicy.Policy.Expanding,
                 QSizePolicy.Policy.Fixed,
             )
-            button.clicked.connect(
-                lambda _checked=False, pane_key=spec.key: self._on_nav_button_clicked(
-                    pane_key
-                )
-            )
+            button.clicked.connect(lambda _checked=False, pane_key=spec.key: self._on_nav_button_clicked(pane_key))
             self._nav_buttons[spec.key] = button
             nav_layout.addWidget(button)
 
@@ -260,11 +246,7 @@ class TasksPage(QWidget):
         visible_specs = self._visible_pane_specs()
         logical_visible_keys = {spec.key for spec in visible_specs}
 
-        actual_visible_keys = (
-            set(button_visible_keys)
-            if button_visible_keys is not None
-            else set(logical_visible_keys)
-        )
+        actual_visible_keys = set(button_visible_keys) if button_visible_keys is not None else set(logical_visible_keys)
 
         for key, button in self._nav_buttons.items():
             button.setVisible(key in actual_visible_keys)
@@ -443,9 +425,7 @@ class TasksPage(QWidget):
         self._prs.set_environment_stain(stain)
         self._issues.set_environment_stain(stain)
 
-    def _ensure_button_opacity_effect(
-        self, button: QToolButton
-    ) -> QGraphicsOpacityEffect:
+    def _ensure_button_opacity_effect(self, button: QToolButton) -> QGraphicsOpacityEffect:
         effect = button.graphicsEffect()
         if not isinstance(effect, QGraphicsOpacityEffect):
             effect = QGraphicsOpacityEffect(button)
@@ -596,9 +576,7 @@ class TasksPage(QWidget):
         if focus_prompt:
             self._new_task.focus_prompt()
 
-    def _append_prompt_to_new_task(
-        self, env_id: str, prompt: str, pr_context: object
-    ) -> None:
+    def _append_prompt_to_new_task(self, env_id: str, prompt: str, pr_context: object) -> None:
         target_env_id = str(env_id or "").strip()
         if target_env_id:
             self._new_task.set_environment_id(target_env_id)

@@ -44,8 +44,6 @@ class MainWindowCapacityMixin(_MainWindowHints):
             return
         queued.sort(key=lambda t: t.created_at_s)
         for task in queued:
-            if not self._can_start_new_agent_for_env(
-                getattr(task, "environment_id", "")
-            ):
+            if not self._can_start_new_agent_for_env(getattr(task, "environment_id", "")):
                 continue
             self._actually_start_task(task)

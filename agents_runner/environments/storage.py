@@ -117,9 +117,7 @@ def load_environments(data_dir: str | None = None) -> dict[str, Environment]:
         envs[env.env_id] = env
     if rewrite_needed and raw:
         ordered_items: list[dict[str, Any]] = []
-        canonical_map = {
-            str(item.get("env_id") or ""): item for item in canonical_items
-        }
+        canonical_map = {str(item.get("env_id") or ""): item for item in canonical_items}
         for env_id in order:
             item = canonical_map.get(env_id)
             if item is not None:
@@ -151,9 +149,7 @@ def save_environment(env: Environment, data_dir: str | None = None) -> None:
     if env_id not in order:
         order.append(env_id)
 
-    _atomic_write_json(
-        envs_path, {"environments": [env_map[item_id] for item_id in order]}
-    )
+    _atomic_write_json(envs_path, {"environments": [env_map[item_id] for item_id in order]})
 
 
 def delete_environment(env_id: str, data_dir: str | None = None) -> None:

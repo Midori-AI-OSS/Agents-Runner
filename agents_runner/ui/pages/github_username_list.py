@@ -41,12 +41,8 @@ class GitHubUsernameListWidget(QWidget):
         self._table = QTableWidget()
         self._table.setColumnCount(2)
         self._table.setHorizontalHeaderLabels(["GitHub username", ""])
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_USERNAME, QHeaderView.Stretch
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_REMOVE, QHeaderView.ResizeToContents
-        )
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_USERNAME, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeToContents)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
         self._table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
@@ -122,9 +118,7 @@ class GitHubUsernameListWidget(QWidget):
 
                 username_edit = QLineEdit(username)
                 username_edit.setPlaceholderText("username")
-                username_edit.textChanged.connect(
-                    lambda text, i=row_index: self._on_username_changed(i, text)
-                )
+                username_edit.textChanged.connect(lambda text, i=row_index: self._on_username_changed(i, text))
                 self._table.setCellWidget(row_index, self._COL_USERNAME, username_edit)
 
                 remove_btn = QToolButton()
@@ -132,9 +126,7 @@ class GitHubUsernameListWidget(QWidget):
                 remove_btn.setIcon(lucide_icon("trash-2"))
                 remove_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
                 remove_btn.setToolTip("Remove user")
-                remove_btn.clicked.connect(
-                    lambda _=False, i=row_index: self._on_remove_row(i)
-                )
+                remove_btn.clicked.connect(lambda _=False, i=row_index: self._on_remove_row(i))
                 self._table.setCellWidget(row_index, self._COL_REMOVE, remove_btn)
         finally:
             self._table.blockSignals(False)

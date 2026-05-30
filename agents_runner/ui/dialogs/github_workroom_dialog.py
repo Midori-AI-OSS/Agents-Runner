@@ -69,9 +69,7 @@ class GitHubWorkroomDialog(ThemedDialog):
         self._confirmation_mode = str(confirmation_mode or "always").strip().lower()
         self._environment_stain = str(environment_stain or "").strip().lower()
         self._focus_comment_on_show = bool(focus_comment)
-        self._current_login = (
-            str(get_authenticated_github_login() or "").strip().lower()
-        )
+        self._current_login = str(get_authenticated_github_login() or "").strip().lower()
         self._room: GitHubWorkroom | None = None
 
         self._stt_mode = "offline"
@@ -97,31 +95,23 @@ class GitHubWorkroomDialog(ThemedDialog):
         self._subtitle.setStyleSheet("color: rgba(237, 239, 245, 160);")
 
         self._btn_primary = QToolButton()
-        self._btn_primary.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-        )
+        self._btn_primary.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_primary.clicked.connect(self._on_primary)
 
         self._btn_toggle_state = QToolButton()
-        self._btn_toggle_state.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-        )
+        self._btn_toggle_state.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_toggle_state.clicked.connect(self._on_toggle_open_state)
 
         self._btn_refresh = QToolButton()
         self._btn_refresh.setText("Refresh")
         self._btn_refresh.setIcon(lucide_icon("refresh-cw"))
-        self._btn_refresh.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-        )
+        self._btn_refresh.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_refresh.clicked.connect(self.refresh)
 
         self._btn_browser = QToolButton()
         self._btn_browser.setText("Browser")
         self._btn_browser.setIcon(lucide_icon("external-link"))
-        self._btn_browser.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-        )
+        self._btn_browser.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_browser.clicked.connect(self._open_in_browser)
 
         header_layout.addWidget(self._title)
@@ -143,9 +133,7 @@ class GitHubWorkroomDialog(ThemedDialog):
         self._timeline_scroll = QScrollArea()
         self._timeline_scroll.setWidgetResizable(True)
         self._timeline_scroll.setFrameShape(QScrollArea.NoFrame)
-        self._timeline_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self._timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._timeline_scroll.setObjectName("TaskScroll")
 
         self._timeline_list = QWidget()
@@ -276,9 +264,7 @@ class GitHubWorkroomDialog(ThemedDialog):
         if self._item_type == "pr":
             self._btn_primary.setText("Review PR")
             self._btn_primary.setIcon(lucide_icon("git-pull-request"))
-            self._btn_primary.setToolTip(
-                "Create a review task prompt from this pull request"
-            )
+            self._btn_primary.setToolTip("Create a review task prompt from this pull request")
             return
 
         self._btn_primary.setText("Fix Issue")
@@ -344,9 +330,7 @@ class GitHubWorkroomDialog(ThemedDialog):
             recorder = FfmpegPulseRecorder()
             self._mic_recording = recorder.start()
         except MicRecorderError as exc:
-            QMessageBox.warning(
-                self, "Microphone error", str(exc) or "Could not start recording."
-            )
+            QMessageBox.warning(self, "Microphone error", str(exc) or "Could not start recording.")
             self._voice_btn.blockSignals(True)
             try:
                 self._voice_btn.setChecked(False)
@@ -371,9 +355,7 @@ class GitHubWorkroomDialog(ThemedDialog):
         try:
             audio_path = recorder.stop(recording)
         except MicRecorderError as exc:
-            QMessageBox.warning(
-                self, "Microphone error", str(exc) or "Could not stop recording."
-            )
+            QMessageBox.warning(self, "Microphone error", str(exc) or "Could not stop recording.")
             self._voice_btn.blockSignals(True)
             try:
                 self._voice_btn.setChecked(False)
@@ -571,9 +553,7 @@ class GitHubWorkroomDialog(ThemedDialog):
             )
             bubble.reply_requested.connect(self._focus_comment_composer)
             bubble.open_requested.connect(self._open_in_browser)
-            bubble.delete_requested.connect(
-                lambda cid=comment.comment_id: self._on_delete_comment(cid)
-            )
+            bubble.delete_requested.connect(lambda cid=comment.comment_id: self._on_delete_comment(cid))
             self._add_timeline_bubble(bubble)
 
         QTimer.singleShot(0, self._scroll_timeline_to_bottom)
@@ -697,10 +677,7 @@ class GitHubWorkroomDialog(ThemedDialog):
         action = "reopen" if target_open else "close"
 
         if not self._confirm_write(
-            message=(
-                f"Do you want to {action} {room.item_type} #{room.number} in "
-                f"{room.repo_owner}/{room.repo_name}?"
-            ),
+            message=(f"Do you want to {action} {room.item_type} #{room.number} in {room.repo_owner}/{room.repo_name}?"),
             destructive=True,
         ):
             return
@@ -762,10 +739,7 @@ class GitHubWorkroomDialog(ThemedDialog):
             return
 
         if not self._confirm_write(
-            message=(
-                f"Post this comment to {room.item_type} #{room.number} in "
-                f"{room.repo_owner}/{room.repo_name}?"
-            ),
+            message=(f"Post this comment to {room.item_type} #{room.number} in {room.repo_owner}/{room.repo_name}?"),
             destructive=False,
         ):
             return

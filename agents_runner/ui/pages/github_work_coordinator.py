@@ -92,15 +92,11 @@ class GitHubWorkCoordinator(QObject):
         self._cycle_finished.connect(self._on_cycle_finished)
 
     def set_settings_data(self, settings_data: dict[str, object]) -> None:
-        previous_global_polling_enabled = (
-            self.is_global_polling_enabled() if self._settings_initialized else None
-        )
+        previous_global_polling_enabled = self.is_global_polling_enabled() if self._settings_initialized else None
         self._settings = dict(settings_data or {})
         self._poll_timer.setInterval(self._poll_interval_s() * 1000)
         runtime_enable_requested = bool(
-            self._settings_initialized
-            and previous_global_polling_enabled is False
-            and self.is_global_polling_enabled()
+            self._settings_initialized and previous_global_polling_enabled is False and self.is_global_polling_enabled()
         )
         self._reconfigure_polling_timers(start_immediately=runtime_enable_requested)
         self._settings_initialized = True
@@ -109,9 +105,7 @@ class GitHubWorkCoordinator(QObject):
         self._environments = dict(environments or {})
         self._reconfigure_polling_timers()
 
-    def get_cache_entry(
-        self, *, item_type: str, env_id: str
-    ) -> GitHubWorkCacheEntry | None:
+    def get_cache_entry(self, *, item_type: str, env_id: str) -> GitHubWorkCacheEntry | None:
         key = self._cache_key(item_type=item_type, env_id=env_id)
         with self._state_lock:
             entry = self._cache.get(key)
@@ -384,14 +378,8 @@ class GitHubWorkCoordinator(QObject):
         auto_reviews: object,
     ) -> None:
         key = self._cache_key(item_type=item_type, env_id=env_id)
-        parsed_items = [
-            item
-            for item in (items if isinstance(items, list) else [])
-            if isinstance(item, GitHubWorkItem)
-        ]
-        parsed_context = (
-            repo_context if isinstance(repo_context, GitHubRepoContext) else None
-        )
+        parsed_items = [item for item in (items if isinstance(items, list) else []) if isinstance(item, GitHubWorkItem)]
+        parsed_context = repo_context if isinstance(repo_context, GitHubRepoContext) else None
         parsed_reviews = auto_reviews if isinstance(auto_reviews, list) else []
 
         now_s = time.time()
@@ -412,11 +400,7 @@ class GitHubWorkCoordinator(QObject):
                     refreshing=False,
                 )
             elif error:
-                fallback_items = (
-                    list(previous.items)
-                    if previous is not None and previous.items
-                    else list(parsed_items)
-                )
+                fallback_items = list(previous.items) if previous is not None and previous.items else list(parsed_items)
                 fallback_context = (
                     parsed_context
                     if parsed_context is not None
@@ -453,9 +437,7 @@ class GitHubWorkCoordinator(QObject):
             reviews=parsed_reviews,
         )
 
-    def _should_preserve_stale_cache_on_missing_repo(
-        self, *, key: tuple[str, str], env: Environment | None
-    ) -> bool:
+    def _should_preserve_stale_cache_on_missing_repo(self, *, key: tuple[str, str], env: Environment | None) -> bool:
         if env is None:
             return False
         workspace_type = str(getattr(env, "workspace_type", "") or "").strip().lower()
@@ -670,9 +652,7 @@ class GitHubWorkCoordinator(QObject):
                     if not has_agentsnova_mention(review.body):
                         continue
                     mention_created_at = str(review.submitted_at or "")
-                    mention_created_at_s = self._parse_iso_timestamp_s(
-                        mention_created_at
-                    )
+                    mention_created_at_s = self._parse_iso_timestamp_s(mention_created_at)
                     mention_key = f"review_body:{review.review_id}"
                     candidates.append(
                         {
@@ -698,9 +678,7 @@ class GitHubWorkCoordinator(QObject):
                     updated_at = str(getattr(item, "updated_at", "") or "")
                     created_at = str(getattr(item, "created_at", "") or "")
                     mention_created_at = updated_at or created_at
-                    mention_created_at_s = self._parse_iso_timestamp_s(
-                        mention_created_at
-                    )
+                    mention_created_at_s = self._parse_iso_timestamp_s(mention_created_at)
                     source = "pr_body" if item.item_type == "pr" else "issue_body"
                     mention_key = f"{source}:{item_key}"
                     mention_author = str(getattr(item, "author", "") or "")

@@ -190,9 +190,7 @@ class DashboardPage(QWidget):
         self._scroll_active = QScrollArea()
         self._scroll_active.setWidgetResizable(True)
         self._scroll_active.setFrameShape(QScrollArea.NoFrame)
-        self._scroll_active.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self._scroll_active.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll_active.setObjectName("TaskScroll")
 
         self._list_active = QWidget()
@@ -212,9 +210,7 @@ class DashboardPage(QWidget):
         self._scroll_past = QScrollArea()
         self._scroll_past.setWidgetResizable(True)
         self._scroll_past.setFrameShape(QScrollArea.NoFrame)
-        self._scroll_past.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self._scroll_past.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll_past.setObjectName("TaskScroll")
 
         self._list_past = QWidget()
@@ -226,15 +222,11 @@ class DashboardPage(QWidget):
         self._scroll_past.setWidget(self._list_past)
 
         self._past_loading_indicator = QLabel("Loading more tasks...")
-        self._past_loading_indicator.setStyleSheet(
-            "color: rgba(237, 239, 245, 150); font-size: 11px; padding: 8px;"
-        )
+        self._past_loading_indicator.setStyleSheet("color: rgba(237, 239, 245, 150); font-size: 11px; padding: 8px;")
         self._past_loading_indicator.hide()
 
         past_layout.addWidget(self._scroll_past, 1)
-        past_layout.addWidget(
-            self._past_loading_indicator, 0, Qt.AlignmentFlag.AlignCenter
-        )
+        past_layout.addWidget(self._past_loading_indicator, 0, Qt.AlignmentFlag.AlignCenter)
 
         self._stack.addWidget(active_page)
         self._stack.addWidget(past_page)
@@ -251,9 +243,7 @@ class DashboardPage(QWidget):
         self._rows_past: dict[str, TaskRow] = {}
 
         # Initialize animator after widgets are created
-        self._past_animator = PastTaskAnimator(
-            self._scroll_past, lambda: self._rows_past, parent=self
-        )
+        self._past_animator = PastTaskAnimator(self._scroll_past, lambda: self._rows_past, parent=self)
 
         # Initialize progressive loader
         self._past_loader = PastTaskProgressiveLoader(
@@ -300,9 +290,7 @@ class DashboardPage(QWidget):
             return stains[(stains.index(current) + 1) % len(stains)]
         return stains[0]
 
-    def upsert_task(
-        self, task: Task, stain: str | None = None, spinner_color: QColor | None = None
-    ) -> None:
+    def upsert_task(self, task: Task, stain: str | None = None, spinner_color: QColor | None = None) -> None:
         row = self._rows_active.get(task.task_id)
         if row is None:
             row = TaskRow()
@@ -328,9 +316,7 @@ class DashboardPage(QWidget):
             row.set_stain(stain or self._pick_new_row_stain(self._list_layout_past))
             row.clicked.connect(self._on_row_clicked)
             self._rows_past[task.task_id] = row
-            self._list_layout_past.insertWidget(
-                max(0, self._list_layout_past.count() - 1), row
-            )
+            self._list_layout_past.insertWidget(max(0, self._list_layout_past.count() - 1), row)
             created = True
         elif stain:
             row.set_stain(stain)
@@ -410,9 +396,7 @@ class DashboardPage(QWidget):
         for rows in (self._rows_active, self._rows_past):
             for row in rows.values():
                 task = row.last_task()
-                row.setVisible(
-                    True if task is None else self._row_visible_for_task(task)
-                )
+                row.setVisible(True if task is None else self._row_visible_for_task(task))
 
     def _on_row_clicked(self) -> None:
         row = self.sender()

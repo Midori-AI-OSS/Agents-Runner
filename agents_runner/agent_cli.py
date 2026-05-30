@@ -85,9 +85,7 @@ def additional_config_mounts(agent: str, host_config_dir: str) -> list[str]:
     except KeyError:
         return []
 
-    mounts = plugin.additional_config_mounts(
-        host_config_dir=Path(os.path.expanduser(host))
-    )
+    mounts = plugin.additional_config_mounts(host_config_dir=Path(os.path.expanduser(host)))
     rendered: list[str] = []
     for mount in mounts:
         docker_mount = mount.to_docker_mount()
@@ -116,13 +114,7 @@ def verify_cli_clause(agent: str) -> str:
     else:
         agent = normalize_agent(agent_raw)
     quoted = shlex.quote(agent)
-    return (
-        f"command -v {quoted} >/dev/null 2>&1 || "
-        "{ "
-        f'echo "{agent} not found in PATH=$PATH"; '
-        "exit 127; "
-        "}; "
-    )
+    return f'command -v {quoted} >/dev/null 2>&1 || {{ echo "{agent} not found in PATH=$PATH"; exit 127; }}; '
 
 
 def build_noninteractive_cmd(

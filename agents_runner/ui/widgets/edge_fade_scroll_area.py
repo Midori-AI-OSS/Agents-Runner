@@ -17,9 +17,7 @@ class _ScrollEdgeFadeOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAutoFillBackground(False)
 
-    def set_state(
-        self, *, top_visible: bool, bottom_visible: bool, fade_px: int, fade_alpha: int
-    ) -> None:
+    def set_state(self, *, top_visible: bool, bottom_visible: bool, fade_px: int, fade_alpha: int) -> None:
         top_visible = bool(top_visible)
         bottom_visible = bool(bottom_visible)
         fade_px = max(0, int(fade_px))
@@ -40,9 +38,7 @@ class _ScrollEdgeFadeOverlay(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
-        if (
-            not self._top_visible and not self._bottom_visible
-        ) or self._fade_alpha <= 0:
+        if (not self._top_visible and not self._bottom_visible) or self._fade_alpha <= 0:
             return
 
         width = int(self.width())
@@ -107,9 +103,7 @@ class EdgeFadeScrollArea(QScrollArea):
         self._sync_overlay_geometry()
         self._sync_edge_fades()
 
-    def set_fade_parameters(
-        self, *, fade_px: int | None = None, fade_alpha: int | None = None
-    ) -> None:
+    def set_fade_parameters(self, *, fade_px: int | None = None, fade_alpha: int | None = None) -> None:
         if fade_px is not None:
             self._fade_px = max(0, int(fade_px))
         if fade_alpha is not None:

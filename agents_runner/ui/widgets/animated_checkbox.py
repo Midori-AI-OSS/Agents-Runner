@@ -56,9 +56,7 @@ class AnimatedCheckBox(QCheckBox):
 
                 base_color = QColor(16, 185, 129)
                 alpha = int(165 * self._check_progress)
-                fill_color = QColor(
-                    base_color.red(), base_color.green(), base_color.blue(), alpha
-                )
+                fill_color = QColor(base_color.red(), base_color.green(), base_color.blue(), alpha)
 
                 path = QPainterPath()
                 path.addRect(rect)

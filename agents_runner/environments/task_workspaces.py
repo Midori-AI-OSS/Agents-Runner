@@ -63,9 +63,7 @@ def clamp_int(value: object, *, minimum: int, maximum: int, default: int) -> int
 
 def normalize_task_workspace_settings(settings: dict[str, object]) -> dict[str, object]:
     normalized = dict(settings)
-    normalized["task_workspace_location"] = normalize_task_workspace_location(
-        normalized.get("task_workspace_location")
-    )
+    normalized["task_workspace_location"] = normalize_task_workspace_location(normalized.get("task_workspace_location"))
     normalized["task_workspace_cleanup_retention_days"] = clamp_int(
         normalized.get("task_workspace_cleanup_retention_days"),
         minimum=1,
@@ -94,9 +92,7 @@ def app_data_task_workspaces_root(data_dir: str | None = None) -> str:
     return os.path.join(base, "managed-repos")
 
 
-def task_workspaces_root(
-    *, data_dir: str | None = None, location: object = TASK_WORKSPACE_LOCATION_APP_DATA
-) -> str:
+def task_workspaces_root(*, data_dir: str | None = None, location: object = TASK_WORKSPACE_LOCATION_APP_DATA) -> str:
     normalized = normalize_task_workspace_location(location)
     if normalized == TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE:
         return SCRATCH_TASK_WORKSPACES_ROOT
@@ -274,12 +270,8 @@ def move_task_workspace(
     )
 
     if not os.path.exists(source):
-        return WorkspaceMoveResult(
-            source=source, destination=destination, moved=False, skipped=True
-        )
-    if os.path.islink(source) or not is_safe_task_workspace_path(
-        source, data_dir=data_dir
-    ):
+        return WorkspaceMoveResult(source=source, destination=destination, moved=False, skipped=True)
+    if os.path.islink(source) or not is_safe_task_workspace_path(source, data_dir=data_dir):
         return WorkspaceMoveResult(
             source=source,
             destination=destination,
@@ -288,9 +280,7 @@ def move_task_workspace(
             error="unsafe source workspace",
         )
     if os.path.exists(destination):
-        return WorkspaceMoveResult(
-            source=source, destination=destination, moved=False, skipped=True
-        )
+        return WorkspaceMoveResult(source=source, destination=destination, moved=False, skipped=True)
     if not is_safe_task_workspace_path(destination, data_dir=data_dir):
         return WorkspaceMoveResult(
             source=source,
@@ -311,9 +301,7 @@ def move_task_workspace(
             if not os.path.isdir(destination):
                 raise RuntimeError("destination was not created")
             shutil.rmtree(source)
-        return WorkspaceMoveResult(
-            source=source, destination=destination, moved=True, skipped=False
-        )
+        return WorkspaceMoveResult(source=source, destination=destination, moved=True, skipped=False)
     except Exception as exc:
         return WorkspaceMoveResult(
             source=source,

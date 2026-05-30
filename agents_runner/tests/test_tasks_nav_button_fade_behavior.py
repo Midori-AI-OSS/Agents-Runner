@@ -158,8 +158,6 @@ def test_tasks_github_button_fade_ignores_mid_animation_changes() -> None:
     _pump(app, rounds=2)
     assert page._button_fade_animation is first_animation
 
-    assert _wait_until(
-        app, lambda: page._button_fade_animation is None, timeout_ms=2500
-    )
+    assert _wait_until(app, lambda: page._button_fade_animation is None, timeout_ms=2500)
     assert pull_requests_button.isVisible()
     assert issues_button.isVisible()
