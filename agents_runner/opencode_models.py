@@ -6,19 +6,11 @@ import json
 import subprocess
 
 from typing import Any
-from typing import Protocol
 from typing import cast
 
 from midori_ai_logger import MidoriAiLogger
 
-
-class _Logger(Protocol):
-    def error(self, message: object) -> object: ...
-
-    def exception(self, message: object) -> object: ...
-
-
-logger = cast(_Logger, MidoriAiLogger(channel=None, name=__name__))
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 def _is_model_header(line: str) -> bool:
@@ -44,17 +36,28 @@ def _variant_names(payload: dict[str, Any]) -> list[str]:
     return variant_names
 
 
-def _finalize_model_entry(header: str, json_lines: list[str]) -> dict[str, object]:
-    raw_payload = json.loads("\n".join(json_lines))
+def _finalize_model_entry(
+    header: str, json_lines: list[str]
+) -> dict[str, object] | None:
+    try:
+        raw_payload = json.loads("\n".join(json_lines))
+    except json.JSONDecodeError as exc:
+        logger.rprint(f"Failed to parse JSON for model '{header}': {exc}", mode="error")
+        return None
     if not isinstance(raw_payload, dict):
-        raise ValueError(f"Expected JSON object for model '{header}'")
+        logger.rprint(
+            f"Expected JSON object for model '{header}', got {type(raw_payload).__name__}",
+            mode="error",
+        )
+        return None
 
     payload = cast(dict[str, Any], raw_payload)
     provider_from_header = header.split("/", 1)[0].strip()
     provider_id = str(payload.get("providerID") or provider_from_header).strip()
     model_id = header.strip() or str(payload.get("id") or "").strip()
     if not model_id:
-        raise ValueError("Model entry is missing an id")
+        logger.rprint(f"Model entry is missing an id (header: {header})", mode="error")
+        return None
 
     display_name = str(payload.get("name") or model_id).strip() or model_id
     return {
@@ -77,7 +80,9 @@ def _parse_verbose_models_output(raw_output: str) -> list[dict[str, object]]:
             if current_header:
                 if not current_json_lines:
                     raise ValueError(f"Missing JSON block for model '{current_header}'")
-                models.append(_finalize_model_entry(current_header, current_json_lines))
+                entry = _finalize_model_entry(current_header, current_json_lines)
+                if entry is not None:
+                    models.append(entry)
                 current_json_lines = []
 
             current_header = stripped
@@ -85,7 +90,9 @@ def _parse_verbose_models_output(raw_output: str) -> list[dict[str, object]]:
 
         if not stripped:
             if current_header and current_json_lines:
-                models.append(_finalize_model_entry(current_header, current_json_lines))
+                entry = _finalize_model_entry(current_header, current_json_lines)
+                if entry is not None:
+                    models.append(entry)
                 current_header = ""
                 current_json_lines = []
             continue
@@ -98,7 +105,9 @@ def _parse_verbose_models_output(raw_output: str) -> list[dict[str, object]]:
     if current_header:
         if not current_json_lines:
             raise ValueError(f"Missing JSON block for model '{current_header}'")
-        models.append(_finalize_model_entry(current_header, current_json_lines))
+        entry = _finalize_model_entry(current_header, current_json_lines)
+        if entry is not None:
+            models.append(entry)
 
     return models
 
@@ -127,23 +136,23 @@ def parse_opencode_models() -> list[dict[str, object]]:
             timeout=15,
         )
     except subprocess.TimeoutExpired as exc:
-        logger.error(f"Timed out while loading OpenCode models: {exc}")
+        logger.rprint(f"Timed out while loading OpenCode models: {exc}", mode="error")
         return []
     except (FileNotFoundError, OSError) as exc:
-        logger.error(f"Failed to run `opencode models --verbose`: {exc}")
+        logger.rprint(f"Failed to run `opencode models --verbose`: {exc}", mode="error")
         return []
 
     if result.returncode != 0:
         detail = str(result.stderr or result.stdout or "").strip()
         if not detail:
             detail = f"exit code {result.returncode}"
-        logger.error(f"OpenCode models command failed: {detail}")
+        logger.rprint(f"OpenCode models command failed: {detail}", mode="error")
         return []
 
     try:
         return _parse_verbose_models_output(str(result.stdout or ""))
     except Exception as exc:
-        logger.exception(f"Failed to parse OpenCode model output: {exc}")
+        logger.rprint(f"Failed to parse OpenCode model output: {exc}", mode="error")
         return []
 
 
