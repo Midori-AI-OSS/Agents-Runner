@@ -13,8 +13,10 @@ from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QCloseEvent
 from PySide6.QtGui import QResizeEvent
+from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QMainWindow
+from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -148,6 +150,7 @@ class MainWindow(
         self._repo_branches_cache: dict[str, list[str]] = {}
         self._task_workspace_cleanup_last_check_s = time.time()
         self._task_workspace_cleanup_running = False
+        self._size_cleanup_popup_shown_this_session = False
         self._task_workspace_migration_thread: QThread | None = None
         self._task_workspace_migration_worker: object | None = None
         self._state_path = default_state_path()
@@ -169,6 +172,8 @@ class MainWindow(
         self.host_artifacts.connect(self._on_host_artifacts, Qt.ConnectionType.QueuedConnection)
         self.interactive_finished.connect(self._on_interactive_finished, Qt.ConnectionType.QueuedConnection)
         self.repo_branches_ready.connect(self._on_repo_branches_ready, Qt.ConnectionType.QueuedConnection)
+
+        self._size_cleanup_popup_requested.connect(self._on_size_cleanup_popup, Qt.ConnectionType.QueuedConnection)
 
         self._dashboard_ticker = QTimer(self)
         self._dashboard_ticker.setInterval(1000)
@@ -526,3 +531,35 @@ class MainWindow(
         if not parts:
             return ""
         return " - ".join(parts)
+
+    def _on_size_cleanup_popup(self, removed_count: int) -> None:
+        if self._size_cleanup_popup_shown_this_session:
+            return
+        self._size_cleanup_popup_shown_this_session = True
+
+        threshold_gb = int(self._settings_data.get("task_workspace_cleanup_size_threshold_gb", 50))
+
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setWindowTitle("Workspace Size Cleanup")
+        msg_box.setText(
+            f"Task workspaces exceeded the {threshold_gb} GB size limit.\n"
+            f"{removed_count} old workspace(s) were removed."
+        )
+        msg_box.setInformativeText("Consider using a RAM drive for scratch data to avoid disk limits.")
+
+        checkbox = QCheckBox("Don't show again")
+        msg_box.setCheckBox(checkbox)
+
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Close)
+        open_settings_btn = msg_box.addButton("Open Settings", QMessageBox.ButtonRole.AcceptRole)
+
+        msg_box.exec()
+
+        if checkbox.isChecked():
+            self._settings_data["task_workspace_cleanup_size_popup_suppressed"] = True
+            self._schedule_save()
+
+        if msg_box.clickedButton() == open_settings_btn:
+            self._settings.show()
+            self._settings._on_nav_button_clicked("cleanup")
