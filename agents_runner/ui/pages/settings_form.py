@@ -357,6 +357,16 @@ class SettingsFormMixin:
         self._task_workspace_cleanup_scan_delay_seconds.setSuffix(" seconds")
         self._task_workspace_cleanup_scan_delay_seconds.setValue(5)
 
+        self._task_workspace_cleanup_size_threshold_gb = QSpinBox()
+        self._task_workspace_cleanup_size_threshold_gb.setRange(1, 1000)
+        self._task_workspace_cleanup_size_threshold_gb.setSuffix(" GB")
+        self._task_workspace_cleanup_size_threshold_gb.setValue(50)
+
+        self._task_workspace_cleanup_size_ram_cap_label = QLabel("")
+        self._task_workspace_cleanup_size_ram_cap_label.setObjectName("SettingsPaneSubtitle")
+        self._task_workspace_cleanup_size_ram_cap_label.setWordWrap(True)
+        self._task_workspace_cleanup_size_ram_cap_label.setVisible(False)
+
         self._task_workspace_cleanup_note = QLabel("")
         self._task_workspace_cleanup_note.setObjectName("SettingsPaneSubtitle")
         self._task_workspace_cleanup_note.setWordWrap(True)
@@ -364,6 +374,7 @@ class SettingsFormMixin:
             self._task_workspace_cleanup_retention_days,
             self._task_workspace_cleanup_interval_minutes,
             self._task_workspace_cleanup_scan_delay_seconds,
+            self._task_workspace_cleanup_size_threshold_gb,
         ]
         self._workspace_status_checking = False
         self._workspace_status_request_id = 0
@@ -590,6 +601,18 @@ class SettingsFormMixin:
             2,
             QLabel("Wait between scans"),
             self._task_workspace_cleanup_scan_delay_seconds,
+        )
+        add_grid_row(
+            cleanup_grid,
+            3,
+            QLabel("Workspace size limit"),
+            self._task_workspace_cleanup_size_threshold_gb,
+        )
+        add_grid_row(
+            cleanup_grid,
+            4,
+            QLabel(""),
+            self._task_workspace_cleanup_size_ram_cap_label,
         )
         cleanup_body.addLayout(cleanup_grid)
         cleanup_body.addWidget(self._task_workspace_cleanup_note)
@@ -1375,6 +1398,14 @@ class SettingsFormMixin:
                     default=5,
                 )
             )
+            self._task_workspace_cleanup_size_threshold_gb.setValue(
+                self._clamp_spin_value(
+                    settings.get("task_workspace_cleanup_size_threshold_gb"),
+                    minimum=1,
+                    maximum=1000,
+                    default=50,
+                )
+            )
             self._refresh_task_workspace_controls()
             theme_value = normalize_ui_theme_name(settings.get("ui_theme"), allow_auto=True)
             self._refresh_theme_options(selected=theme_value)
@@ -1532,6 +1563,7 @@ class SettingsFormMixin:
             "task_workspace_cleanup_retention_days": int(self._task_workspace_cleanup_retention_days.value()),
             "task_workspace_cleanup_interval_minutes": int(self._task_workspace_cleanup_interval_minutes.value()),
             "task_workspace_cleanup_scan_delay_seconds": int(self._task_workspace_cleanup_scan_delay_seconds.value()),
+            "task_workspace_cleanup_size_threshold_gb": int(self._task_workspace_cleanup_size_threshold_gb.value()),
             "radio_enabled": bool(self._radio_enabled.isChecked()),
             "radio_autostart": bool(self._radio_autostart.isChecked()),
             "radio_channel": RadioController.normalize_channel(str(self._radio_channel.currentData() or "")),
@@ -1597,6 +1629,8 @@ class SettingsFormMixin:
             widget.setEnabled(not checking)
         self._task_workspace_cleanup_note.setText("")
         self._task_workspace_cleanup_note.setVisible(False)
+        self._task_workspace_cleanup_size_ram_cap_label.setText("")
+        self._task_workspace_cleanup_size_ram_cap_label.setVisible(False)
         self._scratch_drive_status.setText("")
         self._workspace_status_spinner.setVisible(checking)
         if checking:
@@ -1637,6 +1671,29 @@ class SettingsFormMixin:
             f"RAM drive (tmpfs): {'yes' if status.is_ram_drive else 'no'}\n"
             f"Free: {status.free_gib:.1f} GiB"
         )
+
+        if scratch_selected and status.is_ram_drive:
+            try:
+                with open("/proc/meminfo", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("MemTotal:"):
+                            parts = line.split()
+                            if len(parts) >= 2:
+                                mem_total_kb = int(parts[1])
+                                system_ram_gb = mem_total_kb / 1048576.0
+                                spinbox_value = int(self._task_workspace_cleanup_size_threshold_gb.value())
+                                effective_cap_gb = max(1, min(spinbox_value, int(system_ram_gb * 0.5)))
+                                self._task_workspace_cleanup_size_ram_cap_label.setText(
+                                    f"Effective cap: {effective_cap_gb} GB (50% of system RAM)"
+                                )
+                                self._task_workspace_cleanup_size_ram_cap_label.setVisible(True)
+                            break
+            except Exception:
+                self._task_workspace_cleanup_size_ram_cap_label.setText("")
+                self._task_workspace_cleanup_size_ram_cap_label.setVisible(False)
+        else:
+            self._task_workspace_cleanup_size_ram_cap_label.setText("")
+            self._task_workspace_cleanup_size_ram_cap_label.setVisible(False)
 
         cleanup_disabled = bool(scratch_selected and status.is_ram_drive)
         for widget in self._task_workspace_cleanup_controls:

@@ -187,6 +187,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._task_workspace_cleanup_retention_days.valueChanged.connect(self._queue_debounced_autosave)
         self._task_workspace_cleanup_interval_minutes.valueChanged.connect(self._queue_debounced_autosave)
         self._task_workspace_cleanup_scan_delay_seconds.valueChanged.connect(self._queue_debounced_autosave)
+        self._task_workspace_cleanup_size_threshold_gb.valueChanged.connect(self._queue_debounced_autosave)
         self._github_poll_startup_delay_s.textChanged.connect(self._queue_debounced_autosave)
         self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
         self._agentsnova_trusted_users_global.usernames_changed.connect(self._queue_debounced_autosave)
