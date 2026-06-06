@@ -15,9 +15,15 @@ else:
 
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.environments import WORKSPACE_CLONED
-from agents_runner.environments.cleanup import cleanup_retained_task_workspaces
-from agents_runner.log_format import format_log
-from agents_runner.log_format import wrap_container_log
+from agents_runner.environments.cleanup import (
+    cleanup_by_size,
+    cleanup_retained_task_workspaces,
+    get_workspace_tree_size,
+)
+from agents_runner.environments.task_workspaces import scratch_drive_status
+from agents_runner.log_format import format_log, wrap_container_log
+from pathlib import Path
+from PySide6.QtCore import Signal
 from agents_runner.persistence import iter_done_task_payloads
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
@@ -25,6 +31,8 @@ from agents_runner.ui.utils import stain_color
 
 
 class MainWindowTaskRecoveryMixin(_MainWindowHints):
+    _size_cleanup_popup_requested = Signal(int)
+
     def _reconcile_tasks_after_restart(self) -> None:
         """Reconcile tasks after app restart.
 
@@ -135,9 +143,10 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
             finalization_state = str(getattr(task, "finalization_state", "") or "").strip().lower()
             if finalization_state in {"pending", "running"}:
                 finalizing_task_ids.add(task_id)
+        data_dir = os.path.dirname(self._state_path)
         removed = cleanup_retained_task_workspaces(
             chain(active_payloads, iter_done_task_payloads(self._state_path)),
-            data_dir=os.path.dirname(self._state_path),
+            data_dir=data_dir,
             retention_days=retention_days,
             scan_delay_seconds=scan_delay_seconds,
             active_task_ids=active_task_ids,
@@ -153,6 +162,50 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
                     f"Removed {removed} retained task workspace(s)",
                 ),
             )
+
+        # --- Size-based cleanup ---
+        current_size = get_workspace_tree_size(Path(data_dir))
+        user_threshold_gb = int(self._settings_data.get("task_workspace_cleanup_size_threshold_gb", 50))
+
+        location = str(self._settings_data.get("task_workspace_location", "app_data"))
+        status = scratch_drive_status()
+        if status.is_ram_drive and location == "scratch_drive":
+            mem_total_kb = 0
+            try:
+                with open("/proc/meminfo") as f:
+                    for line in f:
+                        if line.startswith("MemTotal:"):
+                            mem_total_kb = int(line.split()[1])
+                            break
+            except Exception:
+                pass
+            system_ram_gb = mem_total_kb / (1024 * 1024)
+            effective_threshold_gb = max(1, min(user_threshold_gb, int(system_ram_gb * 0.5)))
+        else:
+            effective_threshold_gb = user_threshold_gb
+
+        if current_size > effective_threshold_gb * (1024**3):
+            size_removed = cleanup_by_size(
+                threshold_gb=effective_threshold_gb,
+                task_payloads=chain(active_payloads, iter_done_task_payloads(self._state_path)),
+                active_task_ids=active_task_ids,
+                finalizing_task_ids=finalizing_task_ids,
+                data_dir=data_dir,
+            )
+            if size_removed:
+                self.host_log.emit(
+                    "",
+                    format_log(
+                        "cleanup",
+                        "size",
+                        "INFO",
+                        f"Removed {size_removed} task workspace(s) to stay within {effective_threshold_gb} GB size limit",
+                    ),
+                )
+                suppressed = bool(self._settings_data.get("task_workspace_cleanup_size_popup_suppressed", False))
+                if not suppressed and not getattr(self, "_size_cleanup_popup_shown_this_session", False):
+                    self._size_cleanup_popup_shown_this_session = True
+                    self._size_cleanup_popup_requested.emit(size_removed)
 
     def _tick_recovery_task(self, task: Task) -> None:
         """Process a single task for recovery/finalization.

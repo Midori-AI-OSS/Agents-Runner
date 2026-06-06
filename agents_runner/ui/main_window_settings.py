@@ -425,6 +425,15 @@ class MainWindowSettingsMixin(_MainWindowHints):
         )
         merged = normalize_task_workspace_settings(merged)
         try:
+            merged["task_workspace_cleanup_size_threshold_gb"] = max(
+                1, min(1000, int(merged.get("task_workspace_cleanup_size_threshold_gb", 50)))
+            )
+        except Exception:
+            merged["task_workspace_cleanup_size_threshold_gb"] = 50
+        merged["task_workspace_cleanup_size_popup_suppressed"] = bool(
+            merged.get("task_workspace_cleanup_size_popup_suppressed", False)
+        )
+        try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
 
             merged["ui_theme"] = normalize_ui_theme_name(merged.get("ui_theme"), allow_auto=True)

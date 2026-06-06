@@ -210,6 +210,8 @@ class MainWindowPersistenceMixin(_MainWindowHints):
         self._settings_data.setdefault("agentsnova_auto_reactions_enabled", True)
         self._settings_data.setdefault("agentsnova_trusted_users_global", [])
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
+        self._settings_data.setdefault("task_workspace_cleanup_size_threshold_gb", 50)
+        self._settings_data.setdefault("task_workspace_cleanup_size_popup_suppressed", False)
         self._settings_data = normalize_task_workspace_settings(self._settings_data)
         self._settings_data["gpu_enabled"] = bool(self._settings_data.get("gpu_enabled") or False)
         self._settings_data["network_host"] = bool(self._settings_data.get("network_host") or False)
