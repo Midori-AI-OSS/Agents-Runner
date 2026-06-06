@@ -20,6 +20,7 @@ from .paths import managed_repo_checkout_path
 from .task_workspaces import finished_cutoff_s
 from .task_workspaces import is_safe_task_workspace_path
 from .task_workspaces import task_workspace_candidates
+from .task_workspaces import task_workspace_path
 
 logger = MidoriAiLogger(channel=None, name=__name__)
 
@@ -90,6 +91,98 @@ def cleanup_retained_task_workspaces(
             removed += 1
         if scan_delay_seconds > 0:
             time.sleep(float(scan_delay_seconds))
+    return removed
+
+
+def cleanup_by_size(
+    *,
+    threshold_gb: int,
+    task_payloads: Iterable[dict[str, Any]],
+    active_task_ids: set[str],
+    finalizing_task_ids: set[str],
+    data_dir: str | None,
+    on_log: Callable[[str], None] | None = None,
+) -> int:
+    """
+    Remove oldest finished workspaces until total workspace size falls under threshold.
+
+    Args:
+        threshold_gb: Size threshold in GB. Non-positive values make this a no-op.
+        task_payloads: Iterable of task payload dicts to evaluate.
+        active_task_ids: Set of task IDs currently active (will not be removed).
+        finalizing_task_ids: Set of task IDs currently finalizing (will not be removed).
+        data_dir: Optional data directory path.
+        on_log: Optional callback for logging messages.
+
+    Returns:
+        Number of workspaces removed.
+    """
+    if threshold_gb <= 0:
+        return 0
+
+    threshold_bytes = threshold_gb * (1024**3)
+
+    # Filter and deduplicate candidates
+    seen: set[tuple[str, str]] = set()
+    candidates: list[tuple[float, str, str]] = []
+
+    for payload in task_payloads:
+        task_id = str(payload.get("task_id") or "").strip()
+        env_id = str(payload.get("environment_id") or "").strip()
+        if not task_id or not env_id:
+            continue
+        if task_id in active_task_ids or task_id in finalizing_task_ids:
+            continue
+        if str(payload.get("workspace_type") or "").strip() != "cloned":
+            continue
+        status = str(payload.get("status") or "").strip().lower()
+        if status not in _FINISHED_STATUSES:
+            continue
+        key = (env_id, task_id)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        # Determine sort key (oldest first = smallest timestamp)
+        finished_s = _payload_finished_at_s(payload)
+        if finished_s is not None:
+            ts = finished_s
+        else:
+            # Fall back to workspace directory st_mtime
+            try:
+                ws_path = task_workspace_path(env_id, task_id=task_id, data_dir=data_dir)
+                ts = os.path.getmtime(ws_path)
+            except OSError:
+                ts = 0.0
+
+        candidates.append((ts, env_id, task_id))
+
+    if not candidates:
+        return 0
+
+    # Sort oldest-first (ascending timestamp)
+    candidates.sort(key=lambda x: x[0])
+
+    # Measure current total size
+    data_path = Path(data_dir) if data_dir else Path(".")
+    total_size = get_workspace_tree_size(data_path)
+
+    if total_size < threshold_bytes:
+        return 0
+
+    removed = 0
+    for _ts, env_id, task_id in candidates:
+        if total_size < threshold_bytes:
+            break
+        if cleanup_task_workspace(
+            env_id=env_id,
+            task_id=task_id,
+            data_dir=data_dir,
+            on_log=on_log,
+        ):
+            removed += 1
+            total_size = get_workspace_tree_size(data_path)
+
     return removed
 
 
