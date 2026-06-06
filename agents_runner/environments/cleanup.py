@@ -10,6 +10,7 @@ import time
 
 from datetime import datetime
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any, Callable
 
 from midori_ai_logger import MidoriAiLogger
@@ -220,3 +221,44 @@ def _cleanup_one_task_workspace(
         if on_log:
             on_log(msg)
         return False
+
+
+def get_workspace_tree_size(root: Path) -> int:
+    """
+    Recursively calculate the total size (in bytes) of all regular files under
+    *root*, skipping directories, symlinks, and special files.
+
+    Args:
+        root: Directory path to scan.
+
+    Returns:
+        Total number of bytes consumed by regular files under *root*.
+    """
+    total = 0
+    try:
+        with os.scandir(root) as entries:
+            for entry in entries:
+                try:
+                    if entry.is_file(follow_symlinks=False):
+                        total += entry.stat(follow_symlinks=False).st_size
+                    elif entry.is_dir(follow_symlinks=False):
+                        total += get_workspace_tree_size(Path(entry.path))
+                except (OSError, PermissionError) as exc:
+                    logger.warning(
+                        format_log(
+                            "cleanup",
+                            "tree-size",
+                            "WARN",
+                            f"Skipping unreadable entry {entry.path}: {exc}",
+                        )
+                    )
+    except (OSError, PermissionError) as exc:
+        logger.warning(
+            format_log(
+                "cleanup",
+                "tree-size",
+                "WARN",
+                f"Skipping unreadable directory {root}: {exc}",
+            )
+        )
+    return total
