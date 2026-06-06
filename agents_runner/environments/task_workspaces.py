@@ -82,6 +82,12 @@ def normalize_task_workspace_settings(settings: dict[str, object]) -> dict[str, 
         maximum=60,
         default=DEFAULT_TASK_WORKSPACE_CLEANUP_SCAN_DELAY_SECONDS,
     )
+    normalized["task_workspace_cleanup_size_threshold_gb"] = clamp_int(
+        normalized.get("task_workspace_cleanup_size_threshold_gb"),
+        minimum=1,
+        maximum=1000,
+        default=50,
+    )
     return normalized
 
 

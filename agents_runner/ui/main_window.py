@@ -131,6 +131,8 @@ class MainWindow(
             "task_workspace_cleanup_retention_days": 30,
             "task_workspace_cleanup_interval_minutes": 60,
             "task_workspace_cleanup_scan_delay_seconds": 5,
+            "task_workspace_cleanup_size_threshold_gb": 50,
+            "task_workspace_cleanup_size_popup_suppressed": False,
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False
