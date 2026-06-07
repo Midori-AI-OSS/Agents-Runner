@@ -147,6 +147,7 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
         data_dir = os.path.dirname(self._state_path)
         location = str(self._settings_data.get("task_workspace_location", "app_data"))
         from agents_runner.environments.task_workspaces import task_workspaces_root
+
         workspace_root = task_workspaces_root(data_dir=data_dir, location=location)
         removed = cleanup_retained_task_workspaces(
             chain(active_payloads, iter_done_task_payloads(self._state_path)),
@@ -213,11 +214,14 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
                     self._size_cleanup_popup_requested.emit(size_removed)
 
     def _on_force_cleanup_requested(self) -> None:
-        if QMessageBox.question(
-            self,
-            "Force cleanup?",
-            "This will immediately run retention and size-based cleanup on finished task workspaces.\n\nActive and finalizing workspaces are protected and will not be removed.",
-        ) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(
+                self,
+                "Force cleanup?",
+                "This will immediately run retention and size-based cleanup on finished task workspaces.\n\nActive and finalizing workspaces are protected and will not be removed.",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
 
         def _worker() -> None:
