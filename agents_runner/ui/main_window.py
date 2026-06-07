@@ -285,6 +285,9 @@ class MainWindow(
         self._settings.move_task_workspaces_requested.connect(
             self._on_move_task_workspaces_requested, Qt.ConnectionType.QueuedConnection
         )
+        self._settings.force_cleanup_requested.connect(
+            self._on_force_cleanup_requested, Qt.ConnectionType.QueuedConnection
+        )
 
         self._stack = QWidget()
         self._stack_layout = QVBoxLayout(self._stack)

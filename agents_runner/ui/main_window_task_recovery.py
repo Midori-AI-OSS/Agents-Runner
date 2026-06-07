@@ -24,6 +24,7 @@ from agents_runner.environments.task_workspaces import scratch_drive_status
 from agents_runner.log_format import format_log, wrap_container_log
 from pathlib import Path
 from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QMessageBox
 from agents_runner.persistence import iter_done_task_payloads
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
@@ -211,6 +212,19 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
                     self._size_cleanup_popup_shown_this_session = True
                     self._size_cleanup_popup_requested.emit(size_removed)
 
+    def _on_force_cleanup_requested(self) -> None:
+        if QMessageBox.question(
+            self,
+            "Force cleanup?",
+            "This will immediately run retention and size-based cleanup on finished task workspaces.\n\nActive and finalizing workspaces are protected and will not be removed.",
+        ) != QMessageBox.StandardButton.Yes:
+            return
+
+        def _worker() -> None:
+            self._run_task_workspace_cleanup()
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     def _tick_recovery_task(self, task: Task) -> None:
         """Process a single task for recovery/finalization.
 
@@ -271,6 +285,13 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
+        if self._settings.isVisible():
+            has_active = any(t.is_active() for t in self._tasks.values())
+            has_finalizing = any(
+                str(getattr(t, "finalization_state", "") or "").strip().lower() in {"pending", "running"}
+                for t in self._tasks.values()
+            )
+            self._settings.set_force_cleanup_enabled(not has_active and not has_finalizing)
 
     def _ensure_recovery_log_tail(self, task: Task) -> None:
         task_id = str(task.task_id or "").strip()

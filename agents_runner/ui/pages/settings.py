@@ -43,6 +43,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
     saved = Signal(dict)
     test_preflight_requested = Signal(dict)
     move_task_workspaces_requested = Signal(bool)
+    force_cleanup_requested = Signal()
 
     def __init__(
         self,
@@ -192,6 +193,8 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
         self._agentsnova_trusted_users_global.usernames_changed.connect(self._queue_debounced_autosave)
 
+        self._force_cleanup_button.clicked.connect(self.force_cleanup_requested.emit)
+
     def _on_back(self) -> None:
         self.try_autosave()
         self.back_requested.emit()
@@ -199,6 +202,9 @@ class SettingsPage(QWidget, SettingsFormMixin):
     def _on_test_preflight(self) -> None:
         self.try_autosave()
         self.test_preflight_requested.emit(self.get_settings())
+
+    def set_force_cleanup_enabled(self, enabled: bool) -> None:
+        self._force_cleanup_button.setEnabled(enabled)
 
     def _on_nav_button_clicked(self, key: str) -> None:
         self._navigate_to_pane(key, user_initiated=True)

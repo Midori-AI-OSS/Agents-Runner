@@ -22,6 +22,7 @@ from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QListWidget
 from PySide6.QtWidgets import QListWidgetItem
 from PySide6.QtWidgets import QPlainTextEdit
+from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QSlider
 from PySide6.QtWidgets import QSpinBox
@@ -370,11 +371,13 @@ class SettingsFormMixin:
         self._task_workspace_cleanup_note = QLabel("")
         self._task_workspace_cleanup_note.setObjectName("SettingsPaneSubtitle")
         self._task_workspace_cleanup_note.setWordWrap(True)
+        self._force_cleanup_button = QPushButton("Force Clean Now")
         self._task_workspace_cleanup_controls: list[QWidget] = [
             self._task_workspace_cleanup_retention_days,
             self._task_workspace_cleanup_interval_minutes,
             self._task_workspace_cleanup_scan_delay_seconds,
             self._task_workspace_cleanup_size_threshold_gb,
+            self._force_cleanup_button,
         ]
         self._workspace_status_checking = False
         self._workspace_status_request_id = 0
@@ -615,6 +618,12 @@ class SettingsFormMixin:
             self._task_workspace_cleanup_size_ram_cap_label,
         )
         cleanup_body.addLayout(cleanup_grid)
+        force_row = QWidget(cleanup_page)
+        force_layout = QHBoxLayout(force_row)
+        force_layout.setContentsMargins(0, 0, 0, 0)
+        force_layout.addStretch(1)
+        force_layout.addWidget(self._force_cleanup_button)
+        cleanup_body.addWidget(force_row)
         cleanup_body.addWidget(self._task_workspace_cleanup_note)
         cleanup_body.addStretch(1)
         self._register_page("cleanup", cleanup_page)
