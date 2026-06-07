@@ -144,6 +144,9 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
             if finalization_state in {"pending", "running"}:
                 finalizing_task_ids.add(task_id)
         data_dir = os.path.dirname(self._state_path)
+        location = str(self._settings_data.get("task_workspace_location", "app_data"))
+        from agents_runner.environments.task_workspaces import task_workspaces_root
+        workspace_root = task_workspaces_root(data_dir=data_dir, location=location)
         removed = cleanup_retained_task_workspaces(
             chain(active_payloads, iter_done_task_payloads(self._state_path)),
             data_dir=data_dir,
@@ -151,6 +154,7 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
             scan_delay_seconds=scan_delay_seconds,
             active_task_ids=active_task_ids,
             finalizing_task_ids=finalizing_task_ids,
+            workspace_root=workspace_root,
         )
         if removed:
             self.host_log.emit(
@@ -164,7 +168,7 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
             )
 
         # --- Size-based cleanup ---
-        current_size = get_workspace_tree_size(Path(data_dir))
+        current_size = get_workspace_tree_size(Path(workspace_root))
         user_threshold_gb = int(self._settings_data.get("task_workspace_cleanup_size_threshold_gb", 50))
 
         location = str(self._settings_data.get("task_workspace_location", "app_data"))
@@ -191,6 +195,7 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
                 active_task_ids=active_task_ids,
                 finalizing_task_ids=finalizing_task_ids,
                 data_dir=data_dir,
+                workspace_root=workspace_root,
             )
             if size_removed:
                 self.host_log.emit(
