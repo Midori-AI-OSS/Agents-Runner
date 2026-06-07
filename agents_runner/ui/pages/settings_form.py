@@ -617,13 +617,8 @@ class SettingsFormMixin:
             QLabel(""),
             self._task_workspace_cleanup_size_ram_cap_label,
         )
+        add_grid_row(cleanup_grid, 5, QLabel("Force cleanup"), self._force_cleanup_button)
         cleanup_body.addLayout(cleanup_grid)
-        force_row = QWidget(cleanup_page)
-        force_layout = QHBoxLayout(force_row)
-        force_layout.setContentsMargins(0, 0, 0, 0)
-        force_layout.addStretch(1)
-        force_layout.addWidget(self._force_cleanup_button)
-        cleanup_body.addWidget(force_row)
         cleanup_body.addWidget(self._task_workspace_cleanup_note)
         cleanup_body.addStretch(1)
         self._register_page("cleanup", cleanup_page)
