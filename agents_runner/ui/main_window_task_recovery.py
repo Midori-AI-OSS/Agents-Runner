@@ -171,7 +171,6 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
         current_size = get_workspace_tree_size(Path(workspace_root))
         user_threshold_gb = int(self._settings_data.get("task_workspace_cleanup_size_threshold_gb", 50))
 
-        location = str(self._settings_data.get("task_workspace_location", "app_data"))
         status = scratch_drive_status()
         if status.is_ram_drive and location == "scratch_drive":
             mem_total_kb = 0
