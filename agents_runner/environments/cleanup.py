@@ -24,7 +24,36 @@ from .task_workspaces import task_workspace_path
 
 logger = MidoriAiLogger(channel=None, name=__name__)
 
-_FINISHED_STATUSES = {"done", "failed", "error", "cancelled", "killed"}
+_FINISHED_STATUSES = {"done", "failed", "error", "cancelled", "killed", "discarded"}
+
+
+def _discover_orphan_workspaces(
+    workspace_root: str,
+    known_task_ids: set[str],
+) -> list[tuple[str, str, float]]:
+    orphans: list[tuple[str, str, float]] = []
+    try:
+        for env_dir in os.listdir(workspace_root):
+            env_path = os.path.join(workspace_root, env_dir)
+            if not os.path.isdir(env_path):
+                continue
+            tasks_dir = os.path.join(env_path, "tasks")
+            if not os.path.isdir(tasks_dir):
+                continue
+            for task_dir in os.listdir(tasks_dir):
+                task_path = os.path.join(tasks_dir, task_dir)
+                if not os.path.isdir(task_path):
+                    continue
+                if task_dir in known_task_ids:
+                    continue
+                try:
+                    mtime = os.path.getmtime(task_path)
+                except OSError:
+                    continue
+                orphans.append((env_dir, task_dir, mtime))
+    except OSError:
+        pass
+    return orphans
 
 
 def _timestamp_from_iso(value: object) -> float | None:
@@ -59,13 +88,19 @@ def cleanup_retained_task_workspaces(
     active_task_ids: set[str],
     finalizing_task_ids: set[str],
     on_log: Callable[[str], None] | None = None,
+    workspace_root: str | None = None,
 ) -> int:
+    from .paths import safe_task_id
+
     cutoff_s = finished_cutoff_s(retention_days=retention_days)
     removed = 0
     seen: set[tuple[str, str]] = set()
+    known_task_ids: set[str] = set()
     for payload in task_payloads:
         task_id = str(payload.get("task_id") or "").strip()
         env_id = str(payload.get("environment_id") or "").strip()
+        if task_id:
+            known_task_ids.add(safe_task_id(task_id))
         if not task_id or not env_id:
             continue
         if task_id in active_task_ids or task_id in finalizing_task_ids:
@@ -91,6 +126,19 @@ def cleanup_retained_task_workspaces(
             removed += 1
         if scan_delay_seconds > 0:
             time.sleep(float(scan_delay_seconds))
+    if workspace_root:
+        for env_id, task_id, dir_mtime in _discover_orphan_workspaces(workspace_root, known_task_ids):
+            if dir_mtime > cutoff_s:
+                continue
+            if cleanup_task_workspace(
+                env_id=env_id,
+                task_id=task_id,
+                data_dir=data_dir,
+                on_log=on_log,
+            ):
+                removed += 1
+            if scan_delay_seconds > 0:
+                time.sleep(float(scan_delay_seconds))
     return removed
 
 
@@ -102,6 +150,7 @@ def cleanup_by_size(
     finalizing_task_ids: set[str],
     data_dir: str | None,
     on_log: Callable[[str], None] | None = None,
+    workspace_root: str | None = None,
 ) -> int:
     """
     Remove oldest finished workspaces until total workspace size falls under threshold.
@@ -113,6 +162,7 @@ def cleanup_by_size(
         finalizing_task_ids: Set of task IDs currently finalizing (will not be removed).
         data_dir: Optional data directory path.
         on_log: Optional callback for logging messages.
+        workspace_root: Optional workspace root path for size measurement and orphan discovery.
 
     Returns:
         Number of workspaces removed.
@@ -120,15 +170,20 @@ def cleanup_by_size(
     if threshold_gb <= 0:
         return 0
 
+    from .paths import safe_task_id
+
     threshold_bytes = threshold_gb * (1024**3)
 
     # Filter and deduplicate candidates
     seen: set[tuple[str, str]] = set()
     candidates: list[tuple[float, str, str]] = []
+    known_task_ids: set[str] = set()
 
     for payload in task_payloads:
         task_id = str(payload.get("task_id") or "").strip()
         env_id = str(payload.get("environment_id") or "").strip()
+        if task_id:
+            known_task_ids.add(safe_task_id(task_id))
         if not task_id or not env_id:
             continue
         if task_id in active_task_ids or task_id in finalizing_task_ids:
@@ -157,6 +212,10 @@ def cleanup_by_size(
 
         candidates.append((ts, env_id, task_id))
 
+    if workspace_root:
+        for env_id, task_id, dir_mtime in _discover_orphan_workspaces(workspace_root, known_task_ids):
+            candidates.append((dir_mtime, env_id, task_id))
+
     if not candidates:
         return 0
 
@@ -164,7 +223,12 @@ def cleanup_by_size(
     candidates.sort(key=lambda x: x[0])
 
     # Measure current total size
-    data_path = Path(data_dir) if data_dir else Path(".")
+    if workspace_root:
+        data_path = Path(workspace_root)
+    elif data_dir:
+        data_path = Path(data_dir)
+    else:
+        data_path = Path(".")
     total_size = get_workspace_tree_size(data_path)
 
     if total_size < threshold_bytes:

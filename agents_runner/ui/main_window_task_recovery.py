@@ -24,6 +24,7 @@ from agents_runner.environments.task_workspaces import scratch_drive_status
 from agents_runner.log_format import format_log, wrap_container_log
 from pathlib import Path
 from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QMessageBox
 from agents_runner.persistence import iter_done_task_payloads
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
@@ -144,6 +145,10 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
             if finalization_state in {"pending", "running"}:
                 finalizing_task_ids.add(task_id)
         data_dir = os.path.dirname(self._state_path)
+        location = str(self._settings_data.get("task_workspace_location", "app_data"))
+        from agents_runner.environments.task_workspaces import task_workspaces_root
+
+        workspace_root = task_workspaces_root(data_dir=data_dir, location=location)
         removed = cleanup_retained_task_workspaces(
             chain(active_payloads, iter_done_task_payloads(self._state_path)),
             data_dir=data_dir,
@@ -151,6 +156,7 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
             scan_delay_seconds=scan_delay_seconds,
             active_task_ids=active_task_ids,
             finalizing_task_ids=finalizing_task_ids,
+            workspace_root=workspace_root,
         )
         if removed:
             self.host_log.emit(
@@ -164,10 +170,9 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
             )
 
         # --- Size-based cleanup ---
-        current_size = get_workspace_tree_size(Path(data_dir))
+        current_size = get_workspace_tree_size(Path(workspace_root))
         user_threshold_gb = int(self._settings_data.get("task_workspace_cleanup_size_threshold_gb", 50))
 
-        location = str(self._settings_data.get("task_workspace_location", "app_data"))
         status = scratch_drive_status()
         if status.is_ram_drive and location == "scratch_drive":
             mem_total_kb = 0
@@ -191,6 +196,7 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
                 active_task_ids=active_task_ids,
                 finalizing_task_ids=finalizing_task_ids,
                 data_dir=data_dir,
+                workspace_root=workspace_root,
             )
             if size_removed:
                 self.host_log.emit(
@@ -206,6 +212,22 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
                 if not suppressed and not getattr(self, "_size_cleanup_popup_shown_this_session", False):
                     self._size_cleanup_popup_shown_this_session = True
                     self._size_cleanup_popup_requested.emit(size_removed)
+
+    def _on_force_cleanup_requested(self) -> None:
+        if (
+            QMessageBox.question(
+                self,
+                "Force cleanup?",
+                "This will immediately run retention and size-based cleanup on finished task workspaces.\n\nActive and finalizing workspaces are protected and will not be removed.",
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
+            return
+
+        def _worker() -> None:
+            self._run_task_workspace_cleanup()
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     def _tick_recovery_task(self, task: Task) -> None:
         """Process a single task for recovery/finalization.
@@ -267,6 +289,13 @@ class MainWindowTaskRecoveryMixin(_MainWindowHints):
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
         self._schedule_save()
+        if self._settings.isVisible():
+            has_active = any(t.is_active() for t in self._tasks.values())
+            has_finalizing = any(
+                str(getattr(t, "finalization_state", "") or "").strip().lower() in {"pending", "running"}
+                for t in self._tasks.values()
+            )
+            self._settings.set_force_cleanup_enabled(not has_active and not has_finalizing)
 
     def _ensure_recovery_log_tail(self, task: Task) -> None:
         task_id = str(task.task_id or "").strip()

@@ -159,6 +159,13 @@ class MainWindowNavigationMixin(_MainWindowHints):
         if hasattr(self, "_refresh_radio_channel_options"):
             self._refresh_radio_channel_options(disable_on_failure=True)
         self._transition_to_page(self._settings)
+        # Update force cleanup button state
+        has_active = any(t.is_active() for t in self._tasks.values())
+        has_finalizing = any(
+            str(getattr(t, "finalization_state", "") or "").strip().lower() in {"pending", "running"}
+            for t in self._tasks.values()
+        )
+        self._settings.set_force_cleanup_enabled(not has_active and not has_finalizing)
 
     def _try_autosave_before_navigation(self) -> bool:
         if self._envs_page.isVisible() and not self._envs_page.try_autosave():
