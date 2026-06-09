@@ -719,7 +719,8 @@ class ContainerExecutor:
                 # Read log output
                 for key, _ in selector.select(timeout=0.05):
                     try:
-                        chunk = key.fileobj.readline()
+                        fileobj: Any = key.fileobj
+                        chunk = fileobj.readline()
                         if chunk:
                             stream = "stdout" if key.fileobj == logs_proc.stdout else "stderr"
                             self._on_log(wrap_container_log(self._container_id, stream, chunk.rstrip("\n")))
