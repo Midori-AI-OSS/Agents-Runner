@@ -24,7 +24,9 @@ class AnimationPresets:
     EASE_BOUNCE = QEasingCurve.Type.OutBack
 
 
-def fade_in(widget: QWidget, duration: int = AnimationPresets.DURATION_NORMAL, delay: int = 0) -> QPropertyAnimation:
+def fade_in(
+    widget: QWidget, duration: int = AnimationPresets.DURATION_NORMAL, delay: int = 0
+) -> QPropertyAnimation | QSequentialAnimationGroup:
     """Create a fade-in animation for a widget."""
     effect = widget.graphicsEffect()
     if not isinstance(effect, QGraphicsOpacityEffect):
