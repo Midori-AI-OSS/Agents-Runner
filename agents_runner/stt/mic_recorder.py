@@ -82,7 +82,7 @@ class FfmpegPulseRecorder:
         if recording.process.returncode not in (0, 255) and recording.process.stderr is not None:
             stderr_text = ""
             try:
-                if isinstance(stderr, (bytes, bytearray)):
+                if isinstance(stderr, (bytes, bytearray)):  # pyright: ignore[reportUnnecessaryIsInstance]
                     stderr_text = stderr.decode("utf-8", errors="replace")
             except Exception:
                 stderr_text = ""

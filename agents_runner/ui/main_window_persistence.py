@@ -87,7 +87,7 @@ class MainWindowPersistenceMixin(MainWindowHints):
                 task.error = f"{detail}; {reason}" if detail else reason
                 return True
             return False
-        if not isinstance(state, dict) or not state:
+        if not isinstance(state, dict) or not state:  # pyright: ignore[reportUnnecessaryIsInstance]
             return False
 
         incoming = str(state.get("Status") or "").strip().lower()
@@ -136,7 +136,7 @@ class MainWindowPersistenceMixin(MainWindowHints):
             payload = load_state(self._state_path)
         except Exception:
             payload = {}
-        if not isinstance(payload, dict):
+        if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             payload = {}
         payload["settings"] = settings_payload
 
@@ -282,7 +282,7 @@ class MainWindowPersistenceMixin(MainWindowHints):
         items = load_active_task_payloads(self._state_path)
         loaded: list[Task] = []
         for item in items:
-            if not isinstance(item, dict):
+            if not isinstance(item, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
                 continue
             task = deserialize_task(Task, item)
             if not task.task_id:

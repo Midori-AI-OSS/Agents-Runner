@@ -85,7 +85,7 @@ def load_state(path: str) -> dict[str, Any]:
         }
     with open(path, "rb") as f:
         payload = tomli.load(f)
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         return {
             "version": STATE_VERSION,
             "tasks": [],
@@ -231,7 +231,7 @@ def load_active_task_payloads(state_path: str) -> list[dict[str, Any]]:
                 payload = tomli.load(f)
         except Exception:
             continue
-        if isinstance(payload, dict):
+        if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             payloads.append(payload)
     return payloads
 
@@ -248,7 +248,7 @@ def load_task_payload(state_path: str, task_id: str, *, archived: bool) -> dict[
             payload = tomli.load(f)
     except Exception:
         return None
-    return payload if isinstance(payload, dict) else None
+    return payload if isinstance(payload, dict) else None  # pyright: ignore[reportUnnecessaryIsInstance]
 
 
 def load_done_task_payloads(state_path: str, *, offset: int = 0, limit: int = 10) -> list[dict[str, Any]]:
@@ -291,7 +291,7 @@ def load_done_task_payloads(state_path: str, *, offset: int = 0, limit: int = 10
                 payload = tomli.load(f)
         except Exception:
             continue
-        if isinstance(payload, dict):
+        if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             payloads.append(payload)
     return payloads
 
@@ -314,7 +314,7 @@ def load_all_done_task_payloads(state_path: str) -> list[dict[str, Any]]:
                 payload = tomli.load(f)
         except Exception:
             continue
-        if isinstance(payload, dict):
+        if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             payloads.append(payload)
     return payloads
 
@@ -338,7 +338,7 @@ def iter_done_task_payloads(state_path: str) -> Iterator[dict[str, Any]]:
                     payload = tomli.load(f)
             except Exception:
                 continue
-            if isinstance(payload, dict):
+            if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
                 yield payload
 
 

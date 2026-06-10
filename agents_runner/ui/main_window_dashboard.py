@@ -60,7 +60,7 @@ class MainWindowDashboardMixin(MainWindowHints):
         payloads = load_done_task_payloads(self._state_path, offset=offset, limit=limit)
         loaded = 0
         for item in payloads:
-            if not isinstance(item, dict):
+            if not isinstance(item, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
                 continue
             task = deserialize_task(Task, item)
             if not task.task_id:

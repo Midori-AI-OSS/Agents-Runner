@@ -23,7 +23,7 @@ def _load_persisted_settings() -> dict[str, object]:
         payload = load_state(default_state_path())
     except Exception:
         return {}
-    settings = payload.get("settings") if isinstance(payload, dict) else None
+    settings = payload.get("settings") if isinstance(payload, dict) else None  # pyright: ignore[reportUnnecessaryIsInstance]
     parsed = _as_settings_dict(settings)
     return parsed or {}
 
