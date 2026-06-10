@@ -1,12 +1,15 @@
+# pyright: reportPrivateUsage=false, reportIncompatibleMethodOverride=false, reportIncompatibleVariableOverride=false
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 from agents_runner.agent_configs.model import AgentConfig
 from agents_runner.agent_configs.storage import save_agent_config
 from agents_runner.agent_systems.opencode.plugin import PLUGIN as OPENCODE_PLUGIN
 from agents_runner.agent_systems.opencode.plugin import WORKSPACE_DIR
+from agents_runner.core.agent.watch_state import AgentWatchState
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments.model import AgentInstance
@@ -14,44 +17,30 @@ from agents_runner.environments.model import AgentSelection
 from agents_runner.execution.supervisor import SupervisorConfig
 from agents_runner.execution.supervisor import TaskSupervisor
 from agents_runner.terminal_apps import TerminalOption
+from agents_runner.tests._fixtures import FakePrepWorker
+from agents_runner.tests._fixtures import FakeSignal
+from agents_runner.tests._fixtures import FakeThread
+from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.main_window_environment import MainWindowEnvironmentMixin
 from agents_runner.ui.main_window_settings import MainWindowSettingsMixin
 from agents_runner.ui.main_window_tasks_agent import MainWindowTasksAgentMixin
 from agents_runner.ui.main_window_tasks_interactive import (
     MainWindowTasksInteractiveMixin,
 )
+from agents_runner.ui.task_model import Task
 import agents_runner.ui.main_window_tasks_interactive as interactive_module
 
 
-class _FakeSignal:
-    def connect(self, *_args, **_kwargs) -> None:
-        return
-
-
-class _FakeThread:
-    def __init__(self, _parent=None) -> None:
-        self.started = _FakeSignal()
-        self.finished = _FakeSignal()
-
-    def start(self) -> None:
-        return
-
-    def quit(self) -> None:
-        return
-
-    def deleteLater(self) -> None:
-        return
-
-
-class _CapturingPrepWorker:
-    def __init__(self, **kwargs) -> None:
+class _CapturingPrepWorker(FakePrepWorker):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
         self.kwargs = dict(kwargs)
-        self.stage = _FakeSignal()
-        self.log = _FakeSignal()
-        self.succeeded = _FakeSignal()
-        self.failed = _FakeSignal()
+        self.stage = FakeSignal()
+        self.log = FakeSignal()
+        self.succeeded = FakeSignal()
+        self.failed = FakeSignal()
 
-    def moveToThread(self, _thread) -> None:
+    def moveToThread(self, _thread: object) -> None:
         return
 
     def run(self) -> None:
@@ -62,19 +51,19 @@ class _CapturingPrepWorker:
 
 
 class _FakePrepBridge:
-    def __init__(self, **_kwargs) -> None:
+    def __init__(self, **_kwargs: object) -> None:
         return
 
-    def on_stage(self, *_args, **_kwargs) -> None:
+    def on_stage(self, *_args: object, **_kwargs: object) -> None:
         return
 
-    def on_log(self, *_args, **_kwargs) -> None:
+    def on_log(self, *_args: object, **_kwargs: object) -> None:
         return
 
-    def on_succeeded(self, *_args, **_kwargs) -> None:
+    def on_succeeded(self, *_args: object, **_kwargs: object) -> None:
         return
 
-    def on_failed(self, *_args, **_kwargs) -> None:
+    def on_failed(self, *_args: object, **_kwargs: object) -> None:
         return
 
     def deleteLater(self) -> None:
@@ -83,15 +72,15 @@ class _FakePrepBridge:
 
 class _FakeMessageBox:
     @staticmethod
-    def critical(*_args, **_kwargs) -> None:
+    def critical(*_args: object, **_kwargs: object) -> None:
         return
 
     @staticmethod
-    def warning(*_args, **_kwargs) -> None:
+    def warning(*_args: object, **_kwargs: object) -> None:
         return
 
     @staticmethod
-    def information(*_args, **_kwargs) -> None:
+    def information(*_args: object, **_kwargs: object) -> None:
         return
 
 
@@ -156,14 +145,20 @@ def test_opencode_run_keeps_variant_and_uses_dir() -> None:
 class _DummyDashboard:
     last_task_id: str | None = None
 
-    def upsert_task(self, task, *, stain=None, spinner_color=None) -> None:
+    def upsert_task(
+        self,
+        task: Task,
+        *,
+        stain: object = None,
+        spinner_color: object = None,
+    ) -> None:
         del stain, spinner_color
         self.last_task_id = task.task_id
 
-    def remove_tasks(self, _task_ids) -> None:
+    def remove_tasks(self, _task_ids: object) -> None:
         return
 
-    def upsert_past_task(self, *_args, **_kwargs) -> None:
+    def upsert_past_task(self, *_args: object, **_kwargs: object) -> None:
         return
 
 
@@ -189,31 +184,44 @@ class _DummyMainWindowInteractive(
             "preflight_script": "",
         }
         self._environments = {env.env_id: env}
-        self._tasks: dict[str, object] = {}
-        self._interactive_prep_context: dict[str, object] = {}
-        self._interactive_prep_workers: dict[str, object] = {}
-        self._interactive_prep_threads: dict[str, object] = {}
-        self._interactive_prep_bridges: dict[str, object] = {}
-        self._dashboard = _DummyDashboard()
-        self._new_task = _DummyNewTask()
+        self._tasks: dict[str, Task] = {}
+        self._interactive_prep_context: dict[str, dict[str, Any]] = {}
+        self._interactive_prep_workers: dict[str, Any] = {}
+        self._interactive_prep_threads: dict[str, Any] = {}
+        self._interactive_prep_bridges: dict[str, Any] = {}
+        self._dashboard = cast(Any, _DummyDashboard())
+        self._new_task = cast(Any, _DummyNewTask())
         self._state_path = str(tmp_path / "state.toml")
         self._workdir = str(workdir)
 
     def _active_environment_id(self) -> str:
         return next(iter(self._environments.keys()))
 
-    def _new_task_workspace(self, _env, *, task_id: str) -> tuple[str, bool, str]:
-        del task_id
+    def _new_task_workspace(
+        self,
+        env: Environment | None,
+        task_id: str | None = None,
+    ) -> tuple[str, bool, str]:
+        del env, task_id
         return self._workdir, True, ""
 
-    def _schedule_save(self) -> None:
+    def _schedule_save(self, *_args: object) -> None:
+        return
+
+    def _remember_environment_base_branch(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+        return
+
+    def _refresh_active_environment_repo_branches(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
         return
 
     def _maybe_auto_navigate_on_task_start(self, *, interactive: bool) -> None:
         del interactive
         return
 
-    def _on_task_log(self, _task_id: str, _line: str) -> None:
+    def _on_task_log(self, task_id: str, log_line: str) -> None:
+        del task_id, log_line
         return
 
     def _refresh_new_task_agent_info(self) -> None:
@@ -236,42 +244,82 @@ class _DummyMainWindowAgent(
             "preflight_script": "",
         }
         self._environments = {env.env_id: env}
-        self._tasks: dict[str, object] = {}
-        self._threads: dict[str, object] = {}
-        self._bridges: dict[str, object] = {}
+        self._tasks: dict[str, Task] = {}
+        self._threads: dict[str, Any] = {}
+        self._bridges: dict[str, TaskRunnerBridge] = {}
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
-        self._watch_states: dict[str, object] = {}
-        self._dashboard = _DummyDashboard()
-        self._new_task = _DummyNewTask()
+        self._watch_states: dict[str, AgentWatchState] = {}
+        self._dashboard = cast(Any, _DummyDashboard())
+        self._new_task = cast(Any, _DummyNewTask())
         self._state_path = str(tmp_path / "state.toml")
         self._workdir = str(workdir)
 
     def _active_environment_id(self) -> str:
         return next(iter(self._environments.keys()))
 
-    def _new_task_workspace(self, _env, *, task_id: str) -> tuple[str, bool, str]:
-        del task_id
+    def _new_task_workspace(
+        self,
+        env: Environment | None,
+        task_id: str | None = None,
+    ) -> tuple[str, bool, str]:
+        del env, task_id
         return self._workdir, True, ""
 
-    def _schedule_save(self) -> None:
+    def _schedule_save(self, *_args: object) -> None:
+        return
+
+    def _remember_environment_base_branch(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+        return
+
+    def _refresh_active_environment_repo_branches(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
         return
 
     def _maybe_auto_navigate_on_task_start(self, *, interactive: bool) -> None:
         del interactive
         return
 
-    def _on_task_log(self, _task_id: str, _line: str) -> None:
+    def _on_task_log(self, task_id: str, log_line: str) -> None:
+        del task_id, log_line
         return
 
     def _refresh_new_task_agent_info(self) -> None:
         return
 
-    def _can_start_new_agent_for_env(self, _env_id: str | None) -> bool:
+    def _can_start_new_agent_for_env(self, *args: object) -> bool:
+        del args
         return False
 
+    def _start_task_from_ui(
+        self,
+        prompt: str,
+        host_config_dir: str,
+        env_id: str,
+        base_branch: str,
+        pr_context: dict[str, object] | None = None,
+        agent_override: dict[str, str] | None = None,
+    ) -> str | None:
+        return MainWindowTasksAgentMixin._start_task_from_ui(
+            self,
+            prompt,
+            host_config_dir,
+            env_id,
+            base_branch,
+            pr_context=pr_context,
+            agent_override=agent_override,
+        )
 
-def test_selected_environment_agent_cli_flags_reach_interactive_launch(monkeypatch, tmp_path) -> None:
+
+def _docker_which(name: str) -> str | None:
+    return "/usr/bin/docker" if name == "docker" else None
+
+
+def test_selected_environment_agent_cli_flags_reach_interactive_launch(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
     workdir = tmp_path / "workspace"
     workdir.mkdir(parents=True, exist_ok=True)
 
@@ -334,12 +382,12 @@ def test_selected_environment_agent_cli_flags_reach_interactive_launch(monkeypat
     monkeypatch.setattr(
         interactive_module.shutil,
         "which",
-        lambda name: "/usr/bin/docker" if name == "docker" else None,
+        _docker_which,
     )
     monkeypatch.setattr(interactive_module, "QMessageBox", _FakeMessageBox)
     monkeypatch.setattr(interactive_module, "InteractivePrepWorker", _CapturingPrepWorker)
     monkeypatch.setattr(interactive_module, "InteractivePrepBridge", _FakePrepBridge)
-    monkeypatch.setattr(interactive_module, "QThread", _FakeThread)
+    monkeypatch.setattr(interactive_module, "QThread", FakeThread)
     monkeypatch.setattr(interactive_module, "is_gh_available", lambda: False)
 
     window._start_interactive_task_from_ui(
@@ -353,7 +401,8 @@ def test_selected_environment_agent_cli_flags_reach_interactive_launch(monkeypat
         extra_preflight_script="",
     )
 
-    task_id = window._dashboard.last_task_id
+    dashboard = cast(_DummyDashboard, window._dashboard)
+    task_id = dashboard.last_task_id
     assert task_id is not None
     task = window._tasks[task_id]
     assert task.agent_cli == "opencode"
@@ -365,7 +414,10 @@ def test_selected_environment_agent_cli_flags_reach_interactive_launch(monkeypat
     assert worker.kwargs.get("agent_cli_args") == ["--agent", "plan"]
 
 
-def test_selected_environment_agent_cli_flags_reach_run_agent_launch(monkeypatch, tmp_path) -> None:
+def test_selected_environment_agent_cli_flags_reach_run_agent_launch(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
     workdir = tmp_path / "workspace"
     workdir.mkdir(parents=True, exist_ok=True)
 
@@ -400,7 +452,7 @@ def test_selected_environment_agent_cli_flags_reach_run_agent_launch(monkeypatch
     window = _DummyMainWindowAgent(env, tmp_path, workdir)
     monkeypatch.setattr(
         "agents_runner.ui.main_window_tasks_agent.shutil.which",
-        lambda name: "/usr/bin/docker" if name == "docker" else None,
+        _docker_which,
     )
     monkeypatch.setattr(
         "agents_runner.ui.main_window_tasks_agent.QMessageBox",
