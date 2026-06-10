@@ -477,7 +477,7 @@ class GitHubWorkListPage(QWidget):
     def _clear_rows(self) -> None:
         while self._list_layout.count() > 1:
             item = self._list_layout.takeAt(0)
-            widget = item.widget()
+            widget = item.widget()  # pyright: ignore[reportOptionalMemberAccess]
             if widget is not None:
                 if isinstance(widget, _GitHubWorkSkeletonRow):
                     widget.stop()

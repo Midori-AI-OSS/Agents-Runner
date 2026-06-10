@@ -45,7 +45,7 @@ def repair_task_git_metadata(
 
     if has_metadata:
         # Check if existing metadata is complete
-        base_branch = task.git.get("base_branch")
+        base_branch = task.git.get("base_branch")  # pyright: ignore[reportOptionalMemberAccess]
         if base_branch:
             logger.debug(f"[repair] task {task_id}: metadata already present")
             return (True, "metadata already present")

@@ -1219,7 +1219,7 @@ class SettingsFormMixin:
     def _clear_layout(layout: QGridLayout) -> None:
         while layout.count() > 0:
             item = layout.takeAt(0)
-            widget = item.widget()
+            widget = item.widget()  # pyright: ignore[reportOptionalMemberAccess]
             if widget is not None:
                 widget.deleteLater()
 

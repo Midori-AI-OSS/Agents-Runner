@@ -182,7 +182,7 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
 
         override = self._coerce_agent_override(agent_override)
         shell_mode = bool(override and str(override.get("mode") or "").strip().lower() == "shell")
-        shell = str(override.get("shell") or "bash").strip() if shell_mode else "bash"
+        shell = str(override.get("shell") or "bash").strip() if shell_mode else "bash"  # pyright: ignore[reportOptionalMemberAccess]
         uses_environment_agent_selection = bool(
             not override and env and env.agent_selection and getattr(env.agent_selection, "agents", None)
         )
