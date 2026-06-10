@@ -105,6 +105,8 @@ class MainWindowEnvironmentMixin(MainWindowHints):
         self,
         env: Environment | None,
         base_branch: str,
+        *args: object,
+        **kwargs: object,
     ) -> None:
         if env is None or str(getattr(env, "workspace_type", "") or "") != WORKSPACE_CLONED:
             return
@@ -117,10 +119,11 @@ class MainWindowEnvironmentMixin(MainWindowHints):
 
     def _refresh_active_environment_repo_branches(
         self,
-        *,
+        *args: object,
         trigger_reason: str,
         show_loading_ui: bool,
         preserve_current_selection: bool,
+        **kwargs: object,
     ) -> None:
         env = self._environments.get(self._active_environment_id())
         self._sync_new_task_repo_controls(
@@ -239,7 +242,7 @@ class MainWindowEnvironmentMixin(MainWindowHints):
             else:
                 self._new_task.set_repo_branches_loading(False)
             return
-        cleaned = [str(b or "").strip() for b in branches]
+        cleaned = [str(b or "").strip() for b in branches]  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
         cleaned = [b for b in cleaned if b]
         if not cleaned:
             if fallback_branches:

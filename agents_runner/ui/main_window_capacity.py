@@ -32,7 +32,7 @@ class MainWindowCapacityMixin(MainWindowHints):
         except Exception:
             return -1
 
-    def _can_start_new_agent_for_env(self, env_id: str | None) -> bool:
+    def _can_start_new_agent_for_env(self, env_id: str | None, *args: object) -> bool:
         max_agents = self._max_agents_running_for_env(env_id)
         if max_agents < 0:
             return True

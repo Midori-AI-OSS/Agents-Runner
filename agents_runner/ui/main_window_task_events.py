@@ -397,7 +397,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
 
         for event in events:
             if event.kind == "state":
-                payload = event.payload if isinstance(event.payload, dict) else {}
+                payload = event.payload if isinstance(event.payload, dict) else {}  # pyright: ignore[reportUnknownVariableType]
                 state_events.append(dict(payload))
                 continue
             if event.kind == "done" and done_event is None:
@@ -415,7 +415,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
             if event.kind == "retry":
                 payload = event.payload
                 if isinstance(payload, tuple) and len(payload) == 3:
-                    attempt_number, agent, delay = payload
+                    attempt_number, agent, delay = payload  # pyright: ignore[reportUnknownVariableType]
                     self._on_bridge_retry_attempt(
                         task_id,
                         int(attempt_number),
@@ -426,7 +426,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
             if event.kind == "agent_switched":
                 payload = event.payload
                 if isinstance(payload, tuple) and len(payload) == 2:
-                    from_agent, to_agent = payload
+                    from_agent, to_agent = payload  # pyright: ignore[reportUnknownVariableType]
                     self._on_bridge_agent_switched(
                         task_id,
                         str(from_agent),
@@ -439,7 +439,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
         done_payload = done_event.payload
         if not isinstance(done_payload, tuple) or len(done_payload) != 4:
             return
-        exit_code, error, artifacts, metadata = done_payload
+        exit_code, error, artifacts, metadata = done_payload  # pyright: ignore[reportUnknownVariableType]
         self._on_bridge_done(
             task_id,
             int(exit_code),
@@ -449,13 +449,20 @@ class MainWindowTaskEventsMixin(MainWindowHints):
         )
         proxy.mark_bridge_done_dispatched()
 
-    def _on_bridge_state(self, task_id: str, state: dict[str, Any]) -> None:
+    def _on_bridge_state(self, task_id: str, state: dict[str, Any], *args: object) -> None:
         self._on_task_state(task_id, state)
 
-    def _on_bridge_log(self, task_id: str, line: str) -> None:
+    def _on_bridge_log(self, task_id: str, line: str, *args: object) -> None:
         self._on_task_log(task_id, line)
 
-    def _on_bridge_retry_attempt(self, task_id: str, attempt_number: int, agent: str, delay: float) -> None:
+    def _on_bridge_retry_attempt(
+        self,
+        task_id: str,
+        attempt_number: int,
+        agent: str,
+        delay: float,
+        *args: object,
+    ) -> None:
         """Handle retry attempt signal from supervisor."""
         task = self._tasks.get(task_id)
         if task is None:
@@ -478,7 +485,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
         spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
-    def _on_bridge_agent_switched(self, task_id: str, from_agent: str, to_agent: str) -> None:
+    def _on_bridge_agent_switched(self, task_id: str, from_agent: str, to_agent: str, *args: object) -> None:
         """Handle agent switch signal from supervisor."""
         task = self._tasks.get(task_id)
         if task is None:
@@ -508,6 +515,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
         error: object,
         artifacts: list[Any],
         metadata: dict[str, Any] | None = None,
+        *args: object,
     ) -> None:
         bridge = self._bridges.get(task_id)
         task = self._tasks.get(task_id)
@@ -586,7 +594,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
             return
         if not isinstance(artifacts, list):
             return
-        artifact_uuids = [str(item) for item in artifacts if str(item).strip()]
+        artifact_uuids = [str(item) for item in artifacts if str(item).strip()]  # pyright: ignore[reportUnknownVariableType]
         if not artifact_uuids:
             return
         task.artifacts = artifact_uuids
@@ -839,7 +847,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
         finally:
             pass
 
-    def _start_artifact_finalization(self, task: Task) -> None:
+    def _start_artifact_finalization(self, task: Task, *args: object) -> None:
         if getattr(task, "_artifact_finalization_started", False):
             return
         try:

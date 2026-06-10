@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     from agents_runner.ui.task_event_proxy import TaskEventProxy
 
 
-class MainWindow(
+class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
     QMainWindow,
     MainWindowCapacityMixin,
     MainWindowNavigationMixin,
@@ -422,7 +422,7 @@ class MainWindow(
         self._schedule_save()
 
     def _on_radio_state_changed(self, state: object) -> None:
-        snapshot = dict(state) if isinstance(state, dict) else self._radio_controller.state_snapshot()
+        snapshot = dict(state) if isinstance(state, dict) else self._radio_controller.state_snapshot()  # pyright: ignore[reportUnknownVariableType]
         qt_available = bool(snapshot.get("qt_available"))
         self._radio_control.setVisible(qt_available)
         if qt_available:
@@ -498,7 +498,7 @@ class MainWindow(
                 return
 
             normalized: list[str] = []
-            for raw in channels:
+            for raw in channels:  # pyright: ignore[reportUnknownVariableType]
                 channel = RadioController.normalize_channel(raw)
                 if not channel or channel in normalized:
                     continue
@@ -567,4 +567,4 @@ class MainWindow(
 
         if msg_box.clickedButton() == open_settings_btn:
             self._settings.show()
-            self._settings._on_nav_button_clicked("cleanup")
+            self._settings._on_nav_button_clicked("cleanup")  # pyright: ignore[reportPrivateUsage]

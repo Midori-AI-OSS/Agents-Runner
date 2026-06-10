@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from PySide6.QtCore import QEasingCurve
 from PySide6.QtCore import QParallelAnimationGroup
@@ -330,8 +331,8 @@ class GitHubWorkListPage(QWidget):
         self._coordinator.cache_updated.connect(self._on_cache_updated)
         self._apply_environment_tints("")
 
-    def set_settings_data(self, settings_data: dict[str, object]) -> None:
-        settings = dict(settings_data or {})
+    def set_settings_data(self, settings_data: dict[str, Any]) -> None:
+        settings: dict[str, Any] = dict(settings_data or {})
         self._prefer_browser = bool(settings.get("github_workroom_prefer_browser") or False)
         self._confirmation_mode = str(settings.get("github_write_confirmation_mode") or "always").strip().lower()
         self._sync_refresh_visibility()
@@ -391,7 +392,7 @@ class GitHubWorkListPage(QWidget):
             return
 
         load_key = self._first_load_key(env_id)
-        entry = self._coordinator.get_cache_entry(item_type=self._item_type, env_id=env_id)
+        entry = self._coordinator.get_cache_entry(item_type=self._item_type, env_id=env_id)  # pyright: ignore[reportUnknownVariableType]
         if entry is None and load_key not in self._initial_load_seen_keys:
             self._initial_load_seen_keys.add(load_key)
             self._render_loading_rows(stain=self._current_stain())
@@ -416,7 +417,7 @@ class GitHubWorkListPage(QWidget):
             self._last_fetch_issue = ""
             return
 
-        entry = self._coordinator.get_cache_entry(item_type=self._item_type, env_id=env_id)
+        entry = self._coordinator.get_cache_entry(item_type=self._item_type, env_id=env_id)  # pyright: ignore[reportUnknownVariableType]
         if entry is None:
             if show_loading_if_missing:
                 load_key = self._first_load_key(env_id)
@@ -546,7 +547,7 @@ class GitHubWorkListPage(QWidget):
         repo_context = resolve_environment_github_repo(self._environments.get(self._active_env_id))
         repo_owner = str(getattr(repo_context, "repo_owner", "") or "")
         repo_name = str(getattr(repo_context, "repo_name", "") or "")
-        pr_context: dict[str, object] | None = None
+        pr_context: dict[str, Any] | None = None
         if item.item_type == "pr":
             pr_context = {
                 "repo_owner": repo_owner,
@@ -618,7 +619,7 @@ class GitHubWorkListPage(QWidget):
         ).strip()
 
     def _sync_refresh_visibility(self) -> None:
-        hide_refresh = self._coordinator.is_polling_effective_for_env(str(self._active_env_id or "").strip())
+        hide_refresh = self._coordinator.is_polling_effective_for_env(str(self._active_env_id or "").strip())  # pyright: ignore[reportUnknownVariableType]
         self._refresh.setVisible(not hide_refresh)
 
     def _current_stain(self) -> str:

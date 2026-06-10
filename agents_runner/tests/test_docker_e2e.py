@@ -18,6 +18,7 @@ Alternatively, run with sudo (not recommended for regular use):
 
 from __future__ import annotations
 
+from collections.abc import Generator
 import os
 import subprocess
 import tempfile
@@ -28,6 +29,7 @@ from threading import Event
 from typing import Any
 
 import pytest
+from pytest import FixtureRequest
 
 from agents_runner.docker.config import DockerRunnerConfig
 from agents_runner.docker.workers import DockerAgentWorker
@@ -72,7 +74,7 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.fixture(scope="session", autouse=True)
-def cleanup_test_containers():
+def cleanup_test_containers() -> Generator[None, None, None]:
     """Cleanup any leftover test containers before and after test session.
 
     This is best-effort cleanup - errors are logged but don't fail the session.
@@ -109,7 +111,7 @@ def cleanup_test_containers():
 
 
 @pytest.fixture(scope="function")
-def temp_state_dir():
+def temp_state_dir() -> Generator[str, None, None]:
     """Create a temporary directory for state files.
 
     Scope is function to ensure complete isolation between tests.
@@ -121,7 +123,10 @@ def temp_state_dir():
 
 
 @pytest.fixture(scope="function")
-def test_config(temp_state_dir, request):
+def test_config(
+    temp_state_dir: str,
+    request: FixtureRequest,
+) -> Generator[tuple[DockerRunnerConfig, str, str, str, str], None, None]:
     """Create a test Docker runner config.
 
     Scope is function to ensure each test has completely isolated fixtures:
@@ -131,21 +136,21 @@ def test_config(temp_state_dir, request):
     - No shared state between test runs
     """
     # Create a temporary workspace directory
-    workdir = _make_container_bind_dir("docker-e2e-workspace-")
-    codex_dir = _make_container_bind_dir("docker-e2e-codex-")
+    workdir: str = _make_container_bind_dir("docker-e2e-workspace-")
+    codex_dir: str = _make_container_bind_dir("docker-e2e-codex-")
 
-    task_id = f"test-task-{int(time.time() * 1000)}"
+    task_id: str = f"test-task-{int(time.time() * 1000)}"
 
     # Generate test-specific container name
     # Truncate test name to stay under Docker's 63-char limit
     # Format: agents-runner-test-{test_name}-{short_uuid}
-    test_name = request.node.name[:20]  # Max 20 chars for test name
+    test_name: Any = request.node.name[:20]  # pyright: ignore[reportUnknownVariableType,reportUnknownMemberType]
     short_uuid = uuid.uuid4().hex[:6]
     container_name = f"agents-runner-test-{test_name}-{short_uuid}"
 
-    container_id = None
+    container_id: str | None = None
 
-    config = DockerRunnerConfig(
+    config: DockerRunnerConfig = DockerRunnerConfig(
         task_id=task_id,
         image=TEST_IMAGE,
         host_workdir=workdir,
@@ -160,7 +165,7 @@ def test_config(temp_state_dir, request):
         container_name=container_name,
     )
 
-    def finalizer():
+    def finalizer() -> None:
         """Wait for container removal and cleanup directories."""
         # Best-effort wait for container removal
         if container_id:
@@ -200,7 +205,9 @@ def ensure_test_image():
         run_docker(["pull", TEST_IMAGE], timeout_s=120.0)
 
 
-def test_task_lifecycle_completes_successfully(test_config):
+def test_task_lifecycle_completes_successfully(
+    test_config: tuple[DockerRunnerConfig, str, str, str, str],
+) -> None:
     """Test creating a task that runs a container and completes successfully.
 
     Verifies:
@@ -210,6 +217,11 @@ def test_task_lifecycle_completes_successfully(test_config):
     """
     ensure_test_image()
 
+    config: DockerRunnerConfig
+    state_path: str
+    workdir: str
+    codex_dir: str
+    task_id: str
     config, state_path, workdir, codex_dir, task_id = test_config
 
     # Verify fixture isolation: ensure unique task_id
@@ -232,17 +244,17 @@ def test_task_lifecycle_completes_successfully(test_config):
     )
 
     # Task tracking
-    states_received = []
-    logs_received = []
+    states_received: list[dict[str, Any]] = []
+    logs_received: list[str] = []
     done_called = Event()
-    final_exit_code = None
-    final_error = None
-    final_artifacts = None
+    final_exit_code: int | None = None
+    final_error: str | None = None
+    final_artifacts: list[str] | None = None
 
     def on_state(state: dict[str, Any]) -> None:
         states_received.append(dict(state))
         # Save state to persistence
-        payload = {
+        payload: dict[str, Any] = {
             "task_id": task_id,
             "status": state.get("Status", "queued"),
             "prompt": "test prompt",

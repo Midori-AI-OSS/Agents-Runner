@@ -102,6 +102,7 @@ class MainWindowTasksAgentMixin(MainWindowHints):
         base_branch: str,
         pr_context: dict[str, object] | None = None,
         agent_override: dict[str, str] | None = None,
+        *args: object,
     ) -> str | None:
         del host_config_dir
         if shutil.which("docker") is None:
@@ -529,7 +530,7 @@ class MainWindowTasksAgentMixin(MainWindowHints):
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
-            for p in getattr(env, "prompts", None) or []:
+            for p in getattr(env, "prompts", None) or []:  # pyright: ignore[reportUnknownVariableType]
                 text = str(getattr(p, "text", "") or "").strip()
                 if not text or not bool(getattr(p, "enabled", False)):
                     continue
