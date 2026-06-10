@@ -122,10 +122,10 @@ class MainWindowPersistenceMixin(_MainWindowHints):
                 task.finished_at = datetime.now(tz=timezone.utc)
         return True
 
-    def _schedule_save(self) -> None:
+    def _schedule_save(self, *_args: object) -> None:
         self._save_timer.start()
 
-    def _save_state(self) -> None:
+    def _save_state(self, *_args: object) -> None:
         from agents_runner.persistence import save_watch_state
 
         settings_payload = dict(self._settings_data)

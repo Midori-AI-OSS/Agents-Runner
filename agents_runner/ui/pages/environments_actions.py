@@ -350,7 +350,7 @@ class EnvironmentsPageActionsMixin(_EnvironmentsPageHints):
     def selected_environment_id(self) -> str:
         return str(self._env_select.currentData() or "")
 
-    def _draft_environment_from_form(self) -> Environment | None:
+    def _draft_environment_from_form(self, *args: object) -> Environment | None:
         env_id = self._current_env_id
         if not env_id:
             return None

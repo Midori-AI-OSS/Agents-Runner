@@ -5,7 +5,7 @@ import re
 import threading
 import time
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -439,7 +439,7 @@ class MainWindow(
 
         self._update_window_title_from_radio_state(snapshot)
 
-    def _update_window_title_from_radio_state(self, state: dict[str, object]) -> None:
+    def _update_window_title_from_radio_state(self, state: dict[str, Any]) -> None:
         if not bool(state.get("qt_available")):
             self.setWindowTitle(APP_TITLE)
             return

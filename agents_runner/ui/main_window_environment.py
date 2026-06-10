@@ -269,7 +269,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
             preserve_current_selection=preserve_current_selection,
         )
 
-    def _populate_environment_pickers(self) -> None:
+    def _populate_environment_pickers(self, *args: object) -> None:
         active_id = self._active_environment_id()
         envs = self._environment_list()
         disk_envs = load_environments()

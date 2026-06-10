@@ -597,7 +597,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
         self._details.update_task(task)
         self._schedule_save()
 
-    def _on_task_log(self, task_id: str, line: str) -> None:
+    def _on_task_log(self, task_id: str, log_line: str) -> None:
         task = self._tasks.get(task_id)
         if task is None:
             return
@@ -606,7 +606,7 @@ class MainWindowTaskEventsMixin(_MainWindowHints):
         saw_non_empty_log = False
         saw_docker_pull = False
 
-        for normalized_line in normalize_log_stream_chunk(line):
+        for normalized_line in normalize_log_stream_chunk(log_line):
             cleaned = prettify_log_line(normalized_line)
             if not cleaned:
                 continue
