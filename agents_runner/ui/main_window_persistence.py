@@ -129,7 +129,7 @@ class MainWindowPersistenceMixin(MainWindowHints):
         from agents_runner.persistence import save_watch_state
 
         settings_payload = dict(self._settings_data)
-        for key in self._REMOVED_IDE_SETTINGS_KEYS:
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
             settings_payload.pop(key, None)
 
         try:
@@ -166,7 +166,7 @@ class MainWindowPersistenceMixin(MainWindowHints):
         if isinstance(settings, dict):
             self._settings_data.update(settings)
         self._settings_data.pop("stt_mode", None)
-        for key in self._REMOVED_IDE_SETTINGS_KEYS:
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
             self._settings_data.pop(key, None)
         self._settings_data["use"] = normalize_agent(str(self._settings_data.get("use") or "codex"))
         try:
@@ -175,7 +175,7 @@ class MainWindowPersistenceMixin(MainWindowHints):
             )
         except Exception:
             self._settings_data["max_agents_running"] = -1
-        for key in self._REMOVED_LEGACY_SETTINGS_KEYS:
+        for key in self._REMOVED_LEGACY_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
             self._settings_data.pop(key, None)
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("gpu_enabled", False)
@@ -262,10 +262,10 @@ class MainWindowPersistenceMixin(MainWindowHints):
         except Exception:
             self._settings_data["github_poll_startup_delay_s"] = 35
         trusted_users_raw = self._settings_data.get("agentsnova_trusted_users_global")
-        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []
+        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
         trusted_users: list[str] = []
         seen_users: set[str] = set()
-        for row in trusted_users_rows:
+        for row in trusted_users_rows:  # pyright: ignore[reportUnknownVariableType]
             username = str(row or "").strip().lstrip("@").lower()
             if not username or username in seen_users:
                 continue

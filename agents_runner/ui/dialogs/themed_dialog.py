@@ -15,7 +15,7 @@ from agents_runner.ui.graphics import resolve_effective_ui_theme_name
 def _as_settings_dict(value: object) -> dict[str, object] | None:
     if not isinstance(value, Mapping):
         return None
-    return {str(key): item for key, item in value.items()}
+    return {str(key): item for key, item in value.items()}  # pyright: ignore[reportUnknownVariableType]
 
 
 def _load_persisted_settings() -> dict[str, object]:

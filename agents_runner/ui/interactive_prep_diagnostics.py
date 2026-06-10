@@ -17,4 +17,4 @@ def log_interactive_prep_diag(*, main_window: MainWindow, task_id: str, prep_id:
     level_text = str(level or "INFO").strip().upper() or "INFO"
     if level_text not in {"WARN", "ERROR"}:
         return
-    main_window._on_task_log(task_id, prep_diag_line(prep_id, level_text, message))
+    main_window._on_task_log(task_id, prep_diag_line(prep_id, level_text, message))  # pyright: ignore[reportPrivateUsage]

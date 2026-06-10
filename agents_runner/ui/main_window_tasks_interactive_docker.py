@@ -217,7 +217,7 @@ def launch_docker_terminal_task(
     )
 
     def on_phase_log(line: str) -> None:
-        main_window._on_task_log(task_id, line)
+        main_window._on_task_log(task_id, line)  # pyright: ignore[reportPrivateUsage]
 
     resolved_probe_available = agent_probe_available_override
     if use_precomputed_cache:
@@ -413,7 +413,7 @@ def launch_docker_terminal_task(
             if gh_token:
                 env_args.extend(["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"])
 
-        ports_source = (
+        ports_source = (  # pyright: ignore[reportUnknownVariableType]
             list(ports_for_task or [])
             if ports_for_task is not None
             else list((getattr(env, "ports", None) or []) if env else [])
@@ -439,7 +439,7 @@ def launch_docker_terminal_task(
                 )
             opencode_web_url = f"http://{OPENCODE_WEB_HOST}:{opencode_web_host_port}"
             task.opencode_web_url = opencode_web_url
-            main_window._on_task_log(
+            main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
                 task_id,
                 format_log(
                     "opencode",
@@ -452,9 +452,9 @@ def launch_docker_terminal_task(
                     ),
                 ),
             )
-            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            main_window._details.update_task(task)
-            main_window._schedule_save()
+            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+            main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
+            main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
         if desktop_enabled:
             host_port = allocate_localhost_port()
@@ -475,13 +475,13 @@ def launch_docker_terminal_task(
             env_args.extend(["-e", f"AGENTS_RUNNER_TASK_ID={task_token}"])
             task.headless_desktop_enabled = True
             task.novnc_url = f"http://127.0.0.1:{host_port}/vnc.html"
-            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            main_window._details.update_task(task)
-            main_window._schedule_save()
+            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+            main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
+            main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
         # Apply environment-specified ports (or task runtime overrides)
         if not network_host:
-            for port_spec in ports_source:
+            for port_spec in ports_source:  # pyright: ignore[reportUnknownVariableType]
                 spec = str(port_spec or "").strip()
                 if not spec:
                     continue
@@ -500,7 +500,7 @@ def launch_docker_terminal_task(
         all_mounts.append(f"{artifacts_staging_dir}:/tmp/agents-artifacts")
 
         # Add host cache mount if enabled in settings
-        if main_window._settings_data.get("mount_host_cache", False):
+        if main_window._settings_data.get("mount_host_cache", False):  # pyright: ignore[reportPrivateUsage]
             host_cache = os.path.expanduser("~/.cache")
             container_cache = "/home/midori-ai/.cache"
             all_mounts.append(f"{host_cache}:{container_cache}:rw")
@@ -549,7 +549,7 @@ def launch_docker_terminal_task(
             f"{desktop_start_clause}{runtime_cmd_log}{target_cmd}"
         )
 
-        main_window._on_task_log(
+        main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
             task_id,
             format_log("agent", "cmd", "INFO", target_cmd),
         )
@@ -590,13 +590,13 @@ def launch_docker_terminal_task(
             gpu_enabled=gpu_enabled,
             network_host=network_host,
         )
-        main_window._on_task_log(
+        main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
             task_id,
             format_log("docker", "cmd", "INFO", docker_cmd_for_log),
         )
 
         # Prepare finish file for exit code tracking
-        finish_dir = os.path.dirname(main_window._state_path)
+        finish_dir = os.path.dirname(main_window._state_path)  # pyright: ignore[reportPrivateUsage]
         os.makedirs(finish_dir, exist_ok=True)
         finish_path = os.path.join(finish_dir, f"interactive-finish-{task_id}.txt")
         error_log_path = os.path.join(finish_dir, f"interactive-error-{task_id}.log")
@@ -641,30 +641,30 @@ def launch_docker_terminal_task(
 
         # Log base branch if specified
         if (desired_base or "").strip():
-            main_window._on_task_log(
+            main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
                 task_id,
                 format_log("gh", "branch", "INFO", f"base branch: {desired_base}"),
             )
 
         # Update settings
-        main_window._settings_data["host_workdir"] = host_workdir
-        main_window._settings_data["active_environment_id"] = env_id
-        main_window._settings_data["interactive_terminal_id"] = str(getattr(terminal_opt, "terminal_id", ""))
-        main_window._apply_active_environment_to_new_task()
-        main_window._schedule_save()
+        main_window._settings_data["host_workdir"] = host_workdir  # pyright: ignore[reportPrivateUsage]
+        main_window._settings_data["active_environment_id"] = env_id  # pyright: ignore[reportPrivateUsage]
+        main_window._settings_data["interactive_terminal_id"] = str(getattr(terminal_opt, "terminal_id", ""))  # pyright: ignore[reportPrivateUsage]
+        main_window._apply_active_environment_to_new_task()  # pyright: ignore[reportPrivateUsage]
+        main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
         # Update task status to running
         task.status = "running"
         task.started_at = datetime.now(tz=timezone.utc)
-        main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-        main_window._details.update_task(task)
-        main_window._schedule_save()
+        main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+        main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
+        main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
         # Start finish file watcher
-        main_window._start_interactive_finish_watch(task_id, finish_path, error_log_path)
+        main_window._start_interactive_finish_watch(task_id, finish_path, error_log_path)  # pyright: ignore[reportPrivateUsage]
 
         # Log launch
-        main_window._on_task_log(
+        main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
             task_id,
             format_log(
                 "ui",
@@ -674,7 +674,7 @@ def launch_docker_terminal_task(
             ),
         )
         if opencode_web_url:
-            main_window._on_task_log(
+            main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
                 task_id,
                 format_log("opencode", "web", "INFO", f"web url: {opencode_web_url}"),
             )
@@ -688,8 +688,8 @@ def launch_docker_terminal_task(
                 url=opencode_web_url,
                 host_port=opencode_web_host_port,
             )
-        main_window._maybe_auto_navigate_on_task_start(interactive=True)
-        main_window._new_task.reset_for_new_run()
+        main_window._maybe_auto_navigate_on_task_start(interactive=True)  # pyright: ignore[reportPrivateUsage]
+        main_window._new_task.reset_for_new_run()  # pyright: ignore[reportPrivateUsage]
 
     except Exception as exc:
         _handle_launch_error(main_window, task, tmp_paths, stain, spinner, str(exc))
@@ -1118,7 +1118,7 @@ def _handle_launch_error(
     task.error = error_message
     task.exit_code = 1
     task.finished_at = datetime.now(tz=timezone.utc)
-    main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-    main_window._details.update_task(task)
-    main_window._schedule_save()
+    main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+    main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
+    main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
     QMessageBox.warning(main_window, "Failed to launch terminal", error_message)

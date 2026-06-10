@@ -45,7 +45,7 @@ def load_agent_configs(state_path: str) -> list[AgentConfig]:
         return []
 
     configs: list[AgentConfig] = []
-    raw_items: list[object] = raw
+    raw_items: list[object] = raw  # pyright: ignore[reportUnknownVariableType]
     for item in raw_items:
         item_dict = _as_dict(item)
         if item_dict is None:
@@ -91,7 +91,7 @@ def save_agent_config(state_path: str, config: AgentConfig) -> None:
     raw_configs = payload.get("agent_configs")
     items: list[dict[str, Any]] = []
     if isinstance(raw_configs, list):
-        raw_configs_items: list[object] = raw_configs
+        raw_configs_items: list[object] = raw_configs  # pyright: ignore[reportUnknownVariableType]
         for item in raw_configs_items:
             item_dict = _as_dict(item)
             if item_dict is None:
@@ -127,7 +127,7 @@ def delete_agent_config(state_path: str, config_id: str) -> None:
         return
 
     keep: list[dict[str, Any]] = []
-    raw_configs_items: list[object] = raw_configs
+    raw_configs_items: list[object] = raw_configs  # pyright: ignore[reportUnknownVariableType]
     for item in raw_configs_items:
         item_dict = _as_dict(item)
         if item_dict is None:

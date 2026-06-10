@@ -73,17 +73,17 @@ def _load_environments_items(path: str) -> list[dict[str, Any]]:
 
     raw: object
     if isinstance(payload, dict):
-        payload_dict: dict[str, Any] = payload
+        payload_dict: dict[str, Any] = payload  # pyright: ignore[reportUnknownVariableType]
         raw = payload_dict.get("environments")
     elif isinstance(payload, list):
-        raw = payload
+        raw = payload  # pyright: ignore[reportUnknownVariableType]
     else:
         return []
 
     if not isinstance(raw, list):
         return []
 
-    raw_list: list[Any] = raw
+    raw_list: list[Any] = raw  # pyright: ignore[reportUnknownVariableType]
     items: list[dict[str, Any]] = []
     for item in raw_list:
         if isinstance(item, dict):

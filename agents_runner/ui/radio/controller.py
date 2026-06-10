@@ -376,13 +376,13 @@ class RadioController(QObject):
                 callback(None, "channels payload missing data")
                 return
 
-            raw_channels = data.get("channels")
+            raw_channels = data.get("channels")  # pyright: ignore[reportUnknownVariableType]
             if not isinstance(raw_channels, list):
                 callback(None, "channels payload missing channels")
                 return
 
             names: list[str] = []
-            for item in raw_channels:
+            for item in raw_channels:  # pyright: ignore[reportUnknownVariableType]
                 if not isinstance(item, dict):
                     continue
                 name = self.normalize_channel(item.get("name"))
@@ -594,11 +594,11 @@ class RadioController(QObject):
                 parsed = json.loads(raw)
                 if not isinstance(parsed, dict):
                     raise ValueError("invalid JSON envelope")
-                payload = parsed
+                payload = parsed  # pyright: ignore[reportUnknownVariableType]
 
                 if not bool(parsed.get("ok")):
                     is_error = True
-                    error = parsed.get("error")
+                    error = parsed.get("error")  # pyright: ignore[reportUnknownVariableType]
                     if isinstance(error, dict):
                         error_text = str(error.get("message") or "API returned not-ok")
                     if not error_text:

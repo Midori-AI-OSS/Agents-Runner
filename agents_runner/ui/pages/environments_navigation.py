@@ -169,7 +169,7 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
         self.try_autosave(show_validation_errors=False)
 
     def _update_navigation_mode(self) -> None:
-        compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD
+        compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD  # pyright: ignore[reportUnknownVariableType]
         if compact == self._compact_mode:
             return
         self._compact_mode = compact

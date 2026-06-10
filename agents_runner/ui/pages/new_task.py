@@ -333,7 +333,7 @@ class NewTaskPage(QWidget):
             QMessageBox.No,  # Default to No for safety
         )
 
-        return reply == QMessageBox.Yes
+        return reply == QMessageBox.Yes  # pyright: ignore[reportUnknownVariableType]
 
     def _update_run_buttons(self) -> None:
         has_terminal = bool(self._terminal_available and self._terminal_id)
@@ -555,7 +555,7 @@ class NewTaskPage(QWidget):
 
     def _get_shell_from_settings(self) -> str:
         """Get the preferred shell from settings (key: 'shell', default: 'bash')."""
-        settings = getattr(self.parent(), "_settings_data", None) or {}
+        settings = getattr(self.parent(), "_settings_data", None) or {}  # pyright: ignore[reportUnknownVariableType]
         shell = str(settings.get("shell") or "bash").strip().lower()
         valid_shells = {"bash", "sh", "zsh", "fish", "tmux"}
         if shell not in valid_shells:

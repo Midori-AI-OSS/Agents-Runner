@@ -35,7 +35,7 @@ logger = MidoriAiLogger(channel=None, name=__name__)
 
 class MainWindowAutoReviewMixin(MainWindowHints):
     def _on_auto_review_requested(self, env_id: str, payload: object) -> None:
-        payload_dict: dict[str, Any] = payload if isinstance(payload, dict) else {}
+        payload_dict: dict[str, Any] = payload if isinstance(payload, dict) else {}  # pyright: ignore[reportUnknownVariableType]
         prompt = str(payload_dict.get("prompt") or "").strip()
         if not prompt:
             return

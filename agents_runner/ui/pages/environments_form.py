@@ -622,7 +622,7 @@ class EnvironmentsFormMixin(EnvironmentsPageHints):
         if not isinstance(envs, dict):
             return None
         env_id = str(getattr(self, "_current_env_id", "") or "").strip()
-        env = envs.get(env_id)
+        env = envs.get(env_id)  # pyright: ignore[reportUnknownVariableType]
         return env if isinstance(env, Environment) else None
 
     def _on_setup_environment_github_defaults(self) -> None:

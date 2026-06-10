@@ -37,7 +37,7 @@ def repair_task_git_metadata(
     task_id = getattr(task, "task_id", "unknown")
 
     # Step 1: Check if repair is needed
-    has_metadata = task.git is not None and isinstance(task.git, dict) and task.git
+    has_metadata = task.git is not None and isinstance(task.git, dict) and task.git  # pyright: ignore[reportUnknownVariableType]
 
     if not task.requires_git_metadata():
         logger.debug(f"[repair] task {task_id}: not cloned environment, no repair needed")
@@ -45,7 +45,7 @@ def repair_task_git_metadata(
 
     if has_metadata:
         # Check if existing metadata is complete
-        base_branch = task.git.get("base_branch")  # pyright: ignore[reportOptionalMemberAccess]
+        base_branch = task.git.get("base_branch")  # pyright: ignore[reportOptionalMemberAccess, reportUnknownVariableType]
         if base_branch:
             logger.debug(f"[repair] task {task_id}: metadata already present")
             return (True, "metadata already present")

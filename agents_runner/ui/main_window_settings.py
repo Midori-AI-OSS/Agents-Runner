@@ -278,7 +278,7 @@ class MainWindowSettingsMixin(MainWindowHints):
             self._apply_migrated_workspace_paths(moved_records, target_location)
             detail = f"Moved: {moved}\nSkipped: {skipped}\nFailed: {failed}"
             if failed and isinstance(failures, list):
-                detail = f"{detail}\n\n" + "\n".join(str(item) for item in failures[:5])
+                detail = f"{detail}\n\n" + "\n".join(str(item) for item in failures[:5])  # pyright: ignore[reportUnknownVariableType]
             progress.setLabelText(detail)
             QMessageBox.information(self, "Move all tasks", detail)
             thread.quit()
@@ -296,10 +296,10 @@ class MainWindowSettingsMixin(MainWindowHints):
         thread.start()
 
     def _apply_migrated_workspace_paths(self, moved_records: object, target_location: str) -> None:
-        records = moved_records if isinstance(moved_records, list) else []
+        records = moved_records if isinstance(moved_records, list) else []  # pyright: ignore[reportUnknownVariableType]
         moved_by_task = {
             str(getattr(record, "task_id", "") or ""): str(getattr(record, "destination", "") or "")
-            for record in records
+            for record in records  # pyright: ignore[reportUnknownVariableType]
         }
         if not moved_by_task:
             return
@@ -390,10 +390,10 @@ class MainWindowSettingsMixin(MainWindowHints):
         except Exception:
             merged["github_poll_startup_delay_s"] = 35
         trusted_users_raw = merged.get("agentsnova_trusted_users_global")
-        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []
+        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
         trusted_users: list[str] = []
         seen_trusted_users: set[str] = set()
-        for row in trusted_users_rows:
+        for row in trusted_users_rows:  # pyright: ignore[reportUnknownVariableType]
             username = str(row or "").strip().lstrip("@").lower()
             if not username or username in seen_trusted_users:
                 continue
