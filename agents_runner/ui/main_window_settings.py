@@ -208,7 +208,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         records: list[TaskWorkspaceMigrationRecord] = []
         seen: set[tuple[str, str]] = set()
 
-        def _add(payload: dict[str, object]) -> None:
+        def _add(payload: dict[str, Any]) -> None:
             if str(payload.get("workspace_type") or "").strip() != "cloned":
                 return
             task_id = str(payload.get("task_id") or "").strip()
@@ -480,7 +480,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         *,
         agent_cli: str,
         env: Environment | None,
-        settings: dict[str, object],
+        settings: dict[str, Any],
     ) -> str:
         """Resolve a host config directory for an agent CLI.
 
@@ -510,7 +510,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             page._refresh_agent_configs_list()
 
     @staticmethod
-    def _find_agent_instance_by_id(env: Environment | None, agent_id: str) -> object | None:
+    def _find_agent_instance_by_id(env: Environment | None, agent_id: str) -> Any | None:
         if env is None or env.agent_selection is None or not getattr(env.agent_selection, "agents", None):
             return None
 
@@ -527,10 +527,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
     def _resolve_agent_instance_runtime(
         self,
-        inst: object | None,
+        inst: Any | None,
         *,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
         agent_configs: dict[str, AgentConfig] | None = None,
         fallback_agent_cli: str = "",
         fallback_config_dir: str = "",
@@ -568,7 +568,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         *,
         override: dict[str, str],
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> tuple[str, str, str, str]:
         settings_data = settings or self._settings_data
         agent_id = str(override.get("agent_id") or "").strip()
@@ -617,7 +617,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self,
         *,
         env: Environment,
-        settings: dict[str, object],
+        settings: dict[str, Any],
         advance_round_robin: bool,
     ) -> tuple[str, str, str, str]:
         agents = list(getattr(env.agent_selection, "agents", []) or [])
@@ -654,7 +654,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
                     continue
                 counts[agent_instance_id] = counts.get(agent_instance_id, 0) + 1
 
-            def _score(inst: object) -> tuple[int, int]:
+            def _score(inst: Any) -> tuple[int, int]:
                 inst_id = str(getattr(inst, "agent_id", "") or "").strip()
                 return counts.get(inst_id, 0), agents.index(inst)
 
@@ -743,7 +743,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self,
         *,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
         advance_round_robin: bool = False,
     ) -> tuple[str, str, str]:
         """Return the effective ``(agent_cli, config_dir, cli_flags)`` for a launch.
@@ -793,7 +793,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         *,
         agent_cli: str,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> str:
         """Return the effective host config directory for the given agent CLI.
 
@@ -838,7 +838,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             settings=settings,
         )
 
-    def _coerce_agent_override(self, override: object) -> dict[str, str] | None:
+    def _coerce_agent_override(self, override: Any) -> dict[str, str] | None:
         if not isinstance(override, dict):
             return None
         agent_cli = str(override.get("agent_cli") or "").strip().lower()
@@ -860,7 +860,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self,
         *,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> bool:
         settings_data = settings or self._settings_data
         global_enabled = bool(settings_data.get("gpu_enabled") or False)
@@ -877,7 +877,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self,
         *,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> bool:
         settings_data = settings or self._settings_data
         global_enabled = bool(settings_data.get("network_host") or False)
@@ -894,7 +894,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self,
         *,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> str:
         settings_data = settings or self._settings_data
         global_mode = normalize_opencode_interactive_mode(
@@ -914,7 +914,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         *,
         override: dict[str, str],
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> str:
         _agent_cli, config_dir, _cli_flags, _agent_id = self._resolve_override_agent_runtime(
             override=override,
@@ -1051,7 +1051,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
     def _format_agent_label(
         self,
-        inst: object | None,
+        inst: Any | None,
         *,
         agent_configs: dict[str, AgentConfig] | None = None,
     ) -> str:
@@ -1076,7 +1076,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         env: Environment | None,
         primary_agent_cli: str,
         primary_config_dir: str,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> list[str]:
         """Compute additional config mounts for cross-agent allowlist.
 
