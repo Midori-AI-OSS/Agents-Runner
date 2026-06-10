@@ -120,7 +120,7 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
 
         if self._pane_rest_pos is not None:
             self._page_stack.move(self._pane_rest_pos)
-        self._page_stack.setGraphicsEffect(None)
+        self._page_stack.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
 
         base_pos = self._page_stack.pos()
         self._pane_rest_pos = QPoint(base_pos)
@@ -151,7 +151,7 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
 
         def _cleanup() -> None:
             self._page_stack.move(self._pane_rest_pos)
-            self._page_stack.setGraphicsEffect(None)
+            self._page_stack.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
             self._pane_animation = None
 
         group.finished.connect(_cleanup)

@@ -229,7 +229,7 @@ class TaskRow(QWidget):
             effect.setOpacity(1.0)
             # Avoid stacking opacity effects (page transitions also use them) which can
             # cause odd painting/layout behavior when navigating.
-            self.setGraphicsEffect(None)
+            self.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
 
     def cancel_entrance(self) -> None:
         """Cancel any ongoing entrance animation."""
