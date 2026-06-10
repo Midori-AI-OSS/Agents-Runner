@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import threading
-    from PySide6.QtCore import QThread, QTimer, Signal
+    from PySide6.QtCore import QObject, QThread, QTimer, Signal
     from PySide6.QtWidgets import (
         QComboBox,
         QCheckBox,
@@ -39,8 +39,9 @@ if TYPE_CHECKING:
     from agents_runner.ui.task_model import Task
 
 
-class MainWindowHints:
-    if TYPE_CHECKING:
+if TYPE_CHECKING:
+
+    class MainWindowHints(QObject):
         _settings_data: dict[str, Any]
         _environments: dict[str, Environment]
         _syncing_environment: bool
@@ -263,10 +264,15 @@ class MainWindowHints:
         @staticmethod
         def _is_internal_environment_id(env_id: str) -> bool: ...
         def _refresh_radio_channel_options(self) -> None: ...
+else:
+
+    class MainWindowHints:
+        pass
 
 
-class EnvironmentsPageHints:
-    if TYPE_CHECKING:
+if TYPE_CHECKING:
+
+    class EnvironmentsPageHints(QObject):
         _environments: dict[str, Environment]
         _current_env_id: str | None
         _settings_data: dict[str, Any]
@@ -349,3 +355,7 @@ class EnvironmentsPageHints:
         def _animate_stack(self, *args: object) -> None: ...
         def _build_navigation(self) -> None: ...
         def _current_environment(self) -> Environment | None: ...
+else:
+
+    class EnvironmentsPageHints:
+        pass
