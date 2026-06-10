@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any
 from midori_ai_logger import MidoriAiLogger
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -71,7 +71,7 @@ def _resolved_agent_config_cli_flags(
     return prefixed_flags or cli_flags
 
 
-class MainWindowSettingsMixin(_MainWindowHints):
+class MainWindowSettingsMixin(MainWindowHints):
     _REMOVED_IDE_SETTINGS_KEYS = (
         "ide_auto_mounts_enabled",
         "ide_system_default",

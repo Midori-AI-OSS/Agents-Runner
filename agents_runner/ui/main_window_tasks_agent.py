@@ -11,9 +11,9 @@ from uuid import uuid4
 from midori_ai_logger import MidoriAiLogger
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -55,7 +55,7 @@ from agents_runner.ui.utils import stain_color
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class MainWindowTasksAgentMixin(_MainWindowHints):
+class MainWindowTasksAgentMixin(MainWindowHints):
     def _clean_old_tasks(self) -> None:
         to_remove: set[str] = set()
         for task_id, task in self._tasks.items():

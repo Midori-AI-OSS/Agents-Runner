@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from agents_runner.ui.task_model import Task
 
 
-class _MainWindowHints:
+class MainWindowHints:
     if TYPE_CHECKING:
         _settings_data: dict[str, Any]
         _environments: dict[str, Environment]
@@ -265,7 +265,7 @@ class _MainWindowHints:
         def _refresh_radio_channel_options(self) -> None: ...
 
 
-class _EnvironmentsPageHints:
+class EnvironmentsPageHints:
     if TYPE_CHECKING:
         _environments: dict[str, Environment]
         _current_env_id: str | None

@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -28,7 +28,7 @@ from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import stain_color
 
 
-class MainWindowPreflightMixin(_MainWindowHints):
+class MainWindowPreflightMixin(MainWindowHints):
     def _start_preflight_task(
         self,
         *,

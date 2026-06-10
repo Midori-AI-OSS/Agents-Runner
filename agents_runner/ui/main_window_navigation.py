@@ -7,12 +7,12 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QWidget
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 
-class MainWindowNavigationMixin(_MainWindowHints):
+class MainWindowNavigationMixin(MainWindowHints):
     def _apply_window_prefs(self) -> None:
         try:
             w = int(self._settings_data.get("window_w") or 1280)

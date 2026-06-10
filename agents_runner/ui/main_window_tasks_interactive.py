@@ -18,9 +18,9 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -56,7 +56,7 @@ from midori_ai_logger import MidoriAiLogger
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class MainWindowTasksInteractiveMixin(_MainWindowHints):
+class MainWindowTasksInteractiveMixin(MainWindowHints):
     def _ask_opencode_interactive_launch_mode(self) -> str | None:
         dialog = QMessageBox(self)
         dialog.setIcon(QMessageBox.Icon.Question)

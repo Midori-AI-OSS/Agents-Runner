@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 from midori_ai_logger import MidoriAiLogger
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.environments import normalize_opencode_interactive_mode
@@ -29,7 +29,7 @@ from agents_runner.gh.automation_policy import normalize_default_marker_comment_
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class MainWindowPersistenceMixin(_MainWindowHints):
+class MainWindowPersistenceMixin(MainWindowHints):
     @staticmethod
     def _is_missing_container_error(exc: Exception) -> bool:
         text = str(exc or "").lower()

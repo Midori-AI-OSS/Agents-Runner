@@ -6,9 +6,9 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _EnvironmentsPageHints
+    from agents_runner.ui._mixin_hints import EnvironmentsPageHints
 else:
-    _EnvironmentsPageHints = object
+    EnvironmentsPageHints = object
 
 from PySide6.QtWidgets import QMessageBox
 
@@ -34,7 +34,7 @@ from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
 from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 
 
-class EnvironmentsPageActionsMixin(_EnvironmentsPageHints):
+class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
     def _sync_workspace_controls(self, *_: object, env: Environment | None = None) -> None:
         if env is None:
             env = self._environments.get(str(self._current_env_id or ""))

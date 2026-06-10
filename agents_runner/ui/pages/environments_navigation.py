@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _EnvironmentsPageHints
+    from agents_runner.ui._mixin_hints import EnvironmentsPageHints
 else:
-    _EnvironmentsPageHints = object
+    EnvironmentsPageHints = object
 
 from PySide6.QtCore import (
     QEasingCurve,
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect
 from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 
 
-class EnvironmentsNavigationMixin(_EnvironmentsPageHints):
+class EnvironmentsNavigationMixin(EnvironmentsPageHints):
     def _on_back(self) -> None:
         if not self.try_autosave():
             return
