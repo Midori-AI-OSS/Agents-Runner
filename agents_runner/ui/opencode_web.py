@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from agents_runner.ui.main_window import MainWindow
+
 import random
 import socket
 import time
@@ -70,7 +75,7 @@ def allocate_localhost_port() -> int:
 
 def schedule_open_opencode_web_url(
     *,
-    main_window: object,
+    main_window: MainWindow,
     task_id: str,
     url: str,
     host_port: int,

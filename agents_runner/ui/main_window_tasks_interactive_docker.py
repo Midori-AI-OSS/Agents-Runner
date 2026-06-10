@@ -6,6 +6,11 @@ and terminal script generation for launching interactive agent tasks.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from agents_runner.ui.main_window import MainWindow
+
 import os
 import shlex
 import tempfile
@@ -69,7 +74,7 @@ def _redact_env_args_for_log(env_args: list[str]) -> list[str]:
 
 
 def launch_docker_terminal_task(
-    main_window: object,
+    main_window: MainWindow,
     task: Task,
     env: Environment | None,
     env_id: str,
@@ -1091,7 +1096,7 @@ def _cleanup_temp_files(tmp_paths: dict[str, str]) -> None:
 
 
 def _handle_launch_error(
-    main_window: object,
+    main_window: MainWindow,
     task: Task,
     tmp_paths: dict[str, str],
     stain: str | None,
