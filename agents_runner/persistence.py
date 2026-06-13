@@ -20,7 +20,7 @@ TASKS_DONE_DIR_NAME = "done"
 def strip_none_for_toml(value: Any) -> Any:
     if isinstance(value, dict):
         cleaned: dict[str, Any] = {}
-        for key, item in value.items():
+        for key, item in value.items():  # pyright: ignore[reportUnknownVariableType]
             if item is None:
                 continue
             cleaned_item = strip_none_for_toml(item)
@@ -30,7 +30,7 @@ def strip_none_for_toml(value: Any) -> Any:
         return cleaned
     if isinstance(value, (list, tuple)):
         cleaned_list: list[Any] = []
-        for item in value:
+        for item in value:  # pyright: ignore[reportUnknownVariableType]
             if item is None:
                 continue
             cleaned_item = strip_none_for_toml(item)
@@ -85,7 +85,7 @@ def load_state(path: str) -> dict[str, Any]:
         }
     with open(path, "rb") as f:
         payload = tomli.load(f)
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         return {
             "version": STATE_VERSION,
             "tasks": [],
@@ -231,7 +231,7 @@ def load_active_task_payloads(state_path: str) -> list[dict[str, Any]]:
                 payload = tomli.load(f)
         except Exception:
             continue
-        if isinstance(payload, dict):
+        if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             payloads.append(payload)
     return payloads
 
@@ -248,7 +248,7 @@ def load_task_payload(state_path: str, task_id: str, *, archived: bool) -> dict[
             payload = tomli.load(f)
     except Exception:
         return None
-    return payload if isinstance(payload, dict) else None
+    return payload if isinstance(payload, dict) else None  # pyright: ignore[reportUnnecessaryIsInstance]
 
 
 def load_done_task_payloads(state_path: str, *, offset: int = 0, limit: int = 10) -> list[dict[str, Any]]:
@@ -291,7 +291,7 @@ def load_done_task_payloads(state_path: str, *, offset: int = 0, limit: int = 10
                 payload = tomli.load(f)
         except Exception:
             continue
-        if isinstance(payload, dict):
+        if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             payloads.append(payload)
     return payloads
 
@@ -314,7 +314,7 @@ def load_all_done_task_payloads(state_path: str) -> list[dict[str, Any]]:
                 payload = tomli.load(f)
         except Exception:
             continue
-        if isinstance(payload, dict):
+        if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             payloads.append(payload)
     return payloads
 
@@ -338,7 +338,7 @@ def iter_done_task_payloads(state_path: str) -> Iterator[dict[str, Any]]:
                     payload = tomli.load(f)
             except Exception:
                 continue
-            if isinstance(payload, dict):
+            if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
                 yield payload
 
 
@@ -487,7 +487,7 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
         env_vars: dict[str, str] = {}
         raw_env = payload.get("env_vars")
         if isinstance(raw_env, dict):
-            for key, value in raw_env.items():
+            for key, value in raw_env.items():  # pyright: ignore[reportUnknownVariableType]
                 k = str(key).strip()
                 if not k:
                     continue
@@ -496,22 +496,22 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
         extra_mounts: list[str] = []
         raw_mounts = payload.get("extra_mounts")
         if isinstance(raw_mounts, list):
-            extra_mounts = [str(item) for item in raw_mounts if str(item).strip()]
+            extra_mounts = [str(item) for item in raw_mounts if str(item).strip()]  # pyright: ignore[reportUnknownVariableType]
 
         ports: list[str] = []
         raw_ports = payload.get("ports")
         if isinstance(raw_ports, list):
-            ports = [str(item) for item in raw_ports if str(item).strip()]
+            ports = [str(item) for item in raw_ports if str(item).strip()]  # pyright: ignore[reportUnknownVariableType]
 
         agent_cli_args: list[str] = []
         raw_args = payload.get("agent_cli_args")
         if isinstance(raw_args, list):
-            agent_cli_args = [str(item) for item in raw_args if str(item).strip()]
+            agent_cli_args = [str(item) for item in raw_args if str(item).strip()]  # pyright: ignore[reportUnknownVariableType]
 
         custom_command_argv: list[str] = []
         raw_custom_command = payload.get("custom_command_argv")
         if isinstance(raw_custom_command, list):
-            custom_command_argv = [str(item) for item in raw_custom_command if str(item).strip()]
+            custom_command_argv = [str(item) for item in raw_custom_command if str(item).strip()]  # pyright: ignore[reportUnknownVariableType]
 
         artifact_collection_timeout_s = 30.0
         raw_timeout = payload.get("artifact_collection_timeout_s")
@@ -625,7 +625,7 @@ def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
         return {}
 
     result = {}
-    for provider_name, data in watch_data.items():
+    for provider_name, data in watch_data.items():  # pyright: ignore[reportUnknownVariableType]
         if not isinstance(data, dict):
             continue
 
@@ -644,7 +644,7 @@ def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
 
         # Deserialize windows
         windows = []
-        for w_data in data.get("windows", []):
+        for w_data in data.get("windows", []):  # pyright: ignore[reportUnknownVariableType]
             if not isinstance(w_data, dict):
                 continue
             reset_at = None
@@ -674,7 +674,7 @@ def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
             raw_data=data.get("raw_data", {}),
         )
 
-    return result
+    return result  # pyright: ignore[reportUnknownVariableType]
 
 
 def save_watch_state(state: dict[str, Any], watch_states: dict[str, Any]) -> None:

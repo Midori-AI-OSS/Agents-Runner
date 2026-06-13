@@ -32,7 +32,7 @@ class InteractivePrepBridge(QObject):
 
     @Slot(str, object)
     def on_succeeded(self, task_id: str, payload: object) -> None:
-        payload_dict = payload if isinstance(payload, dict) else {}
+        payload_dict = payload if isinstance(payload, dict) else {}  # pyright: ignore[reportUnknownVariableType]
         self._on_succeeded(str(task_id or "").strip(), payload_dict)
 
     @Slot(str, str)

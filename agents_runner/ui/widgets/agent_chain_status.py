@@ -76,8 +76,8 @@ class AgentStatusIndicator(QWidget):
         # Clear existing indicators
         while self._status_layout.count():
             item = self._status_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item.widget():  # pyright: ignore[reportOptionalMemberAccess]
+                item.widget().deleteLater()  # pyright: ignore[reportOptionalMemberAccess]
 
         if not self._status:
             # Unknown status
@@ -178,8 +178,8 @@ class AgentChainStatusWidget(QWidget):
         # Clear existing indicators
         while self._chain_layout.count():
             item = self._chain_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item.widget():  # pyright: ignore[reportOptionalMemberAccess]
+                item.widget().deleteLater()  # pyright: ignore[reportOptionalMemberAccess]
         self._agent_indicators.clear()
 
         if not agents:

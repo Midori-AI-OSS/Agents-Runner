@@ -7,9 +7,9 @@ import webbrowser
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
@@ -20,7 +20,7 @@ from agents_runner.gh_management import git_current_branch
 from agents_runner.log_format import format_log
 
 
-class MainWindowTaskReviewMixin(_MainWindowHints):
+class MainWindowTaskReviewMixin(MainWindowHints):
     def _on_task_pr_requested(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         task = self._tasks.get(task_id)

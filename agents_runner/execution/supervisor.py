@@ -126,7 +126,7 @@ class TaskSupervisor:
             return {
                 config_id: config
                 for config_id, config in agent_configs.items()
-                if str(config_id or "").strip() and isinstance(config, AgentConfig)
+                if str(config_id or "").strip() and isinstance(config, AgentConfig)  # pyright: ignore[reportUnnecessaryIsInstance]
             }
         state_path = str(getattr(self._config, "state_path", "") or "").strip()
         if not state_path:

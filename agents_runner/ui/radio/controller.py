@@ -161,21 +161,21 @@ class RadioController(QObject):
         self._emit_state()
 
     @classmethod
-    def normalize_quality(cls, value: object) -> str:
+    def normalize_quality(cls, value: Any) -> str:
         raw = str(value or "medium").strip().lower()
         if raw not in cls.QUALITY_VALUES:
             return "medium"
         return raw
 
     @classmethod
-    def normalize_channel(cls, value: object) -> str:
+    def normalize_channel(cls, value: Any) -> str:
         raw = str(value or "").strip().lower()
         if raw == "all":
             return ""
         return raw
 
     @staticmethod
-    def clamp_volume(value: object) -> int:
+    def clamp_volume(value: Any) -> int:
         try:
             parsed = int(str(value).strip())
         except Exception:
@@ -183,7 +183,7 @@ class RadioController(QObject):
         return max(0, min(100, parsed))
 
     @classmethod
-    def normalize_loudness_boost_factor(cls, value: object) -> float:
+    def normalize_loudness_boost_factor(cls, value: Any) -> float:
         try:
             parsed = float(str(value).strip())
         except Exception:
@@ -238,7 +238,7 @@ class RadioController(QObject):
     def qt_available(self) -> bool:
         return self._qt_available
 
-    def state_snapshot(self) -> dict[str, object]:
+    def state_snapshot(self) -> dict[str, Any]:
         selected_channel = self.normalize_channel(self._channel)
         active_channel = self.normalize_channel(self._active_channel)
         resolved_channel = self.normalize_channel(self._resolved_channel or active_channel or selected_channel)
@@ -376,13 +376,13 @@ class RadioController(QObject):
                 callback(None, "channels payload missing data")
                 return
 
-            raw_channels = data.get("channels")
+            raw_channels = data.get("channels")  # pyright: ignore[reportUnknownVariableType]
             if not isinstance(raw_channels, list):
                 callback(None, "channels payload missing channels")
                 return
 
             names: list[str] = []
-            for item in raw_channels:
+            for item in raw_channels:  # pyright: ignore[reportUnknownVariableType]
                 if not isinstance(item, dict):
                     continue
                 name = self.normalize_channel(item.get("name"))
@@ -594,11 +594,11 @@ class RadioController(QObject):
                 parsed = json.loads(raw)
                 if not isinstance(parsed, dict):
                     raise ValueError("invalid JSON envelope")
-                payload = parsed
+                payload = parsed  # pyright: ignore[reportUnknownVariableType]
 
                 if not bool(parsed.get("ok")):
                     is_error = True
-                    error = parsed.get("error")
+                    error = parsed.get("error")  # pyright: ignore[reportUnknownVariableType]
                     if isinstance(error, dict):
                         error_text = str(error.get("message") or "API returned not-ok")
                     if not error_text:
@@ -693,9 +693,9 @@ class RadioController(QObject):
 
     def _normalize_track_title(
         self,
-        raw_title: object,
+        raw_title: Any,
         *,
-        station_label: object = "",
+        station_label: Any = "",
     ) -> str:
         title = " ".join(str(raw_title or "").split())
         if not title:
@@ -1164,7 +1164,7 @@ class RadioController(QObject):
         except Exception:
             self._fallback_restart_for_channel_switch()
 
-    def _on_fade_animation_value(self, value: object) -> None:
+    def _on_fade_animation_value(self, value: Any) -> None:
         try:
             parsed = float(value)
         except Exception:

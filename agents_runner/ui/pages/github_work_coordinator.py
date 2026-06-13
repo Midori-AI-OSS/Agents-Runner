@@ -378,9 +378,9 @@ class GitHubWorkCoordinator(QObject):
         auto_reviews: object,
     ) -> None:
         key = self._cache_key(item_type=item_type, env_id=env_id)
-        parsed_items = [item for item in (items if isinstance(items, list) else []) if isinstance(item, GitHubWorkItem)]
+        parsed_items = [item for item in (items if isinstance(items, list) else []) if isinstance(item, GitHubWorkItem)]  # pyright: ignore[reportUnknownVariableType]
         parsed_context = repo_context if isinstance(repo_context, GitHubRepoContext) else None
-        parsed_reviews = auto_reviews if isinstance(auto_reviews, list) else []
+        parsed_reviews = auto_reviews if isinstance(auto_reviews, list) else []  # pyright: ignore[reportUnknownVariableType]
 
         now_s = time.time()
 

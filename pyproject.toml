@@ -49,4 +49,4 @@ select = ["TID"]
 "logging".msg = "Use midori_ai_logger (MidoriAiLogger) instead. See AGENTS.md."
 
 [tool.uv.sources]
-midori_ai_logger = { git = "https://github.com/Midori-AI-OSS/agents-packages.git", subdirectory = "logger" }
+midori_ai_logger = { git = "https://github.com/Midori-AI-OSS/agents-packages.git", subdirectory = "logger", rev = "a72c0ff0f3429cb83f8757e91a333f05e1361217" }

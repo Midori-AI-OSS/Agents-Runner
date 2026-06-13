@@ -78,7 +78,7 @@ def scan_midoriai_agents_template(workspace_root: str) -> MidoriAITemplateDetect
         try:
             actual_names = {p.name.casefold() for p in candidate.iterdir() if p.is_file()}
         except Exception:
-            actual_names = set()
+            actual_names = set()  # pyright: ignore[reportUnknownVariableType]
 
         expected_names = {name.casefold() for name in expected}
         matched = len(actual_names & expected_names)

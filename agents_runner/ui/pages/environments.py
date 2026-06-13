@@ -57,7 +57,7 @@ from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import EdgeFadeScrollArea, GlassCard
 
 
-class EnvironmentsPage(
+class EnvironmentsPage(  # pyright: ignore[reportIncompatibleMethodOverride]
     QWidget,
     EnvironmentsNavigationMixin,
     EnvironmentsFormMixin,

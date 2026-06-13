@@ -7,17 +7,18 @@ They exist purely for static analysis and add zero runtime overhead.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import threading
-    from PySide6.QtCore import QThread, QTimer, Signal
+    from PySide6.QtCore import QObject, QThread, QTimer, Signal
     from PySide6.QtWidgets import (
         QComboBox,
         QCheckBox,
         QLineEdit,
         QStackedWidget,
         QToolButton,
+        QVBoxLayout,
     )
     from agents_runner.core.agent.watch_state import AgentWatchState
     from agents_runner.environments import Environment
@@ -39,9 +40,10 @@ if TYPE_CHECKING:
     from agents_runner.ui.task_model import Task
 
 
-class _MainWindowHints:
-    if TYPE_CHECKING:
-        _settings_data: dict[str, object]
+if TYPE_CHECKING:
+
+    class MainWindowHints(QObject):
+        _settings_data: dict[str, Any]
         _environments: dict[str, Environment]
         _syncing_environment: bool
         _tasks: dict[str, Task]
@@ -49,19 +51,19 @@ class _MainWindowHints:
         _bridges: dict[str, TaskRunnerBridge]
         _task_event_proxies: dict[str, TaskEventProxy]
         _interactive_prep_threads: dict[str, QThread]
-        _interactive_prep_workers: dict[str, object]
-        _interactive_prep_bridges: dict[str, object]
-        _interactive_prep_context: dict[str, dict[str, object]]
+        _interactive_prep_workers: dict[str, Any]
+        _interactive_prep_bridges: dict[str, Any]
+        _interactive_prep_context: dict[str, dict[str, Any]]
         _run_started_s: dict[str, float]
         _dashboard_log_refresh_s: dict[str, float]
         _interactive_watch: dict[str, tuple[str, threading.Event]]
         _repo_branches_request_id: int
-        _repo_branches_request_meta: dict[int, dict[str, object]]
+        _repo_branches_request_meta: dict[int, dict[str, Any]]
         _repo_branches_cache: dict[str, list[str]]
         _task_workspace_cleanup_last_check_s: float
         _task_workspace_cleanup_running: bool
         _task_workspace_migration_thread: QThread | None
-        _task_workspace_migration_worker: object | None
+        _task_workspace_migration_worker: Any | None
         _state_path: str
         _save_timer: QTimer
         _task_event_drain_timer: QTimer
@@ -96,13 +98,21 @@ class _MainWindowHints:
 
         def _schedule_save(self, *_args: object) -> None: ...
         def _save_state(self, *_args: object) -> None: ...
-        def _should_archive_task(self, task: Task) -> bool: ...
+        @staticmethod
+        def _should_archive_task(task: Task) -> bool: ...
         def _on_task_log(self, task_id: str, log_line: str) -> None: ...
-        def _on_bridge_state(self, *args: object) -> None: ...
-        def _on_bridge_log(self, *args: object) -> None: ...
-        def _on_bridge_done(self, *args: object) -> None: ...
-        def _on_bridge_retry_attempt(self, *args: object) -> None: ...
-        def _on_bridge_agent_switched(self, *args: object) -> None: ...
+        def _on_bridge_state(self, task_id: str, state: dict[str, Any]) -> None: ...
+        def _on_bridge_log(self, task_id: str, line: str) -> None: ...
+        def _on_bridge_done(
+            self,
+            task_id: str,
+            exit_code: int,
+            error: object,
+            artifacts: list[Any],
+            metadata: dict[str, Any] | None = None,
+        ) -> None: ...
+        def _on_bridge_retry_attempt(self, task_id: str, attempt_number: int, agent: str, delay: float) -> None: ...
+        def _on_bridge_agent_switched(self, task_id: str, from_agent: str, to_agent: str) -> None: ...
         @staticmethod
         def _try_sync_container_state(task: Task) -> bool: ...
         def _queue_task_finalization(self, task_id: str, *, reason: str) -> None: ...
@@ -114,33 +124,33 @@ class _MainWindowHints:
         def _show_new_task(self) -> None: ...
         def _maybe_auto_navigate_on_task_start(self, *, interactive: bool) -> None: ...
         def _active_environment_id(self) -> str: ...
-        def _coerce_agent_override(self, override: object) -> dict[str, str] | None: ...
+        def _coerce_agent_override(self, override: Any) -> dict[str, str] | None: ...
         def _resolve_override_agent_runtime(
             self,
             *,
             override: dict[str, str],
             env: Environment | None,
-            settings: dict[str, object] | None = None,
+            settings: dict[str, Any] | None = None,
         ) -> tuple[str, str, str, str]: ...
         def _resolve_override_config_dir(
             self,
             *,
             override: dict[str, str],
             env: Environment | None,
-            settings: dict[str, object] | None = None,
+            settings: dict[str, Any] | None = None,
         ) -> str | None: ...
         def _select_agent_instance_for_env(
             self,
             *,
             env: Environment,
-            settings: dict[str, object],
+            settings: dict[str, Any],
             advance_round_robin: bool,
         ) -> tuple[str, str, str, str]: ...
         def _effective_agent_and_config(
             self,
             *,
             env: Environment | None,
-            settings: dict[str, object] | None = None,
+            settings: dict[str, Any] | None = None,
             advance_round_robin: bool = False,
         ) -> tuple[str, str, str]: ...
         def _resolve_config_dir_for_agent(
@@ -148,7 +158,7 @@ class _MainWindowHints:
             *,
             agent_cli: str,
             env: Environment | None,
-            settings: dict[str, object],
+            settings: dict[str, Any],
         ) -> str: ...
         @staticmethod
         def _find_agent_instance_by_id(
@@ -157,10 +167,10 @@ class _MainWindowHints:
         ) -> AgentInstance | None: ...
         def _resolve_agent_instance_runtime(
             self,
-            inst: object | None,
+            inst: Any | None,
             *,
             env: Environment | None,
-            settings: dict[str, object] | None = None,
+            settings: dict[str, Any] | None = None,
             agent_configs: dict[str, AgentConfig] | None = None,
             fallback_agent_cli: str = "",
             fallback_config_dir: str = "",
@@ -169,7 +179,7 @@ class _MainWindowHints:
         def _load_agent_configs_by_id(self) -> dict[str, AgentConfig]: ...
         def _format_agent_label(
             self,
-            inst: object | None,
+            inst: Any | None,
             *,
             agent_configs: dict[str, AgentConfig] | None = None,
         ) -> str: ...
@@ -189,20 +199,20 @@ class _MainWindowHints:
             self,
             *,
             env: Environment | None,
-            settings: dict[str, object] | None = None,
+            settings: dict[str, Any] | None = None,
         ) -> bool: ...
         def _effective_network_host(
             self,
             *,
             env: Environment | None,
-            settings: dict[str, object] | None = None,
+            settings: dict[str, Any] | None = None,
         ) -> bool: ...
         def _default_interactive_command(self, agent_cli: str) -> str: ...
         def _effective_opencode_interactive_mode(
             self,
             *,
             env: Environment | None,
-            settings: dict[str, object] | None = None,
+            settings: dict[str, Any] | None = None,
         ) -> str: ...
         @staticmethod
         def _is_agent_help_interactive_launch(prompt: str, command: str) -> bool: ...
@@ -211,18 +221,32 @@ class _MainWindowHints:
             *,
             agent_cli: str,
             env: Environment | None,
-            settings: dict[str, object] | None = None,
+            settings: dict[str, Any] | None = None,
         ) -> str: ...
         def _get_next_agent_info(self, *, env: Environment | None) -> tuple[str, str]: ...
-        def _remember_environment_base_branch(self, *args: object, **kwargs: object) -> None: ...
+        def _remember_environment_base_branch(self, env: Environment | None, base_branch: str) -> None: ...
         def _refresh_task_rows(self) -> None: ...
-        def _refresh_active_environment_repo_branches(self, *args: object, **kwargs: object) -> None: ...
+        def _refresh_active_environment_repo_branches(
+            self,
+            *,
+            trigger_reason: str,
+            show_loading_ui: bool,
+            preserve_current_selection: bool,
+        ) -> None: ...
         def _populate_environment_pickers(self, *args: object) -> None: ...
-        def _update_window_title_from_radio_state(self) -> None: ...
+        def _update_window_title_from_radio_state(self, state: dict[str, Any]) -> None: ...
         def _apply_active_environment_to_new_task(self) -> None: ...
-        def _can_start_new_agent_for_env(self, *args: object) -> bool: ...
+        def _can_start_new_agent_for_env(self, env_id: str | None) -> bool: ...
         def _actually_start_task(self, task: Task) -> None: ...
-        def _start_task_from_ui(self, *args: object) -> str | None: ...
+        def _start_task_from_ui(
+            self,
+            prompt: str,
+            host_config_dir: str,
+            env_id: str,
+            base_branch: str,
+            pr_context: dict[str, object] | None = None,
+            agent_override: dict[str, str] | None = None,
+        ) -> str | None: ...
         def _reconcile_tasks_after_restart(self) -> None: ...
         def _try_start_queued_tasks(self) -> None: ...
         def _update_task_ui(self, task: Task) -> None: ...
@@ -240,16 +264,21 @@ class _MainWindowHints:
             agent_cli: str = "",
             is_override: bool = False,
         ) -> None: ...
-        def _start_artifact_finalization(self, *args: object) -> None: ...
+        def _start_artifact_finalization(self, task: Task) -> None: ...
         def _compute_cross_agent_config_mounts(
             self,
             *,
             env: Environment | None,
             primary_agent_cli: str,
             primary_config_dir: str,
-            settings: dict[str, object] | None = None,
+            settings: dict[str, Any] | None = None,
         ) -> list[str]: ...
-        def _sync_radio_controller_from_settings(self) -> None: ...
+        def _sync_radio_controller_from_settings(
+            self,
+            *,
+            user_initiated: bool,
+            previous_enabled: bool | None = None,
+        ) -> None: ...
         def _refresh_new_task_agent_info(self) -> None: ...
         def _environment_list(self) -> list[Environment]: ...
         def _environment_effective_workdir(
@@ -257,19 +286,24 @@ class _MainWindowHints:
             env: Environment | None,
             fallback: str,
             *,
-            settings: dict[str, object] | None = None,
+            settings: dict[str, Any] | None = None,
         ) -> str: ...
         def _user_environment_map(self) -> dict[str, Environment]: ...
         @staticmethod
         def _is_internal_environment_id(env_id: str) -> bool: ...
-        def _refresh_radio_channel_options(self) -> None: ...
+        def _refresh_radio_channel_options(self, *, disable_on_failure: bool) -> None: ...
+else:
+
+    class MainWindowHints:
+        pass
 
 
-class _EnvironmentsPageHints:
-    if TYPE_CHECKING:
+if TYPE_CHECKING:
+
+    class EnvironmentsPageHints(QObject):
         _environments: dict[str, Environment]
         _current_env_id: str | None
-        _settings_data: dict[str, object]
+        _settings_data: dict[str, Any]
         _suppress_autosave: bool
         _autosave_timer: QTimer
         _advanced_autosave_timer: QTimer
@@ -303,49 +337,58 @@ class _EnvironmentsPageHints:
         _opencode_interactive_mode: QComboBox
         _cache_system_preflight_enabled: QCheckBox
         _cache_settings_preflight_enabled: QCheckBox
-        _env_vars_tab: object
-        _mounts_tab: object
+        _env_vars_tab: Any
+        _mounts_tab: Any
         _ports_tab: PortsTabWidget
-        _prompts_tab: object
-        _agents_tab: object
-        _agentsnova_trusted_users_env: object
+        _prompts_tab: Any
+        _agents_tab: Any
+        _agentsnova_trusted_users_env: Any
 
-        _pane_specs: list[object]
+        _pane_specs: list[Any]
         _active_pane_key: str
         _nav_buttons: dict[str, QToolButton]
         _pane_index_by_key: dict[str, int]
         _page_stack: QStackedWidget
         _compact_nav: QComboBox
-        _nav_scroll: object
+        _nav_scroll: Any
         _compact_mode: bool
-        _pane_animation: object | None
-        _pane_rest_pos: object | None
+        _pane_animation: Any | None
+        _pane_rest_pos: Any | None
 
         updated: Signal
         test_preflight_requested: Signal
         back_requested: Signal
 
         def _sync_workspace_controls(self, *args: object) -> None: ...
-        def _issue_294_environment_values(self) -> dict[str, object]: ...
+        def _issue_294_environment_values(self) -> dict[str, Any]: ...
         def _draft_environment_from_form(self, *args: object) -> Environment | None: ...
-        def try_autosave(self, *args: object, **kwargs: object) -> bool: ...
+        def try_autosave(
+            self,
+            *,
+            preferred_env_id: str | None = None,
+            show_validation_errors: bool = True,
+        ) -> bool: ...
         def _queue_debounced_autosave(self, *args: object) -> None: ...
         def _queue_advanced_autosave(self, *args: object) -> None: ...
         def _emit_autosave(self) -> None: ...
-        def _default_pane_specs(self) -> list[object]: ...
+        def _default_pane_specs(self) -> list[Any]: ...
         def _apply_environment_tints(self) -> None: ...
-        def _on_headless_desktop_toggled(self, *args: object) -> None: ...
-        def _on_container_caching_toggled(self, *args: object) -> None: ...
-        def _on_use_cross_agents_toggled(self, *args: object) -> None: ...
+        def _on_headless_desktop_toggled(self, state: int) -> None: ...
+        def _on_container_caching_toggled(self, state: int) -> None: ...
+        def _on_use_cross_agents_toggled(self, state: int) -> None: ...
         def _sync_interactive_pr_controls(self) -> None: ...
         def _sync_github_branch_naming_controls(self) -> None: ...
         def _on_ports_changed(self) -> None: ...
         def _on_prompts_changed(self) -> None: ...
         def _on_agents_changed(self) -> None: ...
         def _on_setup_environment_github_defaults(self) -> None: ...
-        def _navigate_to_pane(self, key: str) -> None: ...
+        def _navigate_to_pane(self, key: str, *, user_initiated: bool) -> None: ...
         def _set_active_navigation(self, key: str) -> None: ...
-        def _set_current_pane(self, key: str) -> None: ...
-        def _animate_stack(self, *args: object) -> None: ...
-        def _build_navigation(self) -> None: ...
+        def _set_current_pane(self, key: str, *, animate: bool) -> None: ...
+        def _animate_stack(self, *, forward: bool) -> None: ...
+        def _build_navigation(self, nav_layout: QVBoxLayout) -> None: ...
         def _current_environment(self) -> Environment | None: ...
+else:
+
+    class EnvironmentsPageHints:
+        pass

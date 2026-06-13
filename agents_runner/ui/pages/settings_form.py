@@ -528,7 +528,7 @@ class SettingsFormMixin:
         self._radio_enabled.toggled.connect(self._radio_autostart.setEnabled)
 
     def _build_pages(self) -> None:
-        specs_by_key = {spec.key: spec for spec in self._pane_specs}
+        specs_by_key: dict[str, _SettingsPaneSpec] = {spec.key: spec for spec in self._pane_specs}  # pyright: ignore[reportUnknownVariableType]
 
         general_page, general_body = self._create_page(specs_by_key["general_preferences"])
         terminal_layout = QGridLayout()
@@ -792,7 +792,7 @@ class SettingsFormMixin:
         preflight_body.addLayout(preflight_actions)
         self._register_page("preflight_script", preflight_page)
 
-        radio_spec = specs_by_key.get("radio")
+        radio_spec = specs_by_key.get("radio")  # pyright: ignore[reportUnknownVariableType]
         if radio_spec is not None:
             radio_page, radio_body = self._create_page(radio_spec)
             radio_grid = QGridLayout()
@@ -823,7 +823,7 @@ class SettingsFormMixin:
 
     def _build_navigation(self, nav_layout: QVBoxLayout) -> None:
         sections: dict[str, list[_SettingsPaneSpec]] = {}
-        for spec in self._pane_specs:
+        for spec in self._pane_specs:  # pyright: ignore[reportUnknownVariableType]
             sections.setdefault(spec.section, []).append(spec)
 
         for section_title, specs in sections.items():
@@ -1113,7 +1113,7 @@ class SettingsFormMixin:
         return page, body_layout
 
     def _register_page(self, key: str, widget: QWidget) -> None:
-        index = self._page_stack.addWidget(widget)
+        index = self._page_stack.addWidget(widget)  # pyright: ignore[reportUnknownVariableType]
         self._pane_index_by_key[key] = index
 
     def _populate_agent_combo(self) -> None:
@@ -1219,7 +1219,7 @@ class SettingsFormMixin:
     def _clear_layout(layout: QGridLayout) -> None:
         while layout.count() > 0:
             item = layout.takeAt(0)
-            widget = item.widget()
+            widget = item.widget()  # pyright: ignore[reportOptionalMemberAccess]
             if widget is not None:
                 widget.deleteLater()
 
@@ -1351,7 +1351,7 @@ class SettingsFormMixin:
                 poll_startup_delay_s = 35
             self._github_poll_startup_delay_s.setText(str(poll_startup_delay_s))
             trusted_users_raw = settings.get("agentsnova_trusted_users_global", [])
-            trusted_users = trusted_users_raw if isinstance(trusted_users_raw, list) else []
+            trusted_users = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
             self._agentsnova_trusted_users_global.set_usernames(trusted_users)
             self._headless_desktop_enabled.setChecked(bool(settings.get("headless_desktop_enabled") or False))
             self._gpu_enabled.setChecked(bool(settings.get("gpu_enabled") or False))
@@ -1751,10 +1751,10 @@ class SettingsFormMixin:
         self._move_task_workspaces_shift_click_force = False
         self.move_task_workspaces_requested.emit(force)
 
-    def eventFilter(self, watched: object, event: QEvent) -> bool:
+    def eventFilter(self, watched: QObject, event: QEvent, /) -> bool:
         if not self.isVisible():
             self._set_move_task_workspaces_shift_pressed(False)
-            return super().eventFilter(watched, event)
+            return super().eventFilter(watched, event)  # pyright: ignore[reportUnknownVariableType]
         if event.type() in {QEvent.Type.KeyPress, QEvent.Type.KeyRelease}:
             self._update_move_task_workspaces_shift_state(event)
         elif event.type() in {
@@ -1777,13 +1777,13 @@ class SettingsFormMixin:
                 QEvent.Type.MouseButtonRelease,
             }:
                 self._refresh_move_task_workspaces_button()
-        return super().eventFilter(watched, event)
+        return super().eventFilter(watched, event)  # pyright: ignore[reportUnknownVariableType]
 
-    def keyPressEvent(self, event: QKeyEvent) -> None:
+    def keyPressEvent(self, event: QKeyEvent, /) -> None:
         super().keyPressEvent(event)
         self._update_move_task_workspaces_shift_state(event)
 
-    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+    def keyReleaseEvent(self, event: QKeyEvent, /) -> None:
         super().keyReleaseEvent(event)
         self._update_move_task_workspaces_shift_state(event)
 

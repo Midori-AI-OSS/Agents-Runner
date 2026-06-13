@@ -32,7 +32,7 @@ def validate_git_metadata(git: dict[str, object] | None) -> tuple[bool, str]:
     Returns:
         (is_valid, error_message) tuple
     """
-    if not git or not isinstance(git, dict):
+    if not git or not isinstance(git, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         return (False, "git metadata is None or not a dict")
 
     required_fields = ["base_branch"]

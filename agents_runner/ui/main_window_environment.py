@@ -6,9 +6,9 @@ import threading
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 
 from agents_runner.environments import Environment
@@ -24,7 +24,7 @@ from agents_runner.gh_management import git_list_remote_heads
 from agents_runner.gh_management import is_gh_available
 
 
-class MainWindowEnvironmentMixin(_MainWindowHints):
+class MainWindowEnvironmentMixin(MainWindowHints):
     @staticmethod
     def _is_internal_environment_id(env_id: str) -> bool:
         return str(env_id or "").strip() == SYSTEM_ENV_ID
@@ -105,6 +105,8 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
         self,
         env: Environment | None,
         base_branch: str,
+        *args: object,
+        **kwargs: object,
     ) -> None:
         if env is None or str(getattr(env, "workspace_type", "") or "") != WORKSPACE_CLONED:
             return
@@ -117,10 +119,11 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
 
     def _refresh_active_environment_repo_branches(
         self,
-        *,
+        *args: object,
         trigger_reason: str,
         show_loading_ui: bool,
         preserve_current_selection: bool,
+        **kwargs: object,
     ) -> None:
         env = self._environments.get(self._active_environment_id())
         self._sync_new_task_repo_controls(
@@ -239,7 +242,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
             else:
                 self._new_task.set_repo_branches_loading(False)
             return
-        cleaned = [str(b or "").strip() for b in branches]
+        cleaned = [str(b or "").strip() for b in branches]  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
         cleaned = [b for b in cleaned if b]
         if not cleaned:
             if fallback_branches:
@@ -269,7 +272,7 @@ class MainWindowEnvironmentMixin(_MainWindowHints):
             preserve_current_selection=preserve_current_selection,
         )
 
-    def _populate_environment_pickers(self) -> None:
+    def _populate_environment_pickers(self, *args: object) -> None:
         active_id = self._active_environment_id()
         envs = self._environment_list()
         disk_envs = load_environments()

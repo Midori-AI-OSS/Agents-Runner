@@ -18,9 +18,9 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -56,7 +56,7 @@ from midori_ai_logger import MidoriAiLogger
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class MainWindowTasksInteractiveMixin(_MainWindowHints):
+class MainWindowTasksInteractiveMixin(MainWindowHints):
     def _ask_opencode_interactive_launch_mode(self) -> str | None:
         dialog = QMessageBox(self)
         dialog.setIcon(QMessageBox.Icon.Question)
@@ -182,7 +182,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
 
         override = self._coerce_agent_override(agent_override)
         shell_mode = bool(override and str(override.get("mode") or "").strip().lower() == "shell")
-        shell = str(override.get("shell") or "bash").strip() if shell_mode else "bash"
+        shell = str(override.get("shell") or "bash").strip() if shell_mode else "bash"  # pyright: ignore[reportOptionalMemberAccess]
         uses_environment_agent_selection = bool(
             not override and env and env.agent_selection and getattr(env.agent_selection, "agents", None)
         )
@@ -522,7 +522,7 @@ class MainWindowTasksInteractiveMixin(_MainWindowHints):
 
         enabled_env_prompts: list[str] = []
         if env and bool(getattr(env, "prompts_unlocked", False)):
-            for p in getattr(env, "prompts", None) or []:
+            for p in getattr(env, "prompts", None) or []:  # pyright: ignore[reportUnknownVariableType]
                 text = str(getattr(p, "text", "") or "").strip()
                 if not text or not bool(getattr(p, "enabled", False)):
                     continue

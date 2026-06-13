@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any
 from midori_ai_logger import MidoriAiLogger
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -71,7 +71,7 @@ def _resolved_agent_config_cli_flags(
     return prefixed_flags or cli_flags
 
 
-class MainWindowSettingsMixin(_MainWindowHints):
+class MainWindowSettingsMixin(MainWindowHints):
     _REMOVED_IDE_SETTINGS_KEYS = (
         "ide_auto_mounts_enabled",
         "ide_system_default",
@@ -208,7 +208,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         records: list[TaskWorkspaceMigrationRecord] = []
         seen: set[tuple[str, str]] = set()
 
-        def _add(payload: dict[str, object]) -> None:
+        def _add(payload: dict[str, Any]) -> None:
             if str(payload.get("workspace_type") or "").strip() != "cloned":
                 return
             task_id = str(payload.get("task_id") or "").strip()
@@ -278,7 +278,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             self._apply_migrated_workspace_paths(moved_records, target_location)
             detail = f"Moved: {moved}\nSkipped: {skipped}\nFailed: {failed}"
             if failed and isinstance(failures, list):
-                detail = f"{detail}\n\n" + "\n".join(str(item) for item in failures[:5])
+                detail = f"{detail}\n\n" + "\n".join(str(item) for item in failures[:5])  # pyright: ignore[reportUnknownVariableType]
             progress.setLabelText(detail)
             QMessageBox.information(self, "Move all tasks", detail)
             thread.quit()
@@ -296,10 +296,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
         thread.start()
 
     def _apply_migrated_workspace_paths(self, moved_records: object, target_location: str) -> None:
-        records = moved_records if isinstance(moved_records, list) else []
+        records = moved_records if isinstance(moved_records, list) else []  # pyright: ignore[reportUnknownVariableType]
         moved_by_task = {
             str(getattr(record, "task_id", "") or ""): str(getattr(record, "destination", "") or "")
-            for record in records
+            for record in records  # pyright: ignore[reportUnknownVariableType]
         }
         if not moved_by_task:
             return
@@ -390,10 +390,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
         except Exception:
             merged["github_poll_startup_delay_s"] = 35
         trusted_users_raw = merged.get("agentsnova_trusted_users_global")
-        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []
+        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
         trusted_users: list[str] = []
         seen_trusted_users: set[str] = set()
-        for row in trusted_users_rows:
+        for row in trusted_users_rows:  # pyright: ignore[reportUnknownVariableType]
             username = str(row or "").strip().lstrip("@").lower()
             if not username or username in seen_trusted_users:
                 continue
@@ -480,7 +480,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         *,
         agent_cli: str,
         env: Environment | None,
-        settings: dict[str, object],
+        settings: dict[str, Any],
     ) -> str:
         """Resolve a host config directory for an agent CLI.
 
@@ -510,7 +510,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             page._refresh_agent_configs_list()
 
     @staticmethod
-    def _find_agent_instance_by_id(env: Environment | None, agent_id: str) -> object | None:
+    def _find_agent_instance_by_id(env: Environment | None, agent_id: str) -> Any | None:
         if env is None or env.agent_selection is None or not getattr(env.agent_selection, "agents", None):
             return None
 
@@ -527,10 +527,10 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
     def _resolve_agent_instance_runtime(
         self,
-        inst: object | None,
+        inst: Any | None,
         *,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
         agent_configs: dict[str, AgentConfig] | None = None,
         fallback_agent_cli: str = "",
         fallback_config_dir: str = "",
@@ -568,7 +568,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         *,
         override: dict[str, str],
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> tuple[str, str, str, str]:
         settings_data = settings or self._settings_data
         agent_id = str(override.get("agent_id") or "").strip()
@@ -617,7 +617,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self,
         *,
         env: Environment,
-        settings: dict[str, object],
+        settings: dict[str, Any],
         advance_round_robin: bool,
     ) -> tuple[str, str, str, str]:
         agents = list(getattr(env.agent_selection, "agents", []) or [])
@@ -654,7 +654,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
                     continue
                 counts[agent_instance_id] = counts.get(agent_instance_id, 0) + 1
 
-            def _score(inst: object) -> tuple[int, int]:
+            def _score(inst: Any) -> tuple[int, int]:
                 inst_id = str(getattr(inst, "agent_id", "") or "").strip()
                 return counts.get(inst_id, 0), agents.index(inst)
 
@@ -743,7 +743,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self,
         *,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
         advance_round_robin: bool = False,
     ) -> tuple[str, str, str]:
         """Return the effective ``(agent_cli, config_dir, cli_flags)`` for a launch.
@@ -793,7 +793,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         *,
         agent_cli: str,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> str:
         """Return the effective host config directory for the given agent CLI.
 
@@ -838,7 +838,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
             settings=settings,
         )
 
-    def _coerce_agent_override(self, override: object) -> dict[str, str] | None:
+    def _coerce_agent_override(self, override: Any) -> dict[str, str] | None:
         if not isinstance(override, dict):
             return None
         agent_cli = str(override.get("agent_cli") or "").strip().lower()
@@ -860,7 +860,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self,
         *,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> bool:
         settings_data = settings or self._settings_data
         global_enabled = bool(settings_data.get("gpu_enabled") or False)
@@ -877,7 +877,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self,
         *,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> bool:
         settings_data = settings or self._settings_data
         global_enabled = bool(settings_data.get("network_host") or False)
@@ -894,7 +894,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         self,
         *,
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> str:
         settings_data = settings or self._settings_data
         global_mode = normalize_opencode_interactive_mode(
@@ -914,7 +914,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         *,
         override: dict[str, str],
         env: Environment | None,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> str:
         _agent_cli, config_dir, _cli_flags, _agent_id = self._resolve_override_agent_runtime(
             override=override,
@@ -1051,7 +1051,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
 
     def _format_agent_label(
         self,
-        inst: object | None,
+        inst: Any | None,
         *,
         agent_configs: dict[str, AgentConfig] | None = None,
     ) -> str:
@@ -1076,7 +1076,7 @@ class MainWindowSettingsMixin(_MainWindowHints):
         env: Environment | None,
         primary_agent_cli: str,
         primary_config_dir: str,
-        settings: dict[str, object] | None = None,
+        settings: dict[str, Any] | None = None,
     ) -> list[str]:
         """Compute additional config mounts for cross-agent allowlist.
 

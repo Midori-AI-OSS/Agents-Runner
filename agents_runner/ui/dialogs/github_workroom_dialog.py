@@ -582,7 +582,7 @@ class GitHubWorkroomDialog(ThemedDialog):
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
-        return answer == QMessageBox.Yes
+        return answer == QMessageBox.Yes  # pyright: ignore[reportUnknownVariableType]
 
     def refresh(self) -> None:
         def _load() -> None:

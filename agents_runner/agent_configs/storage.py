@@ -1,7 +1,7 @@
 import os
 import tempfile
 
-from typing import Any
+from typing import Any, cast
 
 import tomli_w
 
@@ -34,7 +34,8 @@ def _atomic_write_state_payload(state_path: str, payload: dict[str, Any]) -> Non
 def _as_dict(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
         return None
-    return {str(k): v for k, v in value.items()}
+    d = cast(dict[object, object], value)
+    return {str(k): v for k, v in d.items()}
 
 
 def load_agent_configs(state_path: str) -> list[AgentConfig]:
@@ -44,7 +45,8 @@ def load_agent_configs(state_path: str) -> list[AgentConfig]:
         return []
 
     configs: list[AgentConfig] = []
-    for item in raw:
+    raw_items: list[object] = raw  # pyright: ignore[reportUnknownVariableType]
+    for item in raw_items:
         item_dict = _as_dict(item)
         if item_dict is None:
             continue
@@ -89,7 +91,8 @@ def save_agent_config(state_path: str, config: AgentConfig) -> None:
     raw_configs = payload.get("agent_configs")
     items: list[dict[str, Any]] = []
     if isinstance(raw_configs, list):
-        for item in raw_configs:
+        raw_configs_items: list[object] = raw_configs  # pyright: ignore[reportUnknownVariableType]
+        for item in raw_configs_items:
             item_dict = _as_dict(item)
             if item_dict is None:
                 continue
@@ -124,7 +127,8 @@ def delete_agent_config(state_path: str, config_id: str) -> None:
         return
 
     keep: list[dict[str, Any]] = []
-    for item in raw_configs:
+    raw_configs_items: list[object] = raw_configs  # pyright: ignore[reportUnknownVariableType]
+    for item in raw_configs_items:
         item_dict = _as_dict(item)
         if item_dict is None:
             continue
@@ -158,7 +162,7 @@ def find_envs_referencing_config(state_path: str, config_id: str) -> list[str]:
             continue
 
         selection = getattr(env, "agent_selection", None)
-        agents = selection.agents if selection is not None else []
+        agents: list[object] = selection.agents if selection is not None else []
         if any(str(getattr(agent, "config_id", "") or "").strip() == target for agent in agents):
             referenced.append(env_id)
             seen.add(env_id)

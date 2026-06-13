@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _EnvironmentsPageHints
+    from agents_runner.ui._mixin_hints import EnvironmentsPageHints
 else:
-    _EnvironmentsPageHints = object
+    EnvironmentsPageHints = object
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator
@@ -63,7 +63,7 @@ class _EnvironmentPaneSpec:
     section: str
 
 
-class EnvironmentsFormMixin(_EnvironmentsPageHints):
+class EnvironmentsFormMixin(EnvironmentsPageHints):
     def _default_pane_specs(self) -> list[_EnvironmentPaneSpec]:
         return [
             _EnvironmentPaneSpec(
@@ -622,7 +622,7 @@ class EnvironmentsFormMixin(_EnvironmentsPageHints):
         if not isinstance(envs, dict):
             return None
         env_id = str(getattr(self, "_current_env_id", "") or "").strip()
-        env = envs.get(env_id)
+        env = envs.get(env_id)  # pyright: ignore[reportUnknownVariableType]
         return env if isinstance(env, Environment) else None
 
     def _on_setup_environment_github_defaults(self) -> None:

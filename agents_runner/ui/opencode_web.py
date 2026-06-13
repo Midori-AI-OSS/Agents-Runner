@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui.main_window import MainWindow
+
 import random
 import socket
 import time
@@ -70,7 +75,7 @@ def allocate_localhost_port() -> int:
 
 def schedule_open_opencode_web_url(
     *,
-    main_window: object,
+    main_window: MainWindow,
     task_id: str,
     url: str,
     host_port: int,
@@ -78,7 +83,7 @@ def schedule_open_opencode_web_url(
     state = {"done": False}
     deadline_s = time.monotonic() + (OPENCODE_WEB_TIMEOUT_MS / 1000.0)
     readiness_url = f"http://{OPENCODE_WEB_HOST}:{int(host_port)}/"
-    main_window._on_task_log(
+    main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
         task_id,
         format_log(
             "opencode",
@@ -94,7 +99,7 @@ def schedule_open_opencode_web_url(
         status_code = _http_status_code(readiness_url)
         if status_code is not None:
             state["done"] = True
-            main_window._on_task_log(
+            main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
                 task_id,
                 format_log(
                     "opencode",
@@ -110,7 +115,7 @@ def schedule_open_opencode_web_url(
                 if opened
                 else f"web server is ready but host opener did not report success: {url}"
             )
-            main_window._on_task_log(
+            main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
                 task_id,
                 format_log("opencode", "web", log_level, log_message),
             )
@@ -118,7 +123,7 @@ def schedule_open_opencode_web_url(
 
         if time.monotonic() >= deadline_s:
             state["done"] = True
-            main_window._on_task_log(
+            main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
                 task_id,
                 format_log(
                     "opencode",

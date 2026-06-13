@@ -9,9 +9,9 @@ from datetime import timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
@@ -33,7 +33,7 @@ from agents_runner.ui.task_git_metadata import derive_task_git_metadata
 from agents_runner.ui.utils import stain_color
 
 
-class MainWindowTasksInteractiveFinalizeMixin(_MainWindowHints):
+class MainWindowTasksInteractiveFinalizeMixin(MainWindowHints):
     def _on_interactive_finished(self, task_id: str, exit_code: int) -> None:
         task_id = str(task_id or "").strip()
         watch = self._interactive_watch.pop(task_id, None)

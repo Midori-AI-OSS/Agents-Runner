@@ -24,7 +24,7 @@ from agents_runner.agent_systems.registry import available_agent_system_names
 from agents_runner.agent_systems.status import command_in_path
 from agents_runner.opencode_models import opencode_model_options_by_provider
 from agents_runner.persistence import default_state_path
-from agents_runner.ui.graphics import _theme_name_for_agent
+from agents_runner.ui.graphics import theme_name_for_agent
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 
 
@@ -196,7 +196,7 @@ class AgentConfigDialog(ThemedDialog):
         self._update_opencode_fields_visibility()
         agent_cli = str(self._agent_cli.currentData() or "").strip().lower()
         if agent_cli:
-            self._root.set_theme_name(_theme_name_for_agent(agent_cli))
+            self._root.set_theme_name(theme_name_for_agent(agent_cli))
         if self._editing:
             return
         if str(self._config_id.text() or "").strip():

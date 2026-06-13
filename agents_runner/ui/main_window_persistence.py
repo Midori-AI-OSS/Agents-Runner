@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING
 from midori_ai_logger import MidoriAiLogger
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.environments import normalize_opencode_interactive_mode
@@ -29,7 +29,7 @@ from agents_runner.gh.automation_policy import normalize_default_marker_comment_
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class MainWindowPersistenceMixin(_MainWindowHints):
+class MainWindowPersistenceMixin(MainWindowHints):
     @staticmethod
     def _is_missing_container_error(exc: Exception) -> bool:
         text = str(exc or "").lower()
@@ -87,7 +87,7 @@ class MainWindowPersistenceMixin(_MainWindowHints):
                 task.error = f"{detail}; {reason}" if detail else reason
                 return True
             return False
-        if not isinstance(state, dict) or not state:
+        if not isinstance(state, dict) or not state:  # pyright: ignore[reportUnnecessaryIsInstance]
             return False
 
         incoming = str(state.get("Status") or "").strip().lower()
@@ -122,21 +122,21 @@ class MainWindowPersistenceMixin(_MainWindowHints):
                 task.finished_at = datetime.now(tz=timezone.utc)
         return True
 
-    def _schedule_save(self) -> None:
+    def _schedule_save(self, *_args: object) -> None:
         self._save_timer.start()
 
-    def _save_state(self) -> None:
+    def _save_state(self, *_args: object) -> None:
         from agents_runner.persistence import save_watch_state
 
         settings_payload = dict(self._settings_data)
-        for key in self._REMOVED_IDE_SETTINGS_KEYS:
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
             settings_payload.pop(key, None)
 
         try:
             payload = load_state(self._state_path)
         except Exception:
             payload = {}
-        if not isinstance(payload, dict):
+        if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             payload = {}
         payload["settings"] = settings_payload
 
@@ -166,7 +166,7 @@ class MainWindowPersistenceMixin(_MainWindowHints):
         if isinstance(settings, dict):
             self._settings_data.update(settings)
         self._settings_data.pop("stt_mode", None)
-        for key in self._REMOVED_IDE_SETTINGS_KEYS:
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
             self._settings_data.pop(key, None)
         self._settings_data["use"] = normalize_agent(str(self._settings_data.get("use") or "codex"))
         try:
@@ -175,7 +175,7 @@ class MainWindowPersistenceMixin(_MainWindowHints):
             )
         except Exception:
             self._settings_data["max_agents_running"] = -1
-        for key in self._REMOVED_LEGACY_SETTINGS_KEYS:
+        for key in self._REMOVED_LEGACY_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
             self._settings_data.pop(key, None)
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("gpu_enabled", False)
@@ -262,10 +262,10 @@ class MainWindowPersistenceMixin(_MainWindowHints):
         except Exception:
             self._settings_data["github_poll_startup_delay_s"] = 35
         trusted_users_raw = self._settings_data.get("agentsnova_trusted_users_global")
-        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []
+        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
         trusted_users: list[str] = []
         seen_users: set[str] = set()
-        for row in trusted_users_rows:
+        for row in trusted_users_rows:  # pyright: ignore[reportUnknownVariableType]
             username = str(row or "").strip().lstrip("@").lower()
             if not username or username in seen_users:
                 continue
@@ -282,7 +282,7 @@ class MainWindowPersistenceMixin(_MainWindowHints):
         items = load_active_task_payloads(self._state_path)
         loaded: list[Task] = []
         for item in items:
-            if not isinstance(item, dict):
+            if not isinstance(item, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
                 continue
             task = deserialize_task(Task, item)
             if not task.task_id:

@@ -3,12 +3,12 @@ from __future__ import annotations
 import threading
 import time
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _MainWindowHints
+    from agents_runner.ui._mixin_hints import MainWindowHints
 else:
-    _MainWindowHints = object
+    MainWindowHints = object
 
 from PySide6.QtWidgets import QDialog
 
@@ -33,9 +33,9 @@ from midori_ai_logger import MidoriAiLogger
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 
-class MainWindowAutoReviewMixin(_MainWindowHints):
+class MainWindowAutoReviewMixin(MainWindowHints):
     def _on_auto_review_requested(self, env_id: str, payload: object) -> None:
-        payload_dict = payload if isinstance(payload, dict) else {}
+        payload_dict: dict[str, Any] = payload if isinstance(payload, dict) else {}  # pyright: ignore[reportUnknownVariableType]
         prompt = str(payload_dict.get("prompt") or "").strip()
         if not prompt:
             return

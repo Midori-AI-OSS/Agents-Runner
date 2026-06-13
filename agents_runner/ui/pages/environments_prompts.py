@@ -192,4 +192,4 @@ class PromptsTabWidget(QWidget):
             text = text_edit.toPlainText().strip()
             if text:
                 prompts.append(PromptConfig(enabled=enabled_cb.isChecked(), text=text))
-        return prompts, self._unlocked
+        return prompts, self._unlocked  # pyright: ignore[reportUnknownVariableType]

@@ -4,6 +4,7 @@ import math
 import random
 import time
 from dataclasses import dataclass, field
+from typing import Callable
 
 from PySide6.QtCore import QPointF, QRect, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen, QRadialGradient
@@ -35,7 +36,10 @@ class _ClaudeBranchSegment:
     tone: int
 
 
-def claude_palette(palette_phase: float, blend_colors_fn) -> tuple[QColor, QColor, QColor, QColor]:
+def claude_palette(
+    palette_phase: float,
+    blend_colors_fn: Callable[[str | QColor, str | QColor, float], QColor],
+) -> tuple[QColor, QColor, QColor, QColor]:
     """
     Warm dark palette blended between "browser dark" and "code" moods.
     Returns: (top, bottom, accent, accent_dim)
@@ -238,7 +242,7 @@ def paint_claude_background(
     width: int,
     height: int,
     now_s: float,
-    blend_colors_fn,
+    blend_colors_fn: Callable[[str | QColor, str | QColor, float], QColor],
 ) -> tuple[list[_ClaudeBranchTip], float]:
     """
     Paint the Claude background with animated branching tree pattern.

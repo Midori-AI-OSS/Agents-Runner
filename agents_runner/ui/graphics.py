@@ -145,10 +145,10 @@ def resolve_effective_ui_theme_name(settings: Mapping[str, object] | None) -> st
         return resolve_theme_name(selected)
 
     agent_cli = str(payload.get("use") or "codex").strip().lower() or "codex"
-    return resolve_theme_name(_theme_name_for_agent(agent_cli))
+    return resolve_theme_name(theme_name_for_agent(agent_cli))
 
 
-def _theme_name_for_agent(agent_cli: str) -> str:
+def theme_name_for_agent(agent_cli: str) -> str:
     agent_cli = str(agent_cli or "").strip().lower()
     if not agent_cli:
         return _fallback_theme_name()
@@ -309,7 +309,7 @@ class GlassRoot(QWidget):
         self._transition_to_theme(theme_name)
 
     def set_agent_theme(self, agent_cli: str) -> None:
-        resolved = _theme_name_for_agent(agent_cli)
+        resolved = theme_name_for_agent(agent_cli)
         if not self.isVisible() or not self._animation_enabled:
             self._apply_theme_immediately(resolved)
             return

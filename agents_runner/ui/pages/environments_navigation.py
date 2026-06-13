@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from agents_runner.ui._mixin_hints import _EnvironmentsPageHints
+    from agents_runner.ui._mixin_hints import EnvironmentsPageHints
 else:
-    _EnvironmentsPageHints = object
+    EnvironmentsPageHints = object
 
 from PySide6.QtCore import (
     QEasingCurve,
@@ -19,7 +19,7 @@ from PySide6.QtWidgets import QGraphicsOpacityEffect
 from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 
 
-class EnvironmentsNavigationMixin(_EnvironmentsPageHints):
+class EnvironmentsNavigationMixin(EnvironmentsPageHints):
     def _on_back(self) -> None:
         if not self.try_autosave():
             return
@@ -120,7 +120,7 @@ class EnvironmentsNavigationMixin(_EnvironmentsPageHints):
 
         if self._pane_rest_pos is not None:
             self._page_stack.move(self._pane_rest_pos)
-        self._page_stack.setGraphicsEffect(None)
+        self._page_stack.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
 
         base_pos = self._page_stack.pos()
         self._pane_rest_pos = QPoint(base_pos)
@@ -151,7 +151,7 @@ class EnvironmentsNavigationMixin(_EnvironmentsPageHints):
 
         def _cleanup() -> None:
             self._page_stack.move(self._pane_rest_pos)
-            self._page_stack.setGraphicsEffect(None)
+            self._page_stack.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
             self._pane_animation = None
 
         group.finished.connect(_cleanup)
@@ -169,7 +169,7 @@ class EnvironmentsNavigationMixin(_EnvironmentsPageHints):
         self.try_autosave(show_validation_errors=False)
 
     def _update_navigation_mode(self) -> None:
-        compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD
+        compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD  # pyright: ignore[reportUnknownVariableType]
         if compact == self._compact_mode:
             return
         self._compact_mode = compact

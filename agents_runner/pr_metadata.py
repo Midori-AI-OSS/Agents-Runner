@@ -172,7 +172,7 @@ def update_github_context_after_clone(
     except Exception as exc:
         raise ValueError(f"Failed to read GitHub context file: {exc}") from exc
 
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         raise ValueError("Invalid GitHub context file format")
 
     # Update github object
@@ -202,7 +202,7 @@ def load_pr_metadata(path: str) -> PrMetadata:
             payload = tomli.load(f)
     except Exception:
         return PrMetadata()
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         return PrMetadata()
 
     title_raw = payload.get("title")
@@ -230,7 +230,7 @@ def load_github_metadata(path: str) -> GitHubMetadataV2 | None:
     except Exception:
         return None
 
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         return None
 
     version = payload.get("version", 1)
