@@ -1,6 +1,7 @@
 # Agents Runner Contributor Guide
 
-This project uses the Codex contributor coordination system. Follow these guidelines when contributing code, documentation, or reviewing work.
+This project uses the Midori AI contributor coordination system. 
+Follow these guidelines when contributing code, documentation, or reviewing work.
 
 ---
 
