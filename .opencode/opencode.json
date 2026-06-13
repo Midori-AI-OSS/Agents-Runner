@@ -1,5 +1,12 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "lsp": {
+    "pyright": { "disabled": true },
+    "basedpyright": {
+      "command": ["uv", "run", "--with", "basedpyright", "basedpyright-langserver", "--stdio"],
+      "extensions": [".py", ".pyi"]
+    }
+  },
   "permission": {
     "external_directory": {
       "/etc/*": "allow",
