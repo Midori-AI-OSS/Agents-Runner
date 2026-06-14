@@ -38,13 +38,24 @@ Follow these guidelines when contributing code, documentation, or reviewing work
 
 - Run locally (GUI): `uv run main.py`
 - Follow existing code style: Python 3.13+, type hints throughout, and minimal modifications (avoid drive-by refactors).
+- Python style:
+  - Leave a blank line between the module docstring and the first import statement.
+  - Place each import on its own line.
+  - Sort imports within each group (standard library, third-party, project modules) from shortest to longest.
+  - Insert a blank line between each import grouping.
+  - Avoid inline imports.
+  - Place all `from ... import ...` statements after the plain `import ...` group, one per line, sorted shortest to longest, and separated by a blank line from the preceding imports.
+  - Keep chained print helpers such as `await bot.print.print("message")` on a single physical line so logging remains easy to grep; refactor helper variables instead of wrapping the await call.
+  - When preparing helper values for these logs, keep the entire expression on a single line as well (for example `log_message = "..."`). Avoid wrapping string construction or dictionary literals across multiple physical lines when the content fits on one line.
+  - Keep every function or method signature on a single line. If the parameters do not comfortably fit, refactor the API or consolidate arguments rather than wrapping the definition.
+  - Single-line statements (especially logging calls) must remain on one physical line when they fit within the repository's style limits — adjust helper variables or message text instead of breaking across lines.
 - Naming is strict: always use "Midori AI" or "midoriai"; never use shorthand "Midori" or "midori" in names, keys, comments, docs, prompts, or UI text.
 - Verification-first: confirm current behavior in the codebase before changing code; reproduce/confirm the issue (or missing behavior); verify the fix with clear checks.
 - No broad fallbacks: do not add “fallback behavior everywhere”; only add a narrow fallback when the task explicitly requires it, and justify it.
 - No backward compatibility shims by default: do not preserve old code paths “just in case”; only add compatibility layers when the task explicitly requires it.
 - Minimal documentation, minimal logging: prefer reading code and docstrings; do not add docs/logs unless required to diagnose a specific issue or prevent a crash.
 - Do not update `README.md`.
-- Avoid monolith files: **soft max 500 lines per file**, **hard max 1000 lines per file** (split modules/classes when approaching the soft limit).
+- Aim for ~600 lines per file; split modules when they grow beyond this threshold.
 - Use structured commit messages: `[TYPE] Concise summary`
 - Break large changes into reviewable commits.
 - Versioning: use 4-part `MAJOR.MINOR.BUILD.TASK` in `pyproject.toml` `project.version` (example `0.1.12.345`). When you move task files from `.agents/tasks/wip/` to `.agents/tasks/done/`, bump `TASK` by `+1` per file moved (if multiple are completed at once, bump by that count). If no task file is moved, do not bump the version unless explicitly instructed. When `TASK` would reach `100000`, reset it to `0` and bump `BUILD` by `+1`. Only bump `MINOR`/`MAJOR` intentionally and reset lower fields to `0`.
@@ -78,6 +89,7 @@ Follow these guidelines when contributing code, documentation, or reviewing work
   - Prefer small, named helpers over long methods; extract repeated logic into functions or classes.
   - Keep reusable logic separate from wiring; compute data first, then apply it in UI/widgets/themes.
   - For new features, add or reuse at least one shared helper instead of duplicating logic.
+  - Keep the Qt event loop responsive — move long-running operations (subprocess, I/O, networking) off the main thread using QThread, QProcess, or background workers.
 
 - Sync CI toolchain (before lint/test/type): `uv sync --group ci`
 - Format with Ruff (before every commit): `uv run ruff format .`
