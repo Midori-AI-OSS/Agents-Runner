@@ -364,8 +364,10 @@ class _DynamicBackground:
                 blend_factor = 0.0
             else:
                 resolved = _FALLBACK_SPEC
-                elapsed_since_hold = now - (last_valid_time + _hold_duration)
-                blend_factor = _clamp(elapsed_since_hold / _transition_duration, 0.0, 1.0)
+                if t_start is not None and previous is not None:
+                    blend_factor = _clamp((now - t_start) / _transition_duration, 0.0, 1.0)
+                else:
+                    blend_factor = 1.0
         else:
             resolved = current
             if t_start is not None and previous is not None:

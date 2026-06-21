@@ -473,6 +473,8 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             art_channel = ""
 
         if not is_playing or not has_art or not art_url:
+            if not is_playing and str(state.get("connection_state") or "") == "reconnecting":
+                return
             self._has_dynamic_spec = False
             set_dynamic_art_spec(None, "blobs")
             self._active_art_channel = ""
