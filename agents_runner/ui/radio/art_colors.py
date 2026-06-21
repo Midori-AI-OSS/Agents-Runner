@@ -128,7 +128,7 @@ def build_dynamic_spec(colors: list[QColor], style: str) -> MidoriVariantSpec:
         bottom_start=bottom_start,
         bottom_end=bottom_end,
         blob_palette=tuple(blob_list),
-        ambient_overlay=QColor(0, 0, 0, 34),
+        ambient_overlay=QColor(0, 0, 0, 50),
         boundary_angle_deg=17.0,
         motion_speed=1.22,
         wave_strength=0.42,

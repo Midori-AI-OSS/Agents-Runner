@@ -34,6 +34,7 @@ from agents_runner.ui.radio.art_colors import build_dynamic_spec
 from agents_runner.ui.radio.art_colors import download_art
 from agents_runner.ui.radio.art_colors import extract_dominant_colors
 from agents_runner.ui.radio.art_colors import hash_to_style
+from agents_runner.ui.themes.dynamic.background import reset_dynamic_state
 from agents_runner.ui.themes.dynamic.background import set_art_spec as set_dynamic_art_spec
 from agents_runner.ui.pages import DashboardPage
 from agents_runner.ui.pages import EnvironmentsPage
@@ -164,6 +165,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._task_workspace_migration_worker: object | None = None
         self._state_path = default_state_path()
         self._active_art_channel: str = ""
+        self._has_dynamic_spec: bool = False
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(450)
@@ -452,6 +454,9 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
     def _update_dynamic_theme_from_radio(self, state: dict[str, Any]) -> None:
         ui_theme = normalize_ui_theme_name(self._settings_data.get("ui_theme"), allow_auto=False)
         if ui_theme != "dynamic":
+            if self._has_dynamic_spec:
+                reset_dynamic_state()
+                self._has_dynamic_spec = False
             return
 
         is_playing = bool(state.get("is_playing"))
@@ -468,11 +473,12 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             art_channel = ""
 
         if not is_playing or not has_art or not art_url:
-            set_dynamic_art_spec(None, "")
+            self._has_dynamic_spec = False
+            set_dynamic_art_spec(None, "blobs")
             self._active_art_channel = ""
             return
 
-        if art_channel == self._active_art_channel and art_url:
+        if art_channel == self._active_art_channel and art_url and self._has_dynamic_spec:
             return
 
         self._active_art_channel = art_channel
@@ -485,6 +491,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             colors = extract_dominant_colors(image, n=4)
             spec = build_dynamic_spec(colors, style)
             set_dynamic_art_spec(spec, style)
+            self._has_dynamic_spec = True
 
         download_art(art_url, self._art_network, _on_art_downloaded)
 

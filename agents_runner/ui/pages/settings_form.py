@@ -1231,7 +1231,7 @@ class SettingsFormMixin:
         if normalized == "midoriai_light":
             return "Midori AI (Light Theme)"
         if normalized == "dynamic":
-            return "Dynamic (Radio)"
+            return "Dynamic Music"
         try:
             return format_agent_ui_label(normalized)
         except Exception:

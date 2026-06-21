@@ -32,7 +32,10 @@ _current_spec: MidoriVariantSpec | None = None
 _previous_spec: MidoriVariantSpec | None = None
 _current_style: str = "blobs"
 _transition_start_s: float | None = None
-_transition_duration: float = 2.0
+_transition_duration: float = 4.0
+_last_valid_spec: MidoriVariantSpec | None = None
+_last_valid_time: float = 0.0
+_hold_duration: float = 8.0
 
 _FALLBACK_SPEC = MidoriVariantSpec(
     theme_name="dynamic",
@@ -63,10 +66,24 @@ def set_art_spec(spec: MidoriVariantSpec | None, style: str) -> None:
     """Set the current art-derived spec and style for the dynamic background."""
     with _lock:
         global _current_spec, _previous_spec, _current_style, _transition_start_s
+        global _last_valid_spec, _last_valid_time
         _previous_spec = _current_spec
         _current_spec = spec
-        _current_style = style
+        if spec is not None:
+            _last_valid_spec = spec
+            _last_valid_time = time.monotonic()
+            _current_style = style
+        else:
+            _current_style = "blobs"
         _transition_start_s = time.monotonic()
+
+
+def reset_dynamic_state() -> None:
+    """Reset hold state when user switches away from dynamic theme."""
+    global _last_valid_spec, _last_valid_time
+    with _lock:
+        _last_valid_spec = None
+        _last_valid_time = 0.0
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -336,13 +353,26 @@ class _DynamicBackground:
             previous = _previous_spec
             style = _current_style
             t_start = _transition_start_s
+            last_valid_spec = _last_valid_spec
+            last_valid_time = _last_valid_time
 
-        if t_start is not None and previous is not None:
-            blend_factor = _clamp((time.monotonic() - t_start) / _transition_duration, 0.0, 1.0)
+        now = time.monotonic()
+
+        if current is None:
+            if last_valid_spec is not None and (now - last_valid_time) < _hold_duration:
+                resolved = last_valid_spec
+                blend_factor = 0.0
+            else:
+                resolved = _FALLBACK_SPEC
+                elapsed_since_hold = now - (last_valid_time + _hold_duration)
+                blend_factor = _clamp(elapsed_since_hold / _transition_duration, 0.0, 1.0)
         else:
-            blend_factor = 1.0
+            resolved = current
+            if t_start is not None and previous is not None:
+                blend_factor = _clamp((now - t_start) / _transition_duration, 0.0, 1.0)
+            else:
+                blend_factor = 1.0
 
-        resolved = current if current is not None else _FALLBACK_SPEC
         resolved_style = style if current is not None else "blobs"
 
         if previous is not None and blend_factor < 1.0:
