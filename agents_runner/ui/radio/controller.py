@@ -9,6 +9,8 @@ from typing import Any
 
 from midori_ai_logger import MidoriAiLogger
 
+from agents_runner.ui.radio.art_models import ArtPayload
+
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import QUrl
@@ -37,6 +39,7 @@ class RadioController(QObject):
     BASE_URL = "https://radio.midori-ai.xyz"
     HEALTH_ENDPOINT = "/health"
     CURRENT_ENDPOINT = "/radio/v1/current"
+    ART_ENDPOINT = "/radio/v1/art"
     CHANNELS_ENDPOINT = "/radio/v1/channels"
     STREAM_ENDPOINT = "/radio/v1/stream"
     HEALTH_INTERVAL_MS = 30_000
@@ -92,6 +95,7 @@ class RadioController(QObject):
         self._suppress_reconnect_until_s = 0.0
         self._stuck_status_since_s: float | None = None
         self._last_error_log_ts: dict[str, float] = {}
+        self._art_data: dict[str, Any] = {}
 
         self._audio_output: Any | None = None
         self._player: Any | None = None
@@ -268,6 +272,7 @@ class RadioController(QObject):
             "reconnect_attempts": self._reconnect_attempts,
             "last_reconnect_reason": self._last_reconnect_reason,
             "connection_state": self._connection_state_value(),
+            "art": dict(self._art_data),
         }
 
     def _emit_state(self) -> None:
@@ -555,6 +560,41 @@ class RadioController(QObject):
             include_channel=True,
         )
 
+    def _fetch_art(self, channel: str) -> None:
+        def _handle(payload: dict[str, Any] | None, error_text: str) -> None:
+            if error_text or payload is None:
+                self._art_data = {}
+                self._emit_state()
+                return
+
+            data = payload.get("data")
+            if not isinstance(data, dict):
+                self._art_data = {}
+                self._emit_state()
+                return
+
+            try:
+                art = ArtPayload.model_validate(data)
+            except Exception:
+                self._art_data = {}
+                self._emit_state()
+                return
+
+            art_url = art.art_url
+            if not art_url.startswith("http"):
+                art_url = f"{self.BASE_URL}{art_url}"
+
+            self._art_data = {
+                "art_url": art_url,
+                "has_art": art.has_art,
+                "track_id": art.track_id,
+                "mime": art.mime,
+                "channel": art.channel,
+            }
+            self._emit_state()
+
+        self._request_json(self.ART_ENDPOINT, _handle, include_channel=True, channel=channel)
+
     def _request_json(
         self,
         endpoint: str,
@@ -657,6 +697,9 @@ class RadioController(QObject):
         self._current_track_id = track_id
         resolved_channel = self.normalize_channel(data.get("channel"))
         self._resolved_channel = resolved_channel
+        if resolved_channel != self._art_data.get("channel"):
+            self._fetch_art(resolved_channel)
+
         if title:
             self._current_track_title = title
             self._last_track_title = title
@@ -670,6 +713,7 @@ class RadioController(QObject):
             boundary_detected = previous_title != title
 
         if boundary_detected:
+            self._fetch_art(resolved_channel)
             if self._pending_quality:
                 self._apply_pending_quality(boundary_detected=True)
             elif self._enabled and self._desired_playing:
