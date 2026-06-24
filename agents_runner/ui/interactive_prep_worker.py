@@ -24,7 +24,7 @@ from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh_management import GhManagementError
 from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.log_format import format_log
-from agents_runner.midoriai_template import MidoriAITemplateDetection
+from agents_runner.midoriai_template import MidoriaiTemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
@@ -321,11 +321,11 @@ class InteractivePrepWorker(QObject):
     def _apply_interactive_template_and_standby_prompt(self, prompt: str) -> str:
         prompt_for_agent = str(prompt or "")
 
-        template_detection: MidoriAITemplateDetection
+        template_detection: MidoriaiTemplateDetection
         try:
             template_detection = scan_midoriai_agents_template(self._host_workdir)
         except Exception:
-            template_detection = MidoriAITemplateDetection(
+            template_detection = MidoriaiTemplateDetection(
                 midoriai_template_likelihood=0.0,
                 midoriai_template_detected=False,
                 midoriai_template_detected_path=None,

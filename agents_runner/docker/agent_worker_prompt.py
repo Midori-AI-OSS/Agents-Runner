@@ -16,7 +16,7 @@ from agents_runner.persistence import default_state_path
 from agents_runner.prompts import load_prompt
 from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
 from agents_runner.log_format import format_log
-from agents_runner.midoriai_template import MidoriAITemplateDetection
+from agents_runner.midoriai_template import MidoriaiTemplateDetection
 
 
 class PromptAssembler:
@@ -48,7 +48,7 @@ class PromptAssembler:
     def assemble_prompt(
         self,
         agent_cli: str,
-        template_detection: MidoriAITemplateDetection,
+        template_detection: MidoriaiTemplateDetection,
         desktop_enabled: bool,
         desktop_display: str,
     ) -> str:

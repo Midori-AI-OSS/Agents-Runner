@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from agents_runner.environments.storage import load_environments
 from agents_runner.environments.storage import save_environment
-from agents_runner.midoriai_template import MidoriAITemplateDetection
+from agents_runner.midoriai_template import MidoriaiTemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
 
 from .model import Environment
 
 
-def apply_midoriai_template_detection(env: Environment, *, workspace_root: str) -> MidoriAITemplateDetection:
+def apply_midoriai_template_detection(env: Environment, *, workspace_root: str) -> MidoriaiTemplateDetection:
     detection = scan_midoriai_agents_template(workspace_root)
     env.midoriai_template_likelihood = detection.midoriai_template_likelihood
     env.midoriai_template_detected = detection.midoriai_template_detected
@@ -18,7 +18,7 @@ def apply_midoriai_template_detection(env: Environment, *, workspace_root: str) 
 
 def refresh_environment_midoriai_template_detection(
     env_id: str, *, workspace_root: str
-) -> MidoriAITemplateDetection | None:
+) -> MidoriaiTemplateDetection | None:
     env_id = str(env_id or "").strip()
     if not env_id:
         return None

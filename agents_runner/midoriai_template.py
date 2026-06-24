@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 @dataclass(frozen=True, slots=True)
-class MidoriAITemplateDetection:
+class MidoriaiTemplateDetection:
     midoriai_template_likelihood: float
     midoriai_template_detected: bool
     midoriai_template_detected_path: str | None
@@ -58,7 +58,7 @@ def _clamp_unit(value: float) -> float:
     return float(value)
 
 
-def scan_midoriai_agents_template(workspace_root: str) -> MidoriAITemplateDetection:
+def scan_midoriai_agents_template(workspace_root: str) -> MidoriaiTemplateDetection:
     root = Path(workspace_root).expanduser()
 
     best_score = -1.0
@@ -92,7 +92,7 @@ def scan_midoriai_agents_template(workspace_root: str) -> MidoriAITemplateDetect
 
     likelihood = _clamp_unit(best_score if found_candidate_dir else 0.0)
     detected = bool((likelihood > 0.4) or any_dir_matched_at_least_four)
-    return MidoriAITemplateDetection(
+    return MidoriaiTemplateDetection(
         midoriai_template_likelihood=likelihood,
         midoriai_template_detected=detected,
         midoriai_template_detected_path=best_path,
