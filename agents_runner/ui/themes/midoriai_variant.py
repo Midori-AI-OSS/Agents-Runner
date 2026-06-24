@@ -19,8 +19,8 @@ from PySide6.QtWidgets import QWidget
 
 
 @dataclass(frozen=True)
-class MidoriVariantSpec:
-    """Visual and motion parameters for a Midori theme variant."""
+class MidoriaiVariantSpec:
+    """Visual and motion parameters for a Midori AI theme variant."""
 
     theme_name: str
     base_color: QColor
@@ -52,7 +52,7 @@ class _BlobSeed:
 
 
 @dataclass
-class _MidoriRuntime:
+class _MidoriaiRuntime:
     split_ratio: float = 0.45
     top_phase: float = 0.0
     bottom_phase: float = 0.0
@@ -107,7 +107,7 @@ def _apply_base_gradient(
     pulse: float,
     wave_phase: float,
     split_ratio: float,
-    spec: MidoriVariantSpec,
+    spec: MidoriaiVariantSpec,
 ) -> None:
     w = int(rect.width())
     h = int(rect.height())
@@ -154,9 +154,9 @@ def _paint_blobs(
     *,
     painter: QPainter,
     rect: QRect,
-    runtime: _MidoriRuntime,
+    runtime: _MidoriaiRuntime,
     pulse: float,
-    spec: MidoriVariantSpec,
+    spec: MidoriaiVariantSpec,
 ) -> None:
     w = int(rect.width())
     h = int(rect.height())
@@ -221,8 +221,8 @@ def _paint_variant(
     *,
     painter: QPainter,
     rect: QRect,
-    runtime: _MidoriRuntime,
-    spec: MidoriVariantSpec,
+    runtime: _MidoriaiRuntime,
+    spec: MidoriaiVariantSpec,
 ) -> None:
     top_color = _blend(spec.top_start, spec.top_end, runtime.top_phase)
     bottom_color = _blend(spec.bottom_start, spec.bottom_end, runtime.bottom_phase)
@@ -251,8 +251,8 @@ def _paint_variant(
         painter.fillRect(rect, spec.ambient_overlay)
 
 
-class _MidoriVariantBackground:
-    def __init__(self, spec: MidoriVariantSpec) -> None:
+class _MidoriaiVariantBackground:
+    def __init__(self, spec: MidoriaiVariantSpec) -> None:
         self._spec = spec
         self.theme_name = spec.theme_name
 
@@ -264,7 +264,7 @@ class _MidoriVariantBackground:
 
     def init_runtime(self, *, widget: QWidget) -> object:
         del widget
-        runtime = _MidoriRuntime()
+        runtime = _MidoriaiRuntime()
         runtime.rng.seed(time.time_ns())
         runtime.wave_phase = runtime.rng.uniform(0.0, math.tau)
         runtime.pulse_phase = runtime.rng.uniform(0.0, math.tau)
@@ -279,7 +279,7 @@ class _MidoriVariantBackground:
     def tick(self, *, runtime: object, widget: QWidget, now_s: float, dt_s: float) -> bool:
         del widget
         del now_s
-        state = runtime if isinstance(runtime, _MidoriRuntime) else _MidoriRuntime()
+        state = runtime if isinstance(runtime, _MidoriaiRuntime) else _MidoriaiRuntime()
 
         speed = max(0.2, float(self._spec.motion_speed))
         step = float(dt_s) * speed
@@ -297,11 +297,11 @@ class _MidoriVariantBackground:
         return True
 
     def paint(self, *, painter: QPainter, rect: QRect, runtime: object) -> None:
-        state = runtime if isinstance(runtime, _MidoriRuntime) else _MidoriRuntime()
+        state = runtime if isinstance(runtime, _MidoriaiRuntime) else _MidoriaiRuntime()
         _paint_variant(painter=painter, rect=rect, runtime=state, spec=self._spec)
 
 
-def create_midori_background(spec: MidoriVariantSpec) -> object:
-    """Create a background implementation for a Midori variant."""
+def create_midoriai_background(spec: MidoriaiVariantSpec) -> object:
+    """Create a background implementation for a Midori AI variant."""
 
-    return _MidoriVariantBackground(spec)
+    return _MidoriaiVariantBackground(spec)
