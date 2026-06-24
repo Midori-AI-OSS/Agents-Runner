@@ -745,7 +745,7 @@ class RadioController(QObject):
         if not title:
             return ""
 
-        known_suffixes = {"midori ai agents runner", "midori ai radio"}
+        known_suffixes = {"Midori AI Agents Runner", "Midori AI Radio"}
         station = " ".join(str(station_label or "").split()).strip().casefold()
         if station:
             known_suffixes.add(station)
