@@ -39,7 +39,7 @@ _TASK_BRANCH_PREFIXES: tuple[str, ...] = ("midoriaiagents/",)
 _COMMON_BASE_BRANCHES: tuple[str, ...] = ("main", "master", "trunk", "develop")
 
 _MIDORI_AI_AGENTS_RUNNER_URL = "https://github.com/Midori-AI-OSS/Agents-Runner"
-_MIDORI_AI_URL = "https://github.com/Midori-AI-OSS/Midori-AI"
+_MIDORIAI_URL = "https://github.com/Midori-AI-OSS/Midori-AI"
 _PR_ATTRIBUTION_MARKER = "<!-- midori-ai-agents-runner-pr-footer -->"
 _BRANCH_THEME_TOKENS: dict[str, tuple[str, ...]] = {
     GH_TASK_BRANCH_NAMING_STYLE_SONGS: (
@@ -123,7 +123,7 @@ def _append_pr_attribution_footer(
         "pr_attribution_footer",
         agent_used=agent_used,
         agents_runner_url=_MIDORI_AI_AGENTS_RUNNER_URL,
-        midori_ai_url=_MIDORI_AI_URL,
+        midoriai_url=_MIDORIAI_URL,
         marker=_PR_ATTRIBUTION_MARKER,
     )
 
