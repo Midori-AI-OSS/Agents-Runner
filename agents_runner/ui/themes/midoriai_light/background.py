@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from PySide6.QtGui import QColor
 
-from agents_runner.ui.themes.midori_variant import MidoriVariantSpec
-from agents_runner.ui.themes.midori_variant import create_midori_background
+from agents_runner.ui.themes.midoriai_variant import MidoriaiVariantSpec
+from agents_runner.ui.themes.midoriai_variant import create_midoriai_background
 
 
-_SPEC = MidoriVariantSpec(
+_SPEC = MidoriaiVariantSpec(
     theme_name="midoriai_light",
     base_color=QColor(236, 233, 246),
     overlay_alpha=8,
@@ -32,4 +32,4 @@ _SPEC = MidoriVariantSpec(
     light_mode=True,
 )
 
-BACKGROUND = create_midori_background(_SPEC)
+BACKGROUND = create_midoriai_background(_SPEC)
