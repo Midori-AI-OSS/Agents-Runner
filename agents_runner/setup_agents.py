@@ -18,7 +18,7 @@ from agents_runner.log_format import format_log
 
 SETUP_AGENTS_PRIMARY_RELATIVE_PATH = ".agents/setup-agents.sh"
 SETUP_AGENTS_FALLBACK_RELATIVE_PATH = ".github/setup-agents.sh"
-SETUP_AGENTS_MIRROR_ENCRYPTED_PREFIX = "midori-setup-agents:v1:"
+SETUP_AGENTS_MIRROR_ENCRYPTED_PREFIX = "midoriai-setup-agents:v1:"
 
 
 @dataclass(frozen=True)

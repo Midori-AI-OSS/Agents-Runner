@@ -12,7 +12,7 @@ from agents_runner.gh.task_plan import _append_pr_attribution_footer  # pyright:
 from agents_runner.gh.task_plan import commit_push_and_pr
 
 _CLI_FLAG_PATTERN = re.compile(r"--\w+")
-_FOOTER_PLACEHOLDERS = ("{marker}", "{agent_used}", "{agents_runner_url}", "{midori_ai_url}")
+_FOOTER_PLACEHOLDERS = ("{marker}", "{agent_used}", "{agents_runner_url}", "{midoriai_url}")
 _FOOTER_MARKER = "<!-- midori-ai-agents-runner-pr-footer -->"
 _AGENTS_RUNNER_LINK = "Created by [Midori AI Agents Runner](https://github.com/Midori-AI-OSS/Agents-Runner)"
 _MIDORI_AI_LINK = "Related: [Midori AI Monorepo](https://github.com/Midori-AI-OSS/Midori-AI)"
@@ -30,7 +30,7 @@ def test_append_pr_attribution_footer_substitutes_placeholders() -> None:
     assert "Agent Used:" in rendered
     assert "{marker}" not in rendered
     assert "{agents_runner_url}" not in rendered
-    assert "{midori_ai_url}" not in rendered
+    assert "{midoriai_url}" not in rendered
     assert "{agent_used}" not in rendered
 
 

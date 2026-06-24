@@ -37,7 +37,7 @@ from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
 from agents_runner.docker.phase_image_builder import ensure_phase_image
 from agents_runner.log_format import format_log
 from agents_runner.midoriai_template import (
-    MidoriAITemplateDetection,
+    MidoriaiTemplateDetection,
     scan_midoriai_agents_template,
 )
 from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
@@ -59,7 +59,7 @@ class RuntimeEnvironment:
     container_cwd: str
     config_container_dir: str
     config_extra_mounts: list[str]
-    template_detection: MidoriAITemplateDetection
+    template_detection: MidoriaiTemplateDetection
     container_name: str
     task_token: str
     artifacts_staging_dir: Path
@@ -320,7 +320,7 @@ class WorkerSetup:
             config_extra_mounts=additional_config_mounts(agent_cli, self._config.host_config_dir),
         )
 
-    def _detect_and_persist_template(self, host_mount: str) -> MidoriAITemplateDetection:
+    def _detect_and_persist_template(self, host_mount: str) -> MidoriaiTemplateDetection:
         """Detect and persist Midori AI template."""
         template_detection = scan_midoriai_agents_template(host_mount)
 
@@ -336,7 +336,7 @@ class WorkerSetup:
                         env.midoriai_template_detected_path = template_detection.midoriai_template_detected_path
                         save_environment(env)
                     else:
-                        template_detection = MidoriAITemplateDetection(
+                        template_detection = MidoriaiTemplateDetection(
                             midoriai_template_likelihood=env.midoriai_template_likelihood,
                             midoriai_template_detected=env.midoriai_template_detected,
                             midoriai_template_detected_path=env.midoriai_template_detected_path,

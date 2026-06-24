@@ -13,7 +13,7 @@ from PySide6.QtNetwork import QNetworkAccessManager
 from PySide6.QtNetwork import QNetworkReply
 from PySide6.QtNetwork import QNetworkRequest
 
-from agents_runner.ui.themes.midori_variant import MidoriVariantSpec
+from agents_runner.ui.themes.midoriai_variant import MidoriaiVariantSpec
 
 
 def download_art(
@@ -74,8 +74,8 @@ def hash_to_style(track_title: str) -> str:
     return mapping[digest[0] % 3]
 
 
-def build_dynamic_spec(colors: list[QColor], style: str) -> MidoriVariantSpec:
-    """Build a MidoriVariantSpec from extracted *colors* and *style* string."""
+def build_dynamic_spec(colors: list[QColor], style: str) -> MidoriaiVariantSpec:
+    """Build a MidoriaiVariantSpec from extracted *colors* and *style* string."""
     del style  # style is reserved for future use
     safe_colors = (colors or [])[:4]
     while len(safe_colors) < 4:
@@ -119,7 +119,7 @@ def build_dynamic_spec(colors: list[QColor], style: str) -> MidoriVariantSpec:
     avg_lum = sum(_luminance(c) for c in sorted_colors) / 4
     light_mode = avg_lum > 128.0
 
-    return MidoriVariantSpec(
+    return MidoriaiVariantSpec(
         theme_name="dynamic",
         base_color=base_color,
         overlay_alpha=30,

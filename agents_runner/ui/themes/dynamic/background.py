@@ -19,25 +19,25 @@ from PySide6.QtGui import QPainter
 from PySide6.QtGui import QRadialGradient
 from PySide6.QtWidgets import QWidget
 
-from agents_runner.ui.themes.midori_variant import (  # pyright: ignore[reportPrivateUsage]
-    MidoriVariantSpec,
+from agents_runner.ui.themes.midoriai_variant import (  # pyright: ignore[reportPrivateUsage]
+    MidoriaiVariantSpec,
     _apply_base_gradient,
     _blend,
     _build_blob_seeds,
-    _paint_blobs as _midori_paint_blobs,
+    _paint_blobs as _midoriai_paint_blobs,
 )
 
 _lock = threading.Lock()
-_current_spec: MidoriVariantSpec | None = None
-_previous_spec: MidoriVariantSpec | None = None
+_current_spec: MidoriaiVariantSpec | None = None
+_previous_spec: MidoriaiVariantSpec | None = None
 _current_style: str = "blobs"
 _transition_start_s: float | None = None
 _transition_duration: float = 4.0
-_last_valid_spec: MidoriVariantSpec | None = None
+_last_valid_spec: MidoriaiVariantSpec | None = None
 _last_valid_time: float = 0.0
 _hold_duration: float = 8.0
 
-_FALLBACK_SPEC = MidoriVariantSpec(
+_FALLBACK_SPEC = MidoriaiVariantSpec(
     theme_name="dynamic",
     base_color=QColor(9, 8, 17),
     overlay_alpha=30,
@@ -62,7 +62,7 @@ _FALLBACK_SPEC = MidoriVariantSpec(
 )
 
 
-def set_art_spec(spec: MidoriVariantSpec | None, style: str) -> None:
+def set_art_spec(spec: MidoriaiVariantSpec | None, style: str) -> None:
     """Set the current art-derived spec and style for the dynamic background."""
     with _lock:
         global _current_spec, _previous_spec, _current_style, _transition_start_s
@@ -123,7 +123,7 @@ def _paint_barcode(
     painter: QPainter,
     rect: QRect,
     runtime: _DynamicRuntime,
-    spec: MidoriVariantSpec,
+    spec: MidoriaiVariantSpec,
     blend_factor: float,
 ) -> None:
     w = int(rect.width())
@@ -184,7 +184,7 @@ def _paint_orbs(
     painter: QPainter,
     rect: QRect,
     runtime: _DynamicRuntime,
-    spec: MidoriVariantSpec,
+    spec: MidoriaiVariantSpec,
     blend_factor: float,
 ) -> None:
     w = int(rect.width())
@@ -255,7 +255,7 @@ def _paint_dynamic_blobs(
     painter: QPainter,
     rect: QRect,
     runtime: _DynamicRuntime,
-    spec: MidoriVariantSpec,
+    spec: MidoriaiVariantSpec,
     blend_factor: float,
 ) -> None:
     pulse = 0.5 + 0.5 * math.sin(runtime.pulse_phase)
@@ -264,7 +264,7 @@ def _paint_dynamic_blobs(
         prev_spec = _previous_spec
 
     if prev_spec is not None and blend_factor < 1.0:
-        _midori_paint_blobs(
+        _midoriai_paint_blobs(
             painter=painter,
             rect=rect,
             runtime=runtime,  # pyright: ignore[reportArgumentType]
@@ -274,7 +274,7 @@ def _paint_dynamic_blobs(
         painter.save()
         painter.setOpacity(blend_factor)
 
-    _midori_paint_blobs(
+    _midoriai_paint_blobs(
         painter=painter,
         rect=rect,
         runtime=runtime,  # pyright: ignore[reportArgumentType]
@@ -407,7 +407,7 @@ class _DynamicBackground:
         painter: QPainter,
         rect: QRect,
         runtime: _DynamicRuntime,
-        spec: MidoriVariantSpec,
+        spec: MidoriaiVariantSpec,
         style: str,
         blend_factor: float,
     ) -> None:
