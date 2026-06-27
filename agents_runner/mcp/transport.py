@@ -6,7 +6,7 @@ import asyncio
 import json
 import sys
 
-from typing import Any
+from typing import Any, cast
 
 from rich.console import Console
 
@@ -36,7 +36,7 @@ class MCPTransport:
             stdout: Binary output stream (defaults to sys.stdout.buffer).
             stderr: Binary error stream (defaults to sys.stderr).
         """
-        self._stdin = stdin if stdin is not None else sys.stdin.buffer
+        self._stdin = stdin if stdin is not None else cast(Any, sys.stdin.buffer)
         self._stdout = stdout if stdout is not None else sys.stdout.buffer
         self._stderr = stderr if stderr is not None else sys.stderr
         self._buffer = bytearray()
@@ -47,7 +47,7 @@ class MCPTransport:
         loop = asyncio.get_running_loop()
         while len(self._buffer) < n:
             bytes_needed = n - len(self._buffer)
-            chunk = await loop.run_in_executor(None, self._stdin.read, bytes_needed)
+            chunk = await loop.run_in_executor(None, self._stdin.read1, bytes_needed)
             if not chunk:
                 msg = "stdin closed while reading message body"
                 raise ConnectionError(msg)
@@ -60,7 +60,7 @@ class MCPTransport:
         """Read one line (terminated by \\n) from stdin into the internal buffer."""
         loop = asyncio.get_running_loop()
         while b"\n" not in self._buffer:
-            chunk = await loop.run_in_executor(None, self._stdin.read, 4096)
+            chunk = await loop.run_in_executor(None, self._stdin.read1, 4096)
             if not chunk:
                 msg = "stdin closed while reading line"
                 raise ConnectionError(msg)
