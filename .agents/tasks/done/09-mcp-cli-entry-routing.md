@@ -103,7 +103,7 @@ async def run_mcp_server() -> None:
 
 ## Done Criteria
 - The `--mcp-server` flag routes to the MCP server without importing Qt: `uv run python -c "import sys; sys.argv = ['main.py', '--mcp-server']; from agents_runner.cli import main; main()"` starts the MCP server (and blocks until signal)
-- Pipe test: `echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | timeout 5 uv run main.py --mcp-server || true` should produce a valid `InitializeResult` JSON-RPC response on stdout (allow exit code from timeout)
+- Pipe test: `echo -ne 'Content-Length: 145\r\n\r\n{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | timeout 5 uv run main.py --mcp-server 2>/dev/null` should produce a valid `Content-Length:`-framed `InitializeResult` JSON-RPC response on stdout (allow exit code from timeout)
 - `uv run ruff check agents_runner/cli.py agents_runner/mcp/cli.py` passes.
 - `uv run basedpyright` passes.
 - The MCP modules (`mcp/`) never import from `agents_runner.ui` (verify with `rg -l 'agents_runner.ui' agents_runner/mcp/` returns empty).
