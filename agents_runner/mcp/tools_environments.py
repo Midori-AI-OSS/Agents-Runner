@@ -7,6 +7,8 @@ from dataclasses import fields
 from dataclasses import replace
 from typing import Any
 
+from rich.console import Console
+
 from midori_ai_logger import MidoriAiLogger
 
 from agents_runner.environments.model import Environment
@@ -20,6 +22,7 @@ from agents_runner.mcp.types import ToolCallResult
 from agents_runner.mcp.types import ToolDefinition
 
 logger = MidoriAiLogger(channel=None, name=__name__)
+logger.console = Console(stderr=True)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────

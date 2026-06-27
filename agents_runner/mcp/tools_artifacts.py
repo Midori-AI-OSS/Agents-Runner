@@ -10,6 +10,8 @@ import tempfile
 from pathlib import Path
 from typing import Any, cast
 
+from rich.console import Console
+
 from midori_ai_logger import MidoriAiLogger
 
 from agents_runner.artifacts import (
@@ -23,6 +25,7 @@ from agents_runner.mcp.types import TextContent, ToolCallResult, ToolDefinition
 from agents_runner.persistence import default_state_path, load_task_payload
 
 logger = MidoriAiLogger(channel=None, name=__name__)
+logger.console = Console(stderr=True)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────

@@ -7,6 +7,8 @@ import json
 from functools import partial
 from typing import Any
 
+from rich.console import Console
+
 from midori_ai_logger import MidoriAiLogger
 
 from agents_runner.gh import (
@@ -21,6 +23,7 @@ from agents_runner.mcp.types import TextContent, ToolCallResult, ToolDefinition
 from agents_runner.persistence import default_state_path, load_task_payload, save_task_payload
 
 logger = MidoriAiLogger(channel=None, name=__name__)
+logger.console = Console(stderr=True)
 
 
 # ── Handlers ──────────────────────────────────────────────────────────────────
