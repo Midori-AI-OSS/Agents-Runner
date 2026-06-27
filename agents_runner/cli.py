@@ -1,23 +1,24 @@
 import os
 import sys
+import argparse
 import traceback
 
 
 _opencode_cli_overrides: dict[str, str] = {}
 
 
-def _parse_opencode_cli_overrides(argv: list[str]) -> None:
-    global _opencode_cli_overrides
-    parts = list(argv[1:])
-    i = 0
-    while i < len(parts):
-        arg = parts[i]
-        if arg in {"--agent", "--model", "--variant"} and i + 1 < len(parts):
-            value = parts[i + 1]
-            if not value.startswith("--"):
-                _opencode_cli_overrides[arg.lstrip("-")] = value
-                i += 1
-        i += 1
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m agents_runner",
+        description="Agents Runner - Local Containerd GUI",
+        epilog="Qt arguments (e.g. --style, --platform) are also accepted and passed through to QApplication.",
+    )
+    parser.add_argument("--desktop-viewer", action="store_true", help="Run the desktop viewer instead of the main GUI.")
+    parser.add_argument("--mcp-server", action="store_true", help="Run the MCP server instead of the main GUI.")
+    parser.add_argument("--agent", type=str, default=None, help="Override the opencode agent used by the runtime.")
+    parser.add_argument("--model", type=str, default=None, help="Override the opencode model used by the runtime.")
+    parser.add_argument("--variant", type=str, default=None, help="Override the opencode variant used by the runtime.")
+    return parser
 
 
 def get_opencode_cli_overrides() -> dict[str, str]:
@@ -81,16 +82,22 @@ def main() -> None:
     try:
         _configure_qt_logging_env()
 
-        # Check if running in desktop viewer mode
-        if len(sys.argv) > 1 and sys.argv[1] == "--desktop-viewer":
-            # Route to desktop viewer instead of main UI
+        parser = _build_arg_parser()
+        parsed, unknown = parser.parse_known_args(sys.argv[1:])
+        if parsed.agent is not None:
+            _opencode_cli_overrides["agent"] = parsed.agent
+        if parsed.model is not None:
+            _opencode_cli_overrides["model"] = parsed.model
+        if parsed.variant is not None:
+            _opencode_cli_overrides["variant"] = parsed.variant
+
+        if parsed.desktop_viewer:
             from agents_runner.ui.desktop_viewer import run_desktop_viewer
 
-            # Remove --desktop-viewer from argv so argparse works correctly
-            viewer_args = [sys.argv[0]] + sys.argv[2:]
+            viewer_args = [sys.argv[0]] + unknown
             sys.exit(run_desktop_viewer(viewer_args))
 
-        if len(sys.argv) > 1 and sys.argv[1] == "--mcp-server":
+        if parsed.mcp_server:
             import asyncio
 
             from agents_runner.mcp.cli import run_mcp_server
@@ -103,8 +110,7 @@ def main() -> None:
 
         from agents_runner.ui.runtime.app import run_app
 
-        _parse_opencode_cli_overrides(sys.argv)
-        run_app(sys.argv)
+        run_app([sys.argv[0]] + unknown)
     except SystemExit:
         raise
     except BaseException as error:
