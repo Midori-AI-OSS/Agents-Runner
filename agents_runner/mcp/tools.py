@@ -7,6 +7,8 @@ import time
 from typing import Any
 from uuid import uuid4
 
+from rich.console import Console
+
 from midori_ai_logger import MidoriAiLogger
 
 from agents_runner.environments.storage import load_environments
@@ -25,6 +27,7 @@ from agents_runner.persistence import (
 )
 
 logger = MidoriAiLogger(channel=None, name=__name__)
+logger.console = Console(stderr=True)
 
 
 # ── Handlers ──────────────────────────────────────────────────────────────────

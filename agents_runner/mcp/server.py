@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from rich.console import Console
+
 from midori_ai_logger import MidoriAiLogger
 
 from agents_runner.mcp.transport import MCPTransport
@@ -29,6 +31,7 @@ from agents_runner.mcp.types import (
 )
 
 logger = MidoriAiLogger(channel=None, name=__name__)
+logger.console = Console(stderr=True)
 
 
 class MCPServer:

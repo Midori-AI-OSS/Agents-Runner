@@ -8,9 +8,12 @@ import sys
 
 from typing import Any
 
+from rich.console import Console
+
 from midori_ai_logger import MidoriAiLogger
 
 logger = MidoriAiLogger(channel=None, name=__name__)
+logger.console = Console(stderr=True)
 
 
 class MCPTransport:

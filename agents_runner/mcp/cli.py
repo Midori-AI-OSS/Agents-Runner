@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 import signal
 
+from rich.console import Console
+
 from midori_ai_logger import MidoriAiLogger
 
 logger = MidoriAiLogger(channel=None, name=__name__)
+logger.console = Console(stderr=True)
 
 
 async def run_mcp_server() -> None:
