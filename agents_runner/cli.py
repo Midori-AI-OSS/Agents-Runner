@@ -90,6 +90,17 @@ def main() -> None:
             viewer_args = [sys.argv[0]] + sys.argv[2:]
             sys.exit(run_desktop_viewer(viewer_args))
 
+        if len(sys.argv) > 1 and sys.argv[1] == "--mcp-server":
+            import asyncio
+
+            from agents_runner.mcp.cli import run_mcp_server
+
+            try:
+                asyncio.run(run_mcp_server())
+            except KeyboardInterrupt:
+                pass
+            return
+
         from agents_runner.ui.runtime.app import run_app
 
         _parse_opencode_cli_overrides(sys.argv)
