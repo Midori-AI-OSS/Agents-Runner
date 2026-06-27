@@ -38,3 +38,18 @@ MCP clients (Claude Desktop, Codex, etc.) communicate with servers via stdio. Th
 - `uv run ruff check agents_runner/mcp/transport.py` passes.
 - `uv run basedpyright` passes.
 - Manual smoke check: `uv run python -c "from agents_runner.mcp.transport import MCPTransport; t = MCPTransport(); print(type(t))"` exits 0.
+
+## Task Master Review (2026-06-27) — Moved back to WIP
+
+**Issue:** The `MidoriAiLogger` instance uses `rich.console.Console()` which defaults to stdout. The MCP spec requires all transport communication on stdout and ALL logging on stderr. Currently, log messages from `logger.info(...)` / `logger.error(...)` / `logger.exception(...)` appear on stdout, corrupting the MCP transport stream.
+
+The transport logic (read/write framing, Content-Length parsing) is correct and working — verified via direct debug-transport test.
+
+**Required fix:**
+1. Add `from rich.console import Console` at the top of `agents_runner/mcp/transport.py`.
+2. After `logger = MidoriAiLogger(channel=None, name=__name__)`, add: `logger.console = Console(stderr=True)`.
+3. This same fix must be applied to ALL MCP modules that create a `MidoriAiLogger` (server.py, tools.py, tools_artifacts.py, tools_environments.py, tools_github.py, cli.py).
+
+**Re-verify after fix:**
+- `uv run ruff check` and `uv run basedpyright` still clean.
+- Smoke test: `uv run python -c "from agents_runner.mcp.transport import MCPTransport; t = MCPTransport(); print(type(t))" 2>/dev/null` should output only the print result (no Rich log entries on stdout).

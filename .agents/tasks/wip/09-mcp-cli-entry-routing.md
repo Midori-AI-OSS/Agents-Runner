@@ -107,3 +107,31 @@ async def run_mcp_server() -> None:
 - `uv run ruff check agents_runner/cli.py agents_runner/mcp/cli.py` passes.
 - `uv run basedpyright` passes.
 - The MCP modules (`mcp/`) never import from `agents_runner.ui` (verify with `rg -l 'agents_runner.ui' agents_runner/mcp/` returns empty).
+
+## Task Master Review (2026-06-27) — Moved back to WIP
+
+**Issues found during verification:**
+
+**Issue 1 — Logger output contaminates stdout transport:**
+Same root cause as task 03. The `run_mcp_server()` function in `agents_runner/mcp/cli.py` creates a `MidoriAiLogger` at module scope (line 10) which defaults to stdout. All other MCP modules also log to stdout. This corrupts the MCP transport stream — clients see Rich-formatted log lines interleaved with Content-Length framed JSON-RPC messages.
+
+**Fix for Issue 1:** Apply the same `Console(stderr=True)` fix from task 03 to `agents_runner/mcp/cli.py`. After task 03 is completed (fixing all MCP modules), this will cascade — but verify `cli.py` specifically after that.
+
+**Issue 2 — Pipe test needs Content-Length framing:**
+The pipe test in the Done Criteria sends raw JSON:
+```
+echo '{"jsonrpc":"2.0",...}' | ...
+```
+The `MCPTransport.read_message()` requires Content-Length header framing per the MCP spec. The raw JSON is never recognized as a valid MCP message, so `read_message()` fails and the server never dispatches a response.
+
+**Fix for Issue 2:** Update the pipe test to frame the JSON properly:
+```
+echo -ne 'Content-Length: 145\r\n\r\n{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | timeout 5 uv run main.py --mcp-server 2>/dev/null
+```
+The result should contain `Content-Length:` followed by an `InitializeResult` JSON payload on stdout.
+
+**Re-verify after both fixes:**
+- `uv run ruff check agents_runner/cli.py agents_runner/mcp/cli.py` passes.
+- `uv run basedpyright` passes.
+- Pipe test (with framing) produces valid `InitializeResult` on stdout without log contamination.
+- No Qt imports in MCP modules.
