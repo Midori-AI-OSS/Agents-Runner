@@ -11,7 +11,8 @@ between tracks.
 
 ## Changes
 
-1. Add `_desired_playing` (bool) field, default `False`.
+1. Add `_desired_playing` (bool) field, default `False`, initialized in `__init__`
+   alongside `_is_playing` (e.g. line 54 area).
 
 2. Add `_debounce_stop_timer` (QTimer, singleShot, 2-3s interval) whose
    timeout handler calls `_refresh_play_button_icon()` and updates
@@ -35,8 +36,12 @@ between tracks.
        - Call `_refresh_play_button_icon()` (fades to idle red).
 
 5. When debounce timer fires:
-   - Set `_is_playing = False`, `_play_button.setChecked(False)`.
-   - Call `_refresh_play_button_icon()` (fade to idle red).
+    - Set `_is_playing = False`, `_play_button.setChecked(False)`.
+    - Set `_last_rendered_rgb` to `ICON_COLOR_IDLE` (so the color-fade animation
+      from radio-fix-01 transitions smoothly from wherever the icon was).
+    - Call `_refresh_play_button_icon()` (fade to idle red).
+    - Call `_refresh_tooltip()`. After debounce fires the playback state is fully
+      stopped — the tooltip must reflect that, matching `set_playing` behavior.
 
 6. In `set_connection_state("reconnecting")`:
    - Cancel `_debounce_stop_timer` immediately.

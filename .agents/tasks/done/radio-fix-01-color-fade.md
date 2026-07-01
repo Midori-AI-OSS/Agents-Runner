@@ -26,13 +26,27 @@ does not snap instantly when playback changes or between tracks.
    - Determine target rgb as int tuple from the QColor.
    - If `_icon_color_anim` is running: stop it, read the *current interpolated*
      QColor to use as next `_last_rendered_rgb` (smooth redirect).
-   - If `_last_rendered_rgb` is None, default to target (no-op instant).
-   - If `_last_rendered_rgb == target`: no-op (already at target).
-   - Otherwise: set anim start → current `_last_rendered_rgb`, end → target,
-     start. On each tick, create a new `QIcon` via `lucide_icon("audio-lines", color=...)`
-     and set it on `_play_button`. On finished, set `_last_rendered_rgb = target`.
+    - If `_last_rendered_rgb` is None, default to target (no-op instant).
+    - If `_last_rendered_rgb == target`: no-op (already at target).
+    - Otherwise: set anim start → `0.0`, end → `1.0`, start. On each tick,
+      compute `progress = float(value)` and lerp each R, G, B channel from
+      `_last_rendered_rgb` to target by `progress`; build a QColor and
+      create a `QIcon` via `lucide_icon("audio-lines", color=...)` and set it
+      on `_play_button`.
+      On finished, snap `_play_button` icon color to target exactly and
+      set `_last_rendered_rgb = target`. Do not leave the icon at the last
+      interpolated frame (avoids 1px rounding drift).
 
-4. In `set_connection_state("reconnecting")`:
+    NOTE: QVariantAnimation cannot natively interpolate tuples of ints in PySide6
+    (default `interpolated()` only handles QColor, numeric scalars, and a few
+    geometry types). Use a float progress (0.0 → 1.0) driven animation instead
+    of tuple-valued start/end, and perform channel-wise lerp in the tick handler.
+
+4. This task introduces `_last_rendered_rgb`, which radio-fix-02 must use
+   when its debounce timer fires (see radio-fix-02 step 5). Also, set
+   `_last_rendered_rgb = target` on first-render path for consistency.
+
+5. In `set_connection_state("reconnecting")`:
    - Stop and delete `_icon_color_anim` so reconnect animation takes priority.
 
 ## Acceptance
