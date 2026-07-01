@@ -31,6 +31,7 @@ _lock = threading.Lock()
 _current_spec: MidoriaiVariantSpec | None = None
 _previous_spec: MidoriaiVariantSpec | None = None
 _current_style: str = "blobs"
+_previous_style: str = "blobs"
 _transition_start_s: float | None = None
 _transition_duration: float = 4.0
 _last_valid_spec: MidoriaiVariantSpec | None = None
@@ -65,17 +66,28 @@ _FALLBACK_SPEC = MidoriaiVariantSpec(
 def set_art_spec(spec: MidoriaiVariantSpec | None, style: str) -> None:
     """Set the current art-derived spec and style for the dynamic background."""
     with _lock:
-        global _current_spec, _previous_spec, _current_style, _transition_start_s
-        global _last_valid_spec, _last_valid_time
-        _previous_spec = _current_spec
-        _current_spec = spec
+        global _current_spec, _previous_spec, _current_style, _previous_style
+        global _transition_start_s, _last_valid_spec, _last_valid_time
         if spec is not None:
+            _previous_spec = _current_spec
+            _previous_style = _current_style
+            if _previous_spec is None:
+                now = time.monotonic()
+                if _last_valid_spec is not None and (now - _last_valid_time) <= (_hold_duration + _transition_duration):
+                    _previous_spec = _last_valid_spec
+                else:
+                    _previous_spec = _FALLBACK_SPEC
+            _current_spec = spec
             _last_valid_spec = spec
             _last_valid_time = time.monotonic()
             _current_style = style
+            _transition_start_s = time.monotonic()
         else:
+            if _current_spec is not None:
+                _previous_spec = _current_spec
+            _current_spec = None
             _current_style = "blobs"
-        _transition_start_s = time.monotonic()
+            _last_valid_time = time.monotonic()
 
 
 def reset_dynamic_state() -> None:
@@ -351,6 +363,7 @@ class _DynamicBackground:
         with _lock:
             current = _current_spec
             previous = _previous_spec
+            previous_style = _previous_style
             style = _current_style
             t_start = _transition_start_s
             last_valid_spec = _last_valid_spec
@@ -364,10 +377,7 @@ class _DynamicBackground:
                 blend_factor = 0.0
             else:
                 resolved = _FALLBACK_SPEC
-                if t_start is not None and previous is not None:
-                    blend_factor = _clamp((now - t_start) / _transition_duration, 0.0, 1.0)
-                else:
-                    blend_factor = 1.0
+                blend_factor = _clamp((now - (last_valid_time + _hold_duration)) / _transition_duration, 0.0, 1.0)
         else:
             resolved = current
             if t_start is not None and previous is not None:
@@ -383,7 +393,7 @@ class _DynamicBackground:
                 rect=rect,
                 runtime=runtime,
                 spec=previous,
-                style=resolved_style,
+                style=previous_style,
                 blend_factor=1.0,
             )
             painter.save()
@@ -395,7 +405,7 @@ class _DynamicBackground:
             runtime=runtime,
             spec=resolved,
             style=resolved_style,
-            blend_factor=blend_factor,
+            blend_factor=1.0,
         )
 
         if previous is not None and blend_factor < 1.0:

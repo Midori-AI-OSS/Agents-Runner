@@ -36,7 +36,9 @@ class RadioControlWidget(QWidget):
     ICON_COLOR_IDLE = (239, 68, 68)
     ICON_COLOR_RECONNECT_START = (250, 204, 21)
     ICON_COLOR_RECONNECT_END = (76, 29, 149)
+    ICON_FADE_ANIMATION_MS = 500
     RECONNECT_ANIMATION_MS = 900
+    DEBOUNCE_STOP_MS = 2500
     CONNECTION_STATES = ("unavailable", "idle", "playing", "reconnecting")
     COLLAPSED_VOLUME_WIDTH = max(0, COLLAPSED_WIDTH - PLAY_BUTTON_WIDTH)
     EXPANDED_VOLUME_WIDTH = max(COLLAPSED_VOLUME_WIDTH, EXPANDED_WIDTH - PLAY_BUTTON_WIDTH)
@@ -52,10 +54,15 @@ class RadioControlWidget(QWidget):
         self._drag_active = False
         self._service_available = False
         self._is_playing = False
+        self._desired_playing = False
         self._radio_enabled = False
         self._connection_state = "idle"
         self._reconnect_anim_value = 0.0
         self._status_text = "Radio unavailable."
+        self._last_rendered_rgb: tuple[int, int, int] | None = None
+        self._first_render = True
+        self._icon_color_anim_start_rgb: tuple[int, int, int] | None = None
+        self._icon_color_anim_target_rgb: tuple[int, int, int] | None = None
 
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -136,6 +143,19 @@ class RadioControlWidget(QWidget):
         self._reconnect_anim.setLoopCount(-1)
         self._reconnect_anim.valueChanged.connect(self._on_reconnect_animation_value_changed)
 
+        self._icon_color_anim = QVariantAnimation(self)
+        self._icon_color_anim.setDuration(self.ICON_FADE_ANIMATION_MS)
+        self._icon_color_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._icon_color_anim.setStartValue(0.0)
+        self._icon_color_anim.setEndValue(1.0)
+        self._icon_color_anim.valueChanged.connect(self._on_icon_color_anim_tick)
+        self._icon_color_anim.finished.connect(self._on_icon_color_anim_finished)
+
+        self._debounce_stop_timer = QTimer(self)
+        self._debounce_stop_timer.setSingleShot(True)
+        self._debounce_stop_timer.setInterval(self.DEBOUNCE_STOP_MS)
+        self._debounce_stop_timer.timeout.connect(self._on_debounce_stop_timeout)
+
         for watched in (
             self,
             self._play_section,
@@ -156,10 +176,25 @@ class RadioControlWidget(QWidget):
         self._refresh_tooltip()
 
     def set_playing(self, playing: bool) -> None:
-        self._is_playing = bool(playing)
-        self._play_button.setChecked(self._is_playing)
+        if playing:
+            self._debounce_stop_timer.stop()
+            self._is_playing = True
+            self._play_button.setChecked(True)
+            self._refresh_play_button_icon()
+            self._refresh_tooltip()
+            return
+        # playing is False
+        if self._desired_playing:
+            self._debounce_stop_timer.start()
+            return
+        self._debounce_stop_timer.stop()
+        self._is_playing = False
+        self._play_button.setChecked(False)
         self._refresh_play_button_icon()
         self._refresh_tooltip()
+
+    def set_desired_playing(self, desired: bool) -> None:
+        self._desired_playing = bool(desired)
 
     def set_radio_enabled(self, enabled: bool) -> None:
         self._radio_enabled = bool(enabled)
@@ -173,6 +208,8 @@ class RadioControlWidget(QWidget):
             return
         self._connection_state = normalized
         if normalized == "reconnecting":
+            self._icon_color_anim.stop()
+            self._debounce_stop_timer.stop()
             self._start_reconnect_animation()
         else:
             self._stop_reconnect_animation()
@@ -211,18 +248,90 @@ class RadioControlWidget(QWidget):
         self.setToolTip(tooltip)
 
     def _refresh_play_button_icon(self) -> None:
+        # Reconnecting state is driven by its own animation; set icon directly.
         if self._connection_state == "reconnecting":
+            self._icon_color_anim.stop()
             color = self._interpolated_reconnect_color(self._reconnect_anim_value)
-        elif self._connection_state == "playing" or self._is_playing:
-            color = QColor(*self.ICON_COLOR_PLAYING)
+            self._play_button.setIcon(lucide_icon("audio-lines", color=color))
+            rgb: tuple[int, int, int] = (color.red(), color.green(), color.blue())
+            self._last_rendered_rgb = rgb
+            if self._first_render:
+                self._first_render = False
+            return
+
+        # Compute target color for idle/playing states.
+        if self._connection_state == "playing" or self._is_playing:
+            target = QColor(*self.ICON_COLOR_PLAYING)
         else:
-            color = QColor(*self.ICON_COLOR_IDLE)
-        self._play_button.setIcon(
-            lucide_icon(
-                "audio-lines",
-                color=color,
-            )
-        )
+            target = QColor(*self.ICON_COLOR_IDLE)
+        target_rgb: tuple[int, int, int] = (target.red(), target.green(), target.blue())
+
+        # First render: set icon directly, no animation.
+        if self._first_render:
+            self._play_button.setIcon(lucide_icon("audio-lines", color=target))
+            self._last_rendered_rgb = target_rgb
+            self._first_render = False
+            return
+
+        # If a fade animation is in-flight, capture current interpolated colour
+        # so the next animation starts from the visual midpoint (smooth redirect).
+        if self._icon_color_anim.state() == QVariantAnimation.State.Running:
+            progress = float(self._icon_color_anim.currentValue())
+            if self._icon_color_anim_start_rgb is not None and self._icon_color_anim_target_rgb is not None:
+                sr, sg, sb = self._icon_color_anim_start_rgb
+                tr, tg, tb = self._icon_color_anim_target_rgb
+                r = int(round(sr + (tr - sr) * progress))
+                g = int(round(sg + (tg - sg) * progress))
+                b = int(round(sb + (tb - sb) * progress))
+                self._last_rendered_rgb = (r, g, b)
+            self._icon_color_anim.stop()
+
+        # Guard: no known starting colour.
+        if self._last_rendered_rgb is None:
+            self._last_rendered_rgb = target_rgb
+            self._play_button.setIcon(lucide_icon("audio-lines", color=target))
+            return
+
+        # Already at target — nothing to do.
+        if self._last_rendered_rgb == target_rgb:
+            return
+
+        # Start a float-progress animation (0.0 → 1.0) and lerp RGB channels
+        # in the tick handler.
+        self._icon_color_anim_start_rgb = self._last_rendered_rgb
+        self._icon_color_anim_target_rgb = target_rgb
+        self._icon_color_anim.setStartValue(0.0)
+        self._icon_color_anim.setEndValue(1.0)
+        self._icon_color_anim.start()
+
+    def _on_icon_color_anim_tick(self, value: object) -> None:
+        try:
+            progress = float(value)
+        except Exception:
+            return
+        progress = max(0.0, min(1.0, progress))
+        if self._icon_color_anim_start_rgb is None or self._icon_color_anim_target_rgb is None:
+            return
+        sr, sg, sb = self._icon_color_anim_start_rgb
+        tr, tg, tb = self._icon_color_anim_target_rgb
+        r = int(round(sr + (tr - sr) * progress))
+        g = int(round(sg + (tg - sg) * progress))
+        b = int(round(sb + (tb - sb) * progress))
+        color = QColor(r, g, b)
+        self._play_button.setIcon(lucide_icon("audio-lines", color=color))
+
+    def _on_icon_color_anim_finished(self) -> None:
+        if self._icon_color_anim_target_rgb is not None:
+            target = QColor(*self._icon_color_anim_target_rgb)
+            self._play_button.setIcon(lucide_icon("audio-lines", color=target))
+            self._last_rendered_rgb = self._icon_color_anim_target_rgb
+
+    def _on_debounce_stop_timeout(self) -> None:
+        self._is_playing = False
+        self._play_button.setChecked(False)
+        self._last_rendered_rgb = self.ICON_COLOR_IDLE
+        self._refresh_play_button_icon()
+        self._refresh_tooltip()
 
     def _start_reconnect_animation(self) -> None:
         if self._reconnect_anim.state() == QVariantAnimation.State.Running:

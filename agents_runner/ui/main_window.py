@@ -165,6 +165,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._task_workspace_migration_worker: object | None = None
         self._state_path = default_state_path()
         self._active_art_channel: str = ""
+        self._active_art_url: str = ""
         self._has_dynamic_spec: bool = False
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -438,6 +439,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._radio_control.setVisible(qt_available)
         if qt_available:
             self._radio_control.set_service_available(bool(snapshot.get("service_available")))
+            self._radio_control.set_desired_playing(bool(snapshot.get("desired_playing")))
             self._radio_control.set_playing(bool(snapshot.get("is_playing")))
             self._radio_control.set_connection_state(str(snapshot.get("connection_state") or ""))
             self._radio_control.set_radio_enabled(bool(snapshot.get("enabled")))
@@ -478,12 +480,14 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             self._has_dynamic_spec = False
             set_dynamic_art_spec(None, "blobs")
             self._active_art_channel = ""
+            self._active_art_url = ""
             return
 
-        if art_channel == self._active_art_channel and art_url and self._has_dynamic_spec:
+        if art_url == self._active_art_url and self._has_dynamic_spec:
             return
 
         self._active_art_channel = art_channel
+        self._active_art_url = art_url
         style = hash_to_style(track_title) if track_title else "blobs"
 
         def _on_art_downloaded(image: QImage | None) -> None:
