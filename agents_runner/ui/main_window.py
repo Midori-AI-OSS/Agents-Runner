@@ -438,6 +438,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._radio_control.setVisible(qt_available)
         if qt_available:
             self._radio_control.set_service_available(bool(snapshot.get("service_available")))
+            self._radio_control.set_desired_playing(bool(snapshot.get("desired_playing")))
             self._radio_control.set_playing(bool(snapshot.get("is_playing")))
             self._radio_control.set_connection_state(str(snapshot.get("connection_state") or ""))
             self._radio_control.set_radio_enabled(bool(snapshot.get("enabled")))
