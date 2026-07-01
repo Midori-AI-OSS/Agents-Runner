@@ -31,6 +31,7 @@ _lock = threading.Lock()
 _current_spec: MidoriaiVariantSpec | None = None
 _previous_spec: MidoriaiVariantSpec | None = None
 _current_style: str = "blobs"
+_previous_style: str = "blobs"
 _transition_start_s: float | None = None
 _transition_duration: float = 4.0
 _last_valid_spec: MidoriaiVariantSpec | None = None
@@ -65,10 +66,11 @@ _FALLBACK_SPEC = MidoriaiVariantSpec(
 def set_art_spec(spec: MidoriaiVariantSpec | None, style: str) -> None:
     """Set the current art-derived spec and style for the dynamic background."""
     with _lock:
-        global _current_spec, _previous_spec, _current_style, _transition_start_s
-        global _last_valid_spec, _last_valid_time
+        global _current_spec, _previous_spec, _current_style, _previous_style
+        global _transition_start_s, _last_valid_spec, _last_valid_time
         if spec is not None:
             _previous_spec = _current_spec
+            _previous_style = _current_style
             if _previous_spec is None:
                 now = time.monotonic()
                 if _last_valid_spec is not None and (now - _last_valid_time) <= (_hold_duration + _transition_duration):
@@ -361,6 +363,7 @@ class _DynamicBackground:
         with _lock:
             current = _current_spec
             previous = _previous_spec
+            previous_style = _previous_style
             style = _current_style
             t_start = _transition_start_s
             last_valid_spec = _last_valid_spec
@@ -390,7 +393,7 @@ class _DynamicBackground:
                 rect=rect,
                 runtime=runtime,
                 spec=previous,
-                style=resolved_style,
+                style=previous_style,
                 blend_factor=1.0,
             )
             painter.save()
