@@ -68,14 +68,16 @@ def set_art_spec(spec: MidoriaiVariantSpec | None, style: str) -> None:
         global _current_spec, _previous_spec, _current_style, _transition_start_s
         global _last_valid_spec, _last_valid_time
         _previous_spec = _current_spec
+        if _previous_spec is None:
+            _previous_spec = _last_valid_spec if _last_valid_spec is not None else _FALLBACK_SPEC
         _current_spec = spec
         if spec is not None:
             _last_valid_spec = spec
             _last_valid_time = time.monotonic()
             _current_style = style
+            _transition_start_s = time.monotonic()
         else:
             _current_style = "blobs"
-        _transition_start_s = time.monotonic()
 
 
 def reset_dynamic_state() -> None:
@@ -364,10 +366,7 @@ class _DynamicBackground:
                 blend_factor = 0.0
             else:
                 resolved = _FALLBACK_SPEC
-                if t_start is not None and previous is not None:
-                    blend_factor = _clamp((now - t_start) / _transition_duration, 0.0, 1.0)
-                else:
-                    blend_factor = 1.0
+                blend_factor = _clamp((now - (last_valid_time + _hold_duration)) / _transition_duration, 0.0, 1.0)
         else:
             resolved = current
             if t_start is not None and previous is not None:
@@ -395,7 +394,7 @@ class _DynamicBackground:
             runtime=runtime,
             spec=resolved,
             style=resolved_style,
-            blend_factor=blend_factor,
+            blend_factor=1.0,
         )
 
         if previous is not None and blend_factor < 1.0:
