@@ -38,6 +38,7 @@ class RadioControlWidget(QWidget):
     ICON_COLOR_RECONNECT_END = (76, 29, 149)
     ICON_FADE_ANIMATION_MS = 500
     RECONNECT_ANIMATION_MS = 900
+    DEBOUNCE_STOP_MS = 2500
     CONNECTION_STATES = ("unavailable", "idle", "playing", "reconnecting")
     COLLAPSED_VOLUME_WIDTH = max(0, COLLAPSED_WIDTH - PLAY_BUTTON_WIDTH)
     EXPANDED_VOLUME_WIDTH = max(COLLAPSED_VOLUME_WIDTH, EXPANDED_WIDTH - PLAY_BUTTON_WIDTH)
@@ -53,6 +54,7 @@ class RadioControlWidget(QWidget):
         self._drag_active = False
         self._service_available = False
         self._is_playing = False
+        self._desired_playing = False
         self._radio_enabled = False
         self._connection_state = "idle"
         self._reconnect_anim_value = 0.0
@@ -149,6 +151,11 @@ class RadioControlWidget(QWidget):
         self._icon_color_anim.valueChanged.connect(self._on_icon_color_anim_tick)
         self._icon_color_anim.finished.connect(self._on_icon_color_anim_finished)
 
+        self._debounce_stop_timer = QTimer(self)
+        self._debounce_stop_timer.setSingleShot(True)
+        self._debounce_stop_timer.setInterval(self.DEBOUNCE_STOP_MS)
+        self._debounce_stop_timer.timeout.connect(self._on_debounce_stop_timeout)
+
         for watched in (
             self,
             self._play_section,
@@ -169,10 +176,25 @@ class RadioControlWidget(QWidget):
         self._refresh_tooltip()
 
     def set_playing(self, playing: bool) -> None:
-        self._is_playing = bool(playing)
-        self._play_button.setChecked(self._is_playing)
+        if playing:
+            self._debounce_stop_timer.stop()
+            self._is_playing = True
+            self._play_button.setChecked(True)
+            self._refresh_play_button_icon()
+            self._refresh_tooltip()
+            return
+        # playing is False
+        if self._desired_playing:
+            self._debounce_stop_timer.start()
+            return
+        self._debounce_stop_timer.stop()
+        self._is_playing = False
+        self._play_button.setChecked(False)
         self._refresh_play_button_icon()
         self._refresh_tooltip()
+
+    def set_desired_playing(self, desired: bool) -> None:
+        self._desired_playing = bool(desired)
 
     def set_radio_enabled(self, enabled: bool) -> None:
         self._radio_enabled = bool(enabled)
@@ -187,6 +209,7 @@ class RadioControlWidget(QWidget):
         self._connection_state = normalized
         if normalized == "reconnecting":
             self._icon_color_anim.stop()
+            self._debounce_stop_timer.stop()
             self._start_reconnect_animation()
         else:
             self._stop_reconnect_animation()
@@ -302,6 +325,13 @@ class RadioControlWidget(QWidget):
             target = QColor(*self._icon_color_anim_target_rgb)
             self._play_button.setIcon(lucide_icon("audio-lines", color=target))
             self._last_rendered_rgb = self._icon_color_anim_target_rgb
+
+    def _on_debounce_stop_timeout(self) -> None:
+        self._is_playing = False
+        self._play_button.setChecked(False)
+        self._last_rendered_rgb = self.ICON_COLOR_IDLE
+        self._refresh_play_button_icon()
+        self._refresh_tooltip()
 
     def _start_reconnect_animation(self) -> None:
         if self._reconnect_anim.state() == QVariantAnimation.State.Running:
