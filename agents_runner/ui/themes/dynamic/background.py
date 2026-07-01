@@ -69,7 +69,11 @@ def set_art_spec(spec: MidoriaiVariantSpec | None, style: str) -> None:
         global _last_valid_spec, _last_valid_time
         _previous_spec = _current_spec
         if _previous_spec is None:
-            _previous_spec = _last_valid_spec if _last_valid_spec is not None else _FALLBACK_SPEC
+            now = time.monotonic()
+            if _last_valid_spec is not None and (now - _last_valid_time) <= (_hold_duration + _transition_duration):
+                _previous_spec = _last_valid_spec
+            else:
+                _previous_spec = _FALLBACK_SPEC
         _current_spec = spec
         if spec is not None:
             _last_valid_spec = spec
@@ -78,6 +82,7 @@ def set_art_spec(spec: MidoriaiVariantSpec | None, style: str) -> None:
             _transition_start_s = time.monotonic()
         else:
             _current_style = "blobs"
+            _last_valid_time = time.monotonic()
 
 
 def reset_dynamic_state() -> None:
