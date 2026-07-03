@@ -567,6 +567,14 @@ class NewEnvironmentWizard(ThemedDialog):
         agentsnova_page, agentsnova_body = self._create_wizard_page(
             self._pane_specs[4].title, self._pane_specs[4].subtitle
         )
+        info_label = QLabel(
+            "Tag @agentsnova on GitHub to get help with issues, bugs, PRs, and more "
+            "\u2014 the agents runner must be running for this to work."
+        )
+        info_label.setObjectName("SettingsInfoLabel")
+        info_label.setWordWrap(True)
+        agentsnova_body.addWidget(info_label)
+
         agentsnova_grid = QGridLayout()
         configure_form_grid(agentsnova_grid)
         add_grid_row(agentsnova_grid, 0, QLabel("Auto review mode"), self._auto_review_combo)
