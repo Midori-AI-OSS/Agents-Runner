@@ -9,8 +9,13 @@ from uuid import uuid4
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
+from PySide6.QtCore import QEasingCurve
+from PySide6.QtCore import QSignalBlocker
+from PySide6.QtCore import QPropertyAnimation
+from PySide6.QtCore import QParallelAnimationGroup
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QLabel
@@ -26,6 +31,7 @@ from PySide6.QtWidgets import QFileDialog
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QStackedWidget
+from PySide6.QtWidgets import QGraphicsOpacityEffect
 
 from agents_runner.environments import ALLOWED_STAINS
 from agents_runner.environments import Environment
@@ -49,7 +55,11 @@ from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.ui.constants import CARD_MARGINS
 from agents_runner.ui.constants import CARD_SPACING
+from agents_runner.ui.constants import HEADER_MARGINS
+from agents_runner.ui.constants import HEADER_SPACING
+from agents_runner.ui.constants import GRID_VERTICAL_SPACING
 from agents_runner.ui.constants import LEFT_NAV_BUTTON_SPACING
+from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 from agents_runner.ui.constants import LEFT_NAV_PANEL_WIDTH
 from agents_runner.ui.dialogs.themed_dialog import ThemedDialog
 from agents_runner.ui.graphics import EnvironmentTintOverlay
@@ -67,6 +77,7 @@ class _WizardPaneSpec:
     key: str
     title: str
     subtitle: str
+    section: str
 
 
 @dataclass(frozen=True)
@@ -108,10 +119,16 @@ class NewEnvironmentWizard(ThemedDialog):
         self._test_folder = ""
         self._advanced_modified = False
         self._clone_check_count = 0
+        self._clone_test_url = ""
         self._current_page_index = 0
-        self._nav_buttons: list[QToolButton] = []
+        self._pane_animation: QParallelAnimationGroup | None = None
+        self._pane_rest_pos: QPoint | None = None
+        self._compact_mode = False
+        self._active_pane_key = ""
+        self._pane_index_by_key: dict[str, int] = {}
+        self._nav_buttons: dict[str, QToolButton] = {}
         self._suggested_color: str = self._pick_new_environment_color()
-        self._pane_specs = self._create_pane_specs()
+        self._pane_specs = self._default_pane_specs()
         self.setWindowTitle("New Environment Wizard")
         self.setMinimumWidth(900)
         self.setMinimumHeight(620)
@@ -120,10 +137,27 @@ class NewEnvironmentWizard(ThemedDialog):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(CARD_SPACING)
 
+        header = GlassCard()
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(*HEADER_MARGINS)
+        header_layout.setSpacing(HEADER_SPACING)
+
+        title = QLabel("New Environment Wizard")
+        title.setStyleSheet("font-size: 18px; font-weight: 750;")
+        header_layout.addWidget(title)
+        header_layout.addStretch(1)
+        layout.addWidget(header)
+
         self._card = GlassCard()
         card_layout = QVBoxLayout(self._card)
         card_layout.setContentsMargins(*CARD_MARGINS)
         card_layout.setSpacing(CARD_SPACING)
+
+        self._compact_nav = QComboBox()
+        self._compact_nav.setObjectName("SettingsCompactNav")
+        self._compact_nav.setVisible(False)
+        self._compact_nav.currentIndexChanged.connect(self._on_compact_nav_changed)
+        card_layout.addWidget(self._compact_nav)
 
         panes_layout = QHBoxLayout()
         panes_layout.setContentsMargins(0, 0, 0, 0)
@@ -146,9 +180,9 @@ class NewEnvironmentWizard(ThemedDialog):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(0)
 
-        self._stack = QStackedWidget()
-        self._stack.setObjectName("SettingsPageStack")
-        right_layout.addWidget(self._stack, 1)
+        self._page_stack = QStackedWidget()
+        self._page_stack.setObjectName("SettingsPageStack")
+        right_layout.addWidget(self._page_stack, 1)
 
         panes_layout.addWidget(self._nav_scroll)
         panes_layout.addWidget(self._right_panel, 1)
@@ -162,45 +196,54 @@ class NewEnvironmentWizard(ThemedDialog):
         self._connect_dependency_signals()
         self._sync_dependent_controls()
         self._connect_advanced_signals()
-        self._set_current_page(0)
+        self._set_current_page(0, animate=False)
         self._on_source_changed(0)
+        self._update_navigation_mode()
 
-        self._tint_overlay = EnvironmentTintOverlay(self, alpha=22)
+        self._tint_overlay = EnvironmentTintOverlay(self, alpha=13)
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
         self._apply_environment_tint()
 
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
+        self._update_navigation_mode()
+        if not hasattr(self, "_tint_overlay"):
+            return
         self._tint_overlay.setGeometry(self.rect())
         self._tint_overlay.raise_()
 
-    def _create_pane_specs(self) -> list[_WizardPaneSpec]:
+    def _default_pane_specs(self) -> list[_WizardPaneSpec]:
         return [
             _WizardPaneSpec(
                 key="general",
                 title="General Info",
                 subtitle="Name the environment and choose where its workspace comes from.",
+                section="Setup",
             ),
             _WizardPaneSpec(
                 key="runtime_agents",
                 title="Runtime & Agents",
                 subtitle="Runtime overrides, agent capacity, and cross-agent controls.",
+                section="Runtime",
             ),
             _WizardPaneSpec(
                 key="desktop_cache",
                 title="Desktop & Cache",
                 subtitle="Desktop runtime and cached setup layer behavior.",
+                section="Runtime",
             ),
             _WizardPaneSpec(
                 key="github_behavior",
                 title="GitHub Behavior",
                 subtitle="Repository context, branch workflow, and interactive PR handling.",
+                section="Automation",
             ),
             _WizardPaneSpec(
                 key="agentsnova_automation",
                 title="AgentsNova Automation",
                 subtitle="Environment overrides for @agentsnova automation.",
+                section="Automation",
             ),
         ]
 
@@ -461,57 +504,65 @@ class NewEnvironmentWizard(ThemedDialog):
         )
         general_body.addWidget(warning)
         general_body.addStretch(1)
-        self._stack.addWidget(general_page)
+        self._register_page("general", general_page)
 
         runtime_page, runtime_body = self._create_wizard_page(self._pane_specs[1].title, self._pane_specs[1].subtitle)
         runtime_grid = QGridLayout()
         configure_form_grid(runtime_grid)
+        cross_agents_row = create_stretch_row(self._use_cross_agents, stretch_index=1)
         add_grid_row(runtime_grid, 0, QLabel("GPU runtime override"), self._gpu_override_combo)
         add_grid_row(runtime_grid, 1, QLabel("OpenCode interactive mode"), self._opencode_interactive_combo)
         add_grid_row(runtime_grid, 2, QLabel("Max agents running"), self._max_agents_running)
-        add_grid_row(runtime_grid, 3, QLabel("Cross agents"), self._use_cross_agents)
+        add_grid_row(runtime_grid, 3, QLabel("Cross agents"), cross_agents_row)
         runtime_body.addLayout(runtime_grid)
         runtime_body.addStretch(1)
-        self._stack.addWidget(runtime_page)
+        self._register_page("runtime_agents", runtime_page)
 
         desktop_page, desktop_body = self._create_wizard_page(self._pane_specs[2].title, self._pane_specs[2].subtitle)
         desktop_grid = QGridLayout()
         configure_form_grid(desktop_grid)
-        add_grid_row(desktop_grid, 0, QLabel("Headless desktop"), self._headless_desktop_enabled)
-        add_grid_row(desktop_grid, 1, QLabel("Desktop build cache"), self._cache_desktop_build)
-        add_grid_row(desktop_grid, 2, QLabel("System preflight cache"), self._cache_system_preflight_enabled)
-        add_grid_row(desktop_grid, 3, QLabel("Settings preflight cache"), self._cache_settings_preflight_enabled)
-        add_grid_row(desktop_grid, 4, QLabel("Container caching"), self._container_caching_enabled)
+        headless_desktop_row = create_stretch_row(self._headless_desktop_enabled, stretch_index=1)
+        desktop_build_cache_row = create_stretch_row(self._cache_desktop_build, stretch_index=1)
+        system_preflight_cache_row = create_stretch_row(self._cache_system_preflight_enabled, stretch_index=1)
+        settings_preflight_cache_row = create_stretch_row(self._cache_settings_preflight_enabled, stretch_index=1)
+        container_caching_row = create_stretch_row(self._container_caching_enabled, stretch_index=1)
+        add_grid_row(desktop_grid, 0, QLabel("Headless desktop"), headless_desktop_row)
+        add_grid_row(desktop_grid, 1, QLabel("Desktop build cache"), desktop_build_cache_row)
+        add_grid_row(desktop_grid, 2, QLabel("System preflight cache"), system_preflight_cache_row)
+        add_grid_row(desktop_grid, 3, QLabel("Settings preflight cache"), settings_preflight_cache_row)
+        add_grid_row(desktop_grid, 4, QLabel("Container caching"), container_caching_row)
         desktop_body.addLayout(desktop_grid)
         desktop_body.addStretch(1)
-        self._stack.addWidget(desktop_page)
+        self._register_page("desktop_cache", desktop_page)
 
         github_page, github_body = self._create_wizard_page(self._pane_specs[3].title, self._pane_specs[3].subtitle)
         github_grid = QGridLayout()
         configure_form_grid(github_grid)
         custom_template_layout = QVBoxLayout()
         custom_template_layout.setContentsMargins(0, 0, 0, 0)
-        custom_template_layout.setSpacing(10)
+        custom_template_layout.setSpacing(GRID_VERTICAL_SPACING)
         self._gh_task_branch_custom_template_row = QWidget(github_page)
         self._gh_task_branch_custom_template_row.setLayout(custom_template_layout)
         custom_template_layout.addWidget(self._gh_task_branch_custom_template)
         custom_template_layout.addWidget(self._gh_task_branch_custom_template_helper)
         self._gh_task_branch_custom_template_label = QLabel("Custom branch template")
         self._interactive_pr_no_prompt_mode_label = QLabel("When prompt is disabled")
+        gh_context_row = create_stretch_row(self._gh_context_enabled, stretch_index=1)
+        interactive_pr_prompt_row = create_stretch_row(self._interactive_pr_prompt_enabled, stretch_index=1)
         self._interactive_pr_no_prompt_mode_row = create_stretch_row(
             self._interactive_pr_no_prompt_mode, stretch_index=1
         )
-        add_grid_row(github_grid, 0, QLabel("GitHub context"), self._gh_context_enabled)
+        add_grid_row(github_grid, 0, QLabel("GitHub context"), gh_context_row)
         add_grid_row(github_grid, 1, QLabel("Branch workflow"), self._gh_branch_work_mode)
         add_grid_row(github_grid, 2, QLabel("Task branch naming"), self._gh_task_branch_naming_style)
         add_grid_row(
             github_grid, 3, self._gh_task_branch_custom_template_label, self._gh_task_branch_custom_template_row
         )
-        add_grid_row(github_grid, 4, QLabel("Interactive PR prompt"), self._interactive_pr_prompt_enabled)
+        add_grid_row(github_grid, 4, QLabel("Interactive PR prompt"), interactive_pr_prompt_row)
         add_grid_row(github_grid, 5, self._interactive_pr_no_prompt_mode_label, self._interactive_pr_no_prompt_mode_row)
         github_body.addLayout(github_grid)
         github_body.addStretch(1)
-        self._stack.addWidget(github_page)
+        self._register_page("github_behavior", github_page)
 
         agentsnova_page, agentsnova_body = self._create_wizard_page(
             self._pane_specs[4].title, self._pane_specs[4].subtitle
@@ -523,23 +574,55 @@ class NewEnvironmentWizard(ThemedDialog):
         add_grid_row(agentsnova_grid, 2, QLabel("Marker comment mode"), self._marker_comment_combo)
         agentsnova_body.addLayout(agentsnova_grid)
         agentsnova_body.addStretch(1)
-        self._stack.addWidget(agentsnova_page)
+        self._register_page("agentsnova_automation", agentsnova_page)
 
     def _build_navigation(self, nav_layout: QVBoxLayout) -> None:
-        for index, spec in enumerate(self._pane_specs):
-            button = QToolButton()
-            button.setObjectName("SettingsNavButton")
-            button.setText(spec.title)
-            button.setToolTip(spec.subtitle)
-            button.setCheckable(True)
-            button.setAutoExclusive(True)
-            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
-            button.setFixedHeight(40)
-            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-            button.clicked.connect(lambda checked=False, page_index=index: self._set_current_page(page_index))
-            nav_layout.addWidget(button)
-            self._nav_buttons.append(button)
+        sections: dict[str, list[_WizardPaneSpec]] = {}
+        for spec in self._pane_specs:
+            sections.setdefault(spec.section, []).append(spec)
+
+        for section_title, specs in sections.items():
+            section_label = QLabel(section_title)
+            section_label.setObjectName("SettingsNavSection")
+            nav_layout.addWidget(section_label)
+
+            for spec in specs:
+                button = QToolButton()
+                button.setObjectName("SettingsNavButton")
+                button.setText(spec.title)
+                button.setToolTip(spec.subtitle)
+                button.setCheckable(True)
+                button.setAutoExclusive(True)
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+                button.setFixedHeight(40)
+                button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                button.clicked.connect(lambda checked=False, key=spec.key: self._on_nav_button_clicked(key))
+                nav_layout.addWidget(button)
+                self._nav_buttons[spec.key] = button
+                self._compact_nav.addItem(spec.title, spec.key)
         nav_layout.addStretch(1)
+
+    def _register_page(self, key: str, widget: QWidget) -> None:
+        index = self._page_stack.addWidget(widget)
+        self._pane_index_by_key[key] = index
+
+    def _on_nav_button_clicked(self, key: str) -> None:
+        self._navigate_to_page(key)
+
+    def _on_compact_nav_changed(self, _index: int) -> None:
+        key = str(self._compact_nav.currentData() or "").strip()
+        if key:
+            self._navigate_to_page(key)
+
+    def _navigate_to_page(self, key: str) -> None:
+        page_index = self._pane_index_by_key.get(key)
+        if page_index is None:
+            return
+        if page_index > 0 and not self._is_general_info_complete():
+            self._set_active_navigation(self._active_pane_key or self._pane_specs[0].key)
+            self._update_next_button()
+            return
+        self._set_current_page(page_index)
 
     def _build_button_bar(self, parent_layout: QVBoxLayout) -> None:
         btn_layout = QHBoxLayout()
@@ -579,11 +662,11 @@ class NewEnvironmentWizard(ThemedDialog):
         body = QWidget(content)
         body_layout = QVBoxLayout(body)
         body_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.setSpacing(10)
+        body_layout.setSpacing(GRID_VERTICAL_SPACING)
 
         content_layout.addWidget(title)
         content_layout.addWidget(subtitle)
-        content_layout.addWidget(body, 1)
+        content_layout.addWidget(body)
         scroll.setWidget(content)
         page_layout.addWidget(scroll, 1)
         return page, body_layout
@@ -643,8 +726,9 @@ class NewEnvironmentWizard(ThemedDialog):
         if is_folder:
             self._validate_folder()
         else:
-            self._validate_clone()
             self._clone_test_passed = False
+            self._clone_test_url = ""
+            self._validate_clone()
         self._update_next_button()
 
     def _browse_folder(self) -> None:
@@ -696,6 +780,9 @@ class NewEnvironmentWizard(ThemedDialog):
 
     def _validate_clone(self) -> None:
         url = self._clone_input.text().strip()
+        expanded_url = self._expand_repo_url(url) if url and " " not in url else ""
+        if self._clone_test_passed and expanded_url != self._clone_test_url:
+            self._clone_test_passed = False
         if not url:
             self._clone_validation.setText("")
             self._update_next_button()
@@ -718,6 +805,7 @@ class NewEnvironmentWizard(ThemedDialog):
         if not hasattr(self, "_next_btn"):
             return
         self._back_btn.setEnabled(self._current_page_index > 0)
+        self._update_page_lock_state()
         if self._current_page_index == 0:
             if self._source_combo.currentIndex() == 0:
                 self._next_btn.setText("Next")
@@ -738,6 +826,19 @@ class NewEnvironmentWizard(ThemedDialog):
         self._next_btn.setText("Next")
         self._next_btn.setEnabled(True)
 
+    def _is_general_info_complete(self) -> bool:
+        if not self._validate_step1():
+            return False
+        return self._source_combo.currentIndex() == 0 or self._clone_test_passed
+
+    def _update_page_lock_state(self) -> None:
+        pages_unlocked = self._is_general_info_complete()
+        for spec in self._pane_specs:
+            page_index = self._pane_index_by_key.get(spec.key, 0)
+            button = self._nav_buttons.get(spec.key)
+            if button is not None:
+                button.setEnabled(page_index == 0 or pages_unlocked)
+
     def _validate_step1(self) -> bool:
         if not self._name_input.text().strip():
             return False
@@ -754,19 +855,91 @@ class NewEnvironmentWizard(ThemedDialog):
         owner, repo = parse_github_url(url)
         return bool(owner and repo)
 
-    def _set_current_page(self, index: int) -> None:
-        max_index = max(0, self._stack.count() - 1)
+    def _set_current_page(self, index: int, *, animate: bool = True) -> None:
+        max_index = max(0, self._page_stack.count() - 1)
         page_index = min(max(index, 0), max_index)
+        if page_index > 0 and not self._is_general_info_complete():
+            page_index = 0
+
+        current_index = self._page_stack.currentIndex()
         self._current_page_index = page_index
-        self._stack.setCurrentIndex(page_index)
-        for button_index, button in enumerate(self._nav_buttons):
-            checked = button_index == page_index
-            button.blockSignals(True)
-            try:
-                button.setChecked(checked)
-            finally:
-                button.blockSignals(False)
+        if current_index != page_index:
+            if current_index < 0 or not animate:
+                self._page_stack.setCurrentIndex(page_index)
+            else:
+                forward = page_index > current_index
+                self._page_stack.setCurrentIndex(page_index)
+                self._animate_stack(forward=forward)
+
+        key = self._pane_specs[page_index].key if self._pane_specs else ""
+        if key:
+            self._set_active_navigation(key)
         self._update_next_button()
+
+    def _set_active_navigation(self, key: str) -> None:
+        self._active_pane_key = key
+        for pane_key, button in self._nav_buttons.items():
+            with QSignalBlocker(button):
+                button.setChecked(pane_key == key)
+
+        idx = self._compact_nav.findData(key)
+        if idx >= 0:
+            with QSignalBlocker(self._compact_nav):
+                self._compact_nav.setCurrentIndex(idx)
+
+    def _animate_stack(self, *, forward: bool) -> None:
+        if self._pane_animation is not None:
+            self._pane_animation.stop()
+            self._pane_animation = None
+
+        if self._pane_rest_pos is not None:
+            self._page_stack.move(self._pane_rest_pos)
+        self._page_stack.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
+
+        base_pos = self._page_stack.pos()
+        self._pane_rest_pos = QPoint(base_pos)
+
+        offset = 16 if forward else -16
+        start_pos = QPoint(base_pos.x() + offset, base_pos.y())
+
+        effect = QGraphicsOpacityEffect(self._page_stack)
+        effect.setOpacity(0.0)
+        self._page_stack.setGraphicsEffect(effect)
+        self._page_stack.move(start_pos)
+
+        pos_anim = QPropertyAnimation(self._page_stack, b"pos", self)
+        pos_anim.setDuration(210)
+        pos_anim.setStartValue(start_pos)
+        pos_anim.setEndValue(base_pos)
+        pos_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        opacity_anim = QPropertyAnimation(effect, b"opacity", self)
+        opacity_anim.setDuration(210)
+        opacity_anim.setStartValue(0.0)
+        opacity_anim.setEndValue(1.0)
+        opacity_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        group = QParallelAnimationGroup(self)
+        group.addAnimation(pos_anim)
+        group.addAnimation(opacity_anim)
+
+        def _cleanup() -> None:
+            if self._pane_rest_pos is not None:
+                self._page_stack.move(self._pane_rest_pos)
+            self._page_stack.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
+            self._pane_animation = None
+
+        group.finished.connect(_cleanup)
+        group.start()
+        self._pane_animation = group
+
+    def _update_navigation_mode(self) -> None:
+        compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD
+        if compact == self._compact_mode:
+            return
+        self._compact_mode = compact
+        self._compact_nav.setVisible(compact)
+        self._nav_scroll.setVisible(not compact)
 
     def _on_next(self) -> None:
         if self._current_page_index == 0:
@@ -782,6 +955,8 @@ class NewEnvironmentWizard(ThemedDialog):
 
     def _run_clone_test(self) -> None:
         url = self._expand_repo_url(self._clone_input.text().strip())
+        self._clone_test_passed = False
+        self._clone_test_url = url
         name = self._name_input.text().strip() or "test"
         sanitized = re.sub(r"[^a-zA-Z0-9_-]", "_", name)[:50]
         test_id = hashlib.md5(url.encode()).hexdigest()[:8]
@@ -823,6 +998,12 @@ read
     def _check_clone_result(self) -> None:
         self._clone_check_count += 1
         if os.path.isdir(self._test_folder) and os.path.isdir(os.path.join(self._test_folder, ".git")):
+            if self._expand_repo_url(self._clone_input.text().strip()) != self._clone_test_url:
+                self._clone_test_passed = False
+                self._clone_validation.setText("✗ URL changed after clone test")
+                self._clone_validation.setStyleSheet("color: #f44336; font-size: 11px;")
+                self._update_next_button()
+                return
             self._clone_test_passed = True
             self._clone_validation.setText("✓ Clone test passed")
             self._clone_validation.setStyleSheet("color: #4caf50; font-size: 11px;")
