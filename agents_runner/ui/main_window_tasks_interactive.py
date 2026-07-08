@@ -280,19 +280,8 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
         launch_mode = "opencode_web" if opencode_web_mode else "interactive_agent"
 
         extra_preflight_script = str(extra_preflight_script or "")
-        is_help_launch = self._is_agent_help_interactive_launch(prompt=prompt, command=command)
-        if extra_preflight_script.strip() and "clone_repo" in extra_preflight_script:
-            is_help_launch = True
-        if is_help_launch:
-            prompt = "\n".join(
-                [
-                    f"You are running: `{agent_cli}` right now",
-                    "",
-                    str(prompt or "").strip(),
-                ]
-            ).strip()
 
-        apply_full_prompting = bool(has_typed_prompt and not is_help_launch and not opencode_web_mode)
+        apply_full_prompting = bool(has_typed_prompt and not opencode_web_mode)
         prompt_for_agent = "" if opencode_web_mode else str(prompt or "")
         if apply_full_prompting:
             prompt_for_agent = self._build_interactive_base_prompt(
@@ -409,7 +398,6 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
             agent_cli=agent_cli,
             agent_cli_args=agent_cli_args,
             prompt_for_agent=prompt_for_agent,
-            is_help_launch=is_help_launch,
             apply_full_prompting=apply_full_prompting,
             has_typed_prompt=has_typed_prompt,
             desktop_enabled=desktop_enabled,

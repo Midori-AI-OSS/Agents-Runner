@@ -214,8 +214,6 @@ if TYPE_CHECKING:
             env: Environment | None,
             settings: dict[str, Any] | None = None,
         ) -> str: ...
-        @staticmethod
-        def _is_agent_help_interactive_launch(prompt: str, command: str) -> bool: ...
         def _effective_host_config_dir(
             self,
             *,

@@ -29,7 +29,6 @@ from agents_runner.agent_cli import default_host_config_dir
 from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.agent_systems import get_agent_system
 from agents_runner.ui.radio import RadioController
-from agents_runner.ui.utils import looks_like_agent_help_command
 from agents_runner.environments import Environment
 from agents_runner.environments.model import normalize_gpu_override_mode
 from agents_runner.environments.model import normalize_opencode_interactive_mode
@@ -467,13 +466,6 @@ class MainWindowSettingsMixin(MainWindowHints):
         if not agent_cli or agent_cli not in set(available_agents(include_internal=False)):
             return ""
         return self._plugin_default_interactive_command(agent_cli)
-
-    @staticmethod
-    def _is_agent_help_interactive_launch(prompt: str, command: str) -> bool:
-        prompt = str(prompt or "").strip().lower()
-        if prompt.startswith("get agent help"):
-            return True
-        return looks_like_agent_help_command(command)
 
     def _resolve_config_dir_for_agent(
         self,

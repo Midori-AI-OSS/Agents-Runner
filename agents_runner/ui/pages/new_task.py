@@ -39,7 +39,6 @@ from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments.model import AgentInstance
 from agents_runner.persistence import default_state_path
 from agents_runner.prompt_sanitizer import sanitize_prompt
-from agents_runner.prompts import load_prompt
 from agents_runner.terminal_apps import detect_terminal_options
 from agents_runner.ui.icons import mic_icon
 from agents_runner.ui.graphics import EnvironmentTintOverlay
@@ -241,12 +240,6 @@ class NewTaskPage(QWidget):
 
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
-        self._get_agent_help = StainedGlassButton("Get Agent Help")
-        self._get_agent_help.set_glass_enabled(False)
-        self._get_agent_help.set_texture_enabled(False)
-        self._get_agent_help.clicked.connect(self._on_get_agent_help)
-        self._get_agent_help.setEnabled(False)
-        buttons.addWidget(self._get_agent_help)
         buttons.addStretch(1)
         self._run_interactive = StainedGlassButton("Run Interactive")
         self._run_interactive.set_glass_enabled(False)
@@ -336,7 +329,6 @@ class NewTaskPage(QWidget):
         can_launch = bool(self._workspace_ready and has_terminal)
         self._run_agent.setEnabled(self._workspace_ready)
         self._run_interactive.setEnabled(can_launch)
-        self._get_agent_help.setEnabled(can_launch)
 
     def _refresh_terminal_selection(self, terminal_id: str) -> None:
         options = detect_terminal_options()
@@ -415,61 +407,6 @@ class NewTaskPage(QWidget):
         )
         self._pending_pr_context = None
         self._clear_agent_override()
-
-    def _on_get_agent_help(self) -> None:
-        if not self._workspace_ready:
-            QMessageBox.warning(
-                self,
-                "Workspace not configured",
-                self._workspace_error or "Pick an environment with a local folder or GitHub repo configured.",
-            )
-            return
-
-        user_question = sanitize_prompt((self._prompt.toPlainText() or "").strip())
-        if not user_question:
-            QMessageBox.warning(
-                self,
-                "Missing question",
-                "Please type your question to get started with the help agent.",
-            )
-            return
-
-        terminal_id = self._resolve_terminal_for_launch()
-        if not terminal_id:
-            return
-
-        helpme_path = Path(__file__).resolve().parent.parent.parent / "preflights" / "helpme.sh"
-        try:
-            helpme_script = helpme_path.read_text(encoding="utf-8")
-        except Exception:
-            helpme_script = ""
-        if not helpme_script.strip():
-            QMessageBox.warning(self, "Missing preflight", f"Could not load {helpme_path}")
-            return
-
-        env_id = self._active_env_id
-        base_branch = str(self._base_branch.currentData() or "")
-
-        # Confirm auto base branch for cloned repo environments
-        if not self._confirm_auto_base_branch(env_id, base_branch):
-            return
-
-        command = (self._command.text() or "").strip()
-
-        prompt = load_prompt(
-            "help_request_template",
-            USER_QUESTION=user_question,
-        )
-        self.requested_launch.emit(
-            prompt,
-            command,
-            "",
-            env_id,
-            terminal_id,
-            base_branch,
-            None,
-            helpme_script,
-        )
 
     def _reconnect_interactive_button(self, new_slot: object) -> None:
         """Safely reconnect the interactive button click handler."""
@@ -604,12 +541,10 @@ class NewTaskPage(QWidget):
         if not stain:
             self._base_branch.setStyleSheet("")
             self._tint_overlay.set_tint_color(None)
-            self._get_agent_help.set_tint_color(None)
         else:
             apply_environment_combo_tint(self._base_branch, stain)
             base_tint = stain_color(stain)
             self._tint_overlay.set_tint_color(base_tint)
-            self._get_agent_help.set_tint_color(base_tint)
         self._apply_run_button_tints(base_tint)
 
     def set_environment_stains(self, stains: dict[str, str]) -> None:
