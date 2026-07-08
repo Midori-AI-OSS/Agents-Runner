@@ -158,8 +158,6 @@ class CodexAgentSystemPlugin:
         cmd_parts: list[str],
         agent_cli_args: list[str],
         prompt: str,
-        is_help_launch: bool,
-        help_repos_dir: str,
     ) -> list[str]:
         parts = list(cmd_parts)
 
@@ -168,16 +166,6 @@ class CodexAgentSystemPlugin:
 
         if agent_cli_args:
             parts.extend(agent_cli_args)
-
-        if is_help_launch:
-            found_sandbox = False
-            for idx in range(len(parts) - 1):
-                if parts[idx] != "--sandbox":
-                    continue
-                parts[idx + 1] = "danger-full-access"
-                found_sandbox = True
-            if not found_sandbox:
-                parts[1:1] = ["--sandbox", "danger-full-access"]
 
         if prompt:
             move_positional_to_end(parts, prompt)

@@ -36,14 +36,6 @@ def safe_str(value: object, default: str = "") -> str:
     return str(value or default).strip() or default
 
 
-def looks_like_agent_help_command(command: str) -> bool:
-    value = str(command or "").strip()
-    if not value:
-        return False
-    lowered = value.lower()
-    return "agent-help" in lowered or ".agent-help" in lowered
-
-
 def status_color(status: str) -> QColor:
     """Map status string to color."""
     color_map = {

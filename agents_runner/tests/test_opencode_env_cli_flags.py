@@ -96,8 +96,6 @@ def test_opencode_interactive_tui_drops_variant_but_keeps_agent_and_model() -> N
             "max",
         ],
         prompt="",
-        is_help_launch=False,
-        help_repos_dir="",
     )
 
     assert cmd_parts == [
@@ -122,8 +120,6 @@ def test_opencode_run_keeps_variant_and_uses_dir() -> None:
             "max",
         ],
         prompt="hello",
-        is_help_launch=False,
-        help_repos_dir="",
     )
 
     assert cmd_parts == [

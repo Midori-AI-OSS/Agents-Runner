@@ -18,8 +18,6 @@ def build_agent_command_parts(
     agent_cli: str,
     agent_cli_args: list[str],
     prompt: str,
-    is_help_launch: bool,
-    help_repos_dir: str = "/home/midori-ai/.agent-help/repos",
 ) -> list[str]:
     """Build command parts with agent-system plugin handling."""
     agent_cli = normalize_agent_system_name(agent_cli)
@@ -42,6 +40,4 @@ def build_agent_command_parts(
         cmd_parts=cmd_parts,
         agent_cli_args=list(agent_cli_args or []),
         prompt=str(prompt or ""),
-        is_help_launch=bool(is_help_launch),
-        help_repos_dir=str(help_repos_dir or ""),
     )
