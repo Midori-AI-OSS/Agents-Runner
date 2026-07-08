@@ -11,7 +11,6 @@ from .edge_fade_scroll_area import EdgeFadeScrollArea
 from .glass_card import GlassCard
 from .loading_bar import BouncingLoadingBar
 from .log_highlighter import LogHighlighter
-from .magic_prompts import MagicPromptsWidget
 from .smooth_scroll import SmoothScrollArea
 from .spell_highlighter import SpellHighlighter
 from .spell_text_edit import SpellTextEdit
@@ -34,7 +33,6 @@ __all__ = [
     "EdgeFadeScrollArea",
     "GlassCard",
     "LogHighlighter",
-    "MagicPromptsWidget",
     "SmoothScrollArea",
     "SpellHighlighter",
     "SpellTextEdit",

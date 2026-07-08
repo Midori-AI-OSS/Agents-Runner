@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from PySide6.QtCore import QEasingCurve
 from PySide6.QtCore import QParallelAnimationGroup
+from PySide6.QtCore import QPoint
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QSize
@@ -37,6 +38,7 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments.model import AgentInstance
+from agents_runner.magic_prompts import load_magic_prompts
 from agents_runner.persistence import default_state_path
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
@@ -47,7 +49,6 @@ from agents_runner.ui.utils import apply_environment_combo_tint
 from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import SpellTextEdit
 from agents_runner.ui.widgets import StainedGlassButton
-from agents_runner.ui.widgets import MagicPromptsWidget
 from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
 from agents_runner.stt.mic_recorder import MicRecorderError
 from agents_runner.stt.mic_recorder import MicRecording
@@ -241,6 +242,13 @@ class NewTaskPage(QWidget):
 
         buttons = QHBoxLayout()
         buttons.setSpacing(10)
+
+        self._magic_prompts_btn = StainedGlassButton("Magic Prompts")
+        self._magic_prompts_btn.set_glass_enabled(False)
+        self._magic_prompts_btn.set_texture_enabled(False)
+        self._magic_prompts_btn.clicked.connect(self._on_magic_prompts_clicked)
+        buttons.addWidget(self._magic_prompts_btn)
+
         buttons.addStretch(1)
         self._run_interactive = StainedGlassButton("Run Interactive")
         self._run_interactive.set_glass_enabled(False)
@@ -270,10 +278,6 @@ class NewTaskPage(QWidget):
 
         card_layout.addLayout(prompt_title_row)
         card_layout.addWidget(prompt_container, 1)
-
-        self._magic_prompts = MagicPromptsWidget(self)
-        self._magic_prompts.prompt_selected.connect(self._on_magic_prompt_selected)
-        card_layout.addWidget(self._magic_prompts)
 
         card_layout.addLayout(interactive_grid)
         card_layout.addLayout(cfg_grid)
@@ -1364,9 +1368,19 @@ class NewTaskPage(QWidget):
         self._prompt.setFocus(Qt.FocusReason.OtherFocusReason)
         self._pending_pr_context = None
 
-    def _on_magic_prompt_selected(self, text: str) -> None:
-        self._prompt.setPlainText(str(text or ""))
-        self._prompt.setFocus(Qt.FocusReason.OtherFocusReason)
+    def _build_magic_prompts_menu(self) -> QMenu:
+        prompts = load_magic_prompts()
+        menu = QMenu(self)
+        for entry in prompts:
+            title = entry["title"]
+            prompt_text = entry["prompt"]
+            action = menu.addAction(title)
+            action.triggered.connect(lambda checked=False, pt=prompt_text: self._prompt.setPlainText(pt))
+        return menu
+
+    def _on_magic_prompts_clicked(self) -> None:
+        menu = self._build_magic_prompts_menu()
+        menu.exec_(self._magic_prompts_btn.mapToGlobal(QPoint(0, self._magic_prompts_btn.height())))
 
     def append_prompt_text(self, text: str) -> None:
         addition = str(text or "").strip()
