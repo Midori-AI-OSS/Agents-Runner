@@ -47,6 +47,7 @@ from agents_runner.ui.utils import apply_environment_combo_tint
 from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import SpellTextEdit
 from agents_runner.ui.widgets import StainedGlassButton
+from agents_runner.ui.widgets import MagicPromptsWidget
 from agents_runner.stt.mic_recorder import FfmpegPulseRecorder
 from agents_runner.stt.mic_recorder import MicRecorderError
 from agents_runner.stt.mic_recorder import MicRecording
@@ -269,6 +270,11 @@ class NewTaskPage(QWidget):
 
         card_layout.addLayout(prompt_title_row)
         card_layout.addWidget(prompt_container, 1)
+
+        self._magic_prompts = MagicPromptsWidget(self)
+        self._magic_prompts.prompt_selected.connect(self._on_magic_prompt_selected)
+        card_layout.addWidget(self._magic_prompts)
+
         card_layout.addLayout(interactive_grid)
         card_layout.addLayout(cfg_grid)
         card_layout.addLayout(buttons)
@@ -1357,6 +1363,10 @@ class NewTaskPage(QWidget):
         self._prompt.setPlainText("")
         self._prompt.setFocus(Qt.FocusReason.OtherFocusReason)
         self._pending_pr_context = None
+
+    def _on_magic_prompt_selected(self, text: str) -> None:
+        self._prompt.setPlainText(str(text or ""))
+        self._prompt.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def append_prompt_text(self, text: str) -> None:
         addition = str(text or "").strip()
