@@ -194,9 +194,6 @@ class NewTaskPage(QWidget):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
         )
 
-        interactive_hint = QLabel("Interactive: opens a terminal and runs the container with TTY/stdin for agent TUIs.")
-        interactive_hint.setStyleSheet("color: rgba(237, 239, 245, 160);")
-
         self._terminal_display = QLabel("No terminals detected")
         self._terminal_display.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self._terminal_display.setStyleSheet("color: rgba(237, 239, 245, 200);")
@@ -279,7 +276,6 @@ class NewTaskPage(QWidget):
 
         card_layout.addLayout(prompt_title_row)
         card_layout.addWidget(prompt_container, 1)
-        card_layout.addWidget(interactive_hint)
         card_layout.addLayout(interactive_grid)
         card_layout.addLayout(cfg_grid)
         card_layout.addLayout(buttons)
