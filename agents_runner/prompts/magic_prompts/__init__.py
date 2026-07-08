@@ -13,7 +13,7 @@ def load_magic_prompts() -> list[dict[str, str]]:
             if len(lines) < 2:
                 continue
             title = lines[0].strip()
-            body = lines[1].strip()
+            body = "\n".join(lines[1:]).strip()
             if not title or not body:
                 continue
             prompts.append({"title": title, "prompt": body})
