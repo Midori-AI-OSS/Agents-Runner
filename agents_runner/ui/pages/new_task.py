@@ -38,7 +38,7 @@ from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments import WORKSPACE_MOUNTED
 from agents_runner.environments import WORKSPACE_NONE
 from agents_runner.environments.model import AgentInstance
-from agents_runner.magic_prompts import load_magic_prompts
+from agents_runner.prompts.magic_prompts import load_magic_prompts
 from agents_runner.persistence import default_state_path
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.terminal_apps import detect_terminal_options
