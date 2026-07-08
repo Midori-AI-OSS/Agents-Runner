@@ -156,8 +156,6 @@ class QwenAgentSystemPlugin:
         cmd_parts: list[str],
         agent_cli_args: list[str],
         prompt: str,
-        is_help_launch: bool,
-        help_repos_dir: str,
     ) -> list[str]:
         parts = list(cmd_parts)
 
@@ -177,8 +175,6 @@ class QwenAgentSystemPlugin:
             parts[1:1] = ["--approval-mode", "yolo"]
 
         _ensure_include_directory(parts, WORKSPACE_DIR)
-        if is_help_launch:
-            _ensure_include_directory(parts, help_repos_dir)
 
         if prompt:
             has_interactive_prompt = "-i" in parts or "--prompt-interactive" in parts

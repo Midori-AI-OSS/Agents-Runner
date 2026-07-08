@@ -259,12 +259,7 @@ class OpenCodeAgentSystemPlugin:
         cmd_parts: list[str],
         agent_cli_args: list[str],
         prompt: str,
-        is_help_launch: bool,
-        help_repos_dir: str,
     ) -> list[str]:
-        del is_help_launch
-        del help_repos_dir
-
         parts = list(cmd_parts)
         subcommand = _top_level_subcommand(parts)
 

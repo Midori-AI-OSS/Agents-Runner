@@ -68,7 +68,6 @@ class InteractivePrepWorker(QObject):
         agent_cli: str,
         agent_cli_args: list[str],
         prompt_for_agent: str,
-        is_help_launch: bool,
         apply_full_prompting: bool,
         has_typed_prompt: bool,
         desktop_enabled: bool,
@@ -104,7 +103,6 @@ class InteractivePrepWorker(QObject):
         self._agent_cli = str(agent_cli or "").strip()
         self._agent_cli_args = list(agent_cli_args or [])
         self._prompt_for_agent = str(prompt_for_agent or "")
-        self._is_help_launch = bool(is_help_launch)
         self._apply_full_prompting = bool(apply_full_prompting)
         self._has_typed_prompt = bool(has_typed_prompt)
         self._desktop_enabled = bool(desktop_enabled)
@@ -466,19 +464,6 @@ class InteractivePrepWorker(QObject):
                                 task_branch=gh_branch,
                                 head_commit="(unknown)",
                             )
-                    elif self._is_help_launch and self._has_typed_prompt:
-                        prompt_instruction = (
-                            load_prompt(
-                                "github_recommendation_only",
-                                REASON=self._gh_pr_unavailable_reason,
-                            )
-                            if self._gh_pr_unavailable_reason
-                            else pr_metadata_prompt_instructions(pr_container_path)
-                        )
-                        prompt_for_agent = insert_prompt_sections_before_user_prompt(
-                            prompt_for_agent,
-                            [prompt_instruction],
-                        )
                     metadata_elapsed_ms = (time.monotonic() - metadata_started_s) * 1000.0
                     self._diag(
                         "INFO",
@@ -576,7 +561,6 @@ class InteractivePrepWorker(QObject):
                 agent_cli=self._agent_cli,
                 agent_cli_args=self._agent_cli_args,
                 prompt=prompt_for_agent,
-                is_help_launch=self._is_help_launch,
             )
             cmd_elapsed_ms = (time.monotonic() - cmd_started_s) * 1000.0
             self._diag("INFO", f"phase=command_build done elapsed_ms={cmd_elapsed_ms:.0f}")
