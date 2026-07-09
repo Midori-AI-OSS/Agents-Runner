@@ -27,6 +27,7 @@ from agents_runner.log_format import format_log, wrap_container_log
 from pathlib import Path
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMessageBox
+from agents_runner.persistence import cleanup_old_done_task_files
 from agents_runner.persistence import iter_done_task_payloads
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
@@ -108,6 +109,9 @@ class MainWindowTaskRecoveryMixin(MainWindowHints):
                 shutil.rmtree(staging_dir, ignore_errors=True)
             except Exception:
                 pass
+
+        retention_days = int(self._settings_data.get("task_workspace_cleanup_retention_days", 30))
+        cleanup_old_done_task_files(retention_days=retention_days)
 
     def _tick_recovery(self) -> None:
         """Recovery tick handler (runs every 5 seconds).
@@ -727,3 +731,5 @@ class MainWindowTaskRecoveryMixin(MainWindowHints):
                 shutil.rmtree(staging_dir, ignore_errors=True)
             except Exception:
                 pass
+
+        self._finalization_threads.pop(task_id, None)

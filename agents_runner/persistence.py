@@ -342,6 +342,31 @@ def iter_done_task_payloads(state_path: str) -> Iterator[dict[str, Any]]:
                 yield payload
 
 
+def cleanup_old_done_task_files(retention_days: int = 30) -> int:
+    state_path = default_state_path()
+    done = tasks_done_dir(state_path)
+    if not os.path.isdir(done):
+        return 0
+    cutoff = time.time() - (retention_days * 86400)
+    removed = 0
+    try:
+        for entry in os.scandir(done):
+            if not entry.name.endswith(".toml"):
+                continue
+            try:
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                if entry.stat().st_mtime >= cutoff:
+                    continue
+                os.unlink(entry.path)
+                removed += 1
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return removed
+
+
 def serialize_task(task: Any) -> dict[str, Any]:
     runner_config = getattr(task, "_runner_config", None)
     runner_config_payload: dict[str, Any] | None = None
