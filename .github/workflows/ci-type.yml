@@ -65,3 +65,43 @@ except:
     print(f'BASEDPYRIGHT_DIAGS=N/A')
 " > /tmp/basedpyright-stats.env
           cat /tmp/basedpyright-stats.env >> $GITHUB_ENV
+
+      - name: Generate type-stats.json
+        run: |
+          python3 -c "
+import json, os
+
+stats = {'pyright': {}, 'basedpyright': {}}
+
+# Pyright
+if os.path.exists('/tmp/pyright.json'):
+    try:
+        with open('/tmp/pyright.json') as f:
+            data = json.loads(f.read())
+        gen = data.get('generalDiagnostics', [])
+        stats['pyright']['errors'] = sum(1 for d in gen if d.get('severity') == 'error')
+        stats['pyright']['warnings'] = sum(1 for d in gen if d.get('severity') == 'warning')
+    except Exception:
+        pass
+
+# Basedpyright
+if os.path.exists('/tmp/basedpyright.json'):
+    try:
+        with open('/tmp/basedpyright.json') as f:
+            data = json.loads(f.read())
+        gen = data.get('generalDiagnostics', [])
+        stats['basedpyright']['errors'] = sum(1 for d in gen if d.get('severity') == 'error')
+        stats['basedpyright']['warnings'] = sum(1 for d in gen if d.get('severity') == 'warning')
+        stats['basedpyright']['diagnostics'] = len(gen)
+    except Exception:
+        pass
+
+with open('/tmp/type-stats.json', 'w') as f:
+    json.dump(stats, f)
+"
+
+      - name: Upload type-stats artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: type-stats
+          path: /tmp/type-stats.json
