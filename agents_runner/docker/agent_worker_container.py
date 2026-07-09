@@ -461,6 +461,10 @@ class ContainerExecutor:
             k = str(key).strip()
             if k:
                 env_args.extend(["-e", f"{k}={value}"])
+        if "UV_PROJECT_ENVIRONMENT" not in (self._config.env_vars or {}):
+            env_args.extend(["-e", "UV_PROJECT_ENVIRONMENT=/tmp/.uv-venv"])
+        if "UV_PYTHON_INSTALL_DIR" not in (self._config.env_vars or {}):
+            env_args.extend(["-e", "UV_PYTHON_INSTALL_DIR=/tmp/.uv-python"])
         env_args.extend(["-e", "MIDORI_AI_AGENTS_RUNNER_INTERACTIVE=false"])
 
         # Forward GitHub tokens if needed

@@ -401,6 +401,10 @@ def launch_docker_terminal_task(
             if not k:
                 continue
             env_args.extend(["-e", f"{k}={value}"])
+        if "UV_PROJECT_ENVIRONMENT" not in ((env.env_vars or {}) if env else {}):
+            env_args.extend(["-e", "UV_PROJECT_ENVIRONMENT=/tmp/.uv-venv"])
+        if "UV_PYTHON_INSTALL_DIR" not in ((env.env_vars or {}) if env else {}):
+            env_args.extend(["-e", "UV_PYTHON_INSTALL_DIR=/tmp/.uv-python"])
         env_args.extend(["-e", "MIDORI_AI_AGENTS_RUNNER_INTERACTIVE=true"])
 
         # Check if we need to forward GH_TOKEN
