@@ -1,0 +1,91 @@
+name: CI PR Comment
+
+permissions:
+  contents: read
+  checks: read
+  pull-requests: write
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  comment:
+    name: PR Comment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Post CI Results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const sha = context.payload.pull_request.head.sha;
+            const issueNumber = context.payload.pull_request.number;
+
+            const { data } = await github.rest.checks.listForRef({
+              owner,
+              repo,
+              ref: sha,
+              filter: 'latest'
+            });
+
+            function findCheck(pattern) {
+              for (const run of data.check_runs) {
+                if (run.name.includes(pattern)) return run;
+              }
+              return null;
+            }
+
+            function statusText(run) {
+              if (!run) return 'pending';
+              if (run.status !== 'completed') return 'pending';
+              if (run.conclusion === 'success') return 'pass';
+              if (run.conclusion === 'failure') return 'fail';
+              if (run.conclusion === 'neutral') return 'skip';
+              return run.conclusion || 'pending';
+            }
+
+            function annotationsCount(run) {
+              if (!run || !run.output) return 0;
+              return run.output.annotations_count || 0;
+            }
+
+            const typeRun = findCheck('CI Type');
+            const formatRun = findCheck('CI Format');
+            const lintRun = findCheck('CI Lint');
+            const testsRun = findCheck('CI Tests');
+
+            let body = '## CI Results\n\n';
+
+            if (typeRun) {
+              const ts = statusText(typeRun);
+              const ann = annotationsCount(typeRun);
+
+              body += '### Pyright\n';
+              body += '| Status | Errors | Warnings |\n';
+              body += '|--------|--------|----------|\n';
+              body += `| ${ts} | ${ann} | ${ann} |\n\n`;
+
+              body += '### Basedpyright (advisory)\n';
+              body += '| Status | Errors | Warnings | Diagnostics |\n';
+              body += '|--------|--------|----------|-------------|\n';
+              body += `| ${ts} | ${ann} | ${ann} | ${ann} |\n\n`;
+            }
+
+            body += '### Other Checks\n';
+            body += '| Check  | Status |\n';
+            body += '|--------|--------|\n';
+            body += `| Format | ${statusText(formatRun)} |\n`;
+            body += `| Lint   | ${statusText(lintRun)} |\n`;
+            body += `| Tests  | ${statusText(testsRun)} |\n`;
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              body
+            });
