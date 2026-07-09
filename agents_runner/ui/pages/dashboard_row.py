@@ -73,7 +73,7 @@ class TaskRow(QWidget):
     def __init__(self, parent: QWidget | None = None, *, discard_enabled: bool = True) -> None:
         super().__init__(parent)
         self.setFixedHeight(52)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._task_id: str | None = None
         self._last_task: Task | None = None
         self._content_offset = 0.0

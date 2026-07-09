@@ -69,7 +69,7 @@ def copilot_font_metrics(
 ) -> tuple[QFont, QFontMetricsF, float, float]:
     """Get or compute font metrics for Copilot theme code rendering."""
     if font_cache is None or metrics_cache is None:
-        font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+        font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         font.setStyleHint(QFont.StyleHint.Monospace)
         font.setPixelSize(12 if rect.height() >= 920 else 11)
         metrics = QFontMetricsF(font)
@@ -287,7 +287,7 @@ def copilot_make_active_line(
     backspace_cps = float(rng.uniform(22.0, 34.0))
 
     try:
-        static_text.prepare(font)
+        static_text.prepare(font=font)
     except (AttributeError, TypeError):
         pass
 
@@ -322,7 +322,7 @@ def tick_copilot_typed_code(
     if not panes:
         return
 
-    pane_rects = copilot_pane_rects(widget, panes)
+    pane_rects = copilot_pane_rects(widget.rect(), panes)
 
     for pane_idx, pane in enumerate(panes):
         pane.cooldown_s = float(max(0.0, pane.cooldown_s - float(dt_s)))
@@ -365,7 +365,7 @@ def tick_copilot_typed_code(
                 static_text = QStaticText(active.final_text)
                 static_text.setTextFormat(Qt.TextFormat.PlainText)
                 try:
-                    static_text.prepare(font)
+                    static_text.prepare(font=font)
                 except (AttributeError, TypeError):
                     pass
 
@@ -397,7 +397,7 @@ def tick_copilot_typed_code(
                 active.static_text = QStaticText(active.draw_text)
                 active.static_text.setTextFormat(Qt.TextFormat.PlainText)
                 try:
-                    active.static_text.prepare(font)
+                    active.static_text.prepare(font=font)
                 except (AttributeError, TypeError):
                     pass
 
@@ -591,14 +591,14 @@ class _CopilotBackground:
                 runtime.repo_root,
             )
             runtime.panes = ensure_copilot_panes(
-                widget,
+                widget.rect(),
                 runtime.panes,
                 runtime.rng,
                 runtime.source_files,
             )
 
             runtime.font, runtime.metrics, runtime.char_w, runtime.line_h = copilot_font_metrics(
-                widget,
+                widget.rect(),
                 runtime.font,
                 runtime.metrics,
                 runtime.char_w,

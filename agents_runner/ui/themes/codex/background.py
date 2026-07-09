@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass
+from typing import cast
 
 from PySide6.QtCore import QPointF, QRect, Qt
 from PySide6.QtGui import (
@@ -421,7 +422,7 @@ def paint_band_boundary(
     # Apply gradient to the boundary region
     painter.fillRect(0, gradient_start_y, rect.width(), gradient_extent * 2, gradient)
 
-    return gradient, boundary_y, cached_gradient_top_color, cached_gradient_bottom_color
+    return gradient, boundary_y, cast(QColor, cached_gradient_top_color), cast(QColor, cached_gradient_bottom_color)
 
 
 @dataclass

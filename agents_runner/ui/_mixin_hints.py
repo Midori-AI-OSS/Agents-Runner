@@ -309,7 +309,7 @@ if TYPE_CHECKING:
         _workspace_type_combo: QComboBox
         _workspace_target: QLineEdit
         _gh_use_host_cli: QCheckBox
-        _gh_management_browse: QToolButton
+        _gh_management_browse: QPushButton
         _name: QLineEdit
         _max_agents_running: QLineEdit
         _color: QComboBox

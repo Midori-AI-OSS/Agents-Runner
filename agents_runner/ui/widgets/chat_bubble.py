@@ -131,7 +131,7 @@ class _BubbleSurface(QWidget):
         self._tail_side = "left"
         self._tone = resolve_chat_bubble_tone(role="other", env_stain="slate", username="unknown")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
     def set_tail_side(self, side: str) -> None:
         normalized = "right" if str(side or "").strip().lower() == "right" else "left"
@@ -208,7 +208,7 @@ class ChatBubbleWidget(QWidget):
 
         self._surface = _BubbleSurface()
         self._surface.setMaximumWidth(self._MAX_BUBBLE_WIDTH)
-        self._surface.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self._surface.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         content = QVBoxLayout(self._surface)
         content.setContentsMargins(12, 9, 12, 14)

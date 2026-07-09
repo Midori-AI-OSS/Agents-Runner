@@ -11,6 +11,7 @@ else:
     EnvironmentsPageHints = object
 
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
@@ -85,7 +86,7 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
         self._gh_management_browse.setEnabled(wants_browse and not locked)
 
     def _on_new(self) -> None:
-        wizard = NewEnvironmentWizard(self)
+        wizard = NewEnvironmentWizard(cast(QWidget, cast(object, self)))
         wizard.environment_created.connect(lambda env: self.updated.emit(env.env_id))
         wizard.exec()
 
@@ -95,13 +96,13 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
         if not env:
             return
         confirm = QMessageBox.question(
-            self,
+            cast(QWidget, cast(object, self)),
             "Delete environment",
             f"Delete environment '{env.name}'?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if confirm != QMessageBox.Yes:
+        if confirm != QMessageBox.StandardButton.Yes:
             return
         delete_environment(env.env_id)
         self.updated.emit("")
@@ -161,7 +162,9 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
         name = (self._name.text() or "").strip()
         if not name:
             if show_validation_errors:
-                QMessageBox.warning(self, "Missing name", "Enter an environment name first.")
+                QMessageBox.warning(
+                    cast(QWidget, cast(object, self)), "Missing name", "Enter an environment name first."
+                )
             return False
 
         existing = self._environments.get(env_id)
@@ -203,14 +206,16 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
         env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
             if show_validation_errors:
-                QMessageBox.warning(self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12]))
+                QMessageBox.warning(
+                    cast(QWidget, cast(object, self)), "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
+                )
             return False
 
         mounts, mount_errors = self._mounts_tab.get_mounts()
         if mount_errors:
             if show_validation_errors:
                 QMessageBox.warning(
-                    self,
+                    cast(QWidget, cast(object, self)),
                     "Invalid mounts",
                     "Fix mounts:\n" + "\n".join(mount_errors[:12]),
                 )
@@ -222,7 +227,9 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
         ports, ports_unlocked, ports_advanced_acknowledged, port_errors = self._ports_tab.get_ports()
         if port_errors:
             if show_validation_errors:
-                QMessageBox.warning(self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12]))
+                QMessageBox.warning(
+                    cast(QWidget, cast(object, self)), "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
+                )
             return False
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
@@ -386,12 +393,16 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
 
         env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
-            QMessageBox.warning(self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12]))
+            QMessageBox.warning(
+                cast(QWidget, cast(object, self)), "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
+            )
             return None
 
         mounts, mount_errors = self._mounts_tab.get_mounts()
         if mount_errors:
-            QMessageBox.warning(self, "Invalid mounts", "Fix mounts:\n" + "\n".join(mount_errors[:12]))
+            QMessageBox.warning(
+                cast(QWidget, cast(object, self)), "Invalid mounts", "Fix mounts:\n" + "\n".join(mount_errors[:12])
+            )
             return None
         env_vars_advanced_mode = bool(self._env_vars_tab.is_advanced_mode())
         mounts_advanced_mode = bool(self._mounts_tab.is_advanced_mode())
@@ -399,7 +410,9 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
         mounts_advanced_acknowledged = bool(self._mounts_tab.is_advanced_acknowledged())
         ports, ports_unlocked, ports_advanced_acknowledged, port_errors = self._ports_tab.get_ports()
         if port_errors:
-            QMessageBox.warning(self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12]))
+            QMessageBox.warning(
+                cast(QWidget, cast(object, self)), "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
+            )
             return None
         name = (self._name.text() or "").strip() or env_id
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()

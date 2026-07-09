@@ -189,7 +189,7 @@ class DashboardPage(QWidget):
 
         self._scroll_active = QScrollArea()
         self._scroll_active.setWidgetResizable(True)
-        self._scroll_active.setFrameShape(QScrollArea.NoFrame)
+        self._scroll_active.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll_active.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll_active.setObjectName("TaskScroll")
 
@@ -209,7 +209,7 @@ class DashboardPage(QWidget):
 
         self._scroll_past = QScrollArea()
         self._scroll_past.setWidgetResizable(True)
-        self._scroll_past.setFrameShape(QScrollArea.NoFrame)
+        self._scroll_past.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll_past.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll_past.setObjectName("TaskScroll")
 

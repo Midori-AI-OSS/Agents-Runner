@@ -196,7 +196,7 @@ class AgentConfigDialog(ThemedDialog):
         self._update_opencode_fields_visibility()
         agent_cli = str(self._agent_cli.currentData() or "").strip().lower()
         if agent_cli:
-            self._root.set_theme_name(theme_name_for_agent(agent_cli))
+            self._background_root.set_theme_name(theme_name_for_agent(agent_cli))
         if self._editing:
             return
         if str(self._config_id.text() or "").strip():

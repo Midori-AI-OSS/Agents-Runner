@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt
+from typing import cast
+
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPaintEvent, QPainter
-from PySide6.QtWidgets import QScrollArea, QWidget
+from PySide6.QtWidgets import QFrame, QScrollArea, QWidget
 
 
 class _ScrollEdgeFadeOverlay(QWidget):
@@ -82,7 +84,7 @@ class EdgeFadeScrollArea(QScrollArea):
         self._fade_alpha = max(0, min(255, int(fade_alpha)))
 
         self.setWidgetResizable(True)
-        self.setFrameShape(QScrollArea.NoFrame)
+        self.setFrameShape(QFrame.Shape.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
@@ -121,7 +123,7 @@ class EdgeFadeScrollArea(QScrollArea):
         ):
             self._sync_overlay_geometry()
             self._sync_edge_fades()
-        return super().eventFilter(obj, event)
+        return super().eventFilter(cast(QObject, obj), event)
 
     def _sync_overlay_geometry(self) -> None:
         self._overlay.setGeometry(self.viewport().rect())

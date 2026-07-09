@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import EnvironmentsPageHints
@@ -15,6 +15,7 @@ from PySide6.QtCore import (
     QSignalBlocker,
 )
 from PySide6.QtWidgets import QGraphicsOpacityEffect
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 
@@ -150,7 +151,8 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
         group.addAnimation(opacity_anim)
 
         def _cleanup() -> None:
-            self._page_stack.move(self._pane_rest_pos)
+            if self._pane_rest_pos is not None:
+                self._page_stack.move(self._pane_rest_pos)
             self._page_stack.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
             self._pane_animation = None
 
@@ -169,7 +171,7 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
         self.try_autosave(show_validation_errors=False)
 
     def _update_navigation_mode(self) -> None:
-        compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD  # pyright: ignore[reportUnknownVariableType]
+        compact = cast(QWidget, cast(object, self)).width() < LEFT_NAV_COMPACT_THRESHOLD  # pyright: ignore[reportUnknownVariableType]
         if compact == self._compact_mode:
             return
         self._compact_mode = compact

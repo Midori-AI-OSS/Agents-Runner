@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtGui import QDesktopServices
@@ -172,7 +173,7 @@ def run_desktop_viewer(args: list[str]) -> int:
     # Set application icon if available
     icon_path = Path(__file__).parent.parent / "midoriai-logo.png"
     if icon_path.exists():
-        app.setWindowIcon(QIcon(str(icon_path)))
+        cast(QApplication, app).setWindowIcon(QIcon(str(icon_path)))
 
     if fault_log_path is not None:
         logger.rprint(f"[Desktop Viewer] faulthandler enabled: {fault_log_path}", mode="normal")

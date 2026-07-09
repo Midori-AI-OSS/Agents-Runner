@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
+from PySide6.QtWidgets import QAbstractItemView
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QHeaderView
 from PySide6.QtWidgets import QLabel
@@ -61,15 +62,15 @@ class EnvVarsTabWidget(QWidget):
         self._table = QTableWidget()
         self._table.setColumnCount(3)
         self._table.setHorizontalHeaderLabels(["Key", "Value", ""])
-        self._table.horizontalHeader().setSectionResizeMode(self._COL_KEY, QHeaderView.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(self._COL_VALUE, QHeaderView.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeToContents)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_KEY, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_VALUE, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeMode.ResizeToContents)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
         self._table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
-        self._table.setSelectionMode(QTableWidget.NoSelection)
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         simple_layout.addWidget(self._table, 1)
 
         self._advanced_view = QWidget()
@@ -207,10 +208,10 @@ class EnvVarsTabWidget(QWidget):
                 "Advanced environment variable editing accepts raw KEY=VALUE entries.\n\n"
                 "Invalid entries can break tasks or override runtime behavior unexpectedly.\n\n"
                 "Do you want to proceed?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
-            if result != QMessageBox.Yes:
+            if result != QMessageBox.StandardButton.Yes:
                 return
             self._advanced_acknowledged = True
 

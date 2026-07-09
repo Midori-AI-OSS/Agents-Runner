@@ -3,6 +3,7 @@ from __future__ import annotations
 from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
+    QObject,
     QParallelAnimationGroup,
     QPropertyAnimation,
     QPoint,
@@ -153,16 +154,17 @@ class AnimatedButton:
         button.installEventFilter(_ButtonAnimationFilter(button))
 
 
-class _ButtonAnimationFilter:
+class _ButtonAnimationFilter(QObject):
     """Internal event filter for button animations."""
 
     def __init__(self, button: QWidget) -> None:
+        super().__init__()
         self._button = button
         self._hover_anim: QPropertyAnimation | None = None
         self._press_anim: QPropertyAnimation | None = None
         self._original_style = button.styleSheet()
 
-    def eventFilter(self, obj: QWidget, event: QEvent) -> bool:
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if obj != self._button:
             return False
 
