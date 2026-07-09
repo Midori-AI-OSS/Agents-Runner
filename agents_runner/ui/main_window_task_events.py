@@ -6,7 +6,7 @@ import time
 
 from datetime import datetime
 from datetime import timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import MainWindowHints
@@ -16,6 +16,7 @@ else:
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import cleanup_task_workspace
@@ -73,7 +74,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
         container_id = task.container_id or (bridge.container_id if bridge is not None else None)
         container_id = str(container_id or "").strip()
         if not container_id:
-            QMessageBox.information(self, "No container", "This task does not have a container ID yet.")
+            QMessageBox.information(cast(QWidget, cast(object, self)), "No container", "This task does not have a container ID yet.")
             return
 
         if action in {"stop", "kill"}:
@@ -184,13 +185,13 @@ class MainWindowTaskEventsMixin(MainWindowHints):
             )
         except Exception as exc:
             self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", str(exc)))
-            QMessageBox.warning(self, "Docker command failed", str(exc))
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Docker command failed", str(exc))
             return
 
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "").strip() or f"docker exited {completed.returncode}"
             self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", detail))
-            QMessageBox.warning(self, "Docker command failed", detail)
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Docker command failed", detail)
 
         self._try_sync_container_state(task)
         env = self._environments.get(task.environment_id)
@@ -212,7 +213,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
             f"{prompt}\n\n"
             "This removes it from the list, archives it for auditing, and will attempt to stop/remove any running container."
         )
-        if QMessageBox.question(self, "Discard task?", message) != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(cast(QWidget, cast(object, self)), "Discard task?", message) != QMessageBox.StandardButton.Yes:
             return
 
         task.status = "discarded"

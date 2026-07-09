@@ -127,15 +127,15 @@ class PortsTabWidget(QWidget):
         self._table = QTableWidget()
         self._table.setColumnCount(3)
         self._table.setHorizontalHeaderLabels(["Host port", "Container port", ""])
-        self._table.horizontalHeader().setSectionResizeMode(self._COL_HOST, QHeaderView.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(self._COL_CONTAINER, QHeaderView.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeToContents)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_HOST, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_CONTAINER, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeMode.ResizeToContents)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
         self._table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
-        self._table.setSelectionMode(QTableWidget.NoSelection)
+        self._table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         simple_layout.addWidget(self._table, 1)
 
         self._advanced_view = QWidget()
@@ -323,10 +323,10 @@ class PortsTabWidget(QWidget):
                 "Advanced port publishing accepts raw docker -p values.\n\n"
                 "Invalid publishes can break tasks or expose services unintentionally.\n\n"
                 "Do you want to proceed?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
             )
-            if result != QMessageBox.Yes:
+            if result != QMessageBox.StandardButton.Yes:
                 return
             self._advanced_acknowledged = True
 

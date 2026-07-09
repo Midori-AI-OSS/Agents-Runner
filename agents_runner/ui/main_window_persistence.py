@@ -129,7 +129,7 @@ class MainWindowPersistenceMixin(MainWindowHints):
         from agents_runner.persistence import save_watch_state
 
         settings_payload = dict(self._settings_data)
-        for key in self._REMOVED_IDE_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:  # pyright: ignore[reportAttributeAccessIssue]
             settings_payload.pop(key, None)
 
         try:
@@ -166,7 +166,7 @@ class MainWindowPersistenceMixin(MainWindowHints):
         if isinstance(settings, dict):
             self._settings_data.update(settings)
         self._settings_data.pop("stt_mode", None)
-        for key in self._REMOVED_IDE_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:  # pyright: ignore[reportAttributeAccessIssue]
             self._settings_data.pop(key, None)
         self._settings_data["use"] = normalize_agent(str(self._settings_data.get("use") or "codex"))
         try:
@@ -175,7 +175,7 @@ class MainWindowPersistenceMixin(MainWindowHints):
             )
         except Exception:
             self._settings_data["max_agents_running"] = -1
-        for key in self._REMOVED_LEGACY_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
+        for key in self._REMOVED_LEGACY_SETTINGS_KEYS:  # pyright: ignore[reportAttributeAccessIssue]
             self._settings_data.pop(key, None)
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("gpu_enabled", False)

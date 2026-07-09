@@ -14,7 +14,7 @@ import threading
 import time
 from datetime import datetime
 from datetime import timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -25,6 +25,7 @@ else:
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import container_config_dir
@@ -58,7 +59,7 @@ logger = MidoriAiLogger(channel=None, name=__name__)
 
 class MainWindowTasksInteractiveMixin(MainWindowHints):
     def _ask_opencode_interactive_launch_mode(self) -> str | None:
-        dialog = QMessageBox(self)
+        dialog = QMessageBox(cast(QWidget, cast(object, self)))
         dialog.setIcon(QMessageBox.Icon.Question)
         dialog.setWindowTitle("OpenCode launch mode")
         dialog.setText("How would you like to launch OpenCode?")
@@ -90,7 +91,7 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
     ) -> None:
         del host_config_dir
         if shutil.which("docker") is None:
-            QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
+            QMessageBox.critical(cast(QWidget, cast(object, self)), "Docker not found", "Could not find `docker` in PATH.")
             return
 
         prompt = sanitize_prompt((prompt or "").strip())
@@ -99,7 +100,7 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
         opt = options.get(str(terminal_id or "").strip())
         if opt is None:
             QMessageBox.warning(
-                self,
+                cast(QWidget, cast(object, self)),
                 "Terminal not available",
                 "The selected terminal could not be found.",
             )
@@ -107,7 +108,7 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
 
         env_id = str(env_id or "").strip() or self._active_environment_id()
         if env_id not in self._environments:
-            QMessageBox.warning(self, "Unknown environment", "Pick an environment first.")
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Unknown environment", "Pick an environment first.")
             return
         env = self._environments.get(env_id)
         gpu_enabled = self._effective_gpu_enabled(env=env, settings=self._settings_data)
@@ -118,7 +119,7 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
             port_remaps_for_log = []
         else:
             port_decision = resolve_launch_port_decision(
-                parent=self,
+                parent=cast(QWidget, cast(object, self)),
                 port_specs=(getattr(env, "ports", []) if env else []),
             )
             if port_decision.outcome == "conflict_cancel":
@@ -132,11 +133,11 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
         workspace_type = env.workspace_type if env else "none"
         host_workdir, ready, message = self._new_task_workspace(env, task_id=task_id)
         if not ready:
-            QMessageBox.warning(self, "Workspace not configured", message)
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Workspace not configured", message)
             return
 
         if workspace_type != WORKSPACE_CLONED and not os.path.isdir(host_workdir):
-            QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Invalid Workdir", "Host Workdir does not exist.")
             return
 
         if env and os.path.isdir(host_workdir):
@@ -212,7 +213,7 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
             )
             if pinned_inst is None:
                 QMessageBox.warning(
-                    self,
+                    cast(QWidget, cast(object, self)),
                     "Pinned agent missing",
                     "This environment is set to Pinned mode, but the pinned agent ID is missing or invalid.",
                 )
@@ -251,13 +252,13 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
             try:
                 agent_cli_args = shlex.split(selected_cli_flags)
             except ValueError as exc:
-                QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
+                QMessageBox.warning(cast(QWidget, cast(object, self)), "Invalid agent CLI flags", str(exc))
                 return
         elif env and env.agent_cli_args.strip():
             try:
                 agent_cli_args = shlex.split(env.agent_cli_args)
             except ValueError as exc:
-                QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
+                QMessageBox.warning(cast(QWidget, cast(object, self)), "Invalid agent CLI flags", str(exc))
                 return
 
         command = self._default_interactive_command(agent_cli)

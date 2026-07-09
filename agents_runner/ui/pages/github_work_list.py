@@ -15,8 +15,9 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtGui import QEnterEvent
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtGui import QResizeEvent
-from PySide6.QtWidgets import QHBoxLayout
+from PySide6.QtWidgets import QFrame
 from PySide6.QtWidgets import QGraphicsOpacityEffect
+from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QScrollArea
 from PySide6.QtWidgets import QSizePolicy
@@ -32,6 +33,7 @@ from agents_runner.prompts.github_prompting import build_default_request_line
 from agents_runner.prompts.github_prompting import build_primary_request
 from agents_runner.ui.dialogs.github_workroom_dialog import GitHubWorkroomDialog
 from agents_runner.ui.lucide_icons import lucide_icon
+from agents_runner.ui.pages.github_work_coordinator import GitHubWorkCoordinator
 from agents_runner.ui.utils import stain_color
 from agents_runner.ui.widgets import BouncingLoadingBar
 from midori_ai_logger import MidoriAiLogger
@@ -57,7 +59,7 @@ class _GitHubWorkRow(QWidget):
         self.setProperty("stain", "slate")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(56)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
@@ -72,7 +74,7 @@ class _GitHubWorkRow(QWidget):
 
         self._actions_host = QWidget(self)
         self._actions_host.setFixedWidth(self._ACTION_PANEL_WIDTH)
-        self._actions_host.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self._actions_host.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self._actions_panel = QWidget(self._actions_host)
         actions_layout = QHBoxLayout(self._actions_panel)
         actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -223,7 +225,7 @@ class _GitHubWorkSkeletonRow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("stain", "slate")
         self.setFixedHeight(56)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
@@ -259,7 +261,7 @@ class GitHubWorkListPage(QWidget):
         self,
         *,
         item_type: str,
-        coordinator: object,
+        coordinator: GitHubWorkCoordinator,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -312,7 +314,7 @@ class GitHubWorkListPage(QWidget):
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QScrollArea.NoFrame)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setObjectName("TaskScroll")
 

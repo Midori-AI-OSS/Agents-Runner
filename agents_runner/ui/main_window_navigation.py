@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtWidgets import QGraphicsOpacityEffect
@@ -19,9 +19,9 @@ class MainWindowNavigationMixin(MainWindowHints):
             h = int(self._settings_data.get("window_h") or 720)
         except Exception:
             w, h = 1280, 720
-        w = max(int(self.minimumWidth()), w)
-        h = max(int(self.minimumHeight()), h)
-        self.resize(w, h)
+        w = max(int(cast(QWidget, cast(object, self)).minimumWidth()), w)
+        h = max(int(cast(QWidget, cast(object, self)).minimumHeight()), h)
+        cast(QWidget, cast(object, self)).resize(w, h)
 
     def _transition_to_page(self, target_page: QWidget) -> None:
         """Smooth cross-fade transition between pages."""

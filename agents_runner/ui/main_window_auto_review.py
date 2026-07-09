@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 import time
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import MainWindowHints
@@ -11,6 +11,7 @@ else:
     MainWindowHints = object
 
 from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_display import format_agent_markdown_link
 from agents_runner.environments import WORKSPACE_CLONED
@@ -125,7 +126,7 @@ class MainWindowAutoReviewMixin(MainWindowHints):
         repo_owner = str(payload.get("repo_owner") or "").strip()
         repo_name = str(payload.get("repo_name") or "").strip()
         try:
-            number = int(payload.get("number") or 0)
+            number = int(payload.get("number") or 0)  # pyright: ignore[reportArgumentType]
         except Exception:
             number = 0
         pr_head_ref = str(payload.get("pr_head_ref") or "").strip()
@@ -168,7 +169,7 @@ class MainWindowAutoReviewMixin(MainWindowHints):
         item_type = str(payload.get("item_type") or "").strip().lower()
         item_type = "pr" if item_type == "pr" else "issue"
         try:
-            number = int(payload.get("number") or 0)
+            number = int(payload.get("number") or 0)  # pyright: ignore[reportArgumentType]
         except Exception:
             number = 0
         if not repo_owner or not repo_name or number <= 0:
@@ -271,7 +272,7 @@ class MainWindowAutoReviewMixin(MainWindowHints):
                 previous_branch=saved_branch,
                 branches=branches,
                 timeout_seconds=15,
-                parent=self,
+                parent=cast(QWidget, cast(object, self)),
             )
             if dialog.exec() != QDialog.DialogCode.Accepted:
                 logger.rprint(

@@ -4,7 +4,7 @@ import os
 import shlex
 import threading
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from midori_ai_logger import MidoriAiLogger
 
@@ -17,6 +17,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QProgressDialog
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_configs.model import AgentConfig
 from agents_runner.agent_configs.storage import load_agent_configs
@@ -71,7 +72,7 @@ def _resolved_agent_config_cli_flags(
 
 
 class MainWindowSettingsMixin(MainWindowHints):
-    _REMOVED_IDE_SETTINGS_KEYS = (
+    _REMOVED_IDE_SETTINGS_KEYS: tuple[str, ...] = (
         "ide_auto_mounts_enabled",
         "ide_system_default",
         "ide_display_target_default",
@@ -79,7 +80,7 @@ class MainWindowSettingsMixin(MainWindowHints):
         "ide_novnc_auto_open_enabled",
         "ide_novnc_auto_open_mode",
     )
-    _REMOVED_LEGACY_SETTINGS_KEYS = (
+    _REMOVED_LEGACY_SETTINGS_KEYS: tuple[str, ...] = (
         "host_codex_dir",
         "host_claude_dir",
         "host_copilot_dir",
@@ -121,7 +122,7 @@ class MainWindowSettingsMixin(MainWindowHints):
     def _on_move_task_workspaces_requested(self, force: bool) -> None:
         if self._has_active_cloned_task_workspaces() and not force:
             QMessageBox.information(
-                self,
+                cast(QWidget, cast(object, self)),
                 "Active tasks",
                 "Active tasks must finish before task workspaces can be moved.",
             )
@@ -131,7 +132,7 @@ class MainWindowSettingsMixin(MainWindowHints):
         if force and self._has_active_cloned_task_workspaces():
             if (
                 QMessageBox.question(
-                    self,
+                    cast(QWidget, cast(object, self)),
                     "Force migration?",
                     "Force migration will stop active cloned tasks before moving workspaces.",
                 )
@@ -154,7 +155,7 @@ class MainWindowSettingsMixin(MainWindowHints):
         records = self._migration_records()
         if not records:
             QMessageBox.information(
-                self,
+                cast(QWidget, cast(object, self)),
                 "No workspaces",
                 "No cloned task workspaces were found to move.",
             )
@@ -244,7 +245,7 @@ class MainWindowSettingsMixin(MainWindowHints):
         source_location: str,
         target_location: str,
     ) -> None:
-        progress = QProgressDialog("Preparing migration...", "Close", 0, len(records), self)
+        progress = QProgressDialog("Preparing migration...", "Close", 0, len(records), cast(QWidget, cast(object, self)))
         progress.setWindowTitle("Move all tasks")
         progress.setWindowModality(Qt.WindowModality.ApplicationModal)
         progress.setCancelButton(None)
@@ -279,7 +280,7 @@ class MainWindowSettingsMixin(MainWindowHints):
             if failed and isinstance(failures, list):
                 detail = f"{detail}\n\n" + "\n".join(str(item) for item in failures[:5])  # pyright: ignore[reportUnknownVariableType]
             progress.setLabelText(detail)
-            QMessageBox.information(self, "Move all tasks", detail)
+            QMessageBox.information(cast(QWidget, cast(object, self)), "Move all tasks", detail)
             thread.quit()
             worker.deleteLater()
             thread.deleteLater()
@@ -425,7 +426,7 @@ class MainWindowSettingsMixin(MainWindowHints):
         merged = normalize_task_workspace_settings(merged)
         try:
             merged["task_workspace_cleanup_size_threshold_gb"] = max(
-                1, min(1000, int(merged.get("task_workspace_cleanup_size_threshold_gb", 50)))
+                1, min(1000, int(merged.get("task_workspace_cleanup_size_threshold_gb", 50)))  # pyright: ignore[reportArgumentType]
             )
         except Exception:
             merged["task_workspace_cleanup_size_threshold_gb"] = 50
@@ -435,7 +436,7 @@ class MainWindowSettingsMixin(MainWindowHints):
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
 
-            merged["ui_theme"] = normalize_ui_theme_name(merged.get("ui_theme"), allow_auto=True)
+            merged["ui_theme"] = normalize_ui_theme_name(cast(str, merged.get("ui_theme")), allow_auto=True)
         except Exception:
             merged["ui_theme"] = "auto"
 
@@ -926,18 +927,18 @@ class MainWindowSettingsMixin(MainWindowHints):
                 pass
             agent_label = agent_label[0].upper() + agent_label[1:] if agent_label else "Agent"
             QMessageBox.warning(
-                self,
+                cast(QWidget, cast(object, self)),
                 "Missing config folder",
                 f"{agent_label} needs a valid config folder. Leave the environment override blank to use the plugin default, or set an explicit per-environment override.",
             )
             return False
         if os.path.exists(host_config_dir) and not os.path.isdir(host_config_dir):
-            QMessageBox.warning(self, "Invalid config folder", "Config folder path is not a directory.")
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Invalid config folder", "Config folder path is not a directory.")
             return False
         try:
             os.makedirs(host_config_dir, exist_ok=True)
         except Exception as exc:
-            QMessageBox.warning(self, "Invalid config folder", str(exc))
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Invalid config folder", str(exc))
             return False
         return True
 

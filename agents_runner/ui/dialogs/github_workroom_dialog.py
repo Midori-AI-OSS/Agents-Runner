@@ -11,6 +11,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QFrame
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QLineEdit
@@ -132,7 +133,7 @@ class GitHubWorkroomDialog(ThemedDialog):
 
         self._timeline_scroll = QScrollArea()
         self._timeline_scroll.setWidgetResizable(True)
-        self._timeline_scroll.setFrameShape(QScrollArea.NoFrame)
+        self._timeline_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self._timeline_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._timeline_scroll.setObjectName("TaskScroll")
 
@@ -579,10 +580,10 @@ class GitHubWorkroomDialog(ThemedDialog):
             self,
             "Confirm GitHub action",
             message,
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        return answer == QMessageBox.Yes  # pyright: ignore[reportUnknownVariableType]
+        return answer == QMessageBox.StandardButton.Yes  # pyright: ignore[reportUnknownVariableType]
 
     def refresh(self) -> None:
         def _load() -> None:

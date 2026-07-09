@@ -5,7 +5,7 @@ import re
 import threading
 import time
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QMainWindow
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QStackedWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -301,7 +302,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             self._on_force_cleanup_requested, Qt.ConnectionType.QueuedConnection
         )
 
-        self._stack = QWidget()
+        self._stack = QStackedWidget()
         self._stack_layout = QVBoxLayout(self._stack)
         self._stack_layout.setContentsMargins(0, 0, 0, 0)
         self._stack_layout.setSpacing(0)
@@ -454,7 +455,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._update_dynamic_theme_from_radio(snapshot)
 
     def _update_dynamic_theme_from_radio(self, state: dict[str, Any]) -> None:
-        ui_theme = normalize_ui_theme_name(self._settings_data.get("ui_theme"), allow_auto=False)
+        ui_theme = normalize_ui_theme_name(cast(str, self._settings_data.get("ui_theme")), allow_auto=False)
         if ui_theme != "dynamic":
             if self._has_dynamic_spec:
                 reset_dynamic_state()
@@ -604,7 +605,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             return
         self._size_cleanup_popup_shown_this_session = True
 
-        threshold_gb = int(self._settings_data.get("task_workspace_cleanup_size_threshold_gb", 50))
+        threshold_gb = int(self._settings_data.get("task_workspace_cleanup_size_threshold_gb", 50))  # pyright: ignore[reportArgumentType]
 
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Icon.Information)

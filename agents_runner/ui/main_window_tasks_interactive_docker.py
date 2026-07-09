@@ -6,7 +6,11 @@ and terminal script generation for launching interactive agent tasks.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from PySide6.QtGui import QColor
+
+from agents_runner.terminal_apps import TerminalOption
 
 if TYPE_CHECKING:
     from agents_runner.ui.main_window import MainWindow
@@ -456,7 +460,7 @@ def launch_docker_terminal_task(
                     ),
                 ),
             )
-            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=QColor(spinner) if spinner else None)  # pyright: ignore[reportPrivateUsage]
             main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
             main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
@@ -479,7 +483,7 @@ def launch_docker_terminal_task(
             env_args.extend(["-e", f"AGENTS_RUNNER_TASK_ID={task_token}"])
             task.headless_desktop_enabled = True
             task.novnc_url = f"http://127.0.0.1:{host_port}/vnc.html"
-            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=QColor(spinner) if spinner else None)  # pyright: ignore[reportPrivateUsage]
             main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
             main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
@@ -660,7 +664,7 @@ def launch_docker_terminal_task(
         # Update task status to running
         task.status = "running"
         task.started_at = datetime.now(tz=timezone.utc)
-        main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+        main_window._dashboard.upsert_task(task, stain=stain, spinner_color=QColor(spinner) if spinner else None)  # pyright: ignore[reportPrivateUsage]
         main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
         main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
@@ -684,7 +688,7 @@ def launch_docker_terminal_task(
             )
 
         # Launch terminal
-        launch_in_terminal(terminal_opt, host_script, cwd=host_workdir)
+        launch_in_terminal(cast(TerminalOption, terminal_opt), host_script, cwd=host_workdir)
         if opencode_web_url and opencode_web_host_port:
             schedule_open_opencode_web_url(
                 main_window=main_window,
@@ -1122,7 +1126,7 @@ def _handle_launch_error(
     task.error = error_message
     task.exit_code = 1
     task.finished_at = datetime.now(tz=timezone.utc)
-    main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+    main_window._dashboard.upsert_task(task, stain=stain, spinner_color=QColor(spinner) if spinner else None)  # pyright: ignore[reportPrivateUsage]
     main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
     main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
     QMessageBox.warning(main_window, "Failed to launch terminal", error_message)

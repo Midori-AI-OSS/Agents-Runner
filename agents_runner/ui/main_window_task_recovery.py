@@ -7,7 +7,7 @@ import threading
 import time
 
 from itertools import chain
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import MainWindowHints
@@ -27,6 +27,7 @@ from agents_runner.log_format import format_log, wrap_container_log
 from pathlib import Path
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QWidget
 from agents_runner.persistence import cleanup_old_done_task_files
 from agents_runner.persistence import iter_done_task_payloads
 from agents_runner.persistence import serialize_task
@@ -243,7 +244,7 @@ class MainWindowTaskRecoveryMixin(MainWindowHints):
     def _on_force_cleanup_requested(self) -> None:
         if (
             QMessageBox.question(
-                self,
+                cast(QWidget, cast(object, self)),
                 "Force cleanup?",
                 "This will immediately run retention and size-based cleanup on finished task workspaces.\n\nActive and finalizing workspaces are protected and will not be removed.",
             )

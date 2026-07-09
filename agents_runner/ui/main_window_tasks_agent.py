@@ -5,7 +5,7 @@ import shlex
 import shutil
 import time
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from uuid import uuid4
 
 from midori_ai_logger import MidoriAiLogger
@@ -19,6 +19,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_labels import format_agent_ui_label
 from agents_runner.environments import WORKSPACE_CLONED
@@ -106,14 +107,14 @@ class MainWindowTasksAgentMixin(MainWindowHints):
     ) -> str | None:
         del host_config_dir
         if shutil.which("docker") is None:
-            QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
+            QMessageBox.critical(cast(QWidget, cast(object, self)), "Docker not found", "Could not find `docker` in PATH.")
             return
         prompt = sanitize_prompt((prompt or "").strip())
 
         task_id = uuid4().hex[:10]
         env_id = str(env_id or "").strip() or self._active_environment_id()
         if env_id not in self._environments:
-            QMessageBox.warning(self, "Unknown environment", "Pick an environment first.")
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Unknown environment", "Pick an environment first.")
             return
         self._settings_data["active_environment_id"] = env_id
         env = self._environments.get(env_id)
@@ -145,7 +146,7 @@ class MainWindowTasksAgentMixin(MainWindowHints):
             )
             if pinned_inst is None:
                 QMessageBox.warning(
-                    self,
+                    cast(QWidget, cast(object, self)),
                     "Pinned agent missing",
                     "This environment is set to Pinned mode, but the pinned agent ID is missing or invalid.",
                 )
@@ -240,7 +241,7 @@ class MainWindowTasksAgentMixin(MainWindowHints):
 
             # Show cooldown modal
             modal = CooldownModal(
-                self,
+                cast(QWidget, cast(object, self)),
                 agent_name=format_agent_ui_label(agent_cli),
                 watch_state=watch_state,
                 fallback_agent_name=fallback_name,
@@ -272,7 +273,7 @@ class MainWindowTasksAgentMixin(MainWindowHints):
         workspace_type = env.workspace_type if env else "none"
         effective_workdir, ready, message = self._new_task_workspace(env, task_id=task_id)
         if not ready:
-            QMessageBox.warning(self, "Workspace not configured", message)
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Workspace not configured", message)
             return
         if workspace_type == WORKSPACE_CLONED:
             try:
@@ -287,13 +288,13 @@ class MainWindowTasksAgentMixin(MainWindowHints):
                     )
                 )
                 QMessageBox.warning(
-                    self,
+                    cast(QWidget, cast(object, self)),
                     "Directory Creation Failed",
                     f"Could not create workspace directory: {exc}",
                 )
                 return
         elif not os.path.isdir(effective_workdir):
-            QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Invalid Workdir", "Host Workdir does not exist.")
             return
 
         self._settings_data["host_workdir"] = effective_workdir
@@ -368,13 +369,13 @@ class MainWindowTasksAgentMixin(MainWindowHints):
             try:
                 agent_cli_args = shlex.split(selected_cli_flags)
             except ValueError as exc:
-                QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
+                QMessageBox.warning(cast(QWidget, cast(object, self)), "Invalid agent CLI flags", str(exc))
                 return
         elif env and env.agent_cli_args.strip():
             try:
                 agent_cli_args = shlex.split(env.agent_cli_args)
             except ValueError as exc:
-                QMessageBox.warning(self, "Invalid agent CLI flags", str(exc))
+                QMessageBox.warning(cast(QWidget, cast(object, self)), "Invalid agent CLI flags", str(exc))
                 return
         if uses_environment_agent_selection:
             self._commit_round_robin_selection(
@@ -408,7 +409,7 @@ class MainWindowTasksAgentMixin(MainWindowHints):
             port_remaps_for_log = []
         else:
             port_decision = resolve_launch_port_decision(
-                parent=self,
+                parent=cast(QWidget, cast(object, self)),
                 port_specs=(getattr(env, "ports", []) if env else []),
             )
             if port_decision.outcome == "conflict_cancel":
@@ -813,9 +814,9 @@ class MainWindowTasksAgentMixin(MainWindowHints):
             gh_pr_base_ref=pr_base_ref or None,
             gh_context_file_path=gh_context_file,
         )
-        task._runner_config = config
-        task._runner_prompt = runner_prompt
-        task._agent_selection = resolved_agent_selection or (env.agent_selection if env else None)
+        task._runner_config = config  # pyright: ignore[reportAttributeAccessIssue]
+        task._runner_prompt = runner_prompt  # pyright: ignore[reportAttributeAccessIssue]
+        task._agent_selection = resolved_agent_selection or (env.agent_selection if env else None)  # pyright: ignore[reportAttributeAccessIssue]
 
         if self._can_start_new_agent_for_env(env_id):
             self._actually_start_task(task)

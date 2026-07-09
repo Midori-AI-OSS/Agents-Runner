@@ -4,7 +4,7 @@ import os
 import shutil
 import time
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 if TYPE_CHECKING:
@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.docker_runner import DockerRunnerConfig
@@ -41,11 +42,11 @@ class MainWindowPreflightMixin(MainWindowHints):
         settings: dict[str, object] | None = None,
     ) -> None:
         if shutil.which("docker") is None:
-            QMessageBox.critical(self, "Docker not found", "Could not find `docker` in PATH.")
+            QMessageBox.critical(cast(QWidget, cast(object, self)), "Docker not found", "Could not find `docker` in PATH.")
             return
 
         if not os.path.isdir(host_workdir):
-            QMessageBox.warning(self, "Invalid Workdir", "Host Workdir does not exist.")
+            QMessageBox.warning(cast(QWidget, cast(object, self)), "Invalid Workdir", "Host Workdir does not exist.")
             return
 
         smoke_agent_cli = "smoke_agent"
@@ -252,7 +253,7 @@ class MainWindowPreflightMixin(MainWindowHints):
 
         if skipped:
             QMessageBox.warning(
-                self,
+                cast(QWidget, cast(object, self)),
                 "Skipped environments",
                 "Skipped environments with missing Workdir:\n" + "\n".join(skipped[:20]),
             )

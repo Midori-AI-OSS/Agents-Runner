@@ -4,6 +4,7 @@ import importlib
 import time
 from collections.abc import Mapping
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import (
     QEasingCurve,
@@ -140,7 +141,7 @@ def resolve_theme_name(theme_name: str) -> str:
 def resolve_effective_ui_theme_name(settings: Mapping[str, object] | None) -> str:
     """Resolve the effective UI theme from persisted settings."""
     payload = settings or {}
-    selected = normalize_ui_theme_name(payload.get("ui_theme"), allow_auto=True)
+    selected = normalize_ui_theme_name(cast(str, payload.get("ui_theme")), allow_auto=True)
     if selected != "auto":
         return resolve_theme_name(selected)
 

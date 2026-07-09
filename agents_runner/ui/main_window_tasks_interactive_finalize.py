@@ -6,7 +6,7 @@ import time
 
 from datetime import datetime
 from datetime import timezone
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import MainWindowHints
@@ -15,6 +15,7 @@ else:
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.agent_display import format_agent_markdown_link
 from agents_runner.agent_display import get_agent_display_name
@@ -132,7 +133,7 @@ class MainWindowTasksInteractiveFinalizeMixin(MainWindowHints):
 
             if prompt_enabled:
                 message = f"Interactive run finished.\n\nCreate a PR from {task.gh_branch} -> {base_display}?"
-                if QMessageBox.question(self, "Create pull request?", message) == QMessageBox.StandardButton.Yes:
+                if QMessageBox.question(cast(QWidget, cast(object, self)), "Create pull request?", message) == QMessageBox.StandardButton.Yes:
                     self.host_log.emit(
                         task_id,
                         format_log(

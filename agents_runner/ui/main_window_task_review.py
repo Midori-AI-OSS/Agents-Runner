@@ -4,7 +4,7 @@ import os
 import threading
 import webbrowser
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import MainWindowHints
@@ -14,6 +14,7 @@ else:
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.gh_management import git_current_branch
@@ -31,7 +32,7 @@ class MainWindowTaskReviewMixin(MainWindowHints):
 
         if not task.requires_git_metadata():
             QMessageBox.information(
-                self,
+                cast(QWidget, cast(object, self)),
                 "PR not available",
                 "PR creation is only available for cloned environments.",
             )
@@ -110,7 +111,7 @@ class MainWindowTaskReviewMixin(MainWindowHints):
 
         if not repo_root:
             QMessageBox.warning(
-                self,
+                cast(QWidget, cast(object, self)),
                 "PR not available",
                 "Cannot locate the repository path for this task.\n\n"
                 "This may occur if:\n"
@@ -129,7 +130,7 @@ class MainWindowTaskReviewMixin(MainWindowHints):
 
         if task.is_active():
             QMessageBox.information(
-                self,
+                cast(QWidget, cast(object, self)),
                 "Task still running",
                 "Wait for the task to finish before creating a PR.",
             )
@@ -138,21 +139,21 @@ class MainWindowTaskReviewMixin(MainWindowHints):
         base_branch = str(task.gh_base_branch or "").strip()
         if not branch:
             QMessageBox.information(
-                self,
+                cast(QWidget, cast(object, self)),
                 "PR not available",
                 "This task does not have a usable branch for PR creation.",
             )
             return
         if base_branch and branch == base_branch:
             QMessageBox.information(
-                self,
+                cast(QWidget, cast(object, self)),
                 "PR not available",
                 "This task worked directly on the base branch, so there is no separate PR branch to open.",
             )
             return
         base_display = base_branch or "auto"
         message = f"Create a PR from {branch} -> {base_display}?\n\nThis will commit and push any local changes."
-        if QMessageBox.question(self, "Create pull request?", message) != QMessageBox.StandardButton.Yes:
+        if QMessageBox.question(cast(QWidget, cast(object, self)), "Create pull request?", message) != QMessageBox.StandardButton.Yes:
             return
 
         prompt_text = str(task.prompt or "")
