@@ -26,3 +26,12 @@ Also, `context.actor` is NOT a reliable bot identifier across event types — pr
 - On first trigger, a single comment is created.
 - On subsequent triggers, the existing comment is updated in-place instead of creating a new one.
 - No duplicate comments appear in the PR.
+
+---
+
+## Completion
+
+- **Date:** 2026-07-09
+- **Role:** Coder
+- **Changes:** Replaced `createComment` with upsert pattern (listComments → find match by `user.login === 'github-actions[bot]'` and body prefix `## CI Results` → updateComment or createComment). Added event context branching for `context.eventName` to extract PR number/SHA from `pull_request` or `workflow_run` payloads. Added early return guard for missing PR number/SHA.
+- **Verified:** File inspected after edit, YAML structure intact, all three "Done when" criteria addressed.

@@ -31,8 +31,24 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const sha = context.payload.pull_request.head.sha;
-            const issueNumber = context.payload.pull_request.number;
+
+            // Extract PR number and SHA based on event type
+            let sha, issueNumber;
+            if (context.eventName === 'pull_request') {
+              sha = context.payload.pull_request.head.sha;
+              issueNumber = context.payload.pull_request.number;
+            } else if (context.eventName === 'workflow_run') {
+              const prs = context.payload.workflow_run.pull_requests;
+              if (prs && prs.length > 0) {
+                issueNumber = prs[0].number;
+              }
+              sha = context.payload.workflow_run.head_sha;
+            }
+
+            if (!issueNumber || !sha) {
+              console.log('No PR number or SHA found, skipping comment.');
+              return;
+            }
 
             const { data } = await github.rest.checks.listForRef({
               owner,
@@ -91,9 +107,30 @@ jobs:
             body += `| Lint   | ${statusText(lintRun)} |\n`;
             body += `| Tests  | ${statusText(testsRun)} |\n`;
 
-            await github.rest.issues.createComment({
+            // Upsert: find existing bot comment or create a new one
+            const { data: comments } = await github.rest.issues.listComments({
               owner,
               repo,
               issue_number: issueNumber,
-              body
+              per_page: 100
             });
+
+            const botComment = comments.find(
+              c => c.user.login === 'github-actions[bot]' && c.body.startsWith('## CI Results')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: botComment.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: issueNumber,
+                body
+              });
+            }
