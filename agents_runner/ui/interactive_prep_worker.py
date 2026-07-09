@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import shlex
-import subprocess
 import time
 
 from PySide6.QtCore import QObject
@@ -14,6 +13,7 @@ from agents_runner.agent_install import resolve_agent_install_plan
 from agents_runner.docker.agent_worker_prompt import PromptAssembler
 from agents_runner.docker.process import has_image
 from agents_runner.docker.process import has_platform_image
+from agents_runner.docker.process import pull_image
 from agents_runner.docker.cache_resolver import resolve_runtime_cache
 from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
@@ -145,12 +145,7 @@ class InteractivePrepWorker(QObject):
 
     def _pull_image(self) -> None:
         pull_started_s = time.monotonic()
-        pull_parts = [
-            "docker",
-            "pull",
-            *docker_platform_args_for_pixelarch(),
-            self._image,
-        ]
+        platform_args = docker_platform_args_for_pixelarch()
         self._diag("INFO", f"docker pull start image={self._image}")
         self.log.emit(
             self._task_id,
@@ -158,27 +153,17 @@ class InteractivePrepWorker(QObject):
                 "docker",
                 "cmd",
                 "INFO",
-                " ".join(shlex.quote(part) for part in pull_parts),
+                " ".join(shlex.quote(part) for part in ["docker", "pull", *platform_args, self._image]),
             ),
         )
-        completed = subprocess.run(
-            pull_parts,
-            check=False,
-            capture_output=True,
-            text=True,
+        pull_image(
+            self._image,
+            platform_args=platform_args,
+            on_log=lambda line: self.log.emit(
+                self._task_id, format_log("docker", "pull", "INFO", str(line or "").strip())
+            ),
+            check_stop=lambda: self._stop_requested,
         )
-        lines = (f"{completed.stdout or ''}\n{completed.stderr or ''}").splitlines()
-        for raw in lines[-80:]:
-            line = str(raw or "").strip()
-            if line:
-                self.log.emit(self._task_id, format_log("docker", "pull", "INFO", line))
-        if completed.returncode != 0:
-            detail = (
-                (completed.stderr or "").strip()
-                or (completed.stdout or "").strip()
-                or f"docker pull failed with exit code {completed.returncode}"
-            )
-            raise RuntimeError(detail)
         pull_elapsed_ms = (time.monotonic() - pull_started_s) * 1000.0
         self._diag("INFO", f"docker pull done elapsed_ms={pull_elapsed_ms:.0f}")
 

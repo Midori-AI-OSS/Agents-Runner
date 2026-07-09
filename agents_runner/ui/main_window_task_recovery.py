@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import threading
 import time
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
 else:
     MainWindowHints = object
 
+from agents_runner.artifacts import get_staging_dir
 from agents_runner.artifacts import collect_artifacts_from_container_with_timeout
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.cleanup import (
@@ -25,6 +27,7 @@ from agents_runner.log_format import format_log, wrap_container_log
 from pathlib import Path
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import QMessageBox
+from agents_runner.persistence import cleanup_old_done_task_files
 from agents_runner.persistence import iter_done_task_payloads
 from agents_runner.persistence import serialize_task
 from agents_runner.ui.task_model import Task
@@ -85,6 +88,30 @@ class MainWindowTaskRecoveryMixin(MainWindowHints):
                     ),
                 )
                 self._queue_task_finalization(task.task_id, reason="startup_reconcile")
+
+        # Orphan staging sweep: remove leftover staging directories for finished tasks.
+        for task in list(self._tasks.values()):
+            if task.is_active():
+                continue
+            task_id_sweep = str(task.task_id or "").strip()
+            if not task_id_sweep:
+                continue
+            finalization_lower = (task.finalization_state or "").lower().strip()
+            if finalization_lower in {"pending", "running"}:
+                continue
+            existing = self._finalization_threads.get(task_id_sweep)
+            if existing is not None and existing.is_alive():
+                continue
+            if not (task.is_done() or task.is_failed()):
+                continue
+            try:
+                staging_dir = get_staging_dir(task_id_sweep)
+                shutil.rmtree(staging_dir, ignore_errors=True)
+            except Exception:
+                pass
+
+        retention_days = int(self._settings_data.get("task_workspace_cleanup_retention_days", 30))
+        cleanup_old_done_task_files(retention_days=retention_days)
 
     def _tick_recovery(self) -> None:
         """Recovery tick handler (runs every 5 seconds).
@@ -697,3 +724,12 @@ class MainWindowTaskRecoveryMixin(MainWindowHints):
                 task_id,
                 format_log("host", "finalize", "ERROR", f"finalization failed: {exc}"),
             )
+
+        finally:
+            try:
+                staging_dir = get_staging_dir(task_id)
+                shutil.rmtree(staging_dir, ignore_errors=True)
+            except Exception:
+                pass
+
+        self._finalization_threads.pop(task_id, None)

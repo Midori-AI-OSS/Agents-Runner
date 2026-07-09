@@ -89,6 +89,10 @@ class DockerAgentWorker:
             except Exception:
                 pass
 
+    def _check_stop(self) -> bool:
+        """Return True if a stop has been requested."""
+        return self._stop.is_set()
+
     def run(self) -> None:
         """Execute the agent task in a Docker container.
 
@@ -118,7 +122,7 @@ class DockerAgentWorker:
 
             # Step 2: Prepare runtime environment
             os.makedirs(self._config.host_config_dir, exist_ok=True)
-            setup = WorkerSetup(self._config, self._prompt, self._on_log, self._on_state)
+            setup = WorkerSetup(self._config, self._prompt, self._on_log, self._on_state, check_stop=self._check_stop)
             runtime_env = setup.prepare_runtime_environment(preflight_tmp_paths)
 
             # Step 3: Execute container

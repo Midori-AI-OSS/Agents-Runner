@@ -1,7 +1,14 @@
+import io
 import json
+import selectors
 import subprocess
-
+import threading
+import time
+from collections.abc import Callable
 from typing import Any
+from typing import cast
+
+_pull_lock = threading.Lock()
 
 
 def run_docker(args: list[str], timeout_s: float = 30.0, *, env: dict[str, str] | None = None) -> str:
@@ -59,5 +66,63 @@ def has_platform_image(image: str, platform_value: str) -> bool:
     return actual_arch == expected_arch
 
 
-def pull_image(image: str, *, platform_args: list[str]) -> None:
-    run_docker(["pull", *list(platform_args or []), image], timeout_s=600.0)
+def pull_image(
+    image: str,
+    *,
+    platform_args: list[str] | None = None,
+    on_log: Callable[[str], None] | None = None,
+    check_stop: Callable[[], bool] | None = None,
+    timeout_s: float = 600.0,
+) -> None:
+    with _pull_lock:
+        cmd = ["docker", "pull", *(platform_args or []), image]
+        start_s = time.monotonic()
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        if proc.stdout is None:
+            raise RuntimeError("docker pull: failed to open stdout pipe")
+        sel = selectors.DefaultSelector()
+        sel.register(proc.stdout, selectors.EVENT_READ)
+        try:
+            while True:
+                elapsed = time.monotonic() - start_s
+                if elapsed > timeout_s:
+                    if proc.poll() is not None:
+                        break
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=5.0)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    raise TimeoutError(f"docker pull timed out after {timeout_s:.0f}s: {image}")
+                if check_stop is not None and check_stop():
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=5.0)
+                    except subprocess.TimeoutExpired:
+                        pass
+                    raise RuntimeError("docker pull cancelled")
+                ready = sel.select(timeout=0.1)
+                for key, _mask in ready:
+                    line = cast(io.TextIOBase, key.fileobj).readline()
+                    if line:
+                        if on_log is not None:
+                            on_log(line.rstrip("\n"))
+                    else:
+                        break
+                if proc.poll() is not None:
+                    for key, _mask in sel.select(timeout=0):
+                        remaining = cast(io.TextIOBase, key.fileobj).read()
+                        if remaining and on_log is not None:
+                            for rline in remaining.splitlines():
+                                on_log(rline)
+                    break
+        finally:
+            sel.close()
+        if proc.returncode != 0:
+            raise RuntimeError(f"docker pull failed with exit code {proc.returncode}: {image}")
