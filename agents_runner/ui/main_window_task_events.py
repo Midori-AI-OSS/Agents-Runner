@@ -74,7 +74,9 @@ class MainWindowTaskEventsMixin(MainWindowHints):
         container_id = task.container_id or (bridge.container_id if bridge is not None else None)
         container_id = str(container_id or "").strip()
         if not container_id:
-            QMessageBox.information(cast(QWidget, cast(object, self)), "No container", "This task does not have a container ID yet.")
+            QMessageBox.information(
+                cast(QWidget, cast(object, self)), "No container", "This task does not have a container ID yet."
+            )
             return
 
         if action in {"stop", "kill"}:
@@ -213,7 +215,10 @@ class MainWindowTaskEventsMixin(MainWindowHints):
             f"{prompt}\n\n"
             "This removes it from the list, archives it for auditing, and will attempt to stop/remove any running container."
         )
-        if QMessageBox.question(cast(QWidget, cast(object, self)), "Discard task?", message) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(cast(QWidget, cast(object, self)), "Discard task?", message)
+            != QMessageBox.StandardButton.Yes
+        ):
             return
 
         task.status = "discarded"

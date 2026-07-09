@@ -153,7 +153,10 @@ class MainWindowTaskReviewMixin(MainWindowHints):
             return
         base_display = base_branch or "auto"
         message = f"Create a PR from {branch} -> {base_display}?\n\nThis will commit and push any local changes."
-        if QMessageBox.question(cast(QWidget, cast(object, self)), "Create pull request?", message) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(cast(QWidget, cast(object, self)), "Create pull request?", message)
+            != QMessageBox.StandardButton.Yes
+        ):
             return
 
         prompt_text = str(task.prompt or "")

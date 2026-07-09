@@ -245,7 +245,9 @@ class MainWindowSettingsMixin(MainWindowHints):
         source_location: str,
         target_location: str,
     ) -> None:
-        progress = QProgressDialog("Preparing migration...", "Close", 0, len(records), cast(QWidget, cast(object, self)))
+        progress = QProgressDialog(
+            "Preparing migration...", "Close", 0, len(records), cast(QWidget, cast(object, self))
+        )
         progress.setWindowTitle("Move all tasks")
         progress.setWindowModality(Qt.WindowModality.ApplicationModal)
         progress.setCancelButton(None)
@@ -426,7 +428,8 @@ class MainWindowSettingsMixin(MainWindowHints):
         merged = normalize_task_workspace_settings(merged)
         try:
             merged["task_workspace_cleanup_size_threshold_gb"] = max(
-                1, min(1000, int(merged.get("task_workspace_cleanup_size_threshold_gb", 50)))  # pyright: ignore[reportArgumentType]
+                1,
+                min(1000, int(merged.get("task_workspace_cleanup_size_threshold_gb", 50))),  # pyright: ignore[reportArgumentType]
             )
         except Exception:
             merged["task_workspace_cleanup_size_threshold_gb"] = 50
@@ -933,7 +936,9 @@ class MainWindowSettingsMixin(MainWindowHints):
             )
             return False
         if os.path.exists(host_config_dir) and not os.path.isdir(host_config_dir):
-            QMessageBox.warning(cast(QWidget, cast(object, self)), "Invalid config folder", "Config folder path is not a directory.")
+            QMessageBox.warning(
+                cast(QWidget, cast(object, self)), "Invalid config folder", "Config folder path is not a directory."
+            )
             return False
         try:
             os.makedirs(host_config_dir, exist_ok=True)

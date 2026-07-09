@@ -133,7 +133,10 @@ class MainWindowTasksInteractiveFinalizeMixin(MainWindowHints):
 
             if prompt_enabled:
                 message = f"Interactive run finished.\n\nCreate a PR from {task.gh_branch} -> {base_display}?"
-                if QMessageBox.question(cast(QWidget, cast(object, self)), "Create pull request?", message) == QMessageBox.StandardButton.Yes:
+                if (
+                    QMessageBox.question(cast(QWidget, cast(object, self)), "Create pull request?", message)
+                    == QMessageBox.StandardButton.Yes
+                ):
                     self.host_log.emit(
                         task_id,
                         format_log(

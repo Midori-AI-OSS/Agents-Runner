@@ -323,8 +323,8 @@ class PortsTabWidget(QWidget):
                 "Advanced port publishing accepts raw docker -p values.\n\n"
                 "Invalid publishes can break tasks or expose services unintentionally.\n\n"
                 "Do you want to proceed?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
             if result != QMessageBox.StandardButton.Yes:
                 return

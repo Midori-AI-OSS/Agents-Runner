@@ -91,7 +91,9 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
     ) -> None:
         del host_config_dir
         if shutil.which("docker") is None:
-            QMessageBox.critical(cast(QWidget, cast(object, self)), "Docker not found", "Could not find `docker` in PATH.")
+            QMessageBox.critical(
+                cast(QWidget, cast(object, self)), "Docker not found", "Could not find `docker` in PATH."
+            )
             return
 
         prompt = sanitize_prompt((prompt or "").strip())
