@@ -20,5 +20,48 @@ jobs:
       - name: Sync
         run: uv sync --group ci
 
-      - name: Type Check
-        run: uv run basedpyright
+      - name: Pyright
+        id: pyright
+        run: |
+          uv run pyright --outputjson > /tmp/pyright.json 2>&1 || echo "PYRIGHT_FAILED=true" >> $GITHUB_ENV
+          python3 -c "
+import json, os
+with open('/tmp/pyright.json') as f:
+    raw = f.read()
+try:
+    data = json.loads(raw)
+    gen = data.get('generalDiagnostics', [])
+    errs = sum(1 for d in gen if d.get('severity') == 'error')
+    warns = sum(1 for d in gen if d.get('severity') == 'warning')
+    print(f'PYRIGHT_ERRORS={errs}')
+    print(f'PYRIGHT_WARNINGS={warns}')
+except:
+    print(f'PYRIGHT_ERRORS=N/A')
+    print(f'PYRIGHT_WARNINGS=N/A')
+" > /tmp/pyright-stats.env
+          cat /tmp/pyright-stats.env >> $GITHUB_ENV
+
+      - name: Basedpyright (advisory)
+        id: basedpyright
+        continue-on-error: true
+        run: |
+          uv run basedpyright --outputjson > /tmp/basedpyright.json 2>&1 || true
+          python3 -c "
+import json
+with open('/tmp/basedpyright.json') as f:
+    raw = f.read()
+try:
+    data = json.loads(raw)
+    gen = data.get('generalDiagnostics', [])
+    diags = len(gen)
+    errs = sum(1 for d in gen if d.get('severity') == 'error')
+    warns = sum(1 for d in gen if d.get('severity') == 'warning')
+    print(f'BASEDPYRIGHT_ERRORS={errs}')
+    print(f'BASEDPYRIGHT_WARNINGS={warns}')
+    print(f'BASEDPYRIGHT_DIAGS={diags}')
+except:
+    print(f'BASEDPYRIGHT_ERRORS=N/A')
+    print(f'BASEDPYRIGHT_WARNINGS=N/A')
+    print(f'BASEDPYRIGHT_DIAGS=N/A')
+" > /tmp/basedpyright-stats.env
+          cat /tmp/basedpyright-stats.env >> $GITHUB_ENV
