@@ -1,6 +1,7 @@
 name: CI PR Comment
 
 permissions:
+  actions: read
   contents: read
   checks: read
   pull-requests: write
@@ -24,6 +25,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Download type-stats artifact
+        if: github.event_name == 'workflow_run' && github.event.workflow_run.name == 'CI Type'
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          name: type-stats
+          path: /tmp/type-stats
 
       - name: Post CI Results
         uses: actions/github-script@v7
@@ -50,6 +59,18 @@ jobs:
               return;
             }
 
+            // Read type-stats artifact if available (downloaded from CI Type run)
+            const fs = require('fs');
+            let typeStats = null;
+            try {
+              const statsPath = '/tmp/type-stats/type-stats.json';
+              if (fs.existsSync(statsPath)) {
+                typeStats = JSON.parse(fs.readFileSync(statsPath, 'utf8'));
+              }
+            } catch (e) {
+              console.log('Failed to read type-stats artifact:', e.message);
+            }
+
             const { data } = await github.rest.checks.listForRef({
               owner,
               repo,
@@ -73,11 +94,6 @@ jobs:
               return run.conclusion || 'pending';
             }
 
-            function annotationsCount(run) {
-              if (!run || !run.output) return 0;
-              return run.output.annotations_count || 0;
-            }
-
             const typeRun = findCheck('CI Type');
             const formatRun = findCheck('CI Format');
             const lintRun = findCheck('CI Lint');
@@ -87,17 +103,28 @@ jobs:
 
             if (typeRun) {
               const ts = statusText(typeRun);
-              const ann = annotationsCount(typeRun);
 
               body += '### Pyright\n';
-              body += '| Status | Errors | Warnings |\n';
-              body += '|--------|--------|----------|\n';
-              body += `| ${ts} | ${ann} | ${ann} |\n\n`;
+              if (typeStats && typeStats.pyright) {
+                body += '| Status | Errors | Warnings |\n';
+                body += '|--------|--------|----------|\n';
+                body += `| ${ts} | ${typeStats.pyright.errors ?? 'N/A'} | ${typeStats.pyright.warnings ?? 'N/A'} |\n\n`;
+              } else {
+                body += '| Status |\n';
+                body += '|--------|\n';
+                body += `| ${ts} |\n\n`;
+              }
 
               body += '### Basedpyright (advisory)\n';
-              body += '| Status | Errors | Warnings | Diagnostics |\n';
-              body += '|--------|--------|----------|-------------|\n';
-              body += `| ${ts} | ${ann} | ${ann} | ${ann} |\n\n`;
+              if (typeStats && typeStats.basedpyright) {
+                body += '| Status | Errors | Warnings | Diagnostics |\n';
+                body += '|--------|--------|----------|-------------|\n';
+                body += `| ${ts} | ${typeStats.basedpyright.errors ?? 'N/A'} | ${typeStats.basedpyright.warnings ?? 'N/A'} | ${typeStats.basedpyright.diagnostics ?? 'N/A'} |\n\n`;
+              } else {
+                body += '| Status |\n';
+                body += '|--------|\n';
+                body += `| ${ts} |\n\n`;
+              }
             }
 
             body += '### Other Checks\n';

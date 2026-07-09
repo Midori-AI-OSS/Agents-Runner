@@ -21,3 +21,7 @@ The comment workflow builds the pyright/basedpyright rows using `annotations_cou
 - When triggered by `CI Type` completing, the comment shows real pyright error/warning counts and basedpyright error/warning/diagnostic counts from the artifact.
 - When triggered by other workflows completing, the comment still renders the type-check section (status-only fallback).
 - The comment body no longer uses `annotations_count` for the per-severity columns.
+
+## Completion note (2026-07-09)
+- **Changes made:** `ci-pr-comment.yml` — added `actions: read` to permissions; added conditional `dawidd6/action-download-artifact@v6` step (triggered only when CI Type workflow_run); removed `annotationsCount` function; script now reads `/tmp/type-stats/type-stats.json` for real per-severity counts when available, otherwise renders status-only tables.
+- **Version bumped:** `0.1.0.87` → `0.1.0.88`
