@@ -16,6 +16,7 @@ if TYPE_CHECKING:
         QComboBox,
         QCheckBox,
         QLineEdit,
+        QPushButton,
         QStackedWidget,
         QToolButton,
         QVBoxLayout,

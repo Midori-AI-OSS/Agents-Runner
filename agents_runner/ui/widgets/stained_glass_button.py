@@ -245,8 +245,14 @@ class StainedGlassButton(QPushButton):
                 y0 = rect.top()
 
                 shard_color = QColor(env.red(), env.green(), env.blue(), 22 + int(12 * pulse))
-                shard_color_2 = QColor(
-                    *blend_rgb(env, QColor(255, 255, 255), 0.25).getRgb()[:3],
+                shard_color_2_base = blend_rgb(env, QColor(255, 255, 255), 0.25)
+                shard_color_2_rgb: tuple[int, int, int] = (
+                    shard_color_2_base.red(),
+                    shard_color_2_base.green(),
+                    shard_color_2_base.blue(),
+                )
+                shard_color_2 = QColor.fromRgb(
+                    *shard_color_2_rgb,
                     16 + int(10 * pulse),
                 )
                 edge = QColor(255, 255, 255, 12 + int(6 * pulse))

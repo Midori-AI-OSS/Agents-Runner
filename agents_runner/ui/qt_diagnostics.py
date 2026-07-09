@@ -56,10 +56,13 @@ def _qt_message_handler(msg_type: QtMsgType, context: object, message: str) -> N
     output_lines = [f"[Qt {msg_type_str}] {message}"]
 
     # Add context info if available
-    if context.file:
-        output_lines.append(f"  File: {context.file}:{context.line}")
-    if context.function:
-        output_lines.append(f"  Function: {context.function}")
+    ctx_file: str | None = getattr(context, "file", None)
+    ctx_line: int | None = getattr(context, "line", None)
+    ctx_function: str | None = getattr(context, "function", None)
+    if ctx_file:
+        output_lines.append(f"  File: {ctx_file}:{ctx_line}")
+    if ctx_function:
+        output_lines.append(f"  Function: {ctx_function}")
 
     # For timer warnings, capture full stack trace
     if is_timer_warning and msg_type in (

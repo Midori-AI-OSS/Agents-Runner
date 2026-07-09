@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from PySide6.QtCore import (
     QEasingCurve,
     QParallelAnimationGroup,
@@ -9,7 +11,7 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QHideEvent, QResizeEvent, QShowEvent
+from PySide6.QtGui import QHideEvent, QGuiApplication, QResizeEvent, QShowEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QGraphicsOpacityEffect
@@ -135,7 +137,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._build_pages()
         self._build_navigation(nav_layout)
         self._connect_autosave_signals()
-        app = QApplication.instance()
+        app = cast(QGuiApplication, QGuiApplication.instance())
         if app is not None:
             app.applicationStateChanged.connect(self._on_application_state_changed)
 

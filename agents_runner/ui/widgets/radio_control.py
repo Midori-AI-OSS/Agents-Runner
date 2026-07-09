@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import cast
+
 from PySide6.QtCore import QEasingCurve
 from PySide6.QtCore import QEvent
+from PySide6.QtCore import QObject
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import QSize
 from PySide6.QtCore import QSignalBlocker
@@ -306,7 +309,7 @@ class RadioControlWidget(QWidget):
 
     def _on_icon_color_anim_tick(self, value: object) -> None:
         try:
-            progress = float(value)
+            progress = float(value)  # pyright: ignore[reportArgumentType]
         except Exception:
             return
         progress = max(0.0, min(1.0, progress))
@@ -345,7 +348,7 @@ class RadioControlWidget(QWidget):
 
     def _on_reconnect_animation_value_changed(self, value: object) -> None:
         try:
-            parsed = float(value)
+            parsed = float(value)  # pyright: ignore[reportArgumentType]
         except Exception:
             return
         self._reconnect_anim_value = max(0.0, min(1.0, parsed))
@@ -379,7 +382,7 @@ class RadioControlWidget(QWidget):
         elif event_type in (QEvent.Type.Leave, QEvent.Type.FocusOut):
             self._schedule_collapse()
 
-        return super().eventFilter(watched, event)
+        return super().eventFilter(cast(QObject, watched), event)
 
     def _schedule_collapse(self) -> None:
         if self._drag_active:
@@ -432,7 +435,7 @@ class RadioControlWidget(QWidget):
 
     def _sync_volume_min_width(self, value: object) -> None:
         try:
-            width = int(value)
+            width = int(value)  # pyright: ignore[reportArgumentType]
         except Exception:
             return
         self._volume_section.setMinimumWidth(width)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QProcess
 from PySide6.QtCore import QProcessEnvironment
@@ -54,7 +56,7 @@ class TaskDetailsPage(QWidget):
         super().__init__(parent)
         self._current_task_id: str | None = None
         self._artifacts_tab_visible: bool = False
-        self._environments: dict[str, object] | None = None
+        self._environments: Mapping[str, object] | None = None
         self._desktop_viewer_process: QProcess | None = None
         self._desktop_viewer_url: str = ""
         self._desktop_viewer_output_lines: list[str] = []
@@ -81,7 +83,7 @@ class TaskDetailsPage(QWidget):
         self._review.setText("Review")
         self._review.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._review.setMenu(self._review_menu)
-        self._review.setPopupMode(QToolButton.InstantPopup)
+        self._review.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._review.setVisible(False)
 
         self._desktop_btn = QToolButton()
@@ -128,7 +130,7 @@ class TaskDetailsPage(QWidget):
         self._logs = QPlainTextEdit()
         self._logs.setObjectName("LogsView")
         self._logs.setReadOnly(True)
-        self._logs.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self._logs.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self._logs.setMaximumBlockCount(5000)
         self._log_highlighter = LogHighlighter(self._logs.document())
         logs_layout.addWidget(ltitle)
@@ -497,7 +499,7 @@ class TaskDetailsPage(QWidget):
         if proc is None:
             return
         try:
-            chunk = bytes(proc.readAllStandardOutput()).decode("utf-8", errors="replace")
+            chunk = bytes(proc.readAllStandardOutput().data()).decode("utf-8", errors="replace")
         except Exception:
             return
 
@@ -556,7 +558,7 @@ class TaskDetailsPage(QWidget):
         self._btn_stop.setEnabled(has_container and not is_terminal)
         self._btn_kill.setEnabled(has_container and not is_terminal)
 
-    def set_environments(self, environments: dict[str, object]) -> None:
+    def set_environments(self, environments: Mapping[str, object]) -> None:
         """Set the environments dict for looking up cloned repo status."""
         self._environments = environments
 
