@@ -9,7 +9,7 @@
 ## What to do
 Add a step after pyright and basedpyright parsing that uploads a stats JSON file as a workflow artifact:
 
-1. Instead of (or in addition to) writing to `$GITHUB_ENV`, write a small JSON file, e.g. `/tmp/type-stats.json`:
+1. In addition to the existing `$GITHUB_ENV` writes, also write a small JSON file, e.g. `/tmp/type-stats.json`:
    ```json
    {
      "pyright": { "errors": N, "warnings": M },
