@@ -96,11 +96,13 @@ class WorkerSetup:
         prompt: str,
         on_log: Callable[[str], None],
         on_state: Callable[[dict[str, Any]], None],
+        check_stop: Callable[[], bool] | None = None,
     ) -> None:
         self._config = config
         self._prompt = sanitize_prompt((prompt or "").strip())
         self._on_log = on_log
         self._on_state = on_state
+        self._check_stop = check_stop
 
     def prepare_runtime_environment(self, preflight_tmp_paths: list[str]) -> RuntimeEnvironment:
         """Prepare the complete runtime environment."""
@@ -453,7 +455,9 @@ class WorkerSetup:
                 else f"image missing; docker pull {self._config.image}"
             )
             self._on_log(format_log("host", "none", "INFO", msg))
-            pull_image(self._config.image, platform_args=platform_args)
+            pull_image(
+                self._config.image, platform_args=platform_args, on_log=self._on_log, check_stop=self._check_stop
+            )
             self._on_log(format_log("host", "none", "INFO", "pull complete"))
 
     @dataclass(frozen=True)
