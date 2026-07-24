@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEasingCurve, QEvent, QPropertyAnimation, QSize
+from PySide6.QtCore import Property, QEasingCurve, QEvent, QPropertyAnimation, QSize
 from PySide6.QtGui import QEnterEvent, QMouseEvent
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QPushButton, QToolButton, QWidget
 
@@ -52,7 +52,7 @@ class AnimatedPushButton(QPushButton):
         self._scale = value
         self.update()
 
-    scale = property(get_scale, set_scale)
+    scale = Property(float, get_scale, set_scale)
 
     def sizeHint(self) -> QSize:
         base = super().sizeHint()
