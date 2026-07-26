@@ -44,9 +44,7 @@ class TaskEventProxy:
             return
         self._enqueue("log", str(line or ""))
 
-    def enqueue_retry(
-        self, task_id: str, attempt_number: int, agent: str, delay: float
-    ) -> None:
+    def enqueue_retry(self, task_id: str, attempt_number: int, agent: str, delay: float) -> None:
         if self._ignore_event(task_id):
             return
         self._enqueue(
@@ -58,9 +56,7 @@ class TaskEventProxy:
             ),
         )
 
-    def enqueue_agent_switched(
-        self, task_id: str, from_agent: str, to_agent: str
-    ) -> None:
+    def enqueue_agent_switched(self, task_id: str, from_agent: str, to_agent: str) -> None:
         if self._ignore_event(task_id):
             return
         self._enqueue(
@@ -112,10 +108,7 @@ class TaskEventProxy:
                 drained.append(
                     BufferedTaskEvent(
                         "log",
-                        (
-                            "[ui/proxy] "
-                            f"dropped {self._dropped_log_lines} buffered log line(s)"
-                        ),
+                        (f"[ui/proxy] dropped {self._dropped_log_lines} buffered log line(s)"),
                     )
                 )
                 self._dropped_log_lines = 0
@@ -123,10 +116,7 @@ class TaskEventProxy:
                 drained.append(
                     BufferedTaskEvent(
                         "log",
-                        (
-                            "[ui/proxy] "
-                            f"dropped {self._dropped_other_events} buffered event(s)"
-                        ),
+                        (f"[ui/proxy] dropped {self._dropped_other_events} buffered event(s)"),
                     )
                 )
                 self._dropped_other_events = 0
@@ -136,9 +126,7 @@ class TaskEventProxy:
 
     def has_pending(self) -> bool:
         with self._lock:
-            return bool(
-                self._events or self._dropped_log_lines or self._dropped_other_events
-            )
+            return bool(self._events or self._dropped_log_lines or self._dropped_other_events)
 
     def mark_bridge_done_dispatched(self) -> None:
         with self._lock:

@@ -3,7 +3,14 @@ from __future__ import annotations
 import time
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QKeyEvent, QMouseEvent, QPaintEvent, QPainter
+from PySide6.QtGui import (
+    QColor,
+    QKeyEvent,
+    QMouseEvent,
+    QPaintEvent,
+    QPainter,
+    QResizeEvent,
+)
 from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from agents_runner.ui.graphics import load_background
@@ -21,7 +28,7 @@ class ThemePreviewWidget(QWidget):
         self._runtime: object | None = None
         self._tick_last_s = time.monotonic()
 
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setAutoFillBackground(False)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -54,7 +61,7 @@ class ThemePreviewWidget(QWidget):
         self._notify_resize()
         self.update()
 
-    def resizeEvent(self, event: object) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._notify_resize()
 
@@ -97,7 +104,7 @@ class ThemePreviewWidget(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         rect = self.rect()
         if rect.isEmpty():
@@ -150,13 +157,13 @@ class ThemePreviewTile(QFrame):
         self._preview = ThemePreviewWidget(self._theme_name, self)
         self._preview.setObjectName("ThemePreviewCanvas")
         self._preview.setMinimumHeight(92)
-        self._preview.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._preview.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         layout.addWidget(self._preview, 1)
 
         self._label = QLabel(label, self)
         self._label.setObjectName("ThemePreviewTileLabel")
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self._label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         layout.addWidget(self._label)
 
     def theme_name(self) -> str:

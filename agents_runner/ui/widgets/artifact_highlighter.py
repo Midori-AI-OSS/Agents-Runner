@@ -47,9 +47,7 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
             Literal,
         )
 
-        def fmt(
-            color: QColor, bold: bool = False, italic: bool = False
-        ) -> QTextCharFormat:
+        def fmt(color: QColor, bold: bool = False, italic: bool = False) -> QTextCharFormat:
             f = QTextCharFormat()
             f.setForeground(color)
             if bold:
@@ -118,9 +116,9 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
 
         # Try to create lexer
         try:
-            from pygments import lexers
+            from pygments import lexers  # type: ignore[reportUnknownMemberType]
 
-            lexer = lexers.get_lexer_by_name(normalized)
+            lexer = lexers.get_lexer_by_name(normalized)  # type: ignore[reportUnknownMemberType]
             self._lexer_cache[normalized] = lexer
             return lexer
         except Exception:
@@ -160,18 +158,18 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
     def set_language(self, language: str) -> None:
         """Set the lexer based on language name."""
         try:
-            from pygments import lexers
+            from pygments import lexers  # type: ignore[reportUnknownMemberType]
 
             if language.lower() == "text" or not language:
                 self._lexer = None
                 self._is_markdown = False
             elif language.lower() == "markdown":
-                self._lexer = lexers.get_lexer_by_name("markdown")
+                self._lexer = lexers.get_lexer_by_name("markdown")  # type: ignore[reportUnknownMemberType]
                 self._is_markdown = True
                 # Clear code block lexer cache when switching files
                 self._codeblock_lexers = []
             else:
-                self._lexer = lexers.get_lexer_by_name(language)
+                self._lexer = lexers.get_lexer_by_name(language)  # type: ignore[reportUnknownMemberType]
                 self._is_markdown = False
         except Exception:
             # Fallback to plain text if lexer not found
@@ -195,7 +193,7 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
             from pygments import lex
 
             # Get all tokens for this line
-            tokens = list(lex(text, self._lexer))
+            tokens = list(lex(text, self._lexer))  # type: ignore[reportUnknownMemberType]
 
             # Apply formatting for each token
             position = 0
@@ -253,9 +251,9 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
                 code_lexer = self._codeblock_lexers[lexer_index]
                 if code_lexer:
                     try:
-                        from pygments import lex
+                        from pygments import lex  # type: ignore[reportUnknownMemberType]
 
-                        tokens = list(lex(text, code_lexer))
+                        tokens = list(lex(text, code_lexer))  # type: ignore[reportArgumentType]
                         position = 0
                         for token_type, token_text in tokens:
                             length = len(token_text)
@@ -281,6 +279,7 @@ class ArtifactSyntaxHighlighter(QSyntaxHighlighter):
         if backtick_match or tilde_match:
             # Opening fence detected
             match = backtick_match if backtick_match else tilde_match
+            assert match is not None
             fence_type = 0 if backtick_match else 1
             lang = match.group(1) if match.group(1) else ""
 

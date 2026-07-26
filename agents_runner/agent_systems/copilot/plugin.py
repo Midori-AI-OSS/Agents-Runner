@@ -26,15 +26,6 @@ CONTAINER_HOME = Path("/home/midori-ai")
 WORKSPACE_DIR = "/home/midori-ai/workspace"
 
 
-def _has_yolo_permissions(parts: list[str]) -> bool:
-    if "--yolo" in parts or "--allow-all" in parts:
-        return True
-    return all(
-        flag in parts
-        for flag in ("--allow-all-tools", "--allow-all-paths", "--allow-all-urls")
-    )
-
-
 class CopilotAgentSystemPlugin:
     name = "copilot"
     display_name = "GitHub Copilot"
@@ -166,8 +157,6 @@ class CopilotAgentSystemPlugin:
         cmd_parts: list[str],
         agent_cli_args: list[str],
         prompt: str,
-        is_help_launch: bool,
-        help_repos_dir: str,
     ) -> list[str]:
         parts = list(cmd_parts)
 
@@ -176,12 +165,6 @@ class CopilotAgentSystemPlugin:
 
         if "--add-dir" not in parts:
             parts[1:1] = ["--add-dir", WORKSPACE_DIR]
-
-        if is_help_launch:
-            if not _has_yolo_permissions(parts):
-                parts[1:1] = ["--yolo"]
-            if help_repos_dir not in parts:
-                parts[1:1] = ["--add-dir", help_repos_dir]
 
         if prompt:
             has_interactive = "-i" in parts or "--interactive" in parts

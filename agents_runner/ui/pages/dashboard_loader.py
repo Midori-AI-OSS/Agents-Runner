@@ -74,7 +74,7 @@ class PastTaskProgressiveLoader:
         try:
             loaded = self._load_callback(self._current_offset, batch_size)
             # Validate return value
-            if not isinstance(loaded, int) or loaded < 0:
+            if not isinstance(loaded, int) or loaded < 0:  # pyright: ignore[reportUnnecessaryIsInstance]
                 loaded = 0
         except Exception:
             # Handle callback errors gracefully
@@ -106,11 +106,9 @@ class PastTaskProgressiveLoader:
             return
 
         try:
-            loaded = self._load_callback(
-                self._current_offset, self.PROGRESSIVE_BATCH_SIZE
-            )
+            loaded = self._load_callback(self._current_offset, self.PROGRESSIVE_BATCH_SIZE)
             # Validate return value
-            if not isinstance(loaded, int) or loaded < 0:
+            if not isinstance(loaded, int) or loaded < 0:  # pyright: ignore[reportUnnecessaryIsInstance]
                 loaded = 0
         except Exception:
             # Handle callback errors - stop loading on error

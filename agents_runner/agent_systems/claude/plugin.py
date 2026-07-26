@@ -144,8 +144,6 @@ class ClaudeAgentSystemPlugin:
         cmd_parts: list[str],
         agent_cli_args: list[str],
         prompt: str,
-        is_help_launch: bool,
-        help_repos_dir: str,
     ) -> list[str]:
         parts = list(cmd_parts)
 
@@ -154,12 +152,6 @@ class ClaudeAgentSystemPlugin:
 
         if "--add-dir" not in parts:
             parts[1:1] = ["--add-dir", "/home/midori-ai/workspace"]
-
-        if is_help_launch:
-            if "--permission-mode" not in parts:
-                parts[1:1] = ["--permission-mode", "bypassPermissions"]
-            if help_repos_dir not in parts:
-                parts[1:1] = ["--add-dir", help_repos_dir]
 
         if prompt:
             move_positional_to_end(parts, prompt)

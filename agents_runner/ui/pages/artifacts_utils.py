@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import subprocess
 import sys
@@ -8,6 +7,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+from midori_ai_logger import MidoriAiLogger
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QPlainTextEdit
 
@@ -17,7 +17,7 @@ from agents_runner.ui.widgets.artifact_highlighter import (
     detect_language,
 )
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 def format_size(size_bytes: int) -> str:
@@ -75,7 +75,9 @@ class PreviewLoader:
         from PySide6.QtCore import Qt
 
         scaled = self.thumbnail_original.scaled(
-            target_size, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            target_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
         )
         self.thumbnail_widget.setPixmap(scaled)
 
@@ -92,9 +94,7 @@ class PreviewLoader:
         except Exception as e:
             logger.error(f"Failed to load staging thumbnail: {e}")
 
-    def load_encrypted_thumbnail(
-        self, artifact: ArtifactMeta, task_id: str, environment_id: str | None
-    ) -> None:
+    def load_encrypted_thumbnail(self, artifact: ArtifactMeta, task_id: str, environment_id: str | None) -> None:
         """Load thumbnail from encrypted artifact."""
         try:
             suffix = Path(artifact.original_filename).suffix
@@ -112,18 +112,14 @@ class PreviewLoader:
                         self.update_thumbnail_scale()
                         self.thumbnail_widget.show()
                     else:
-                        logger.warning(
-                            f"Failed to load image: {artifact.original_filename}"
-                        )
+                        logger.warning(f"Failed to load image: {artifact.original_filename}")
                 else:
                     msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nFailed to decrypt"
                     self.preview_label.setText(msg)
 
         except Exception as e:
             logger.error(f"Failed to load thumbnail: {e}")
-            msg = (
-                f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
-            )
+            msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
             self.preview_label.setText(msg)
 
     def load_staging_text(self, artifact: StagingArtifactMeta) -> None:
@@ -164,9 +160,7 @@ class PreviewLoader:
                 language = detect_language(artifact.filename, text[:1024])
                 if language != "text":
                     if not self.syntax_highlighter:
-                        self.syntax_highlighter = ArtifactSyntaxHighlighter(
-                            self.text_preview.document()
-                        )
+                        self.syntax_highlighter = ArtifactSyntaxHighlighter(self.text_preview.document())
                     self.syntax_highlighter.set_language(language)
                 elif self.syntax_highlighter:
                     # Clear highlighter for plain text
@@ -179,14 +173,10 @@ class PreviewLoader:
             self.preview_label.hide()
         except Exception as e:
             logger.error(f"Failed to load text: {e}")
-            self.preview_label.setText(
-                f"{artifact.filename}\n\nError loading text: {str(e)}"
-            )
+            self.preview_label.setText(f"{artifact.filename}\n\nError loading text: {str(e)}")
             self.preview_label.show()
 
-    def load_encrypted_text(
-        self, artifact: ArtifactMeta, task_id: str, environment_id: str | None
-    ) -> None:
+    def load_encrypted_text(self, artifact: ArtifactMeta, task_id: str, environment_id: str | None) -> None:
         """Load text content from encrypted artifact."""
         try:
             max_size = 1024 * 1024  # 1MB limit
@@ -230,14 +220,10 @@ class PreviewLoader:
                     # Apply syntax highlighting if file is small enough
                     highlight_threshold = 100 * 1024  # 100KB
                     if artifact.size_bytes <= highlight_threshold:
-                        language = detect_language(
-                            artifact.original_filename, text[:1024]
-                        )
+                        language = detect_language(artifact.original_filename, text[:1024])
                         if language != "text":
                             if not self.syntax_highlighter:
-                                self.syntax_highlighter = ArtifactSyntaxHighlighter(
-                                    self.text_preview.document()
-                                )
+                                self.syntax_highlighter = ArtifactSyntaxHighlighter(self.text_preview.document())
                             self.syntax_highlighter.set_language(language)
                         elif self.syntax_highlighter:
                             # Clear highlighter for plain text
@@ -255,9 +241,7 @@ class PreviewLoader:
 
         except Exception as e:
             logger.error(f"Failed to load encrypted text: {e}")
-            msg = (
-                f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
-            )
+            msg = f"{artifact.original_filename}\n{artifact.mime_type}\n\nError: {str(e)}"
             self.preview_label.setText(msg)
             self.preview_label.show()
 
@@ -339,9 +323,7 @@ def edit_staging_artifact(artifact: StagingArtifactMeta) -> None:
         logger.error(f"Failed to launch editor: {e}")
 
 
-def download_artifact(
-    artifact: ArtifactMeta, task_id: str, environment_id: str | None, dest_path: str
-) -> bool:
+def download_artifact(artifact: ArtifactMeta, task_id: str, environment_id: str | None, dest_path: str) -> bool:
     """Download and decrypt an artifact to the specified path."""
     try:
         task_dict = {"task_id": task_id}

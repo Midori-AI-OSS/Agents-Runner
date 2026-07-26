@@ -23,9 +23,7 @@ class MicRecorderError(RuntimeError):
 
 class FfmpegPulseRecorder:
     def __init__(self, *, output_dir: Path | None = None) -> None:
-        self._output_dir = output_dir or Path(
-            os.path.expanduser("~/.midoriai/agents-runner/tmp")
-        )
+        self._output_dir = output_dir or Path(os.path.expanduser("~/.midoriai/agents-runner/tmp"))
 
     @staticmethod
     def is_available() -> bool:
@@ -63,9 +61,7 @@ class FfmpegPulseRecorder:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
-        return MicRecording(
-            output_path=output_path, started_at_s=time.time(), process=process
-        )
+        return MicRecording(output_path=output_path, started_at_s=time.time(), process=process)
 
     def stop(self, recording: MicRecording, *, timeout_s: float = 2.0) -> Path:
         if recording.process.poll() is None:
@@ -81,17 +77,12 @@ class FfmpegPulseRecorder:
             try:
                 _stdout, stderr = recording.process.communicate(timeout=timeout_s)
             except subprocess.TimeoutExpired as exc:
-                raise MicRecorderError(
-                    "Timed out while stopping the microphone recording."
-                ) from exc
+                raise MicRecorderError("Timed out while stopping the microphone recording.") from exc
 
-        if (
-            recording.process.returncode not in (0, 255)
-            and recording.process.stderr is not None
-        ):
+        if recording.process.returncode not in (0, 255) and recording.process.stderr is not None:
             stderr_text = ""
             try:
-                if isinstance(stderr, (bytes, bytearray)):
+                if isinstance(stderr, (bytes, bytearray)):  # pyright: ignore[reportUnnecessaryIsInstance]
                     stderr_text = stderr.decode("utf-8", errors="replace")
             except Exception:
                 stderr_text = ""

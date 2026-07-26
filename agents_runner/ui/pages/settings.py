@@ -9,6 +9,8 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
+from PySide6.QtGui import QHideEvent, QResizeEvent, QShowEvent
+from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QHBoxLayout
@@ -33,12 +35,15 @@ from agents_runner.ui.constants import (
     LEFT_NAV_PANEL_WIDTH,
 )
 from agents_runner.ui.pages.settings_form import SettingsFormMixin
+from agents_runner.persistence import default_state_path
 
 
 class SettingsPage(QWidget, SettingsFormMixin):
     back_requested = Signal()
     saved = Signal(dict)
     test_preflight_requested = Signal(dict)
+    move_task_workspaces_requested = Signal(bool)
+    force_cleanup_requested = Signal()
 
     def __init__(
         self,
@@ -49,6 +54,8 @@ class SettingsPage(QWidget, SettingsFormMixin):
         super().__init__(parent)
         self.setObjectName("SettingsPageRoot")
         self._radio_supported = bool(radio_supported)
+
+        self._state_path = default_state_path()
 
         self._suppress_autosave = False
         self._autosave_timer = QTimer(self)
@@ -76,9 +83,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
 
         title = QLabel("Settings")
         title.setStyleSheet("font-size: 18px; font-weight: 750;")
-        title.setToolTip(
-            "Settings are saved locally in:\n~/.midoriai/agents-runner/state.json"
-        )
+        title.setToolTip("Settings are saved locally in:\n~/.midoriai/agents-runner/state.json")
 
         header_layout.addWidget(title)
         header_layout.addStretch(1)
@@ -130,6 +135,9 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._build_pages()
         self._build_navigation(nav_layout)
         self._connect_autosave_signals()
+        app = QApplication.instance()
+        if app is not None:
+            app.applicationStateChanged.connect(self._on_application_state_changed)
 
         if self._pane_specs:
             first_key = self._pane_specs[0].key
@@ -142,14 +150,14 @@ class SettingsPage(QWidget, SettingsFormMixin):
         for combo in (
             self._use,
             self._shell,
+            self._opencode_interactive_mode,
             self._interactive_terminal,
-            self._ide_system_default,
-            self._ide_novnc_auto_open_mode,
             self._ui_theme,
             self._radio_channel,
             self._radio_quality,
             self._github_write_confirmation_mode,
             self._agentsnova_auto_marker_comments_mode,
+            self._task_workspace_location,
         ):
             combo.currentIndexChanged.connect(self._queue_debounced_autosave)
 
@@ -162,13 +170,13 @@ class SettingsPage(QWidget, SettingsFormMixin):
             self._github_polling_enabled,
             self._headless_desktop_enabled,
             self._gpu_enabled,
+            self._network_host,
             self._popup_theme_animation_enabled,
             self._auto_navigate_on_run_agent_start,
             self._auto_navigate_on_run_interactive_start,
             self._gh_context_default,
             self._spellcheck_enabled,
             self._mount_host_cache,
-            self._ide_novnc_auto_open_enabled,
             self._radio_enabled,
             self._radio_autostart,
             self._radio_loudness_boost_enabled,
@@ -176,16 +184,16 @@ class SettingsPage(QWidget, SettingsFormMixin):
             checkbox.toggled.connect(self._queue_debounced_autosave)
 
         self._radio_volume.valueChanged.connect(self._queue_debounced_autosave)
-        self._radio_loudness_boost_factor.valueChanged.connect(
-            self._queue_debounced_autosave
-        )
-        self._github_poll_startup_delay_s.textChanged.connect(
-            self._queue_debounced_autosave
-        )
+        self._radio_loudness_boost_factor.valueChanged.connect(self._queue_debounced_autosave)
+        self._task_workspace_cleanup_retention_days.valueChanged.connect(self._queue_debounced_autosave)
+        self._task_workspace_cleanup_interval_minutes.valueChanged.connect(self._queue_debounced_autosave)
+        self._task_workspace_cleanup_scan_delay_seconds.valueChanged.connect(self._queue_debounced_autosave)
+        self._task_workspace_cleanup_size_threshold_gb.valueChanged.connect(self._queue_debounced_autosave)
+        self._github_poll_startup_delay_s.textChanged.connect(self._queue_debounced_autosave)
         self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
-        self._agentsnova_trusted_users_global.usernames_changed.connect(
-            self._queue_debounced_autosave
-        )
+        self._agentsnova_trusted_users_global.usernames_changed.connect(self._queue_debounced_autosave)
+
+        self._force_cleanup_button.clicked.connect(self.force_cleanup_requested.emit)
 
     def _on_back(self) -> None:
         self.try_autosave()
@@ -194,6 +202,9 @@ class SettingsPage(QWidget, SettingsFormMixin):
     def _on_test_preflight(self) -> None:
         self.try_autosave()
         self.test_preflight_requested.emit(self.get_settings())
+
+    def set_force_cleanup_enabled(self, enabled: bool) -> None:
+        self._force_cleanup_button.setEnabled(enabled)
 
     def _on_nav_button_clicked(self, key: str) -> None:
         self._navigate_to_pane(key, user_initiated=True)
@@ -255,7 +266,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
 
         if self._pane_rest_pos is not None:
             self._page_stack.move(self._pane_rest_pos)
-        self._page_stack.setGraphicsEffect(None)
+        self._page_stack.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
 
         base_pos = self._page_stack.pos()
         self._pane_rest_pos = QPoint(base_pos)
@@ -287,7 +298,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
         def _cleanup() -> None:
             if self._pane_rest_pos is not None:
                 self._page_stack.move(self._pane_rest_pos)
-            self._page_stack.setGraphicsEffect(None)
+            self._page_stack.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
             self._pane_animation = None
 
         group.finished.connect(_cleanup)
@@ -310,9 +321,17 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._emit_saved()
         return True
 
-    def resizeEvent(self, event: object) -> None:
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         self._update_navigation_mode()
+
+    def showEvent(self, event: QShowEvent) -> None:
+        super().showEvent(event)
+        self._start_move_task_workspaces_shift_polling()
+
+    def hideEvent(self, event: QHideEvent) -> None:
+        super().hideEvent(event)
+        self._stop_move_task_workspaces_shift_polling()
 
     def _update_navigation_mode(self) -> None:
         compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD

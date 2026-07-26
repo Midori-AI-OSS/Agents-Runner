@@ -7,9 +7,10 @@ that would block task execution.
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Optional
+
+from midori_ai_logger import MidoriAiLogger
 
 from agents_runner.gh.errors import GhManagementError
 from agents_runner.gh.git_ops import (
@@ -22,7 +23,7 @@ from agents_runner.gh.git_ops import (
 )
 from agents_runner.log_format import format_log
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 _GIT_DETECT_TIMEOUT_S = 16.0
 _GIT_DETECT_BRANCH_TIMEOUT_S = 12.0
 
@@ -77,21 +78,13 @@ def get_git_info(path: str) -> Optional[GitInfo]:
     try:
         # Step 1: Check if git repo
         if not is_git_repo(path, timeout_s=_GIT_DETECT_TIMEOUT_S):
-            logger.debug(
-                format_log(
-                    "gh", "detect", "DEBUG", f"path is not a git repository: {path}"
-                )
-            )
+            logger.debug(format_log("gh", "detect", "DEBUG", f"path is not a git repository: {path}"))
             return None
 
         # Step 2: Get repo root
         repo_root = git_repo_root(path, timeout_s=_GIT_DETECT_TIMEOUT_S)
         if not repo_root:
-            logger.warning(
-                format_log(
-                    "gh", "detect", "WARN", f"could not determine git repo root: {path}"
-                )
-            )
+            logger.warning(format_log("gh", "detect", "WARN", f"could not determine git repo root: {path}"))
             return None
 
         # Step 3: Get current branch
@@ -183,9 +176,7 @@ def get_git_info(path: str) -> Optional[GitInfo]:
     except Exception as exc:
         # Catch-all to ensure we never raise
         logger.error(
-            format_log(
-                "gh", "detect", "ERROR", f"unexpected error during git detection: {exc}"
-            ),
+            format_log("gh", "detect", "ERROR", f"unexpected error during git detection: {exc}"),
             exc_info=True,
         )
         return None

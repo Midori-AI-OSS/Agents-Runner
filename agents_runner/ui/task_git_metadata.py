@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any
 
+from midori_ai_logger import MidoriAiLogger
+
 from agents_runner.pr_metadata import load_github_metadata
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 def parse_pull_request_number(pull_request_url: str) -> int | None:
@@ -31,7 +32,7 @@ def validate_git_metadata(git: dict[str, object] | None) -> tuple[bool, str]:
     Returns:
         (is_valid, error_message) tuple
     """
-    if not git or not isinstance(git, dict):
+    if not git or not isinstance(git, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         return (False, "git metadata is None or not a dict")
 
     required_fields = ["base_branch"]
@@ -73,9 +74,7 @@ def derive_task_git_metadata(task: Any) -> dict[str, object] | None:
         try:
             gh_metadata = load_github_metadata(context_path)
         except Exception as exc:
-            logger.warning(
-                "Failed to read GitHub context file %s: %s", context_path, exc
-            )
+            logger.warning("Failed to read GitHub context file %s: %s", context_path, exc)
             gh_metadata = None
 
         if gh_metadata is not None and gh_metadata.github is not None:

@@ -38,11 +38,7 @@ class SmokeAgentSystemPlugin:
     def plan(self, req: AgentSystemRequest) -> AgentSystemPlan:
         context = req.context
         prompt = str(req.prompt or "").strip()
-        extra_args = [
-            str(arg).strip()
-            for arg in (context.extra_cli_args or [])
-            if str(arg).strip()
-        ]
+        extra_args = [str(arg).strip() for arg in (context.extra_cli_args or []) if str(arg).strip()]
 
         if extra_args:
             argv = ["sh", *extra_args]
@@ -114,8 +110,6 @@ class SmokeAgentSystemPlugin:
         cmd_parts: list[str],
         agent_cli_args: list[str],
         prompt: str,
-        is_help_launch: bool,
-        help_repos_dir: str,
     ) -> list[str]:
         return [*list(cmd_parts), *list(agent_cli_args)]
 

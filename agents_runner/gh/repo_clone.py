@@ -24,9 +24,7 @@ def _read_origin_url(dest_dir: str) -> str:
             candidate = raw.split(":", 1)[-1].strip()
             if candidate:
                 candidate = (
-                    candidate
-                    if os.path.isabs(candidate)
-                    else os.path.normpath(os.path.join(dest_dir, candidate))
+                    candidate if os.path.isabs(candidate) else os.path.normpath(os.path.join(dest_dir, candidate))
                 )
                 if os.path.isdir(candidate):
                     git_dir = candidate
@@ -123,9 +121,7 @@ def ensure_github_clone(
     if prefer_gh and is_gh_available():
         proc = run_gh(["gh", "repo", "clone", repo, dest_dir], timeout_s=300.0)
     else:
-        proc = subprocess.CompletedProcess(
-            args=["gh"], returncode=127, stdout="", stderr="gh not found"
-        )
+        proc = subprocess.CompletedProcess(args=["gh"], returncode=127, stdout="", stderr="gh not found")
     if proc.returncode != 0:
         proc = run_gh(["git", "clone", repo, dest_dir], timeout_s=300.0)
     require_ok(proc, args=["clone", repo, dest_dir])

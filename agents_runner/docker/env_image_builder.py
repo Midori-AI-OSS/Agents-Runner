@@ -9,17 +9,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Callable
 
+from midori_ai_logger import MidoriAiLogger
+
 from agents_runner.docker.process import run_docker
 from agents_runner.docker.process import has_image
 from agents_runner.log_format import format_log
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 def _compute_content_hash(content: str) -> str:
@@ -163,9 +164,7 @@ def build_env_image(
         dockerfile_path = build_path / "Dockerfile"
         dockerfile_path.write_text(dockerfile_content, encoding="utf-8")
 
-        on_log(
-            format_log("env", "build", "INFO", f"build context prepared in {build_dir}")
-        )
+        on_log(format_log("env", "build", "INFO", f"build context prepared in {build_dir}"))
 
         # Build image
         process = None
@@ -240,11 +239,7 @@ def ensure_env_image(
 
     # If no cached preflight, return the base image
     if not (cached_preflight or "").strip():
-        on_log(
-            format_log(
-                "env", "image", "INFO", "no cached preflight script; skipping env cache"
-            )
-        )
+        on_log(format_log("env", "image", "INFO", "no cached preflight script; skipping env cache"))
         return base_image
 
     try:
@@ -281,9 +276,7 @@ def ensure_env_image(
 
         # Check if cached image exists
         if has_image(cached_image_tag):
-            on_log(
-                format_log("env", "image", "INFO", "cache HIT: reusing existing image")
-            )
+            on_log(format_log("env", "image", "INFO", "cache HIT: reusing existing image"))
             return cached_image_tag
 
         # Cache miss - need to build
@@ -298,11 +291,7 @@ def ensure_env_image(
     except Exception as exc:
         # Log error but don't fail - fall back to runtime installation
         on_log(format_log("env", "image", "ERROR", str(exc)))
-        on_log(
-            format_log(
-                "env", "image", "WARN", "falling back to runtime preflight execution"
-            )
-        )
+        on_log(format_log("env", "image", "WARN", "falling back to runtime preflight execution"))
         logger.exception(
             format_log(
                 "env",

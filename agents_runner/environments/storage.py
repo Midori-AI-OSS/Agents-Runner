@@ -4,16 +4,23 @@ import tempfile
 
 from typing import Any
 
+from agents_runner.agent_configs.storage import load_agent_configs
 from agents_runner.persistence import default_state_path
 
 from .model import Environment
 from .paths import default_data_dir
 from .serialize import environment_from_payload
+from .serialize import prune_missing_config_ids
 from .serialize import serialize_environment
 from .prompt_storage import delete_prompt_file
 
 
 ENVIRONMENTS_FILENAME = "environments.json"
+_DEPRECATED_ENV_KEYS = {
+    "ide_system_override",
+    "cache_ide_preflight_enabled",
+    "ide_safe_mode_by_system",
+}
 
 
 def _state_path_for_data_dir(data_dir: str) -> str:
@@ -24,6 +31,16 @@ def _environments_path_for_data_dir(data_dir: str) -> str:
     state_path = _state_path_for_data_dir(data_dir)
     base_dir = os.path.dirname(state_path) or data_dir or os.getcwd()
     return os.path.join(base_dir, ENVIRONMENTS_FILENAME)
+
+
+def _valid_config_ids_for_data_dir(data_dir: str) -> set[str]:
+    state_path = _state_path_for_data_dir(data_dir)
+    valid_ids: set[str] = set()
+    for config in load_agent_configs(state_path):
+        config_id = str(getattr(config, "config_id", "") or "").strip()
+        if config_id:
+            valid_ids.add(config_id)
+    return valid_ids
 
 
 def _atomic_write_json(path: str, payload: dict[str, Any]) -> None:
@@ -56,17 +73,17 @@ def _load_environments_items(path: str) -> list[dict[str, Any]]:
 
     raw: object
     if isinstance(payload, dict):
-        payload_dict: dict[str, Any] = payload
+        payload_dict: dict[str, Any] = payload  # pyright: ignore[reportUnknownVariableType]
         raw = payload_dict.get("environments")
     elif isinstance(payload, list):
-        raw = payload
+        raw = payload  # pyright: ignore[reportUnknownVariableType]
     else:
         return []
 
     if not isinstance(raw, list):
         return []
 
-    raw_list: list[Any] = raw
+    raw_list: list[Any] = raw  # pyright: ignore[reportUnknownVariableType]
     items: list[dict[str, Any]] = []
     for item in raw_list:
         if isinstance(item, dict):
@@ -79,11 +96,33 @@ def load_environments(data_dir: str | None = None) -> dict[str, Environment]:
     envs_path = _environments_path_for_data_dir(data_dir)
     raw = _load_environments_items(envs_path)
     envs: dict[str, Environment] = {}
+    order: list[str] = []
+    rewrite_needed = False
+    canonical_items: list[dict[str, Any]] = []
     for item in raw:
+        if any(key in item for key in _DEPRECATED_ENV_KEYS):
+            rewrite_needed = True
         env = environment_from_payload(item)
         if env is None:
+            rewrite_needed = True
             continue
+        canonical = serialize_environment(env)
+        canonical_items.append(canonical)
+        if canonical != item:
+            rewrite_needed = True
+        if env.env_id in envs:
+            rewrite_needed = True
+        else:
+            order.append(env.env_id)
         envs[env.env_id] = env
+    if rewrite_needed and raw:
+        ordered_items: list[dict[str, Any]] = []
+        canonical_map = {str(item.get("env_id") or ""): item for item in canonical_items}
+        for env_id in order:
+            item = canonical_map.get(env_id)
+            if item is not None:
+                ordered_items.append(item)
+        _atomic_write_json(envs_path, {"environments": ordered_items})
     return envs
 
 
@@ -91,6 +130,7 @@ def save_environment(env: Environment, data_dir: str | None = None) -> None:
     data_dir = data_dir or default_data_dir()
     envs_path = _environments_path_for_data_dir(data_dir)
 
+    env = prune_missing_config_ids(env, _valid_config_ids_for_data_dir(data_dir))
     payload = serialize_environment(env)
     env_id = str(payload.get("env_id") or "").strip()
     if not env_id:
@@ -109,9 +149,7 @@ def save_environment(env: Environment, data_dir: str | None = None) -> None:
     if env_id not in order:
         order.append(env_id)
 
-    _atomic_write_json(
-        envs_path, {"environments": [env_map[item_id] for item_id in order]}
-    )
+    _atomic_write_json(envs_path, {"environments": [env_map[item_id] for item_id in order]})
 
 
 def delete_environment(env_id: str, data_dir: str | None = None) -> None:

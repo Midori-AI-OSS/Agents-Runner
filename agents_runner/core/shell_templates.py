@@ -40,8 +40,7 @@ def git_identity_clause() -> str:
         Shell command string to configure git user.name and user.email
     """
     return (
-        'git config --global user.name "Midori AI Agent"; '
-        'git config --global user.email "contact-us@midori-ai.xyz"; '
+        'git config --global user.name "Midori AI Agent"; git config --global user.email "contact-us@midori-ai.xyz"; '
     )
 
 
@@ -85,11 +84,7 @@ def build_git_clone_or_update_snippet(
     """
     quoted_repo = shlex.quote(gh_repo)
 
-    parts = [
-        shell_log_statement(
-            "host", "clone", "INFO", f"preparing {gh_repo} -> {host_workdir}"
-        )
-    ]
+    parts = [shell_log_statement("host", "clone", "INFO", f"preparing {gh_repo} -> {host_workdir}")]
 
     if is_locked_env:
         # Locked environment: update existing repo
@@ -147,11 +142,7 @@ def build_git_clone_or_update_snippet(
             f"{shell_log_statement('host', 'git', 'WARN', f'could not create branch {branch_name}')})"
         )
         parts.append(branch_step)
-        parts.append(
-            shell_log_statement(
-                "host", "clone", "INFO", f"ready on branch {branch_name}"
-            )
-        )
+        parts.append(shell_log_statement("host", "clone", "INFO", f"ready on branch {branch_name}"))
     else:
         parts.append(shell_log_statement("host", "clone", "INFO", "repo ready"))
 

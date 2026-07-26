@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import shlex
-import subprocess
 import time
 
 from PySide6.QtCore import QObject
@@ -14,6 +13,7 @@ from agents_runner.agent_install import resolve_agent_install_plan
 from agents_runner.docker.agent_worker_prompt import PromptAssembler
 from agents_runner.docker.process import has_image
 from agents_runner.docker.process import has_platform_image
+from agents_runner.docker.process import pull_image
 from agents_runner.docker.cache_resolver import resolve_runtime_cache
 from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
 from agents_runner.docker_platform import docker_platform_args_for_pixelarch
@@ -24,7 +24,7 @@ from agents_runner.environments.git_operations import get_git_info
 from agents_runner.gh_management import GhManagementError
 from agents_runner.gh_management import prepare_github_repo_for_task
 from agents_runner.log_format import format_log
-from agents_runner.midoriai_template import MidoriAITemplateDetection
+from agents_runner.midoriai_template import MidoriaiTemplateDetection
 from agents_runner.midoriai_template import scan_midoriai_agents_template
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.prompts import load_prompt
@@ -60,13 +60,14 @@ class InteractivePrepWorker(QObject):
         desired_base: str,
         gh_use_host_cli: bool,
         gh_context_enabled: bool,
+        gh_pr_unavailable_reason: str,
+        gh_pr_unavailable_status: str,
         data_dir: str,
         image: str,
         command: str,
         agent_cli: str,
         agent_cli_args: list[str],
         prompt_for_agent: str,
-        is_help_launch: bool,
         apply_full_prompting: bool,
         has_typed_prompt: bool,
         desktop_enabled: bool,
@@ -94,13 +95,14 @@ class InteractivePrepWorker(QObject):
         self._desired_base = str(desired_base or "").strip()
         self._gh_use_host_cli = bool(gh_use_host_cli)
         self._gh_context_enabled = bool(gh_context_enabled)
+        self._gh_pr_unavailable_reason = str(gh_pr_unavailable_reason or "").strip()
+        self._gh_pr_unavailable_status = str(gh_pr_unavailable_status or "").strip()
         self._data_dir = str(data_dir or "").strip()
         self._image = str(image or PIXELARCH_EMERALD_IMAGE).strip()
         self._command = str(command or "").strip()
         self._agent_cli = str(agent_cli or "").strip()
         self._agent_cli_args = list(agent_cli_args or [])
         self._prompt_for_agent = str(prompt_for_agent or "")
-        self._is_help_launch = bool(is_help_launch)
         self._apply_full_prompting = bool(apply_full_prompting)
         self._has_typed_prompt = bool(has_typed_prompt)
         self._desktop_enabled = bool(desktop_enabled)
@@ -111,17 +113,11 @@ class InteractivePrepWorker(QObject):
         self._cache_system_preflight_enabled = bool(cache_system_preflight_enabled)
         self._cache_settings_preflight_enabled = bool(cache_settings_preflight_enabled)
         self._cache_desktop_build = bool(cache_desktop_build)
-        self._setup_agents_missing_prompt_enabled = bool(
-            setup_agents_missing_prompt_enabled
-        )
+        self._setup_agents_missing_prompt_enabled = bool(setup_agents_missing_prompt_enabled)
         self._pull_before_run = bool(pull_before_run)
         self._branch_work_mode = str(branch_work_mode or "").strip() or "task_branch"
-        self._task_branch_naming_style = (
-            str(task_branch_naming_style or "").strip() or "standard"
-        )
-        self._task_branch_custom_template = (
-            str(task_branch_custom_template or "").strip() or "{task_id}"
-        )
+        self._task_branch_naming_style = str(task_branch_naming_style or "").strip() or "standard"
+        self._task_branch_custom_template = str(task_branch_custom_template or "").strip() or "{task_id}"
         self._prep_id = str(prep_id or "").strip()
         self._stop_requested = False
 
@@ -149,12 +145,7 @@ class InteractivePrepWorker(QObject):
 
     def _pull_image(self) -> None:
         pull_started_s = time.monotonic()
-        pull_parts = [
-            "docker",
-            "pull",
-            *docker_platform_args_for_pixelarch(),
-            self._image,
-        ]
+        platform_args = docker_platform_args_for_pixelarch()
         self._diag("INFO", f"docker pull start image={self._image}")
         self.log.emit(
             self._task_id,
@@ -162,37 +153,23 @@ class InteractivePrepWorker(QObject):
                 "docker",
                 "cmd",
                 "INFO",
-                " ".join(shlex.quote(part) for part in pull_parts),
+                " ".join(shlex.quote(part) for part in ["docker", "pull", *platform_args, self._image]),
             ),
         )
-        completed = subprocess.run(
-            pull_parts,
-            check=False,
-            capture_output=True,
-            text=True,
+        pull_image(
+            self._image,
+            platform_args=platform_args,
+            on_log=lambda line: self.log.emit(
+                self._task_id, format_log("docker", "pull", "INFO", str(line or "").strip())
+            ),
+            check_stop=lambda: self._stop_requested,
         )
-        lines = (f"{completed.stdout or ''}\n{completed.stderr or ''}").splitlines()
-        for raw in lines[-80:]:
-            line = str(raw or "").strip()
-            if line:
-                self.log.emit(self._task_id, format_log("docker", "pull", "INFO", line))
-        if completed.returncode != 0:
-            detail = (
-                (completed.stderr or "").strip()
-                or (completed.stdout or "").strip()
-                or f"docker pull failed with exit code {completed.returncode}"
-            )
-            raise RuntimeError(detail)
         pull_elapsed_ms = (time.monotonic() - pull_started_s) * 1000.0
         self._diag("INFO", f"docker pull done elapsed_ms={pull_elapsed_ms:.0f}")
 
     def _ensure_local_image_available(self) -> None:
         platform_value = docker_platform_for_pixelarch()
-        image_present = (
-            has_platform_image(self._image, platform_value)
-            if platform_value
-            else has_image(self._image)
-        )
+        image_present = has_platform_image(self._image, platform_value) if platform_value else has_image(self._image)
         if image_present:
             return
 
@@ -215,9 +192,7 @@ class InteractivePrepWorker(QObject):
             f"{pr_host_path}:{pr_container_path}:rw",
         )
 
-    def _resolve_runtime_image_for_launch(
-        self, *, cmd_parts: list[str]
-    ) -> dict[str, object]:
+    def _resolve_runtime_image_for_launch(self, *, cmd_parts: list[str]) -> dict[str, object]:
         agent_probe_available: bool | None = None
         if cmd_parts:
             agent_probe_available = probe_agent_executable_in_image(
@@ -245,23 +220,13 @@ class InteractivePrepWorker(QObject):
                 agent_cli=str(cmd_parts[0]),
                 include_internal=False,
             )
-        install_preflight_script = (
-            str(install_plan.script_content or "").strip() if install_plan else ""
-        )
-        install_phase_name = (
-            str(install_plan.phase_name or "").strip() if install_plan else ""
-        )
+        install_preflight_script = str(install_plan.script_content or "").strip() if install_plan else ""
+        install_phase_name = str(install_plan.phase_name or "").strip() if install_plan else ""
 
         cache_install_enabled = bool(self._container_caching_enabled)
-        cache_system_enabled = bool(
-            self._container_caching_enabled and self._cache_system_preflight_enabled
-        )
-        cache_settings_enabled = bool(
-            self._container_caching_enabled and self._cache_settings_preflight_enabled
-        )
-        desktop_cache_enabled = bool(
-            self._cache_desktop_build and self._desktop_enabled
-        )
+        cache_system_enabled = bool(self._container_caching_enabled and self._cache_system_preflight_enabled)
+        cache_settings_enabled = bool(self._container_caching_enabled and self._cache_settings_preflight_enabled)
+        desktop_cache_enabled = bool(self._cache_desktop_build and self._desktop_enabled)
         if agent_probe_available is True and cache_system_enabled:
             cache_system_enabled = False
             self.log.emit(
@@ -317,12 +282,21 @@ class InteractivePrepWorker(QObject):
         task_branch: str,
         head_commit: str,
     ) -> str:
+        if self._gh_pr_unavailable_reason and self._apply_full_prompting:
+            pr_instruction = ""
+        elif self._gh_pr_unavailable_reason:
+            pr_instruction = load_prompt(
+                "github_recommendation_only",
+                REASON=self._gh_pr_unavailable_reason,
+            )
+        else:
+            pr_instruction = pr_metadata_prompt_instructions(pr_container_path)
         return insert_prompt_sections_before_user_prompt(
             prompt_for_agent,
             [
                 (
                     f"{github_context_prompt_instructions(repo_url=repo_url, repo_owner=repo_owner, repo_name=repo_name, base_branch=base_branch, task_branch=task_branch, head_commit=head_commit)}"
-                    f"{pr_metadata_prompt_instructions(pr_container_path)}"
+                    f"{pr_instruction}"
                 )
             ],
         )
@@ -330,11 +304,11 @@ class InteractivePrepWorker(QObject):
     def _apply_interactive_template_and_standby_prompt(self, prompt: str) -> str:
         prompt_for_agent = str(prompt or "")
 
-        template_detection: MidoriAITemplateDetection
+        template_detection: MidoriaiTemplateDetection
         try:
             template_detection = scan_midoriai_agents_template(self._host_workdir)
         except Exception:
-            template_detection = MidoriAITemplateDetection(
+            template_detection = MidoriaiTemplateDetection(
                 midoriai_template_likelihood=0.0,
                 midoriai_template_detected=False,
                 midoriai_template_detected_path=None,
@@ -344,6 +318,7 @@ class InteractivePrepWorker(QObject):
             prompt_for_agent,
             self._env_id or None,
             lambda line: self.log.emit(self._task_id, str(line or "")),
+            state_path=os.path.join(self._data_dir, "state.toml"),
         )
         prompt_for_agent = assembler.assemble_prompt(
             self._agent_cli,
@@ -398,14 +373,10 @@ class InteractivePrepWorker(QObject):
                         env_id=self._env_id,
                         task_id=self._task_id,
                         data_dir=self._data_dir,
-                        on_log=lambda line: self.log.emit(
-                            self._task_id, str(line or "")
-                        ),
+                        on_log=lambda line: self.log.emit(self._task_id, str(line or "")),
                     )
                     if not cleanup_success:
-                        raise RuntimeError(
-                            "Unable to prepare a fresh cloned workspace for this task."
-                        )
+                        raise RuntimeError("Unable to prepare a fresh cloned workspace for this task.")
                 cleanup_elapsed_ms = (time.monotonic() - cleanup_started_s) * 1000.0
                 self._diag(
                     "INFO",
@@ -427,9 +398,7 @@ class InteractivePrepWorker(QObject):
                         task_branch_custom_template=self._task_branch_custom_template,
                         prefer_gh=self._gh_use_host_cli,
                         recreate_if_needed=False,
-                        on_log=lambda line: self.log.emit(
-                            self._task_id, str(line or "")
-                        ),
+                        on_log=lambda line: self.log.emit(self._task_id, str(line or "")),
                     )
                 except GhManagementError as exc:
                     raise RuntimeError(str(exc)) from exc
@@ -443,20 +412,19 @@ class InteractivePrepWorker(QObject):
                 gh_base_branch = str(gh_result.get("base_branch") or "").strip()
                 gh_branch = str(gh_result.get("branch") or "").strip()
                 if not gh_repo_root or not gh_branch:
-                    raise RuntimeError(
-                        "Could not prepare this cloned repository for the task."
-                    )
+                    raise RuntimeError("Could not prepare this cloned repository for the task.")
 
                 if self._gh_context_enabled:
                     self._check_stop()
-                    self._emit_stage("starting", "Preparing PR metadata file")
+                    self._emit_stage("starting", "Preparing GitHub context")
                     metadata_started_s = time.monotonic()
                     self._diag("INFO", "phase=pr_metadata_prepare begin")
-                    (
-                        pr_host_path,
-                        pr_container_path,
-                        pr_metadata_mount,
-                    ) = self._prepare_pr_metadata_file()
+                    if not self._gh_pr_unavailable_reason:
+                        (
+                            pr_host_path,
+                            pr_container_path,
+                            pr_metadata_mount,
+                        ) = self._prepare_pr_metadata_file()
                     if self._apply_full_prompting:
                         git_info = get_git_info(gh_repo_root)
                         if git_info:
@@ -481,14 +449,7 @@ class InteractivePrepWorker(QObject):
                                 task_branch=gh_branch,
                                 head_commit="(unknown)",
                             )
-                    elif self._is_help_launch and self._has_typed_prompt:
-                        prompt_for_agent = insert_prompt_sections_before_user_prompt(
-                            prompt_for_agent,
-                            [pr_metadata_prompt_instructions(pr_container_path)],
-                        )
-                    metadata_elapsed_ms = (
-                        time.monotonic() - metadata_started_s
-                    ) * 1000.0
+                    metadata_elapsed_ms = (time.monotonic() - metadata_started_s) * 1000.0
                     self._diag(
                         "INFO",
                         f"phase=pr_metadata_prepare done elapsed_ms={metadata_elapsed_ms:.0f}",
@@ -517,16 +478,11 @@ class InteractivePrepWorker(QObject):
                 )
                 setup_agents_script = ""
                 if self._setup_agents_missing_prompt_enabled:
-                    setup_agents_prompt_instruction = missing_setup_agents_instruction(
-                        launch_mode=self._launch_mode
-                    )
+                    setup_agents_prompt_instruction = missing_setup_agents_instruction(launch_mode=self._launch_mode)
             else:
                 setup_agents_script = str(setup_agents_result.setup_script or "")
                 setup_agents_prompt_instruction = setup_agents_result.prompt_instruction
-                if (
-                    not self._setup_agents_missing_prompt_enabled
-                    and not setup_agents_script.strip()
-                ):
+                if not self._setup_agents_missing_prompt_enabled and not setup_agents_script.strip():
                     setup_agents_prompt_instruction = None
                     self.log.emit(
                         self._task_id,
@@ -544,11 +500,7 @@ class InteractivePrepWorker(QObject):
                     [sanitize_prompt(setup_agents_prompt_instruction)],
                 )
 
-            if (
-                self._workspace_type != WORKSPACE_CLONED
-                and self._gh_context_enabled
-                and self._apply_full_prompting
-            ):
+            if self._workspace_type != WORKSPACE_CLONED and self._gh_context_enabled and self._apply_full_prompting:
                 git_info = get_git_info(self._host_workdir)
                 if git_info:
                     self._check_stop()
@@ -570,9 +522,7 @@ class InteractivePrepWorker(QObject):
                     )
 
             if self._apply_full_prompting:
-                prompt_for_agent = self._apply_interactive_template_and_standby_prompt(
-                    prompt_for_agent
-                )
+                prompt_for_agent = self._apply_interactive_template_and_standby_prompt(prompt_for_agent)
 
             self._check_stop()
             image_status = (
@@ -596,27 +546,19 @@ class InteractivePrepWorker(QObject):
                 agent_cli=self._agent_cli,
                 agent_cli_args=self._agent_cli_args,
                 prompt=prompt_for_agent,
-                is_help_launch=self._is_help_launch,
             )
             cmd_elapsed_ms = (time.monotonic() - cmd_started_s) * 1000.0
-            self._diag(
-                "INFO", f"phase=command_build done elapsed_ms={cmd_elapsed_ms:.0f}"
-            )
+            self._diag("INFO", f"phase=command_build done elapsed_ms={cmd_elapsed_ms:.0f}")
 
             self._check_stop()
             self._emit_stage("starting", "Preparing runtime image cache")
             cache_resolve_started_s = time.monotonic()
             self._diag("INFO", "phase=interactive_cache_resolve begin")
-            cache_resolution = self._resolve_runtime_image_for_launch(
-                cmd_parts=cmd_parts
-            )
-            cache_resolve_elapsed_ms = (
-                time.monotonic() - cache_resolve_started_s
-            ) * 1000.0
+            cache_resolution = self._resolve_runtime_image_for_launch(cmd_parts=cmd_parts)
+            cache_resolve_elapsed_ms = (time.monotonic() - cache_resolve_started_s) * 1000.0
             self._diag(
                 "INFO",
-                "phase=interactive_cache_resolve done "
-                f"elapsed_ms={cache_resolve_elapsed_ms:.0f}",
+                f"phase=interactive_cache_resolve done elapsed_ms={cache_resolve_elapsed_ms:.0f}",
             )
 
             self._emit_stage("starting", "Launching interactive terminal")
@@ -629,36 +571,20 @@ class InteractivePrepWorker(QObject):
                     "gh_base_branch": gh_base_branch or self._desired_base,
                     "gh_branch": gh_branch,
                     "gh_pr_metadata_path": pr_host_path,
+                    "gh_pr_unavailable_reason": self._gh_pr_unavailable_reason,
+                    "gh_pr_unavailable_status": self._gh_pr_unavailable_status,
                     "pr_metadata_mount": pr_metadata_mount,
                     "cmd_parts": cmd_parts,
                     "runtime_image": cache_resolution.get("runtime_image"),
-                    "install_preflight_cached": cache_resolution.get(
-                        "install_preflight_cached", False
-                    ),
-                    "system_preflight_cached": cache_resolution.get(
-                        "system_preflight_cached", False
-                    ),
-                    "desktop_preflight_cached": cache_resolution.get(
-                        "desktop_preflight_cached", False
-                    ),
-                    "settings_preflight_cached": cache_resolution.get(
-                        "settings_preflight_cached", False
-                    ),
-                    "resolved_extra_preflight_script": cache_resolution.get(
-                        "resolved_extra_preflight_script", ""
-                    ),
-                    "install_preflight_script": cache_resolution.get(
-                        "install_preflight_script", ""
-                    ),
-                    "install_phase_name": cache_resolution.get(
-                        "install_phase_name", ""
-                    ),
-                    "agent_probe_available": cache_resolution.get(
-                        "agent_probe_available"
-                    ),
-                    "skip_system_preflight": bool(
-                        cache_resolution.get("skip_system_preflight", False)
-                    ),
+                    "install_preflight_cached": cache_resolution.get("install_preflight_cached", False),
+                    "system_preflight_cached": cache_resolution.get("system_preflight_cached", False),
+                    "desktop_preflight_cached": cache_resolution.get("desktop_preflight_cached", False),
+                    "settings_preflight_cached": cache_resolution.get("settings_preflight_cached", False),
+                    "resolved_extra_preflight_script": cache_resolution.get("resolved_extra_preflight_script", ""),
+                    "install_preflight_script": cache_resolution.get("install_preflight_script", ""),
+                    "install_phase_name": cache_resolution.get("install_phase_name", ""),
+                    "agent_probe_available": cache_resolution.get("agent_probe_available"),
+                    "skip_system_preflight": bool(cache_resolution.get("skip_system_preflight", False)),
                     "setup_agents_script": setup_agents_script,
                 },
             )

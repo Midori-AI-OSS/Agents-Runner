@@ -96,9 +96,7 @@ def classify_error(
     return ErrorType.RETRYABLE
 
 
-def calculate_backoff(
-    retry_count: int, error_type: ErrorType
-) -> float:  # pragma: no cover
+def calculate_backoff(retry_count: int, error_type: ErrorType) -> float:  # pragma: no cover
     """Calculate backoff delay in seconds for retry attempt.
 
     Args:

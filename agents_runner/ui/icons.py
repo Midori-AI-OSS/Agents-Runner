@@ -9,7 +9,7 @@ from agents_runner.ui.lucide_icons import lucide_icon
 
 
 def app_icon() -> QIcon | None:
-    icon_path = Path(__file__).resolve().parent.parent / "midoriai-logo.png"
+    icon_path = Path(__file__).resolve().parent.parent / "assets" / "agents-runner-logo.svg"
     return QIcon(str(icon_path)) if icon_path.exists() else None
 
 

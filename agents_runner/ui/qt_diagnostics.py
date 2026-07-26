@@ -7,15 +7,15 @@ stack traces to identify the exact source of threading issues.
 
 from __future__ import annotations
 
-import logging
 import os
 import sys
 import traceback
 from pathlib import Path
 
+from midori_ai_logger import MidoriAiLogger
 from PySide6.QtCore import QtMsgType, qInstallMessageHandler
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 # Track whether the handler has been installed
 _handler_installed = False
@@ -41,10 +41,7 @@ def _qt_message_handler(msg_type: QtMsgType, context: object, message: str) -> N
     Specifically designed to diagnose Issue #141 (QTimer cross-thread warnings).
     """
     # Check if this is a QTimer-related warning
-    is_timer_warning = any(
-        keyword in message.lower()
-        for keyword in ["qtimer", "timer", "thread", "qobject"]
-    )
+    is_timer_warning = any(keyword in message.lower() for keyword in ["qtimer", "timer", "thread", "qobject"])
 
     # Always log to stderr for visibility
     msg_type_str = {
@@ -73,9 +70,7 @@ def _qt_message_handler(msg_type: QtMsgType, context: object, message: str) -> N
         # Get the current stack, excluding this handler frame
         stack_frames = traceback.extract_stack()[:-1]
         for frame in stack_frames:
-            output_lines.append(
-                f'  File "{frame.filename}", line {frame.lineno}, in {frame.name}'
-            )
+            output_lines.append(f'  File "{frame.filename}", line {frame.lineno}, in {frame.name}')
             if frame.line:
                 output_lines.append(f"    {frame.line}")
         output_lines.append("=== END STACK TRACE ===\n")
@@ -134,9 +129,7 @@ def install_qt_message_handler() -> None:
             import datetime
 
             f.write("\n" + "=" * 80 + "\n")
-            f.write(
-                f"Qt Diagnostics Log Started: {datetime.datetime.now().isoformat()}\n"
-            )
+            f.write(f"Qt Diagnostics Log Started: {datetime.datetime.now().isoformat()}\n")
             f.write("=" * 80 + "\n\n")
 
     except Exception as e:

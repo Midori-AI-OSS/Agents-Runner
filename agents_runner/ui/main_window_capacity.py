@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 
-class MainWindowCapacityMixin:
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import MainWindowHints
+else:
+    MainWindowHints = object
+
+
+class MainWindowCapacityMixin(MainWindowHints):
     def _count_running_agents(self, env_id: str | None = None) -> int:
         count = 0
         env_id = str(env_id or "").strip() or None
@@ -25,7 +32,7 @@ class MainWindowCapacityMixin:
         except Exception:
             return -1
 
-    def _can_start_new_agent_for_env(self, env_id: str | None) -> bool:
+    def _can_start_new_agent_for_env(self, env_id: str | None, *args: object) -> bool:
         max_agents = self._max_agents_running_for_env(env_id)
         if max_agents < 0:
             return True
@@ -37,8 +44,6 @@ class MainWindowCapacityMixin:
             return
         queued.sort(key=lambda t: t.created_at_s)
         for task in queued:
-            if not self._can_start_new_agent_for_env(
-                getattr(task, "environment_id", "")
-            ):
+            if not self._can_start_new_agent_for_env(getattr(task, "environment_id", "")):
                 continue
             self._actually_start_task(task)

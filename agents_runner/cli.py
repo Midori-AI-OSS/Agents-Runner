@@ -1,6 +1,28 @@
 import os
 import sys
+import argparse
 import traceback
+
+
+_opencode_cli_overrides: dict[str, str] = {}
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="python -m agents_runner",
+        description="Agents Runner - Local Containerd GUI",
+        epilog="Qt arguments (e.g. --style, --platform) are also accepted and passed through to QApplication.",
+    )
+    parser.add_argument("--desktop-viewer", action="store_true", help="Run the desktop viewer instead of the main GUI.")
+    parser.add_argument("--mcp-server", action="store_true", help="Run the MCP server instead of the main GUI.")
+    parser.add_argument("--agent", type=str, default=None, help="Override the opencode agent used by the runtime.")
+    parser.add_argument("--model", type=str, default=None, help="Override the opencode model used by the runtime.")
+    parser.add_argument("--variant", type=str, default=None, help="Override the opencode variant used by the runtime.")
+    return parser
+
+
+def get_opencode_cli_overrides() -> dict[str, str]:
+    return dict(_opencode_cli_overrides)
 
 
 def _is_truthy_env(name: str) -> bool:
@@ -16,9 +38,7 @@ def _upsert_qt_logging_rules(existing: str, required_rules: list[str]) -> str:
     tokens: list[str] = []
     existing_rules = (existing or "").replace("\n", ";").strip()
     if existing_rules:
-        tokens.extend(
-            rule.strip() for rule in existing_rules.split(";") if rule.strip()
-        )
+        tokens.extend(rule.strip() for rule in existing_rules.split(";") if rule.strip())
 
     # Keep the last seen index for each key so we can replace effective rules.
     key_to_index: dict[str, int] = {}
@@ -62,18 +82,35 @@ def main() -> None:
     try:
         _configure_qt_logging_env()
 
-        # Check if running in desktop viewer mode
-        if len(sys.argv) > 1 and sys.argv[1] == "--desktop-viewer":
-            # Route to desktop viewer instead of main UI
+        parser = _build_arg_parser()
+        parsed, unknown = parser.parse_known_args(sys.argv[1:])
+        if parsed.agent is not None:
+            _opencode_cli_overrides["agent"] = parsed.agent
+        if parsed.model is not None:
+            _opencode_cli_overrides["model"] = parsed.model
+        if parsed.variant is not None:
+            _opencode_cli_overrides["variant"] = parsed.variant
+
+        if parsed.desktop_viewer:
             from agents_runner.ui.desktop_viewer import run_desktop_viewer
 
-            # Remove --desktop-viewer from argv so argparse works correctly
-            viewer_args = [sys.argv[0]] + sys.argv[2:]
+            viewer_args = [sys.argv[0]] + unknown
             sys.exit(run_desktop_viewer(viewer_args))
+
+        if parsed.mcp_server:
+            import asyncio
+
+            from agents_runner.mcp.cli import run_mcp_server
+
+            try:
+                asyncio.run(run_mcp_server())
+            except KeyboardInterrupt:
+                pass
+            return
 
         from agents_runner.ui.runtime.app import run_app
 
-        run_app(sys.argv)
+        run_app([sys.argv[0]] + unknown)
     except SystemExit:
         raise
     except BaseException as error:
@@ -96,7 +133,5 @@ def main() -> None:
                 file=sys.stderr,
                 flush=True,
             )
-        traceback.print_exception(
-            type(error), error, error.__traceback__, file=sys.stderr
-        )
+        traceback.print_exception(type(error), error, error.__traceback__, file=sys.stderr)
         sys.exit(1)

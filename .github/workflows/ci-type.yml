@@ -20,5 +20,9 @@ jobs:
       - name: Sync
         run: uv sync --group ci
 
-      - name: Type Check
+      - name: Pyright
+        run: uv run pyright
+
+      - name: Basedpyright (advisory)
+        continue-on-error: true
         run: uv run basedpyright

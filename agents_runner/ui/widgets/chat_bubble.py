@@ -89,10 +89,7 @@ def _render_markdown_html(source: str) -> str:
     )
     styled = styled.replace(
         "<code>",
-        (
-            "<code style='font-family: JetBrains Mono, Fira Code, "
-            "DejaVu Sans Mono, monospace;'>"
-        ),
+        ("<code style='font-family: JetBrains Mono, Fira Code, DejaVu Sans Mono, monospace;'>"),
     )
     return styled
 
@@ -132,10 +129,8 @@ class _BubbleSurface(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._tail_side = "left"
-        self._tone = resolve_chat_bubble_tone(
-            role="other", env_stain="slate", username="unknown"
-        )
-        self.setAttribute(Qt.WA_StyledBackground, True)
+        self._tone = resolve_chat_bubble_tone(role="other", env_stain="slate", username="unknown")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
 
     def set_tail_side(self, side: str) -> None:
@@ -179,7 +174,7 @@ class _BubbleSurface(QWidget):
         path = path.united(tail_path)
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         painter.setPen(self._tone.border)
         painter.setBrush(self._tone.fill)
         painter.drawPath(path)
@@ -196,9 +191,7 @@ class ChatBubbleWidget(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._tone = resolve_chat_bubble_tone(
-            role="other", env_stain="slate", username="unknown"
-        )
+        self._tone = resolve_chat_bubble_tone(role="other", env_stain="slate", username="unknown")
         self._flipped = False
         self._timestamp_text = ""
         self._body_source = ""
@@ -211,7 +204,7 @@ class ChatBubbleWidget(QWidget):
 
         self._hover_timestamp = QLabel("")
         self._hover_timestamp.setVisible(False)
-        self._hover_timestamp.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._hover_timestamp.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self._surface = _BubbleSurface()
         self._surface.setMaximumWidth(self._MAX_BUBBLE_WIDTH)
@@ -227,7 +220,7 @@ class ChatBubbleWidget(QWidget):
         self._header_layout.setSpacing(8)
 
         self._author = QLabel("unknown")
-        self._author.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._author.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self._actions_host = QWidget()
         self._actions_layout = QHBoxLayout(self._actions_host)
@@ -238,10 +231,10 @@ class ChatBubbleWidget(QWidget):
 
         self._body = QLabel("")
         self._body.setWordWrap(True)
-        self._body.setTextFormat(Qt.RichText)
+        self._body.setTextFormat(Qt.TextFormat.RichText)
         self._body.setOpenExternalLinks(True)
         self._body.setTextInteractionFlags(
-            Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse
+            Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.LinksAccessibleByMouse
         )
         self._content_layout.addWidget(self._body)
 
@@ -255,23 +248,31 @@ class ChatBubbleWidget(QWidget):
         _clear_layout(self._root)
 
         if self._flipped:
-            self._root.addWidget(self._hover_timestamp, 0, Qt.AlignLeft | Qt.AlignTop)
+            self._root.addWidget(
+                self._hover_timestamp,
+                0,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+            )
             self._root.addStretch(1)
             self._root.addWidget(self._surface, 0)
             self._surface.set_tail_side("right")
         else:
             self._root.addWidget(self._surface, 0)
             self._root.addStretch(1)
-            self._root.addWidget(self._hover_timestamp, 0, Qt.AlignRight | Qt.AlignTop)
+            self._root.addWidget(
+                self._hover_timestamp,
+                0,
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
+            )
             self._surface.set_tail_side("left")
 
         _clear_layout(self._header_layout)
         if self._flipped:
             self._header_layout.addWidget(self._author, 0)
             self._header_layout.addStretch(1)
-            self._header_layout.addWidget(self._actions_host, 0, Qt.AlignRight)
+            self._header_layout.addWidget(self._actions_host, 0, Qt.AlignmentFlag.AlignRight)
         else:
-            self._header_layout.addWidget(self._actions_host, 0, Qt.AlignLeft)
+            self._header_layout.addWidget(self._actions_host, 0, Qt.AlignmentFlag.AlignLeft)
             self._header_layout.addWidget(self._author, 0)
             self._header_layout.addStretch(1)
 
@@ -281,12 +282,8 @@ class ChatBubbleWidget(QWidget):
 
     def _apply_tone(self) -> None:
         self._surface.set_tone(self._tone)
-        self._author.setStyleSheet(
-            f"font-size: 13px; font-weight: 700; color: {rgba(self._tone.text_primary)};"
-        )
-        self._hover_timestamp.setStyleSheet(
-            f"font-size: 12px; color: {rgba(self._tone.text_secondary)};"
-        )
+        self._author.setStyleSheet(f"font-size: 13px; font-weight: 700; color: {rgba(self._tone.text_primary)};")
+        self._hover_timestamp.setStyleSheet(f"font-size: 12px; color: {rgba(self._tone.text_secondary)};")
         self._body.setStyleSheet(
             "\n".join(
                 [
@@ -378,7 +375,7 @@ class ChatBubbleWidget(QWidget):
                 if not action_id:
                     continue
                 button = QToolButton()
-                button.setToolButtonStyle(Qt.ToolButtonIconOnly)
+                button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
                 button.setFixedSize(24, 24)
                 icon_name = str(action.icon_name or "").strip()
                 if icon_name:
@@ -387,9 +384,7 @@ class ChatBubbleWidget(QWidget):
                 if not tooltip:
                     tooltip = str(action.label or action_id.title())
                 button.setToolTip(tooltip)
-                button.clicked.connect(
-                    lambda _checked=False, aid=action_id: self._emit_action(aid)
-                )
+                button.clicked.connect(lambda _checked=False, aid=action_id: self._emit_action(aid))
                 self._actions_layout.addWidget(button, 0)
                 self._action_buttons[action_id] = button
 

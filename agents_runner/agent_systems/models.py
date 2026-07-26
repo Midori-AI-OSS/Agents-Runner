@@ -148,6 +148,4 @@ class AgentSystemPlugin(Protocol):
         cmd_parts: list[str],
         agent_cli_args: list[str],
         prompt: str,
-        is_help_launch: bool,
-        help_repos_dir: str,
     ) -> list[str]: ...

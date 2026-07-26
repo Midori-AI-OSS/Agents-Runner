@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from PySide6.QtCore import Qt
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QIntValidator
+from PySide6.QtWidgets import QComboBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QHeaderView
 from PySide6.QtWidgets import QLabel
@@ -76,9 +77,7 @@ def _simple_row_from_spec(spec: str) -> _PortRow | None:
             return None
         if host.strip() and not host.strip().isdigit():
             return None
-        return _PortRow(
-            host_port=str(host or "").strip(), container_port=container.strip()
-        )
+        return _PortRow(host_port=str(host or "").strip(), container_port=container.strip())
 
     if len(parts) == 2:
         host, container = parts
@@ -86,9 +85,7 @@ def _simple_row_from_spec(spec: str) -> _PortRow | None:
             return None
         if host.strip() and not host.strip().isdigit():
             return None
-        return _PortRow(
-            host_port=str(host or "").strip(), container_port=container.strip()
-        )
+        return _PortRow(host_port=str(host or "").strip(), container_port=container.strip())
 
     if len(parts) == 1:
         (container,) = parts
@@ -101,6 +98,7 @@ def _simple_row_from_spec(spec: str) -> _PortRow | None:
 
 class PortsTabWidget(QWidget):
     ports_changed = Signal()
+    network_host_changed = Signal()
 
     _COL_HOST = 0
     _COL_CONTAINER = 1
@@ -129,20 +127,14 @@ class PortsTabWidget(QWidget):
         self._table = QTableWidget()
         self._table.setColumnCount(3)
         self._table.setHorizontalHeaderLabels(["Host port", "Container port", ""])
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_HOST, QHeaderView.Stretch
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_CONTAINER, QHeaderView.Stretch
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_REMOVE, QHeaderView.ResizeToContents
-        )
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_HOST, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_CONTAINER, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeToContents)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
         self._table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
         self._table.setSelectionMode(QTableWidget.NoSelection)
-        self._table.setFocusPolicy(Qt.NoFocus)
+        self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         simple_layout.addWidget(self._table, 1)
 
@@ -171,18 +163,30 @@ class PortsTabWidget(QWidget):
         self._stack.addWidget(self._advanced_view)
         self._stack.setCurrentIndex(0)
 
+        self._network_host_override_mode = QComboBox()
+        self._network_host_override_mode.addItem("Inherit global setting", "inherit")
+        self._network_host_override_mode.addItem("Enabled", "enabled")
+        self._network_host_override_mode.addItem("Disabled", "disabled")
+        self._network_host_override_mode.setToolTip("Override the global host networking setting for this environment.")
+        self._network_host_override_mode.currentIndexChanged.connect(self._on_network_host_override_changed)
+
         footer_row = QHBoxLayout()
         footer_row.setSpacing(BUTTON_ROW_SPACING)
         self._add_port_label = QLabel("Add port")
         footer_row.addWidget(self._add_port_label)
         self._add_port_btn = QToolButton()
         self._add_port_btn.setText("Add")
-        self._add_port_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._add_port_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._add_port_btn.clicked.connect(self._on_add_row)
         footer_row.addWidget(self._add_port_btn)
+        self._network_host_sep = QLabel("::")
+        self._network_host_sep.setStyleSheet("color: rgba(237, 239, 245, 160); margin-left: 6px; margin-right: 4px;")
+        footer_row.addWidget(self._network_host_sep)
+        footer_row.addWidget(QLabel("Network host"))
+        footer_row.addWidget(self._network_host_override_mode)
         footer_row.addStretch(1)
         self._mode_btn = QToolButton()
-        self._mode_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._mode_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._mode_btn.clicked.connect(self._on_mode_clicked)
         footer_row.addWidget(self._mode_btn)
         layout.addLayout(footer_row)
@@ -193,12 +197,8 @@ class PortsTabWidget(QWidget):
     def set_desktop_effective_enabled(self, enabled: bool) -> None:
         self._desktop_effective_enabled = bool(enabled)
 
-    def set_ports(
-        self, ports: list[str], unlocked: bool, advanced_acknowledged: bool
-    ) -> None:
-        raw_ports = [
-            str(p or "").strip() for p in (ports or []) if str(p or "").strip()
-        ]
+    def set_ports(self, ports: list[str], unlocked: bool, advanced_acknowledged: bool) -> None:
+        raw_ports = [str(p or "").strip() for p in (ports or []) if str(p or "").strip()]
         wants_unlocked = bool(unlocked)
         wants_ack = bool(advanced_acknowledged) or wants_unlocked
 
@@ -253,10 +253,7 @@ class PortsTabWidget(QWidget):
             if not (_PORT_MIN <= container_port <= _PORT_MAX):
                 errors.append(f"row {row_index}: container port out of range")
                 continue
-            if (
-                self._desktop_effective_enabled
-                and container_port == _DESKTOP_CONTAINER_PORT
-            ):
+            if self._desktop_effective_enabled and container_port == _DESKTOP_CONTAINER_PORT:
                 errors.append(
                     f"row {row_index}: container port {_DESKTOP_CONTAINER_PORT} is reserved when desktop is enabled"
                 )
@@ -276,6 +273,19 @@ class PortsTabWidget(QWidget):
 
         return ports, False, bool(self._advanced_acknowledged), errors
 
+    def set_network_host_override(self, mode: str) -> None:
+        idx = self._network_host_override_mode.findData(mode)
+        if idx < 0:
+            idx = self._network_host_override_mode.findData("inherit")
+        if idx >= 0:
+            self._network_host_override_mode.setCurrentIndex(idx)
+
+    def get_network_host_override(self) -> str:
+        return str(self._network_host_override_mode.currentData() or "inherit")
+
+    def _on_network_host_override_changed(self, _index: int) -> None:
+        self.network_host_changed.emit()
+
     def _on_mode_clicked(self) -> None:
         if self._unlocked:
             self._switch_to_simple_mode()
@@ -291,20 +301,19 @@ class PortsTabWidget(QWidget):
         if self._unlocked:
             self._stack.setCurrentIndex(1)
             self._mode_btn.setText("Simple Mode")
-            self._mode_btn.setToolTip(
-                "Switch to Simple mode (binds to 127.0.0.1 only)."
-            )
+            self._mode_btn.setToolTip("Switch to Simple mode (binds to 127.0.0.1 only).")
             self._add_port_label.setVisible(False)
             self._add_port_btn.setVisible(False)
+            self._network_host_sep.setVisible(False)
         else:
             self._stack.setCurrentIndex(0)
             self._mode_btn.setText("Advanced Mode")
             self._mode_btn.setToolTip(
-                "Simple mode binds ports to 127.0.0.1 only.\n"
-                "Leave Host port blank to pick a random free port."
+                "Simple mode binds ports to 127.0.0.1 only.\nLeave Host port blank to pick a random free port."
             )
             self._add_port_label.setVisible(True)
             self._add_port_btn.setVisible(True)
+            self._network_host_sep.setVisible(True)
 
     def _switch_to_advanced_mode(self) -> None:
         if not self._advanced_acknowledged:
@@ -335,9 +344,7 @@ class PortsTabWidget(QWidget):
     def _switch_to_simple_mode(self) -> None:
         ports, _unlocked, _ack, errors = self.get_ports()
         if errors:
-            QMessageBox.warning(
-                self, "Invalid ports", "Fix ports:\n" + "\n".join(errors[:12])
-            )
+            QMessageBox.warning(self, "Invalid ports", "Fix ports:\n" + "\n".join(errors[:12]))
             return
 
         rows: list[_PortRow] = []
@@ -372,24 +379,20 @@ class PortsTabWidget(QWidget):
             host.setPlaceholderText("random")
             host.setText(str(row.host_port or ""))
             host.setValidator(validator)
-            host.textChanged.connect(
-                lambda text, r=row_index: self._on_host_port_changed(r, text)
-            )
+            host.textChanged.connect(lambda text, r=row_index: self._on_host_port_changed(r, text))
             self._table.setCellWidget(row_index, self._COL_HOST, host)
 
             container = QLineEdit()
             container.setPlaceholderText("container")
             container.setText(str(row.container_port or ""))
             container.setValidator(validator)
-            container.textChanged.connect(
-                lambda text, r=row_index: self._on_container_port_changed(r, text)
-            )
+            container.textChanged.connect(lambda text, r=row_index: self._on_container_port_changed(r, text))
             self._table.setCellWidget(row_index, self._COL_CONTAINER, container)
 
             remove_btn = QToolButton()
             remove_btn.setObjectName("RowTrash")
             remove_btn.setIcon(lucide_icon("trash-2"))
-            remove_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+            remove_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
             remove_btn.setToolTip("Remove row")
             remove_btn.clicked.connect(lambda r=row_index: self._remove_row(r))
             self._table.setCellWidget(row_index, self._COL_REMOVE, remove_btn)
@@ -403,9 +406,7 @@ class PortsTabWidget(QWidget):
             if isinstance(host_widget, QLineEdit):
                 self._rows[row_index].host_port = str(host_widget.text() or "").strip()
             if isinstance(container_widget, QLineEdit):
-                self._rows[row_index].container_port = str(
-                    container_widget.text() or ""
-                ).strip()
+                self._rows[row_index].container_port = str(container_widget.text() or "").strip()
 
     def _on_host_port_changed(self, row_index: int, text: str) -> None:
         if row_index < 0 or row_index >= len(self._rows):

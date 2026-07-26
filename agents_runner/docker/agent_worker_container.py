@@ -23,16 +23,18 @@ Usage Example:
 
 import os
 import shlex
+import socket
 import time
 import selectors
 import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
+from agents_runner.agent_configs.storage import load_agent_configs
+from agents_runner.agent_configs.storage import resolve_agent_config
 from agents_runner.agent_cli import build_noninteractive_cmd, verify_cli_clause
 from agents_runner.agent_cli import agent_requires_github_token
 from agents_runner.github_token import resolve_github_token
-from agents_runner.ide_systems import get_ide_system
 from agents_runner.log_format import format_log, wrap_container_log
 from agents_runner.core.shell_templates import git_identity_clause, shell_log_statement
 
@@ -43,29 +45,28 @@ from agents_runner.docker.utils import deduplicate_mounts
 from agents_runner.environments import load_environments
 
 
-def _is_gh_context_enabled(environment_id: str | None) -> bool:
-    """Check if GitHub Context is enabled in environment settings."""
+def _load_environment(environment_id: str | None, state_path: str = "") -> Any | None:
     if not environment_id:
-        return False
+        return None
+    data_dir = os.path.dirname(str(state_path or "").strip()) if state_path else None
     try:
-        environments = load_environments()
-        env = environments.get(str(environment_id))
+        environments = load_environments(data_dir=data_dir)
+        return environments.get(str(environment_id))
     except Exception:
-        return False
+        return None
+
+
+def _is_gh_context_enabled(environment_id: str | None, state_path: str = "") -> bool:
+    """Check if GitHub Context is enabled in environment settings."""
+    env = _load_environment(environment_id, state_path)
     if env is None:
         return False
     return bool(getattr(env, "gh_context_enabled", False))
 
 
-def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
+def _needs_cross_agent_gh_token(environment_id: str | None, state_path: str = "") -> bool:
     """Check if any cross-agent allowlisted agent requires a GitHub token."""
-    if not environment_id:
-        return False
-    try:
-        environments = load_environments()
-        env = environments.get(str(environment_id))
-    except Exception:
-        return False
+    env = _load_environment(environment_id, state_path)
     if env is None or not env.cross_agent_allowlist:
         return False
     if env.agent_selection is None or not env.agent_selection.agents:
@@ -73,8 +74,26 @@ def _needs_cross_agent_gh_token(environment_id: str | None) -> bool:
 
     from agents_runner.agent_cli import normalize_agent
 
+    try:
+        agent_configs = {
+            str(config.config_id or "").strip(): config
+            for config in load_agent_configs(state_path)
+            if str(config.config_id or "").strip()
+        }
+    except Exception:
+        agent_configs = {}
+
     agent_cli_by_id: dict[str, str] = {
-        agent.agent_id: agent.agent_cli for agent in env.agent_selection.agents
+        str(agent.agent_id or "").strip(): str(
+            getattr(
+                resolve_agent_config(str(getattr(agent, "config_id", "") or "").strip(), agent_configs),
+                "agent_cli",
+                "",
+            )
+            or ""
+        ).strip()
+        for agent in env.agent_selection.agents
+        if str(getattr(agent, "agent_id", "") or "").strip()
     }
 
     for agent_id in env.cross_agent_allowlist:
@@ -110,8 +129,7 @@ class ContainerExecutor:
         self._on_log = on_log
         self._stop = stop_event
         self._container_id: str | None = None
-        self._ide_auto_mounts_cache: list[str] | None = None
-        self._ide_auto_env_cache: dict[str, str] | None = None
+        self._desktop_novnc_port: int | None = None
 
     @property
     def container_id(self) -> str | None:
@@ -135,9 +153,7 @@ class ContainerExecutor:
             desktop_state: dict[str, Any] = {}
 
             # Build preflight clause and mounts
-            preflight_clause, preflight_mounts, desktop_start_clause = (
-                self._build_preflight_clause(desktop_state)
-            )
+            preflight_clause, preflight_mounts, desktop_start_clause = self._build_preflight_clause(desktop_state)
 
             # Build environment variables
             env_args, docker_env = self._build_env_args()
@@ -164,9 +180,7 @@ class ContainerExecutor:
             # Start container
             self._container_id = run_docker(args, timeout_s=60.0, env=docker_env)
             if not self._container_id:
-                raise RuntimeError(
-                    "Failed to start container: no container ID returned"
-                )
+                raise RuntimeError("Failed to start container: no container ID returned")
 
             # Setup desktop port mapping if enabled
             if self._runtime_env.desktop_enabled:
@@ -204,9 +218,9 @@ class ContainerExecutor:
     def _build_verify_clause(self, command_argv: list[str]) -> str:
         """Build executable verification clause."""
         if self._runtime_env.custom_command_argv:
-            verify_target = str(
-                self._runtime_env.custom_verify_executable or ""
-            ).strip() or (str(command_argv[0]).strip() if command_argv else "")
+            verify_target = str(self._runtime_env.custom_verify_executable or "").strip() or (
+                str(command_argv[0]).strip() if command_argv else ""
+            )
             if verify_target:
                 verify_target_quoted = shlex.quote(verify_target)
                 return (
@@ -221,55 +235,9 @@ class ContainerExecutor:
 
     def _build_main_command_clause(self, agent_cmd: str) -> str:
         """Build the command execution clause."""
-        if not self._runtime_env.custom_command_argv:
-            return f"exec {agent_cmd}"
+        return f"exec {agent_cmd}"
 
-        launch_mode = str(self._runtime_env.launch_mode or "").strip().lower()
-        if launch_mode != "ide":
-            return f"exec {agent_cmd}"
-
-        ide_log_path = "/tmp/agents-artifacts/ide-cli.log"
-        signature_pattern = (
-            "MIT-SHM|X_ShmAttach|X Window System error|"
-            "X Error of failed request[^\\n]*BadAccess|"
-            "BadAccess[^\\n]*MIT-SHM"
-        )
-        safe_agent_cmd = f"{agent_cmd} --disable-gpu --disable-dev-shm-usage"
-        return (
-            "mkdir -p /tmp/agents-artifacts; "
-            f"IDE_LOG={shlex.quote(ide_log_path)}; "
-            "SAFE_INITIAL=0; "
-            'if [ "${AGENTS_RUNNER_IDE_SAFE_MODE:-0}" = "1" ]; then SAFE_INITIAL=1; fi; '
-            'if [ "$SAFE_INITIAL" = "1" ]; then '
-            f"{shell_log_statement('ide', 'retry', 'INFO', 'safe-mode-initial')}; "
-            "set +e; "
-            f'QT_X11_NO_MITSHM=1 {safe_agent_cmd} 2>&1 | tee "$IDE_LOG"; '
-            "IDE_EXIT=${PIPESTATUS[0]}; "
-            "set -e; "
-            "else "
-            f"{shell_log_statement('ide', 'retry', 'INFO', 'attempt=1 mode=normal')}; "
-            "set +e; "
-            f'{agent_cmd} 2>&1 | tee "$IDE_LOG"; '
-            "IDE_EXIT=${PIPESTATUS[0]}; "
-            "set -e; "
-            "fi; "
-            "SIGNATURE_MATCH=0; "
-            f'if grep -Eiq {shlex.quote(signature_pattern)} "$IDE_LOG"; then SIGNATURE_MATCH=1; fi; '
-            'if [ "$SAFE_INITIAL" = "0" ] && [ "$SIGNATURE_MATCH" = "1" ]; then '
-            f"{shell_log_statement('ide', 'retry', 'WARN', 'safe-retry-triggered')}; "
-            "set +e; "
-            f'AGENTS_RUNNER_IDE_SAFE_RETRY=1 QT_X11_NO_MITSHM=1 {safe_agent_cmd} 2>&1 | tee -a "$IDE_LOG"; '
-            "IDE_EXIT=${PIPESTATUS[0]}; "
-            "set -e; "
-            'elif [ "$SAFE_INITIAL" = "1" ] && [ "$SIGNATURE_MATCH" = "1" ]; then '
-            f"{shell_log_statement('ide', 'retry', 'INFO', 'safe-retry-skipped-already-safe')}; "
-            "fi; "
-            "exit ${IDE_EXIT}"
-        )
-
-    def _build_preflight_clause(
-        self, desktop_state: dict[str, Any]
-    ) -> tuple[str, list[str], str]:
+    def _build_preflight_clause(self, desktop_state: dict[str, Any]) -> tuple[str, list[str], str]:
         """Build phase clauses and mounts.
 
         Returns:
@@ -280,20 +248,14 @@ class ContainerExecutor:
         desktop_start_clause = ""
 
         # Agent install preflight
-        if (
-            self._runtime_env.install_preflight_tmp_path is not None
-            and not self._runtime_env.install_preflight_cached
-        ):
+        if self._runtime_env.install_preflight_tmp_path is not None and not self._runtime_env.install_preflight_cached:
             clause, mounts = self._build_install_preflight(
                 self._runtime_env.install_preflight_tmp_path,
                 self._runtime_env.install_container_path,
             )
             preflight_clause += clause
             preflight_mounts.extend(mounts)
-        elif (
-            self._runtime_env.install_preflight_tmp_path is not None
-            and self._runtime_env.install_preflight_cached
-        ):
+        elif self._runtime_env.install_preflight_tmp_path is not None and self._runtime_env.install_preflight_cached:
             self._on_log(
                 format_log(
                     "phase",
@@ -304,10 +266,7 @@ class ContainerExecutor:
             )
 
         # System preflight
-        if (
-            self._runtime_env.system_preflight_enabled
-            and not self._runtime_env.system_preflight_cached
-        ):
+        if self._runtime_env.system_preflight_enabled and not self._runtime_env.system_preflight_cached:
             clause, mounts = self._build_system_preflight()
             preflight_clause += clause
             preflight_mounts.extend(mounts)
@@ -324,36 +283,10 @@ class ContainerExecutor:
             preflight_clause += clause
             preflight_mounts.extend(mounts)
 
-        # IDE preflight
-        if (
-            self._runtime_env.ide_preflight_tmp_path is not None
-            and not self._runtime_env.ide_preflight_cached
-        ):
-            clause, mounts = self._build_ide_preflight(
-                self._runtime_env.ide_preflight_tmp_path,
-                self._runtime_env.ide_container_path,
-            )
-            preflight_clause += clause
-            preflight_mounts.extend(mounts)
-        elif (
-            self._runtime_env.ide_preflight_tmp_path is not None
-            and self._runtime_env.ide_preflight_cached
-        ):
-            self._on_log(
-                format_log(
-                    "phase",
-                    "cache",
-                    "INFO",
-                    "ide setup cached; skipping runtime ide preflight",
-                )
-            )
-
         # Desktop install preflight
         if self._runtime_env.desktop_enabled:
             preflight_clause += self._build_desktop_install_preflight_clause()
-            desktop_start_clause = self._build_desktop_start_clause(
-                self._runtime_env.desktop_display
-            )
+            desktop_start_clause = self._build_desktop_start_clause(self._runtime_env.desktop_display)
             desktop_state.update(
                 {
                     "DesktopEnabled": True,
@@ -372,9 +305,7 @@ class ContainerExecutor:
 
         return preflight_clause, preflight_mounts, desktop_start_clause
 
-    def _build_install_preflight(
-        self, tmp_path: str, container_path: str
-    ) -> tuple[str, list[str]]:
+    def _build_install_preflight(self, tmp_path: str, container_path: str) -> tuple[str, list[str]]:
         """Build install preflight clause and mounts."""
         self._on_log(
             format_log(
@@ -428,12 +359,8 @@ class ContainerExecutor:
                     "using pre-installed desktop from cached image",
                 )
             )
-            return self._build_desktop_cached_install_preflight(
-                self._runtime_env.desktop_display
-            )
-        return self._build_desktop_runtime_install_preflight(
-            self._runtime_env.desktop_display
-        )
+            return self._build_desktop_cached_install_preflight(self._runtime_env.desktop_display)
+        return self._build_desktop_runtime_install_preflight(self._runtime_env.desktop_display)
 
     def _build_desktop_cached_install_preflight(self, _desktop_display: str) -> str:
         """Build install preflight clause for cached desktop image."""
@@ -457,6 +384,8 @@ class ContainerExecutor:
             'export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-xcb}"; '
             'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg-$(id -un)}"; '
             'mkdir -p "${XDG_RUNTIME_DIR}"; '
+            'VNC_PORT="${VNC_PORT:-5901}"; '
+            'NOVNC_PORT="${NOVNC_PORT:-6080}"; '
             'RUNTIME_BASE="/tmp/agents-runner-desktop/${AGENTS_RUNNER_TASK_ID:-task}"; '
             'mkdir -p "${RUNTIME_BASE}"/{run,log,out,config}; '
         )
@@ -467,24 +396,19 @@ class ContainerExecutor:
             "if [ -f /etc/profile.d/desktop-env.sh ]; then source /etc/profile.d/desktop-env.sh; fi; "
         )
         service_start = (
-            'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport 5901 >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & sleep 0.25; '
+            'Xvnc :1 -geometry 1280x800 -depth 24 -SecurityTypes None -localhost -rfbport "${VNC_PORT}" >"${RUNTIME_BASE}/log/xvnc.log" 2>&1 & sleep 0.25; '
             '(fluxbox >"${RUNTIME_BASE}/log/fluxbox.log" 2>&1 &) || true; '
             '(xterm -geometry 80x24+10+10 >"${RUNTIME_BASE}/log/xterm.log" 2>&1 &) || true; '
-            'if [ -n "${NOVNC_WEB}" ]; then websockify --web="${NOVNC_WEB}" 6080 127.0.0.1:5901 >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
+            'if [ -n "${NOVNC_WEB}" ]; then websockify --web="${NOVNC_WEB}" "${NOVNC_PORT}" "127.0.0.1:${VNC_PORT}" >"${RUNTIME_BASE}/log/novnc.log" 2>&1 & '
             f"else {shell_log_statement('desktop', 'vnc', 'ERROR', 'noVNC web root not found')} >&2; fi; "
         )
         return (
-            common_setup
-            + novnc_setup
-            + service_start
-            + f"{shell_log_statement('desktop', 'vnc', 'INFO', 'ready')}; "
+            common_setup + novnc_setup + service_start + f"{shell_log_statement('desktop', 'vnc', 'INFO', 'ready')}; "
             f"{shell_log_statement('desktop', 'vnc', 'INFO', 'DISPLAY=${DISPLAY}')}; "
             f"{shell_log_statement('desktop', 'vnc', 'INFO', 'screenshot: import -display :1 -window root /tmp/agents-artifacts/${AGENTS_RUNNER_TASK_ID:-task}-desktop.png')}; "
         )
 
-    def _build_settings_preflight(
-        self, tmp_path: str, container_path: str
-    ) -> tuple[str, list[str]]:
+    def _build_settings_preflight(self, tmp_path: str, container_path: str) -> tuple[str, list[str]]:
         """Build settings preflight clause and mounts."""
         self._on_log(
             format_log(
@@ -502,9 +426,7 @@ class ContainerExecutor:
             ["-v", f"{tmp_path}:{container_path}:ro"],
         )
 
-    def _build_setup_agents_preflight(
-        self, tmp_path: str, container_path: str
-    ) -> tuple[str, list[str]]:
+    def _build_setup_agents_preflight(self, tmp_path: str, container_path: str) -> tuple[str, list[str]]:
         """Build setup-agents preflight clause and mounts."""
         self._on_log(
             format_log(
@@ -529,26 +451,6 @@ class ContainerExecutor:
             ["-v", f"{tmp_path}:{container_path}:ro"],
         )
 
-    def _build_ide_preflight(
-        self, tmp_path: str, container_path: str
-    ) -> tuple[str, list[str]]:
-        """Build IDE preflight clause and mounts."""
-        self._on_log(
-            format_log(
-                "host",
-                "none",
-                "INFO",
-                f"ide preflight enabled; mounting -> {container_path} (ro)",
-            )
-        )
-        return (
-            f"PREFLIGHT_IDE={shlex.quote(container_path)}; "
-            f"{shell_log_statement('env', 'setup', 'INFO', 'ide: running')}; "
-            '/bin/bash "${PREFLIGHT_IDE}"; '
-            f"{shell_log_statement('env', 'setup', 'INFO', 'ide: done')}; ",
-            ["-v", f"{tmp_path}:{container_path}:ro"],
-        )
-
     def _build_env_args(self) -> tuple[list[str], dict[str, str] | None]:
         """Build environment variable arguments. Returns (env_args, docker_env)."""
         env_args: list[str] = []
@@ -559,24 +461,20 @@ class ContainerExecutor:
             k = str(key).strip()
             if k:
                 env_args.extend(["-e", f"{k}={value}"])
+        if "UV_PROJECT_ENVIRONMENT" not in (self._config.env_vars or {}):
+            env_args.extend(["-e", "UV_PROJECT_ENVIRONMENT=/tmp/.uv-venv"])
+        if "UV_PYTHON_INSTALL_DIR" not in (self._config.env_vars or {}):
+            env_args.extend(["-e", "UV_PYTHON_INSTALL_DIR=/tmp/.uv-python"])
         env_args.extend(["-e", "MIDORI_AI_AGENTS_RUNNER_INTERACTIVE=false"])
-
-        configured_env_keys = {
-            str(key).strip()
-            for key in (self._config.env_vars or {}).keys()
-            if str(key).strip()
-        }
-        _auto_mounts, auto_env_vars = self._resolve_ide_auto_mount_data()
-        for key, value in sorted(auto_env_vars.items()):
-            if key in configured_env_keys:
-                continue
-            env_args.extend(["-e", f"{key}={value}"])
 
         # Forward GitHub tokens if needed
         needs_token = (
-            _is_gh_context_enabled(self._config.environment_id)
+            _is_gh_context_enabled(self._config.environment_id, self._config.state_path)
             or agent_requires_github_token(self._runtime_env.agent_cli)
-            or _needs_cross_agent_gh_token(self._config.environment_id)
+            or _needs_cross_agent_gh_token(
+                self._config.environment_id,
+                self._config.state_path,
+            )
         )
 
         if needs_token:
@@ -594,6 +492,20 @@ class ContainerExecutor:
 
         # Add desktop env vars if enabled
         if self._runtime_env.desktop_enabled:
+            if bool(self._config.network_host):
+                if self._desktop_novnc_port is None:
+                    self._desktop_novnc_port = self._allocate_localhost_port()
+                desktop_vnc_port = self._allocate_localhost_port()
+                while desktop_vnc_port == self._desktop_novnc_port:
+                    desktop_vnc_port = self._allocate_localhost_port()
+                env_args.extend(
+                    [
+                        "-e",
+                        f"VNC_PORT={desktop_vnc_port}",
+                        "-e",
+                        f"NOVNC_PORT={self._desktop_novnc_port}",
+                    ]
+                )
             env_args.extend(
                 [
                     "-e",
@@ -606,14 +518,14 @@ class ContainerExecutor:
 
     def _build_port_args(self) -> list[str]:
         """Build port mapping arguments."""
+        if bool(self._config.network_host):
+            return []
         port_args: list[str] = []
         for port_spec in self._config.ports or []:
             spec = str(port_spec or "").strip()
             if not spec:
                 continue
-            if self._runtime_env.desktop_enabled and self._publishes_container_port(
-                spec, 6080
-            ):
+            if self._runtime_env.desktop_enabled and self._publishes_container_port(spec, 6080):
                 continue
             port_args.extend(["-p", spec])
         if self._runtime_env.desktop_enabled:
@@ -646,19 +558,13 @@ class ContainerExecutor:
         all_mounts: list[str] = []
 
         # Add primary config mount
-        all_mounts.append(
-            f"{self._config.host_config_dir}:{self._runtime_env.config_container_dir}"
-        )
+        all_mounts.append(f"{self._config.host_config_dir}:{self._runtime_env.config_container_dir}")
 
         # Add workspace mount
-        all_mounts.append(
-            f"{self._runtime_env.host_mount}:{self._config.container_workdir}"
-        )
+        all_mounts.append(f"{self._runtime_env.host_mount}:{self._config.container_workdir}")
 
         # Add artifacts mount
-        all_mounts.append(
-            f"{self._runtime_env.artifacts_staging_dir}:/tmp/agents-artifacts"
-        )
+        all_mounts.append(f"{self._runtime_env.artifacts_staging_dir}:/tmp/agents-artifacts")
 
         # Add extra mounts from config
         for mount in self._config.extra_mounts or []:
@@ -672,36 +578,6 @@ class ContainerExecutor:
             if m:
                 all_mounts.append(m)
 
-        auto_mounts, _auto_env_vars = self._resolve_ide_auto_mount_data()
-        conflicting_paths: set[str] = set()
-        existing_container_paths = {
-            self._mount_container_path(mount)
-            for mount in all_mounts
-            if self._mount_container_path(mount)
-        }
-        for auto_mount in auto_mounts:
-            container_path = self._mount_container_path(auto_mount)
-            if container_path and container_path in existing_container_paths:
-                conflicting_paths.add(container_path)
-
-        if conflicting_paths:
-            for container_path in sorted(conflicting_paths):
-                self._on_log(
-                    format_log(
-                        "ide",
-                        "mounts",
-                        "WARN",
-                        f"managed ide mount overrides existing mount at {container_path}",
-                    )
-                )
-
-        filtered_mounts = [
-            mount
-            for mount in all_mounts
-            if self._mount_container_path(mount) not in conflicting_paths
-        ]
-        all_mounts = [*auto_mounts, *filtered_mounts]
-
         # Deduplicate by container path, preserving order
         deduplicated = deduplicate_mounts(all_mounts)
 
@@ -711,125 +587,6 @@ class ContainerExecutor:
             extra_mount_args.extend(["-v", mount])
 
         return extra_mount_args
-
-    @staticmethod
-    def _normalize_mount_mode(mode: str) -> str:
-        normalized = str(mode or "").strip().lower()
-        if normalized == "ro":
-            return "ro"
-        return "rw"
-
-    @staticmethod
-    def _expand_host_path(path: str) -> str:
-        return os.path.abspath(os.path.expanduser(os.path.expandvars(str(path or ""))))
-
-    @staticmethod
-    def _mount_container_path(mount: str) -> str:
-        parts = str(mount or "").strip().split(":")
-        if len(parts) < 2:
-            return ""
-        return str(parts[1] or "").strip()
-
-    def _is_ide_launch_mode(self) -> bool:
-        return str(self._runtime_env.launch_mode or "").strip().lower() == "ide"
-
-    def _resolve_ide_auto_mount_data(self) -> tuple[list[str], dict[str, str]]:
-        if (
-            self._ide_auto_mounts_cache is not None
-            and self._ide_auto_env_cache is not None
-        ):
-            return list(self._ide_auto_mounts_cache), dict(self._ide_auto_env_cache)
-
-        resolved_mounts: list[str] = []
-        resolved_env: dict[str, str] = {}
-        self._ide_auto_mounts_cache = []
-        self._ide_auto_env_cache = {}
-
-        if not self._is_ide_launch_mode():
-            return resolved_mounts, resolved_env
-
-        ide_name = str(self._config.ide_system or "").strip()
-        if not ide_name:
-            self._on_log(
-                format_log(
-                    "ide",
-                    "mounts",
-                    "WARN",
-                    "ide launch requested but ide_system is empty; skipping managed mounts",
-                )
-            )
-            return resolved_mounts, resolved_env
-
-        try:
-            plugin = get_ide_system(ide_name)
-        except Exception as exc:
-            self._on_log(
-                format_log(
-                    "ide",
-                    "mounts",
-                    "WARN",
-                    f"managed mounts skipped for unknown IDE system '{ide_name}': {exc}",
-                )
-            )
-            return resolved_mounts, resolved_env
-
-        mount_specs = tuple(getattr(plugin, "auto_mount_specs", ()) or ())
-        for spec in mount_specs:
-            host_path = self._expand_host_path(
-                str(getattr(spec, "host_path", "") or "")
-            )
-            container_path = str(getattr(spec, "container_path", "") or "").strip()
-            mode = self._normalize_mount_mode(str(getattr(spec, "mode", "rw") or "rw"))
-            if not host_path or not container_path:
-                continue
-            try:
-                os.makedirs(host_path, exist_ok=True)
-            except Exception as exc:
-                self._on_log(
-                    format_log(
-                        "ide",
-                        "mounts",
-                        "WARN",
-                        f"managed ide mount skipped (host path unavailable): {host_path} ({exc})",
-                    )
-                )
-                continue
-            resolved_mounts.append(f"{host_path}:{container_path}:{mode}")
-
-        if bool(getattr(plugin, "auto_mount_host_keyring", False)):
-            host_keyrings = self._expand_host_path("~/.local/share/keyrings")
-            container_keyrings = "/home/midori-ai/.local/share/keyrings"
-            if os.path.exists(host_keyrings):
-                resolved_mounts.append(f"{host_keyrings}:{container_keyrings}:rw")
-            else:
-                self._on_log(
-                    format_log(
-                        "ide",
-                        "mounts",
-                        "WARN",
-                        f"auto-mount skipped (missing host path): {host_keyrings}",
-                    )
-                )
-
-        if bool(getattr(plugin, "auto_mount_session_dbus", False)):
-            uid = str(os.getuid())
-            dbus_bus_path = f"/run/user/{uid}/bus"
-            if os.path.exists(dbus_bus_path):
-                resolved_mounts.append(f"{dbus_bus_path}:{dbus_bus_path}:rw")
-                resolved_env["DBUS_SESSION_BUS_ADDRESS"] = f"unix:path={dbus_bus_path}"
-            else:
-                self._on_log(
-                    format_log(
-                        "ide",
-                        "mounts",
-                        "WARN",
-                        f"auto-mount skipped (missing host path): {dbus_bus_path}",
-                    )
-                )
-
-        self._ide_auto_mounts_cache = list(resolved_mounts)
-        self._ide_auto_env_cache = dict(resolved_env)
-        return resolved_mounts, resolved_env
 
     def _build_docker_run_args(
         self,
@@ -845,10 +602,12 @@ class ContainerExecutor:
     ) -> list[str]:
         """Build complete Docker run command arguments."""
         gpu_args = ["--gpus", "all"] if bool(self._config.gpu_enabled) else []
+        network_args = ["--network", "host"] if bool(self._config.network_host) else []
         return [
             "run",
             *platform_args,
             *gpu_args,
+            *network_args,
             "-d",
             "-t",
             "--name",
@@ -870,20 +629,24 @@ class ContainerExecutor:
             f"{command_clause}",
         ]
 
-    def _setup_desktop_port_mapping(
-        self, desktop_state: dict[str, Any], docker_env: dict[str, str] | None
-    ) -> None:
+    def _setup_desktop_port_mapping(self, desktop_state: dict[str, Any], docker_env: dict[str, str] | None) -> None:
         """Setup desktop port mapping and noVNC URL."""
         assert self._container_id is not None
+        if bool(self._config.network_host):
+            host_port = int(self._desktop_novnc_port or 6080)
+            desktop_state["NoVncUrl"] = f"http://127.0.0.1:{host_port}/vnc.html"
+            self._on_log(
+                format_log(
+                    "desktop",
+                    "vnc",
+                    "INFO",
+                    f"noVNC URL: {desktop_state['NoVncUrl']}",
+                )
+            )
+            return
         try:
-            mapping = run_docker(
-                ["port", self._container_id, "6080/tcp"], timeout_s=10.0, env=docker_env
-            )
-            first = (
-                (mapping or "").strip().splitlines()[0]
-                if (mapping or "").strip()
-                else ""
-            )
+            mapping = run_docker(["port", self._container_id, "6080/tcp"], timeout_s=10.0, env=docker_env)
+            first = (mapping or "").strip().splitlines()[0] if (mapping or "").strip() else ""
             host_port = first.rsplit(":", 1)[-1].strip() if ":" in first else ""
             if host_port.isdigit():
                 desktop_state["NoVncUrl"] = f"http://127.0.0.1:{host_port}/vnc.html"
@@ -897,6 +660,12 @@ class ContainerExecutor:
                 )
         except Exception as exc:
             self._on_log(format_log("desktop", "vnc", "ERROR", str(exc)))
+
+    @staticmethod
+    def _allocate_localhost_port() -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            return int(sock.getsockname()[1])
 
     def _report_state(self, desktop_state: dict[str, Any]) -> None:
         """Report current container state."""
@@ -954,18 +723,11 @@ class ContainerExecutor:
                 # Read log output
                 for key, _ in selector.select(timeout=0.05):
                     try:
-                        chunk = key.fileobj.readline()
+                        fileobj: Any = key.fileobj
+                        chunk = fileobj.readline()
                         if chunk:
-                            stream = (
-                                "stdout"
-                                if key.fileobj == logs_proc.stdout
-                                else "stderr"
-                            )
-                            self._on_log(
-                                wrap_container_log(
-                                    self._container_id, stream, chunk.rstrip("\n")
-                                )
-                            )
+                            stream = "stdout" if key.fileobj == logs_proc.stdout else "stderr"
+                            self._on_log(wrap_container_log(self._container_id, stream, chunk.rstrip("\n")))
                     except Exception:
                         pass
         finally:

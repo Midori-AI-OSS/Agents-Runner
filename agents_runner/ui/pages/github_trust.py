@@ -47,9 +47,7 @@ def effective_trusted_users(
     if env is None:
         return global_set
 
-    env_list = normalize_github_usernames(
-        getattr(env, "agentsnova_trusted_users_env", []) or []
-    )
+    env_list = normalize_github_usernames(getattr(env, "agentsnova_trusted_users_env", []) or [])
     env_set = set(env_list)
     mode = normalize_trusted_mode(getattr(env, "agentsnova_trusted_mode", "inherit"))
     if mode == TRUST_MODE_REPLACE:
@@ -91,10 +89,7 @@ def collect_seed_usernames_for_cloned_environments(
 
     owners: list[str] = []
     for env in environments:
-        if (
-            str(getattr(env, "workspace_type", "") or "").strip().lower()
-            != WORKSPACE_CLONED
-        ):
+        if str(getattr(env, "workspace_type", "") or "").strip().lower() != WORKSPACE_CLONED:
             continue
         context = resolve_environment_github_repo(env)
         if context is None:

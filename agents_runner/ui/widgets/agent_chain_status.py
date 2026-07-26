@@ -41,9 +41,7 @@ class AgentStatusIndicator(QWidget):
 
         # Position indicator
         position_label = QLabel(f"{position}.")
-        position_label.setStyleSheet(
-            "color: rgba(237, 239, 245, 120); font-weight: 600;"
-        )
+        position_label.setStyleSheet("color: rgba(237, 239, 245, 120); font-weight: 600;")
         layout.addWidget(position_label)
 
         # Agent name
@@ -78,8 +76,8 @@ class AgentStatusIndicator(QWidget):
         # Clear existing indicators
         while self._status_layout.count():
             item = self._status_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item.widget():  # pyright: ignore[reportOptionalMemberAccess]
+                item.widget().deleteLater()  # pyright: ignore[reportOptionalMemberAccess]
 
         if not self._status:
             # Unknown status
@@ -95,9 +93,7 @@ class AgentStatusIndicator(QWidget):
         # Logged in indicator
         if self._status.installed:
             if self._status.status_type == StatusType.UNKNOWN:
-                self._add_indicator(
-                    "?", self._status.status_text, "rgba(160, 160, 160, 255)"
-                )
+                self._add_indicator("?", self._status.status_text, "rgba(160, 160, 160, 255)")
             elif self._status.logged_in:
                 self._add_indicator("✓", "Logged in", "rgba(95, 205, 143, 255)")
             else:
@@ -162,7 +158,7 @@ class AgentChainStatusWidget(QWidget):
         # Test Chain button
         self._test_btn = QToolButton()
         self._test_btn.setText("Test Chain")
-        self._test_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._test_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._test_btn.clicked.connect(self.test_chain_requested.emit)
         header_layout.addWidget(self._test_btn)
 
@@ -182,8 +178,8 @@ class AgentChainStatusWidget(QWidget):
         # Clear existing indicators
         while self._chain_layout.count():
             item = self._chain_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item.widget():  # pyright: ignore[reportOptionalMemberAccess]
+                item.widget().deleteLater()  # pyright: ignore[reportOptionalMemberAccess]
         self._agent_indicators.clear()
 
         if not agents:

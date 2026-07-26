@@ -6,19 +6,23 @@ import time
 
 from datetime import datetime
 from datetime import timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import MainWindowHints
+else:
+    MainWindowHints = object
 
 from PySide6.QtCore import Qt
-from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import WORKSPACE_CLONED
-from agents_runner.environments import save_environment
 from agents_runner.environments.cleanup import cleanup_task_workspace
 from agents_runner.log_format import format_log
 from agents_runner.log_format import format_log_display
 from agents_runner.log_format import prettify_log_line
+from agents_runner.log_stream import normalize_log_stream_chunk
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_task_payload
 from agents_runner.persistence import save_task_payload
@@ -33,161 +37,7 @@ from agents_runner.ui.utils import parse_docker_time
 from agents_runner.ui.utils import stain_color
 
 
-class MainWindowTaskEventsMixin:
-    _IDE_NOVNC_AUTO_OPEN_DELAY_S = 15.0
-
-    def _stop_ide_novnc_auto_open_timer(self, task_id: str) -> None:
-        timer = self._ide_novnc_auto_open_timers.pop(task_id, None)
-        if timer is None:
-            return
-        try:
-            timer.stop()
-            timer.deleteLater()
-        except Exception:
-            pass
-
-    def _clear_ide_novnc_auto_open_state(self, task_id: str) -> None:
-        task_id = str(task_id or "").strip()
-        if not task_id:
-            return
-        self._stop_ide_novnc_auto_open_timer(task_id)
-        self._ide_novnc_auto_open_urls.pop(task_id, None)
-        self._ide_novnc_auto_open_ready_s.pop(task_id, None)
-        self._ide_novnc_auto_open_deferred.discard(task_id)
-        self._ide_novnc_auto_opened_tasks.discard(task_id)
-
-    def _is_task_viewed_in_details(self, task_id: str) -> bool:
-        task_id = str(task_id or "").strip()
-        if not task_id:
-            return False
-        try:
-            if not bool(self._details.isVisible()):
-                return False
-        except Exception:
-            return False
-        try:
-            return str(self._details.current_task_id() or "").strip() == task_id
-        except Exception:
-            return False
-
-    def _is_ide_container_task(self, task: Task) -> bool:
-        launch_mode = str(getattr(task, "launch_mode", "") or "").strip().lower()
-        if launch_mode != "ide":
-            return False
-        if str(getattr(task, "novnc_url", "") or "").strip():
-            return True
-        return bool(getattr(task, "headless_desktop_enabled", False))
-
-    def _schedule_ide_novnc_auto_open_timer(
-        self, *, task_id: str, delay_ms: int
-    ) -> None:
-        task_id = str(task_id or "").strip()
-        if not task_id:
-            return
-        existing = self._ide_novnc_auto_open_timers.get(task_id)
-        if existing is not None:
-            try:
-                existing.stop()
-                existing.deleteLater()
-            except Exception:
-                pass
-        timer = QTimer(self)
-        timer.setSingleShot(True)
-        timer.timeout.connect(
-            lambda task_id=task_id: self._on_ide_novnc_auto_open_timeout(task_id)
-        )
-        timer.start(max(0, int(delay_ms)))
-        self._ide_novnc_auto_open_timers[task_id] = timer
-
-    def _maybe_schedule_ide_novnc_auto_open(self, task: Task) -> None:
-        task_id = str(getattr(task, "task_id", "") or "").strip()
-        if not task_id:
-            return
-        if task_id in self._ide_novnc_auto_opened_tasks:
-            self._stop_ide_novnc_auto_open_timer(task_id)
-            return
-        if not self._ide_novnc_auto_open_enabled():
-            self._clear_ide_novnc_auto_open_state(task_id)
-            return
-        if not self._is_ide_container_task(task):
-            self._clear_ide_novnc_auto_open_state(task_id)
-            return
-        if not task.is_active():
-            self._clear_ide_novnc_auto_open_state(task_id)
-            return
-
-        novnc_url = str(getattr(task, "novnc_url", "") or "").strip()
-        if not novnc_url:
-            self._stop_ide_novnc_auto_open_timer(task_id)
-            return
-
-        ready_since = self._ide_novnc_auto_open_ready_s.get(task_id)
-        if ready_since is None:
-            ready_since = time.time()
-            self._ide_novnc_auto_open_ready_s[task_id] = ready_since
-        self._ide_novnc_auto_open_urls[task_id] = novnc_url
-
-        mode = self._ide_novnc_auto_open_mode()
-        if mode == "viewing_only" and not self._is_task_viewed_in_details(task_id):
-            self._ide_novnc_auto_open_deferred.add(task_id)
-            self._stop_ide_novnc_auto_open_timer(task_id)
-            return
-
-        self._ide_novnc_auto_open_deferred.discard(task_id)
-        elapsed_s = max(0.0, time.time() - ready_since)
-        remaining_s = max(0.0, self._IDE_NOVNC_AUTO_OPEN_DELAY_S - elapsed_s)
-        self._schedule_ide_novnc_auto_open_timer(
-            task_id=task_id, delay_ms=int(round(remaining_s * 1000))
-        )
-
-    def _on_ide_novnc_auto_open_timeout(self, task_id: str) -> None:
-        task_id = str(task_id or "").strip()
-        if not task_id:
-            return
-        self._stop_ide_novnc_auto_open_timer(task_id)
-        task = self._tasks.get(task_id)
-        if task is None:
-            self._clear_ide_novnc_auto_open_state(task_id)
-            return
-        if not self._ide_novnc_auto_open_enabled():
-            self._clear_ide_novnc_auto_open_state(task_id)
-            return
-        if not self._is_ide_container_task(task) or not task.is_active():
-            self._clear_ide_novnc_auto_open_state(task_id)
-            return
-
-        novnc_url = str(
-            task.novnc_url or self._ide_novnc_auto_open_urls.get(task_id) or ""
-        )
-        novnc_url = novnc_url.strip()
-        if not novnc_url:
-            return
-
-        mode = self._ide_novnc_auto_open_mode()
-        if mode == "viewing_only" and not self._is_task_viewed_in_details(task_id):
-            self._ide_novnc_auto_open_deferred.add(task_id)
-            return
-
-        launched = self._details.launch_desktop_viewer_for_task(
-            task_id=task_id,
-            url=novnc_url,
-        )
-        if launched:
-            self._ide_novnc_auto_opened_tasks.add(task_id)
-            self._ide_novnc_auto_open_deferred.discard(task_id)
-
-    def _on_task_viewed_for_ide_novnc_auto_open(self, task_id: str) -> None:
-        task_id = str(task_id or "").strip()
-        if not task_id:
-            return
-        if task_id not in self._ide_novnc_auto_open_deferred:
-            return
-        task = self._tasks.get(task_id)
-        if task is None:
-            self._clear_ide_novnc_auto_open_state(task_id)
-            return
-        self._maybe_schedule_ide_novnc_auto_open(task)
-
+class MainWindowTaskEventsMixin(MainWindowHints):
     def _open_task_details(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         if not task_id:
@@ -200,15 +50,17 @@ class MainWindowTaskEventsMixin:
                 return
             task = deserialize_task(Task, payload)
             if task.logs:
-                task.logs = [
-                    format_log_display(prettify_log_line(line))
-                    for line in task.logs
-                    if isinstance(line, str)
-                ]
+                normalized_logs: list[str] = []
+                for line in task.logs:
+                    if not isinstance(line, str):
+                        continue
+                    normalized_logs.extend(normalize_log_stream_chunk(line))
+                    if len(normalized_logs) > 6000:
+                        normalized_logs = normalized_logs[-5000:]
+                task.logs = [format_log_display(prettify_log_line(line)) for line in normalized_logs]
 
         self._details.show_task(task)
         self._show_task_details()
-        self._on_task_viewed_for_ide_novnc_auto_open(task_id)
 
     def _on_task_container_action(self, task_id: str, action: str) -> None:
         task_id = str(task_id or "").strip()
@@ -218,14 +70,10 @@ class MainWindowTaskEventsMixin:
             return
 
         bridge = self._bridges.get(task_id)
-        container_id = task.container_id or (
-            bridge.container_id if bridge is not None else None
-        )
+        container_id = task.container_id or (bridge.container_id if bridge is not None else None)
         container_id = str(container_id or "").strip()
         if not container_id:
-            QMessageBox.information(
-                self, "No container", "This task does not have a container ID yet."
-            )
+            QMessageBox.information(self, "No container", "This task does not have a container ID yet.")
             return
 
         if action in {"stop", "kill"}:
@@ -264,16 +112,10 @@ class MainWindowTaskEventsMixin:
                     bridge = None
 
             if bridge is None:
-                docker_args = (
-                    ["kill", container_id]
-                    if is_kill
-                    else ["stop", "-t", "1", container_id]
-                )
+                docker_args = ["kill", container_id] if is_kill else ["stop", "-t", "1", container_id]
                 self._on_task_log(
                     task_id,
-                    format_log(
-                        "docker", "cmd", "INFO", f"docker {' '.join(docker_args)}"
-                    ),
+                    format_log("docker", "cmd", "INFO", f"docker {' '.join(docker_args)}"),
                 )
                 try:
                     completed = subprocess.run(
@@ -284,17 +126,13 @@ class MainWindowTaskEventsMixin:
                         timeout=10.0 if is_kill else 20.0,
                     )
                 except Exception as exc:
-                    self._on_task_log(
-                        task_id, format_log("docker", "cmd", "ERROR", str(exc))
-                    )
+                    self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", str(exc)))
                     completed = None
 
                 if completed is not None and completed.returncode != 0:
                     detail = (completed.stderr or completed.stdout or "").strip()
                     if detail:
-                        self._on_task_log(
-                            task_id, format_log("docker", "cmd", "ERROR", detail)
-                        )
+                        self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", detail))
 
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
@@ -350,9 +188,7 @@ class MainWindowTaskEventsMixin:
             return
 
         if completed.returncode != 0:
-            detail = (
-                completed.stderr or completed.stdout or ""
-            ).strip() or f"docker exited {completed.returncode}"
+            detail = (completed.stderr or completed.stdout or "").strip() or f"docker exited {completed.returncode}"
             self._on_task_log(task_id, format_log("docker", "cmd", "ERROR", detail))
             QMessageBox.warning(self, "Docker command failed", detail)
 
@@ -369,7 +205,6 @@ class MainWindowTaskEventsMixin:
         task = self._tasks.get(task_id)
         if task is None:
             return
-        self._clear_ide_novnc_auto_open_state(task_id)
 
         prompt = task.prompt_one_line()
         message = (
@@ -377,10 +212,7 @@ class MainWindowTaskEventsMixin:
             f"{prompt}\n\n"
             "This removes it from the list, archives it for auditing, and will attempt to stop/remove any running container."
         )
-        if (
-            QMessageBox.question(self, "Discard task?", message)
-            != QMessageBox.StandardButton.Yes
-        ):
+        if QMessageBox.question(self, "Discard task?", message) != QMessageBox.StandardButton.Yes:
             return
 
         task.status = "discarded"
@@ -398,9 +230,7 @@ class MainWindowTaskEventsMixin:
         prep_worker = prep_workers.get(task_id)
         prep_thread = prep_threads.get(task_id)
         prep_bridge = prep_bridges.get(task_id)
-        container_id = task.container_id or (
-            bridge.container_id if bridge is not None else None
-        )
+        container_id = task.container_id or (bridge.container_id if bridge is not None else None)
         watch = self._interactive_watch.get(task_id)
         if watch is not None:
             _, stop = watch
@@ -528,14 +358,12 @@ class MainWindowTaskEventsMixin:
         include_supervisor_events: bool,
     ) -> None:
         proxy = self._ensure_task_event_proxy(task_id)
-        bridge.state.connect(proxy.enqueue_state, Qt.DirectConnection)
-        bridge.log.connect(proxy.enqueue_log, Qt.DirectConnection)
-        bridge.done.connect(proxy.enqueue_done, Qt.DirectConnection)
+        bridge.state.connect(proxy.enqueue_state, Qt.ConnectionType.DirectConnection)
+        bridge.log.connect(proxy.enqueue_log, Qt.ConnectionType.DirectConnection)
+        bridge.done.connect(proxy.enqueue_done, Qt.ConnectionType.DirectConnection)
         if include_supervisor_events:
-            bridge.retry_attempt.connect(proxy.enqueue_retry, Qt.DirectConnection)
-            bridge.agent_switched.connect(
-                proxy.enqueue_agent_switched, Qt.DirectConnection
-            )
+            bridge.retry_attempt.connect(proxy.enqueue_retry, Qt.ConnectionType.DirectConnection)
+            bridge.agent_switched.connect(proxy.enqueue_agent_switched, Qt.ConnectionType.DirectConnection)
 
     def _drain_task_event_proxies(self) -> None:
         proxies = getattr(self, "_task_event_proxies", {})
@@ -549,9 +377,7 @@ class MainWindowTaskEventsMixin:
             events = proxy.drain(max_events=600)
             if not events:
                 continue
-            self._dispatch_buffered_task_events(
-                task_id=task_id, proxy=proxy, events=events
-            )
+            self._dispatch_buffered_task_events(task_id=task_id, proxy=proxy, events=events)
             if proxy.releasable():
                 self._remove_task_event_proxy(task_id)
 
@@ -571,7 +397,7 @@ class MainWindowTaskEventsMixin:
 
         for event in events:
             if event.kind == "state":
-                payload = event.payload if isinstance(event.payload, dict) else {}
+                payload = event.payload if isinstance(event.payload, dict) else {}  # pyright: ignore[reportUnknownVariableType]
                 state_events.append(dict(payload))
                 continue
             if event.kind == "done" and done_event is None:
@@ -589,7 +415,7 @@ class MainWindowTaskEventsMixin:
             if event.kind == "retry":
                 payload = event.payload
                 if isinstance(payload, tuple) and len(payload) == 3:
-                    attempt_number, agent, delay = payload
+                    attempt_number, agent, delay = payload  # pyright: ignore[reportUnknownVariableType]
                     self._on_bridge_retry_attempt(
                         task_id,
                         int(attempt_number),
@@ -600,7 +426,7 @@ class MainWindowTaskEventsMixin:
             if event.kind == "agent_switched":
                 payload = event.payload
                 if isinstance(payload, tuple) and len(payload) == 2:
-                    from_agent, to_agent = payload
+                    from_agent, to_agent = payload  # pyright: ignore[reportUnknownVariableType]
                     self._on_bridge_agent_switched(
                         task_id,
                         str(from_agent),
@@ -613,7 +439,7 @@ class MainWindowTaskEventsMixin:
         done_payload = done_event.payload
         if not isinstance(done_payload, tuple) or len(done_payload) != 4:
             return
-        exit_code, error, artifacts, metadata = done_payload
+        exit_code, error, artifacts, metadata = done_payload  # pyright: ignore[reportUnknownVariableType]
         self._on_bridge_done(
             task_id,
             int(exit_code),
@@ -623,14 +449,19 @@ class MainWindowTaskEventsMixin:
         )
         proxy.mark_bridge_done_dispatched()
 
-    def _on_bridge_state(self, task_id: str, state: dict[str, Any]) -> None:
+    def _on_bridge_state(self, task_id: str, state: dict[str, Any], *args: object) -> None:
         self._on_task_state(task_id, state)
 
-    def _on_bridge_log(self, task_id: str, line: str) -> None:
+    def _on_bridge_log(self, task_id: str, line: str, *args: object) -> None:
         self._on_task_log(task_id, line)
 
     def _on_bridge_retry_attempt(
-        self, task_id: str, attempt_number: int, agent: str, delay: float
+        self,
+        task_id: str,
+        attempt_number: int,
+        agent: str,
+        delay: float,
+        *args: object,
     ) -> None:
         """Handle retry attempt signal from supervisor."""
         task = self._tasks.get(task_id)
@@ -654,9 +485,7 @@ class MainWindowTaskEventsMixin:
         spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
 
-    def _on_bridge_agent_switched(
-        self, task_id: str, from_agent: str, to_agent: str
-    ) -> None:
+    def _on_bridge_agent_switched(self, task_id: str, from_agent: str, to_agent: str, *args: object) -> None:
         """Handle agent switch signal from supervisor."""
         task = self._tasks.get(task_id)
         if task is None:
@@ -686,6 +515,7 @@ class MainWindowTaskEventsMixin:
         error: object,
         artifacts: list[Any],
         metadata: dict[str, Any] | None = None,
+        *args: object,
     ) -> None:
         bridge = self._bridges.get(task_id)
         task = self._tasks.get(task_id)
@@ -764,7 +594,7 @@ class MainWindowTaskEventsMixin:
             return
         if not isinstance(artifacts, list):
             return
-        artifact_uuids = [str(item) for item in artifacts if str(item).strip()]
+        artifact_uuids = [str(item) for item in artifacts if str(item).strip()]  # pyright: ignore[reportUnknownVariableType]
         if not artifact_uuids:
             return
         task.artifacts = artifact_uuids
@@ -775,18 +605,35 @@ class MainWindowTaskEventsMixin:
         self._details.update_task(task)
         self._schedule_save()
 
-    def _on_task_log(self, task_id: str, line: str) -> None:
+    def _on_task_log(self, task_id: str, log_line: str) -> None:
         task = self._tasks.get(task_id)
         if task is None:
             return
-        cleaned = prettify_log_line(line)
-        task.logs.append(cleaned)  # Store raw canonical format
+
+        display_lines: list[str] = []
+        saw_non_empty_log = False
+        saw_docker_pull = False
+
+        for normalized_line in normalize_log_stream_chunk(log_line):
+            cleaned = prettify_log_line(normalized_line)
+            if not cleaned:
+                continue
+            saw_non_empty_log = True
+            task.logs.append(cleaned)  # Persist normalized canonical/legacy lines
+            display_lines.append(format_log_display(cleaned))
+            if "docker pull" in cleaned:
+                saw_docker_pull = True
+
+        if not display_lines and not saw_docker_pull:
+            return
+
         if len(task.logs) > 6000:
             task.logs = task.logs[-5000:]
-        display_line = format_log_display(cleaned)  # Format for display
-        self._details.append_log(task_id, display_line)
-        self._schedule_save()
-        if cleaned and self._dashboard.isVisible() and task.is_active():
+
+        if display_lines:
+            self._details.append_logs(task_id, display_lines)
+
+        if saw_non_empty_log and self._dashboard.isVisible() and task.is_active():
             now_s = time.time()
             last_s = float(self._dashboard_log_refresh_s.get(task_id) or 0.0)
             if now_s - last_s >= 0.25:
@@ -795,13 +642,15 @@ class MainWindowTaskEventsMixin:
                 stain = env.color if env else None
                 spinner = stain_color(env.color) if env else None
                 self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-        if "docker pull" in cleaned and (task.status or "").lower() != "pulling":
+
+        if saw_docker_pull and (task.status or "").lower() != "pulling":
             task.status = "pulling"
             env = self._environments.get(task.environment_id)
             stain = env.color if env else None
             spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            self._schedule_save()
+
+        self._schedule_save()
 
     def _on_task_state(self, task_id: str, state: dict[str, Any]) -> None:
         task = self._tasks.get(task_id)
@@ -811,7 +660,6 @@ class MainWindowTaskEventsMixin:
 
         current = (task.status or "").lower()
         if current in {"cancelled", "killed"}:
-            self._clear_ide_novnc_auto_open_state(task_id)
             if bridge and bridge.container_id:
                 task.container_id = bridge.container_id
             finished_at = parse_docker_time(state.get("FinishedAt"))
@@ -851,17 +699,10 @@ class MainWindowTaskEventsMixin:
         novnc_url = str(state.get("NoVncUrl") or "").strip()
         if novnc_url:
             task.novnc_url = novnc_url
-        desktop_display = str(state.get("DesktopDisplay") or "").strip()
-        if desktop_display:
-            task.desktop_display = desktop_display
 
         if current not in {"done", "failed"}:
             if incoming in {"exited", "dead"} and task.exit_code is not None:
-                task.status = (
-                    "done"
-                    if (incoming == "exited" and task.exit_code == 0)
-                    else "failed"
-                )
+                task.status = "done" if (incoming == "exited" and task.exit_code == 0) else "failed"
                 if task.finished_at is None:
                     task.finished_at = datetime.now(tz=timezone.utc)
                 self._try_start_queued_tasks()
@@ -873,56 +714,7 @@ class MainWindowTaskEventsMixin:
         spinner = stain_color(env.color) if env else None
         self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
         self._details.update_task(task)
-        self._maybe_schedule_ide_novnc_auto_open(task)
         self._schedule_save()
-
-    def _remember_ide_safe_mode_if_needed(self, task: Task) -> None:
-        launch_mode = str(getattr(task, "launch_mode", "") or "").strip().lower()
-        if launch_mode != "ide":
-            return
-        ide_system = str(getattr(task, "ide_system", "") or "").strip().lower()
-        if not ide_system:
-            return
-        saw_retry_marker = any(
-            "safe-retry-triggered" in str(line or "") for line in (task.logs or [])
-        )
-        if not saw_retry_marker:
-            return
-        env_id = str(getattr(task, "environment_id", "") or "").strip()
-        if not env_id:
-            return
-        env = self._environments.get(env_id)
-        if env is None:
-            return
-        existing_map = getattr(env, "ide_safe_mode_by_system", {})
-        safe_map = dict(existing_map) if isinstance(existing_map, dict) else {}
-        if bool(safe_map.get(ide_system, False)):
-            return
-        safe_map[ide_system] = True
-        env.ide_safe_mode_by_system = safe_map
-        try:
-            save_environment(env)
-        except Exception as exc:
-            self._on_task_log(
-                task.task_id,
-                format_log(
-                    "ide",
-                    "retry",
-                    "WARN",
-                    f"failed to persist safe mode for ide={ide_system}: {exc}",
-                ),
-            )
-            return
-        self._environments[env.env_id] = env
-        self._on_task_log(
-            task.task_id,
-            format_log(
-                "ide",
-                "retry",
-                "INFO",
-                f"remembered safe mode for ide={ide_system}",
-            ),
-        )
 
     def _on_task_done(
         self,
@@ -935,7 +727,6 @@ class MainWindowTaskEventsMixin:
         task = self._tasks.get(task_id)
         if task is None:
             return
-        self._clear_ide_novnc_auto_open_state(task_id)
         try:
             self.host_log.emit(
                 task_id,
@@ -982,7 +773,6 @@ class MainWindowTaskEventsMixin:
             else:
                 task.status = "done" if int(exit_code) == 0 else "failed"
 
-            self._remember_ide_safe_mode_if_needed(task)
             task.git = derive_task_git_metadata(task)
 
             # Validate git metadata for cloned repo tasks
@@ -1057,51 +847,7 @@ class MainWindowTaskEventsMixin:
         finally:
             pass
 
-    def _cleanup_cloned_repo_workspace_async(self, task_id: str, env_id: str) -> None:
-        """Clean up cloned repo workspace for a task asynchronously.
-
-        This is used when PR creation is skipped (otherwise the PR worker
-        performs cleanup after finishing).
-        """
-        import os
-
-        try:
-            state_path = getattr(self, "_state_path", "")
-            if not state_path:
-                self._on_task_log(
-                    task_id,
-                    format_log(
-                        "gh",
-                        "cleanup",
-                        "WARN",
-                        "cleanup skipped: state path not available",
-                    ),
-                )
-                return
-
-            self._on_task_log(
-                task_id,
-                format_log("gh", "cleanup", "INFO", "cleaning up task workspace"),
-            )
-            data_dir = os.path.dirname(state_path)
-            cleanup_success = cleanup_task_workspace(
-                env_id=env_id,
-                task_id=task_id,
-                data_dir=data_dir,
-                on_log=lambda msg: self._on_task_log(task_id, msg),
-            )
-            if cleanup_success:
-                self._on_task_log(
-                    task_id,
-                    format_log("gh", "cleanup", "INFO", "task workspace cleaned"),
-                )
-        except Exception as cleanup_exc:
-            self._on_task_log(
-                task_id,
-                format_log("gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}"),
-            )
-
-    def _start_artifact_finalization(self, task: Task) -> None:
+    def _start_artifact_finalization(self, task: Task, *args: object) -> None:
         if getattr(task, "_artifact_finalization_started", False):
             return
         try:
@@ -1113,9 +859,7 @@ class MainWindowTaskEventsMixin:
         timeout_s = 30.0
         if runner_config is not None:
             try:
-                timeout_s = float(
-                    getattr(runner_config, "artifact_collection_timeout_s")
-                )
+                timeout_s = float(getattr(runner_config, "artifact_collection_timeout_s"))
             except Exception:
                 timeout_s = 30.0
         if timeout_s <= 0.0:

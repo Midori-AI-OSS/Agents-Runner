@@ -45,9 +45,7 @@ __all__ = [
 ]
 
 
-def _delete_checkout_dir(
-    dest_dir: str, *, on_log: Callable[[str], None] | None = None
-) -> None:
+def _delete_checkout_dir(dest_dir: str, *, on_log: Callable[[str], None] | None = None) -> None:
     path = os.path.abspath(os.path.expanduser((dest_dir or "").strip()))
     if not path:
         raise GhManagementError("missing destination directory")
@@ -56,9 +54,7 @@ def _delete_checkout_dir(
     if not os.path.isdir(path):
         return
     if on_log is not None:
-        on_log(
-            format_log("gh", "cleanup", "INFO", f"deleting corrupted checkout: {path}")
-        )
+        on_log(format_log("gh", "cleanup", "INFO", f"deleting corrupted checkout: {path}"))
     try:
         shutil.rmtree(path)
     except OSError as exc:
@@ -143,11 +139,7 @@ def prepare_github_repo_for_task(
                         )
                     )
             except Exception as exc:
-                _log(
-                    format_log(
-                        "gh", "lock", "ERROR", f"Could not check lock file age: {exc}"
-                    )
-                )
+                _log(format_log("gh", "lock", "ERROR", f"Could not check lock file age: {exc}"))
                 _log(
                     format_log(
                         "gh",
@@ -169,11 +161,7 @@ def prepare_github_repo_for_task(
 
             result: dict[str, str] = {"repo_root": "", "base_branch": "", "branch": ""}
             if not is_git_repo(dest_dir):
-                _log(
-                    format_log(
-                        "gh", "repo", "INFO", "not a git repo; skipping branch/PR"
-                    )
-                )
+                _log(format_log("gh", "repo", "INFO", "not a git repo; skipping branch/PR"))
                 return result
 
             pr_head = str(pr_head_ref or "").strip()
@@ -227,10 +215,7 @@ def prepare_github_repo_for_task(
                             "gh",
                             "branch",
                             "WARN",
-                            (
-                                "failed to fetch PR head branch "
-                                f"{pr_head}; using fallback base: {exc}"
-                            ),
+                            (f"failed to fetch PR head branch {pr_head}; using fallback base: {exc}"),
                         )
                     )
                     pr_head = ""
@@ -244,11 +229,7 @@ def prepare_github_repo_for_task(
                 task_branch_custom_template=task_branch_custom_template,
             )
             if plan is None:
-                _log(
-                    format_log(
-                        "gh", "repo", "INFO", "not a git repo; skipping branch/PR"
-                    )
-                )
+                _log(format_log("gh", "repo", "INFO", "not a git repo; skipping branch/PR"))
                 return result
 
             current_branch = git_current_branch(plan.repo_root)

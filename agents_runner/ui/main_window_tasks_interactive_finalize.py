@@ -6,6 +6,12 @@ import time
 
 from datetime import datetime
 from datetime import timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import MainWindowHints
+else:
+    MainWindowHints = object
 
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QMessageBox
@@ -15,7 +21,8 @@ from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.environments.model import INTERACTIVE_PR_NO_PROMPT_MODE_MANUAL_REVIEW
 from agents_runner.environments.model import normalize_interactive_pr_no_prompt_mode
-from agents_runner.environments.cleanup import cleanup_task_workspace
+from agents_runner.gh.git_ops import git_remote_url
+from agents_runner.gh.permissions import check_pr_creation_capability_for_repo_ref
 from agents_runner.gh_management import commit_push_and_pr
 from agents_runner.gh_management import GhManagementError
 from agents_runner.log_format import format_log
@@ -26,7 +33,7 @@ from agents_runner.ui.task_git_metadata import derive_task_git_metadata
 from agents_runner.ui.utils import stain_color
 
 
-class MainWindowTasksInteractiveFinalizeMixin:
+class MainWindowTasksInteractiveFinalizeMixin(MainWindowHints):
     def _on_interactive_finished(self, task_id: str, exit_code: int) -> None:
         task_id = str(task_id or "").strip()
         watch = self._interactive_watch.pop(task_id, None)
@@ -95,19 +102,15 @@ class MainWindowTasksInteractiveFinalizeMixin:
             and task.workspace_type == WORKSPACE_CLONED
             and task.gh_repo_root
             and task.gh_branch
-            and str(task.gh_branch or "").strip()
-            != str(task.gh_base_branch or "").strip()
+            and str(task.gh_branch or "").strip() != str(task.gh_base_branch or "").strip()
             and not task.gh_pr_url
+            and not str(getattr(task, "gh_pr_unavailable_reason", "") or "").strip()
         ):
             base = str(task.gh_base_branch or "").strip()
             base_display = base or "auto"
-            prompt_enabled = bool(
-                getattr(env, "interactive_pr_prompt_enabled", True) if env else True
-            )
+            prompt_enabled = bool(getattr(env, "interactive_pr_prompt_enabled", True) if env else True)
             no_prompt_mode = normalize_interactive_pr_no_prompt_mode(
-                getattr(env, "interactive_pr_no_prompt_mode", "auto_create_pr")
-                if env
-                else "auto_create_pr"
+                getattr(env, "interactive_pr_no_prompt_mode", "auto_create_pr") if env else "auto_create_pr"
             )
 
             def _queue_interactive_pr_creation() -> None:
@@ -123,20 +126,13 @@ class MainWindowTasksInteractiveFinalizeMixin:
                         bool(task.gh_use_host_cli),
                         (str(task.gh_pr_metadata_path or "").strip() or None),
                         str(task.agent_cli or "").strip(),
-                        str(task.agent_cli_args or "").strip(),
                     ),
                     daemon=True,
                 ).start()
 
             if prompt_enabled:
-                message = (
-                    "Interactive run finished.\n\n"
-                    f"Create a PR from {task.gh_branch} -> {base_display}?"
-                )
-                if (
-                    QMessageBox.question(self, "Create pull request?", message)
-                    == QMessageBox.StandardButton.Yes
-                ):
+                message = f"Interactive run finished.\n\nCreate a PR from {task.gh_branch} -> {base_display}?"
+                if QMessageBox.question(self, "Create pull request?", message) == QMessageBox.StandardButton.Yes:
                     self.host_log.emit(
                         task_id,
                         format_log(
@@ -178,6 +174,16 @@ class MainWindowTasksInteractiveFinalizeMixin:
                     ),
                 )
                 _queue_interactive_pr_creation()
+        elif str(getattr(task, "gh_pr_unavailable_reason", "") or "").strip():
+            self.host_log.emit(
+                task_id,
+                format_log(
+                    "gh",
+                    "pr",
+                    "INFO",
+                    (f"Interactive PR creation skipped: {task.gh_pr_unavailable_reason}"),
+                ),
+            )
 
         # Mark finalization done for interactive tasks (PR handling selected above).
         self.host_log.emit(
@@ -199,9 +205,7 @@ class MainWindowTasksInteractiveFinalizeMixin:
         task_id: str,
         provided_path: str | None,
     ) -> str | None:
-        normalized_provided = os.path.abspath(
-            os.path.expanduser(str(provided_path or "").strip())
-        )
+        normalized_provided = os.path.abspath(os.path.expanduser(str(provided_path or "").strip()))
         if normalized_provided:
             if os.path.exists(normalized_provided):
                 return normalized_provided
@@ -228,11 +232,7 @@ class MainWindowTasksInteractiveFinalizeMixin:
             )
             return None
 
-        fallback_path = os.path.abspath(
-            os.path.expanduser(
-                pr_metadata_host_path(os.path.dirname(state_path), task_id)
-            )
-        )
+        fallback_path = os.path.abspath(os.path.expanduser(pr_metadata_host_path(os.path.dirname(state_path), task_id)))
         if os.path.exists(fallback_path):
             if fallback_path != normalized_provided:
                 self.host_log.emit(
@@ -268,7 +268,6 @@ class MainWindowTasksInteractiveFinalizeMixin:
         use_gh: bool,
         pr_metadata_path: str | None = None,
         agent_cli: str = "",
-        agent_cli_args: str = "",
         is_override: bool = False,
     ) -> None:
         if not repo_root or not branch:
@@ -276,11 +275,7 @@ class MainWindowTasksInteractiveFinalizeMixin:
 
         start_s = time.monotonic()
 
-        # Get task info for cleanup - extract environment_id safely (needed even on early-return paths)
         task = self._tasks.get(task_id)
-        env_id = ""
-        if task and hasattr(task, "environment_id"):
-            env_id = str(task.environment_id or "").strip()
 
         try:
             # Step 1: Pre-flight validation
@@ -304,10 +299,25 @@ class MainWindowTasksInteractiveFinalizeMixin:
                 for name, msg in failed_checks:
                     self.host_log.emit(
                         task_id,
-                        format_log(
-                            "gh", "pr", "ERROR", f"validation failed: {name}: {msg}"
-                        ),
+                        format_log("gh", "pr", "ERROR", f"validation failed: {name}: {msg}"),
                     )
+                if task and any(name == "gh_cli" for name, _msg in failed_checks):
+                    task.gh_pr_unavailable_status = "unavailable"
+                    task.gh_pr_unavailable_reason = "; ".join(msg for name, msg in failed_checks if name == "gh_cli")
+                    self._schedule_save()
+                return
+
+            existing_skip_reason = str(getattr(task, "gh_pr_unavailable_reason", "") or "").strip() if task else ""
+            if existing_skip_reason:
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "gh",
+                        "pr",
+                        "INFO",
+                        f"[2/6] PR creation skipped: {existing_skip_reason}",
+                    ),
+                )
                 return
 
             # Check for existing PR (informational)
@@ -330,29 +340,42 @@ class MainWindowTasksInteractiveFinalizeMixin:
 
             self.host_log.emit(
                 task_id,
-                format_log(
-                    "gh", "pr", "INFO", "[2/6] No existing PR found, proceeding..."
-                ),
+                format_log("gh", "pr", "INFO", "[2/6] No existing PR found, proceeding..."),
             )
+
+            remote_url = git_remote_url(repo_root) or ""
+            capability = check_pr_creation_capability_for_repo_ref(
+                remote_url,
+                use_gh=bool(use_gh),
+            )
+            if not capability.can_create_pr:
+                self.host_log.emit(
+                    task_id,
+                    format_log(
+                        "gh",
+                        "pr",
+                        "WARN",
+                        f"[3/6] PR creation unavailable: {capability.reason}",
+                    ),
+                )
+                if task:
+                    task.gh_pr_unavailable_status = capability.status
+                    task.gh_pr_unavailable_reason = capability.reason
+                    self._schedule_save()
+                return
 
             self.host_log.emit(
                 task_id,
                 format_log("gh", "pr", "INFO", "[3/6] Preparing PR metadata..."),
             )
 
-            prompt_line = (
-                (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
-            )
+            prompt_line = (prompt_text or "").strip().splitlines()[0] if prompt_text else ""
             default_title = f"Agent Runner: {prompt_line or task_id}"
             default_title = normalize_pr_title(default_title, fallback=default_title)
 
             agent_display = get_agent_display_name(agent_cli) if agent_cli else "Agent"
-            agent_link = (
-                format_agent_markdown_link(agent_cli) if agent_cli else agent_display
-            )
-            runners_link = (
-                "[Agents Runner](https://github.com/Midori-AI-OSS/Agents-Runner)"
-            )
+            agent_link = format_agent_markdown_link(agent_cli) if agent_cli else agent_display
+            runners_link = "[Agents Runner](https://github.com/Midori-AI-OSS/Agents-Runner)"
 
             default_body = (
                 f"Automated by {runners_link}.\n\n"
@@ -363,22 +386,14 @@ class MainWindowTasksInteractiveFinalizeMixin:
             )
             provided_metadata_path = (
                 str(pr_metadata_path or "").strip()
-                or (
-                    str(getattr(task, "gh_pr_metadata_path", "") or "").strip()
-                    if task
-                    else ""
-                )
+                or (str(getattr(task, "gh_pr_metadata_path", "") or "").strip() if task else "")
                 or None
             )
             resolved_pr_metadata_path = self._resolve_pr_metadata_path_for_finalize(
                 task_id=task_id,
                 provided_path=provided_metadata_path,
             )
-            metadata = (
-                load_pr_metadata(resolved_pr_metadata_path)
-                if resolved_pr_metadata_path
-                else None
-            )
+            metadata = load_pr_metadata(resolved_pr_metadata_path) if resolved_pr_metadata_path else None
             if metadata is not None and (metadata.title or metadata.body):
                 self.host_log.emit(
                     task_id,
@@ -422,6 +437,14 @@ class MainWindowTasksInteractiveFinalizeMixin:
                 ),
             )
             try:
+                display_name = None
+                if task and str(task.agent_cli or "").strip().lower() == "opencode":
+                    launch_mode = str(task.launch_mode or "").strip().lower()
+                    if launch_mode == "opencode_web":
+                        display_name = "OpenCode Web"
+                    else:
+                        display_name = "OpenCode TUI"
+
                 pr_url = commit_push_and_pr(
                     repo_root,
                     branch=branch,
@@ -430,25 +453,19 @@ class MainWindowTasksInteractiveFinalizeMixin:
                     body=body,
                     use_gh=bool(use_gh),
                     agent_cli=agent_cli,
-                    agent_cli_args=agent_cli_args,
+                    agent_display_name=display_name,
                 )
             except GhManagementError as exc:
-                self.host_log.emit(
-                    task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}")
-                )
+                self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}"))
                 return
             except Exception as exc:
-                self.host_log.emit(
-                    task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}")
-                )
+                self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}"))
                 return
 
             if pr_url is None:
                 self.host_log.emit(
                     task_id,
-                    format_log(
-                        "gh", "pr", "INFO", "[5/6] No changes to commit; skipping PR"
-                    ),
+                    format_log("gh", "pr", "INFO", "[5/6] No changes to commit; skipping PR"),
                 )
                 return
             if pr_url == "":
@@ -464,9 +481,7 @@ class MainWindowTasksInteractiveFinalizeMixin:
                 return
             self.host_log.emit(
                 task_id,
-                format_log(
-                    "gh", "pr", "INFO", f"[6/6] PR created successfully: {pr_url}"
-                ),
+                format_log("gh", "pr", "INFO", f"[6/6] PR created successfully: {pr_url}"),
             )
             self.host_pr_url.emit(task_id, pr_url)
 
@@ -475,50 +490,6 @@ class MainWindowTasksInteractiveFinalizeMixin:
                 task.gh_pr_url = pr_url
                 self._schedule_save()
         finally:
-            # Clean up task-specific repo after PR creation (or failure)
-            # This ensures each task gets a fresh clone and prevents git conflicts
-            if env_id and task_id:
-                try:
-                    # Validate state_path before using
-                    state_path = getattr(self, "_state_path", "")
-                    if not state_path:
-                        self.host_log.emit(
-                            task_id,
-                            format_log(
-                                "gh",
-                                "cleanup",
-                                "WARN",
-                                "cleanup skipped: state path not available",
-                            ),
-                        )
-                    else:
-                        self.host_log.emit(
-                            task_id,
-                            format_log(
-                                "gh", "cleanup", "INFO", "cleaning up task workspace"
-                            ),
-                        )
-                        data_dir = os.path.dirname(state_path)
-                        cleanup_success = cleanup_task_workspace(
-                            env_id=env_id,
-                            task_id=task_id,
-                            data_dir=data_dir,
-                            on_log=lambda msg: self.host_log.emit(task_id, msg),
-                        )
-                        if cleanup_success:
-                            self.host_log.emit(
-                                task_id,
-                                format_log(
-                                    "gh", "cleanup", "INFO", "task workspace cleaned"
-                                ),
-                            )
-                except Exception as cleanup_exc:
-                    self.host_log.emit(
-                        task_id,
-                        format_log(
-                            "gh", "cleanup", "ERROR", f"cleanup failed: {cleanup_exc}"
-                        ),
-                    )
             elapsed_s = time.monotonic() - start_s
             self.host_log.emit(
                 task_id,

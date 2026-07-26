@@ -6,9 +6,7 @@ from PySide6.QtWidgets import QWidget
 
 
 class GlassCard(QFrame):
-    def __init__(
-        self, parent: QWidget | None = None, animate_entrance: bool = False
-    ) -> None:
+    def __init__(self, parent: QWidget | None = None, animate_entrance: bool = False) -> None:
         super().__init__(parent)
         self.setObjectName("GlassCard")
         self.setFrameShape(QFrame.NoFrame)
@@ -40,7 +38,7 @@ class GlassCard(QFrame):
         rect = self.rect().adjusted(1, 1, -1, -1)
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         path = QPainterPath()
         path.addRect(rect)

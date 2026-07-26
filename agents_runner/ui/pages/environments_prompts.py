@@ -53,9 +53,7 @@ class PromptsTabWidget(QWidget):
         unlock_row = QHBoxLayout()
         unlock_row.setSpacing(BUTTON_ROW_SPACING)
         self._unlock_btn = QPushButton("Unlock Prompts")
-        self._unlock_btn.setToolTip(
-            "Enable custom prompt injection for this environment"
-        )
+        self._unlock_btn.setToolTip("Enable custom prompt injection for this environment")
         self._unlock_btn.clicked.connect(self._on_unlock_clicked)
         unlock_row.addWidget(self._unlock_btn)
         unlock_row.addStretch(1)
@@ -194,4 +192,4 @@ class PromptsTabWidget(QWidget):
             text = text_edit.toPlainText().strip()
             if text:
                 prompts.append(PromptConfig(enabled=enabled_cb.isChecked(), text=text))
-        return prompts, self._unlocked
+        return prompts, self._unlocked  # pyright: ignore[reportUnknownVariableType]

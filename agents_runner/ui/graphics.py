@@ -145,10 +145,10 @@ def resolve_effective_ui_theme_name(settings: Mapping[str, object] | None) -> st
         return resolve_theme_name(selected)
 
     agent_cli = str(payload.get("use") or "codex").strip().lower() or "codex"
-    return resolve_theme_name(_theme_name_for_agent(agent_cli))
+    return resolve_theme_name(theme_name_for_agent(agent_cli))
 
 
-def _theme_name_for_agent(agent_cli: str) -> str:
+def theme_name_for_agent(agent_cli: str) -> str:
     agent_cli = str(agent_cli or "").strip().lower()
     if not agent_cli:
         return _fallback_theme_name()
@@ -171,9 +171,9 @@ class EnvironmentTintOverlay(QWidget):
         super().__init__(parent)
         self._alpha = int(min(max(alpha, 0), 255))
         self._color = QColor(0, 0, 0, 0)
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.setAttribute(Qt.WA_NoSystemBackground, True)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(False)
 
     def set_tint_color(self, color: QColor | None) -> None:
@@ -255,9 +255,7 @@ class GlassRoot(QWidget):
         runtime = self._theme_runtimes.get(theme_name)
         if background is not None and runtime is not None:
             try:
-                background.tick(
-                    runtime=runtime, widget=self, now_s=time.monotonic(), dt_s=0.0
-                )
+                background.tick(runtime=runtime, widget=self, now_s=time.monotonic(), dt_s=0.0)
             except Exception:
                 pass
 
@@ -292,9 +290,7 @@ class GlassRoot(QWidget):
         runtime = self._theme_runtimes.get(resolved)
         if background is not None and runtime is not None:
             try:
-                background.tick(
-                    runtime=runtime, widget=self, now_s=time.monotonic(), dt_s=0.0
-                )
+                background.tick(runtime=runtime, widget=self, now_s=time.monotonic(), dt_s=0.0)
             except Exception:
                 pass
 
@@ -313,7 +309,7 @@ class GlassRoot(QWidget):
         self._transition_to_theme(theme_name)
 
     def set_agent_theme(self, agent_cli: str) -> None:
-        resolved = _theme_name_for_agent(agent_cli)
+        resolved = theme_name_for_agent(agent_cli)
         if not self.isVisible() or not self._animation_enabled:
             self._apply_theme_immediately(resolved)
             return
@@ -407,7 +403,7 @@ class GlassRoot(QWidget):
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         alpha = self._paint_theme(painter, self._theme_name)
         painter.fillRect(self.rect(), QColor(0, 0, 0, int(alpha)))

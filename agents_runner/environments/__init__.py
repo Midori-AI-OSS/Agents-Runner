@@ -9,11 +9,17 @@ from agents_runner.environments.model import WORKSPACE_NONE
 from agents_runner.environments.model import GPU_OVERRIDE_MODE_DISABLED
 from agents_runner.environments.model import GPU_OVERRIDE_MODE_ENABLED
 from agents_runner.environments.model import GPU_OVERRIDE_MODE_INHERIT
+from agents_runner.environments.model import OPENCODE_INTERACTIVE_MODE_ASK
+from agents_runner.environments.model import OPENCODE_INTERACTIVE_MODE_TERMINAL
+from agents_runner.environments.model import OPENCODE_INTERACTIVE_MODE_WEB
+from agents_runner.environments.model import OPENCODE_INTERACTIVE_OVERRIDE_INHERIT
 from agents_runner.environments.model import Environment
 from agents_runner.environments.github_repo import GitHubRepoContext
 from agents_runner.environments.github_repo import resolve_environment_github_repo
 from agents_runner.environments.model import PromptConfig
 from agents_runner.environments.model import normalize_gpu_override_mode
+from agents_runner.environments.model import normalize_opencode_interactive_mode
+from agents_runner.environments.model import normalize_opencode_interactive_override
 from agents_runner.environments.model import normalize_workspace_type
 from agents_runner.environments.parse import parse_env_vars_text
 from agents_runner.environments.parse import parse_mounts_text
@@ -22,6 +28,15 @@ from agents_runner.environments.paths import default_data_dir
 from agents_runner.environments.paths import environment_path
 from agents_runner.environments.paths import managed_repo_checkout_path
 from agents_runner.environments.paths import managed_repos_dir
+from agents_runner.environments.task_workspaces import SCRATCH_TASK_WORKSPACES_ROOT
+from agents_runner.environments.task_workspaces import TASK_WORKSPACE_LOCATION_APP_DATA
+from agents_runner.environments.task_workspaces import (
+    TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE,
+)
+from agents_runner.environments.task_workspaces import normalize_task_workspace_location
+from agents_runner.environments.task_workspaces import normalize_task_workspace_settings
+from agents_runner.environments.task_workspaces import scratch_drive_status
+from agents_runner.environments.task_workspaces import task_workspaces_root
 from agents_runner.environments.serialize import serialize_environment
 from agents_runner.environments.storage import delete_environment
 from agents_runner.environments.storage import load_environments
@@ -37,6 +52,10 @@ __all__ = [
     "GPU_OVERRIDE_MODE_DISABLED",
     "GPU_OVERRIDE_MODE_ENABLED",
     "GPU_OVERRIDE_MODE_INHERIT",
+    "OPENCODE_INTERACTIVE_MODE_ASK",
+    "OPENCODE_INTERACTIVE_MODE_TERMINAL",
+    "OPENCODE_INTERACTIVE_MODE_WEB",
+    "OPENCODE_INTERACTIVE_OVERRIDE_INHERIT",
     "Environment",
     "GitHubRepoContext",
     "PromptConfig",
@@ -46,7 +65,11 @@ __all__ = [
     "load_environments",
     "managed_repo_checkout_path",
     "managed_repos_dir",
+    "normalize_task_workspace_location",
+    "normalize_task_workspace_settings",
     "normalize_gpu_override_mode",
+    "normalize_opencode_interactive_mode",
+    "normalize_opencode_interactive_override",
     "normalize_workspace_type",
     "parse_env_vars_text",
     "parse_mounts_text",
@@ -54,6 +77,11 @@ __all__ = [
     "save_environment",
     "serialize_environment",
     "resolve_environment_github_repo",
+    "scratch_drive_status",
+    "task_workspaces_root",
+    "SCRATCH_TASK_WORKSPACES_ROOT",
+    "TASK_WORKSPACE_LOCATION_APP_DATA",
+    "TASK_WORKSPACE_LOCATION_SCRATCH_DRIVE",
     "SYSTEM_ENV_ID",
     "SYSTEM_ENV_NAME",
 ]

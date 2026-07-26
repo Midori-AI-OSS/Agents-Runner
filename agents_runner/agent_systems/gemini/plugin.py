@@ -139,10 +139,7 @@ class GeminiAgentSystemPlugin:
         )
 
     def default_interactive_command(self) -> str:
-        return (
-            "--no-sandbox --approval-mode yolo --include-directories "
-            "/home/midori-ai/workspace"
-        )
+        return "--no-sandbox --approval-mode yolo --include-directories /home/midori-ai/workspace"
 
     def sanitize_interactive_command_parts(self, *, cmd_parts: list[str]) -> list[str]:
         return list(cmd_parts)
@@ -153,8 +150,6 @@ class GeminiAgentSystemPlugin:
         cmd_parts: list[str],
         agent_cli_args: list[str],
         prompt: str,
-        is_help_launch: bool,
-        help_repos_dir: str,
     ) -> list[str]:
         parts = list(cmd_parts)
 
@@ -164,26 +159,7 @@ class GeminiAgentSystemPlugin:
         if "--include-directories" not in parts:
             parts[1:1] = ["--include-directories", "/home/midori-ai/workspace"]
 
-        if is_help_launch:
-            if help_repos_dir not in parts:
-                parts[1:1] = ["--include-directories", help_repos_dir]
-
-            if "--sandbox" in parts:
-                idx = parts.index("--sandbox")
-                parts.pop(idx)
-                if idx < len(parts) and not parts[idx].startswith("-"):
-                    parts.pop(idx)
-            if "-s" in parts:
-                parts.remove("-s")
-
-            if "--no-sandbox" not in parts:
-                parts[1:1] = ["--no-sandbox"]
-
-        if (
-            "--sandbox" not in parts
-            and "--no-sandbox" not in parts
-            and "-s" not in parts
-        ):
+        if "--sandbox" not in parts and "--no-sandbox" not in parts and "-s" not in parts:
             parts[1:1] = ["--no-sandbox"]
 
         if "--approval-mode" not in parts:

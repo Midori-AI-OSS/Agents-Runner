@@ -4,6 +4,7 @@ import math
 import random
 import time
 from dataclasses import dataclass, field
+from typing import Callable
 
 from PySide6.QtCore import QPointF, QRect, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPen, QRadialGradient
@@ -36,7 +37,8 @@ class _ClaudeBranchSegment:
 
 
 def claude_palette(
-    palette_phase: float, blend_colors_fn
+    palette_phase: float,
+    blend_colors_fn: Callable[[str | QColor, str | QColor, float], QColor],
 ) -> tuple[QColor, QColor, QColor, QColor]:
     """
     Warm dark palette blended between "browser dark" and "code" moods.
@@ -147,9 +149,7 @@ def tick_claude_tree(
         return claude_tips, claude_segments, palette_phase, next_reset_s
 
     if not claude_tips or now_s >= next_reset_s:
-        claude_tips, next_reset_s = reset_claude_tree(
-            claude_rng, width, height, now_s=now_s
-        )
+        claude_tips, next_reset_s = reset_claude_tree(claude_rng, width, height, now_s=now_s)
 
     for seg in claude_segments:
         seg.age_s += float(dt_s)
@@ -242,7 +242,7 @@ def paint_claude_background(
     width: int,
     height: int,
     now_s: float,
-    blend_colors_fn,
+    blend_colors_fn: Callable[[str | QColor, str | QColor, float], QColor],
 ) -> tuple[list[_ClaudeBranchTip], float]:
     """
     Paint the Claude background with animated branching tree pattern.
@@ -253,9 +253,7 @@ def paint_claude_background(
     if w <= 0 or h <= 0:
         return claude_tips, now_s + 60.0
 
-    claude_tips, next_reset_s = ensure_claude_tree(
-        claude_tips, claude_rng, width, height, now_s
-    )
+    claude_tips, next_reset_s = ensure_claude_tree(claude_tips, claude_rng, width, height, now_s)
     top, bottom, accent, accent_dim = claude_palette(palette_phase, blend_colors_fn)
 
     grad = QLinearGradient(0, 0, w, h)
@@ -273,7 +271,7 @@ def paint_claude_background(
         return claude_tips, next_reset_s
 
     painter.save()
-    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
     max_age_s = float(_CLAUDE_SEGMENT_LIFETIME_S)
     for seg in claude_segments:
@@ -303,7 +301,7 @@ def paint_claude_background(
             pen = QPen(
                 QColor(base_color.red(), base_color.green(), base_color.blue(), alpha),
                 max(1.0, float(seg.thickness) * width_scale),
-                Qt.SolidLine,
+                Qt.PenStyle.SolidLine,
                 Qt.PenCapStyle.FlatCap,
                 Qt.PenJoinStyle.MiterJoin,
             )
@@ -362,9 +360,7 @@ class _ClaudeBackground:
         runtime.next_reset_s = time.monotonic()
 
     @classmethod
-    def tick(
-        cls, *, runtime: object, widget: QWidget, now_s: float, dt_s: float
-    ) -> bool:
+    def tick(cls, *, runtime: object, widget: QWidget, now_s: float, dt_s: float) -> bool:
         if not isinstance(runtime, _ClaudeRuntime):
             return True
 

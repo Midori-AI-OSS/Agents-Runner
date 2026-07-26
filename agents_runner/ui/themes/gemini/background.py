@@ -170,7 +170,7 @@ def paint_gemini_background(
     orbs: list[_GeminiChromaOrb],
 ) -> None:
     painter.save()
-    painter.setRenderHint(QPainter.Antialiasing, True)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
     w = max(1, rect.width())
     h = max(1, rect.height())
@@ -183,7 +183,7 @@ def paint_gemini_background(
 
     if orbs:
         palette = gemini_palette()
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Screen)
         for orb in orbs:
             c = palette[int(orb.color_idx) % len(palette)]
@@ -251,12 +251,8 @@ class _GeminiBackground:
         steps = 0
         while runtime.tick_accum_s >= step_s and steps < max_steps:
             runtime.tick_accum_s -= step_s
-            runtime.orbs = ensure_gemini_orbs(
-                runtime.orbs, runtime.rng, widget.width(), widget.height()
-            )
-            tick_gemini_chroma_orbs(
-                runtime.orbs, runtime.rng, widget.width(), widget.height(), step_s
-            )
+            runtime.orbs = ensure_gemini_orbs(runtime.orbs, runtime.rng, widget.width(), widget.height())
+            tick_gemini_chroma_orbs(runtime.orbs, runtime.rng, widget.width(), widget.height(), step_s)
             steps += 1
 
         return True
@@ -264,9 +260,7 @@ class _GeminiBackground:
     @staticmethod
     def paint(*, painter: QPainter, rect: QRect, runtime: object) -> None:
         state = runtime if isinstance(runtime, _GeminiRuntime) else _GeminiRuntime()
-        state.orbs = ensure_gemini_orbs(
-            state.orbs, state.rng, rect.width(), rect.height()
-        )
+        state.orbs = ensure_gemini_orbs(state.orbs, state.rng, rect.width(), rect.height())
         paint_gemini_background(painter, rect, state.orbs)
 
 

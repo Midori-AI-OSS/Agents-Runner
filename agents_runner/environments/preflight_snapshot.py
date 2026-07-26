@@ -54,11 +54,7 @@ def _workspace_identity_baseline(
     elif normalized_type == WORKSPACE_CLONED:
         identity = _normalize_repo_identity(target)
     else:
-        identity = (
-            os.path.abspath(os.path.expanduser(legacy_workdir))
-            if legacy_workdir
-            else ""
-        )
+        identity = os.path.abspath(os.path.expanduser(legacy_workdir)) if legacy_workdir else ""
     return f"{normalized_type}\0{identity}"
 
 

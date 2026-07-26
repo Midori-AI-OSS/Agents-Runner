@@ -95,6 +95,23 @@ def _has_top_level_project(parts: list[str]) -> bool:
     return False
 
 
+def _without_variant_option(parts: list[str]) -> list[str]:
+    sanitized: list[str] = []
+    skip_next = False
+    for part in parts:
+        current = str(part or "")
+        if skip_next:
+            skip_next = False
+            continue
+        if current == "--variant":
+            skip_next = True
+            continue
+        if current.startswith("--variant="):
+            continue
+        sanitized.append(part)
+    return sanitized
+
+
 class OpenCodeAgentSystemPlugin:
     name = "opencode"
     display_name = "OpenCode"
@@ -163,10 +180,7 @@ class OpenCodeAgentSystemPlugin:
         return "opencode providers login; read -p 'Press Enter to close...'"
 
     def config_command(self) -> str | None:
-        return (
-            "opencode providers list; opencode debug paths; opencode debug config; "
-            "read -p 'Press Enter to close...'"
-        )
+        return "opencode providers list; opencode debug paths; opencode debug config; read -p 'Press Enter to close...'"
 
     def verify_command(self) -> list[str]:
         return ["opencode", "--version"]
@@ -201,9 +215,7 @@ class OpenCodeAgentSystemPlugin:
                 status_type=StatusType.UNKNOWN,
             )
 
-        combined = "\n".join(
-            part.strip() for part in (result.stdout, result.stderr) if str(part).strip()
-        )
+        combined = "\n".join(part.strip() for part in (result.stdout, result.stderr) if str(part).strip())
         normalized = combined.lower()
         has_credentials = bool(
             re.search(r"\b[1-9]\d*\s+credentials?\b", normalized)
@@ -247,12 +259,7 @@ class OpenCodeAgentSystemPlugin:
         cmd_parts: list[str],
         agent_cli_args: list[str],
         prompt: str,
-        is_help_launch: bool,
-        help_repos_dir: str,
     ) -> list[str]:
-        del is_help_launch
-        del help_repos_dir
-
         parts = list(cmd_parts)
         subcommand = _top_level_subcommand(parts)
 
@@ -260,7 +267,7 @@ class OpenCodeAgentSystemPlugin:
             parts.extend(agent_cli_args)
 
         if subcommand and subcommand != "run":
-            return parts
+            return _without_variant_option(parts)
 
         if subcommand == "run":
             if "--dir" not in parts:
@@ -268,6 +275,8 @@ class OpenCodeAgentSystemPlugin:
             if prompt:
                 move_positional_to_end(parts, prompt)
             return parts
+
+        parts = _without_variant_option(parts)
 
         if prompt:
             if "--prompt" in parts:

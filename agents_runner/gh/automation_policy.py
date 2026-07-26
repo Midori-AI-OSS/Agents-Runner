@@ -13,11 +13,7 @@ from agents_runner.environments.model import normalize_agentsnova_marker_comment
 def normalize_default_marker_comment_mode(value: object) -> str:
     """Normalize the app-wide default marker-comment mode."""
     if isinstance(value, bool):
-        return (
-            AGENTSNOVA_MARKER_COMMENT_MODE_KEEP
-            if value
-            else AGENTSNOVA_MARKER_COMMENT_MODE_DISABLED
-        )
+        return AGENTSNOVA_MARKER_COMMENT_MODE_KEEP if value else AGENTSNOVA_MARKER_COMMENT_MODE_DISABLED
 
     text = str(value or "").strip().lower()
     if text in {"true", "1", "yes", "on"}:
@@ -46,9 +42,7 @@ def _resolve_effective_auto_mode(
     return default_enabled
 
 
-def resolve_effective_auto_review_enabled(
-    *, settings: dict[str, object], env: Environment | None
-) -> bool:
+def resolve_effective_auto_review_enabled(*, settings: dict[str, object], env: Environment | None) -> bool:
     return _resolve_effective_auto_mode(
         settings=settings,
         default_key="agentsnova_auto_review_enabled",
@@ -56,9 +50,7 @@ def resolve_effective_auto_review_enabled(
     )
 
 
-def resolve_effective_auto_reactions_enabled(
-    *, settings: dict[str, object], env: Environment | None
-) -> bool:
+def resolve_effective_auto_reactions_enabled(*, settings: dict[str, object], env: Environment | None) -> bool:
     return _resolve_effective_auto_mode(
         settings=settings,
         default_key="agentsnova_auto_reactions_enabled",
@@ -66,9 +58,7 @@ def resolve_effective_auto_reactions_enabled(
     )
 
 
-def resolve_effective_marker_comment_mode(
-    *, settings: dict[str, object], env: Environment | None
-) -> str:
+def resolve_effective_marker_comment_mode(*, settings: dict[str, object], env: Environment | None) -> str:
     default_mode = normalize_default_marker_comment_mode(
         settings.get(
             "agentsnova_auto_marker_comments_mode",

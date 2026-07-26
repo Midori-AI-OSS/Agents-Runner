@@ -3,6 +3,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import EnvironmentsPageHints
+else:
+    EnvironmentsPageHints = object
+
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.environments import Environment
@@ -20,17 +27,15 @@ from agents_runner.environments.model import (
     normalize_gh_branch_work_mode,
     normalize_gh_task_branch_custom_template,
     normalize_gh_task_branch_naming_style,
+    normalize_opencode_interactive_override,
 )
 from agents_runner.gh_management import is_gh_available
-from agents_runner.ide_systems import normalize_ide_system_name
 from agents_runner.ui.dialogs.new_environment_wizard import NewEnvironmentWizard
 from agents_runner.ui.pages.github_trust import normalize_trusted_mode
 
 
-class EnvironmentsPageActionsMixin:
-    def _sync_workspace_controls(
-        self, *_: object, env: Environment | None = None
-    ) -> None:
+class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
+    def _sync_workspace_controls(self, *_: object, env: Environment | None = None) -> None:
         if env is None:
             env = self._environments.get(str(self._current_env_id or ""))
 
@@ -112,18 +117,12 @@ class EnvironmentsPageActionsMixin:
             "agentsnova_marker_comment_mode": normalize_agentsnova_marker_comment_mode(
                 self._agentsnova_marker_comment_mode.currentData() or "inherit"
             ),
-            "interactive_pr_prompt_enabled": bool(
-                self._interactive_pr_prompt_enabled.isChecked()
-            ),
+            "interactive_pr_prompt_enabled": bool(self._interactive_pr_prompt_enabled.isChecked()),
             "interactive_pr_no_prompt_mode": normalize_interactive_pr_no_prompt_mode(
                 self._interactive_pr_no_prompt_mode.currentData() or "auto_create_pr"
             ),
-            "setup_agents_missing_prompt_enabled": bool(
-                self._setup_agents_missing_prompt_enabled.isChecked()
-            ),
-            "interactive_pull_before_run_enabled": bool(
-                self._interactive_pull_before_run_enabled.isChecked()
-            ),
+            "setup_agents_missing_prompt_enabled": bool(self._setup_agents_missing_prompt_enabled.isChecked()),
+            "interactive_pull_before_run_enabled": bool(self._interactive_pull_before_run_enabled.isChecked()),
             "gh_branch_work_mode": normalize_gh_branch_work_mode(
                 self._gh_branch_work_mode.currentData() or "task_branch"
             ),
@@ -131,12 +130,14 @@ class EnvironmentsPageActionsMixin:
                 self._gh_task_branch_naming_style.currentData() or "standard"
             ),
             "gh_task_branch_custom_template": (
-                normalize_gh_task_branch_custom_template(
-                    self._gh_task_branch_custom_template.text()
-                )
+                normalize_gh_task_branch_custom_template(self._gh_task_branch_custom_template.text())
             ),
-            "gpu_override_mode": normalize_gpu_override_mode(
-                str(self._gpu_override_mode.currentData() or "inherit")
+            "gpu_override_mode": normalize_gpu_override_mode(str(self._gpu_override_mode.currentData() or "inherit")),
+            "network_host_override_mode": normalize_gpu_override_mode(
+                str(self._ports_tab.get_network_host_override() or "inherit")
+            ),
+            "opencode_interactive_mode": normalize_opencode_interactive_override(
+                str(self._opencode_interactive_mode.currentData() or "inherit")
             ),
         }
 
@@ -160,9 +161,7 @@ class EnvironmentsPageActionsMixin:
         name = (self._name.text() or "").strip()
         if not name:
             if show_validation_errors:
-                QMessageBox.warning(
-                    self, "Missing name", "Enter an environment name first."
-                )
+                QMessageBox.warning(self, "Missing name", "Enter an environment name first.")
             return False
 
         existing = self._environments.get(env_id)
@@ -175,19 +174,11 @@ class EnvironmentsPageActionsMixin:
             max_agents_running = -1
 
         # Get workspace type and target from existing environment
-        workspace_type = (
-            existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
-        )
-        workspace_target = (
-            str(existing.workspace_target or "").strip() if existing else ""
-        )
+        workspace_type = existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
+        workspace_target = str(existing.workspace_target or "").strip() if existing else ""
         gh_locked = True
-        gh_use_host_cli = (
-            bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
-        )
-        gh_context_enabled = (
-            bool(getattr(existing, "gh_context_enabled", False)) if existing else False
-        )
+        gh_use_host_cli = bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
+        gh_context_enabled = bool(getattr(existing, "gh_context_enabled", False)) if existing else False
 
         if existing and workspace_type == WORKSPACE_CLONED:
             gh_context_enabled = bool(self._gh_context_enabled.isChecked())
@@ -201,20 +192,8 @@ class EnvironmentsPageActionsMixin:
         else:
             gh_context_enabled = False
         github_polling_enabled = bool(self._github_polling_enabled.isChecked())
-        agentsnova_trusted_mode = normalize_trusted_mode(
-            self._agentsnova_trusted_mode.currentData() or "inherit"
-        )
-        ide_system_override_raw = str(
-            self._ide_system_override.currentData() or ""
-        ).strip()
-        ide_system_override = (
-            normalize_ide_system_name(ide_system_override_raw)
-            if ide_system_override_raw
-            else ""
-        )
-        agentsnova_trusted_users_env = (
-            self._agentsnova_trusted_users_env.get_usernames()
-        )
+        agentsnova_trusted_mode = normalize_trusted_mode(self._agentsnova_trusted_mode.currentData() or "inherit")
+        agentsnova_trusted_users_env = self._agentsnova_trusted_users_env.get_usernames()
 
         self._env_vars_tab.flush_widget_state()
         self._mounts_tab.flush_widget_state()
@@ -224,9 +203,7 @@ class EnvironmentsPageActionsMixin:
         env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
             if show_validation_errors:
-                QMessageBox.warning(
-                    self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
-                )
+                QMessageBox.warning(self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12]))
             return False
 
         mounts, mount_errors = self._mounts_tab.get_mounts()
@@ -240,18 +217,12 @@ class EnvironmentsPageActionsMixin:
             return False
         env_vars_advanced_mode = bool(self._env_vars_tab.is_advanced_mode())
         mounts_advanced_mode = bool(self._mounts_tab.is_advanced_mode())
-        env_vars_advanced_acknowledged = bool(
-            self._env_vars_tab.is_advanced_acknowledged()
-        )
+        env_vars_advanced_acknowledged = bool(self._env_vars_tab.is_advanced_acknowledged())
         mounts_advanced_acknowledged = bool(self._mounts_tab.is_advanced_acknowledged())
-        ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
-            self._ports_tab.get_ports()
-        )
+        ports, ports_unlocked, ports_advanced_acknowledged, port_errors = self._ports_tab.get_ports()
         if port_errors:
             if show_validation_errors:
-                QMessageBox.warning(
-                    self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
-                )
+                QMessageBox.warning(self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12]))
             return False
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
         agent_selection = self._agents_tab.get_agent_selection()
@@ -260,16 +231,22 @@ class EnvironmentsPageActionsMixin:
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
-        cache_system_preflight_enabled = bool(
-            self._cache_system_preflight_enabled.isChecked()
-        )
-        cache_settings_preflight_enabled = bool(
-            self._cache_settings_preflight_enabled.isChecked()
-        )
-        cache_ide_preflight_enabled = bool(
-            self._cache_ide_preflight_enabled.isChecked()
-        )
+        cache_system_preflight_enabled = bool(self._cache_system_preflight_enabled.isChecked())
+        cache_settings_preflight_enabled = bool(self._cache_settings_preflight_enabled.isChecked())
         issue_294_values = self._issue_294_environment_values()
+        agentsnova_auto_review_mode = cast(str, issue_294_values["agentsnova_auto_review_mode"])
+        agentsnova_auto_reactions_mode = cast(str, issue_294_values["agentsnova_auto_reactions_mode"])
+        agentsnova_marker_comment_mode = cast(str, issue_294_values["agentsnova_marker_comment_mode"])
+        interactive_pr_prompt_enabled = cast(bool, issue_294_values["interactive_pr_prompt_enabled"])
+        interactive_pr_no_prompt_mode = cast(str, issue_294_values["interactive_pr_no_prompt_mode"])
+        setup_agents_missing_prompt_enabled = cast(bool, issue_294_values["setup_agents_missing_prompt_enabled"])
+        interactive_pull_before_run_enabled = cast(bool, issue_294_values["interactive_pull_before_run_enabled"])
+        gh_branch_work_mode = cast(str, issue_294_values["gh_branch_work_mode"])
+        gh_task_branch_naming_style = cast(str, issue_294_values["gh_task_branch_naming_style"])
+        gh_task_branch_custom_template = cast(str, issue_294_values["gh_task_branch_custom_template"])
+        gpu_override_mode = cast(str, issue_294_values["gpu_override_mode"])
+        network_host_override_mode = cast(str, issue_294_values["network_host_override_mode"])
+        opencode_interactive_mode = cast(str, issue_294_values["opencode_interactive_mode"])
 
         if base_env is None:
             env = Environment(
@@ -278,17 +255,11 @@ class EnvironmentsPageActionsMixin:
                 color=str(self._color.currentData() or "slate"),
                 host_workdir="",
                 max_agents_running=max_agents_running,
-                headless_desktop_enabled=bool(
-                    self._headless_desktop_enabled.isChecked()
-                ),
-                ide_system_override=ide_system_override,
+                headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
-                container_caching_enabled=bool(
-                    self._container_caching_enabled.isChecked()
-                ),
+                container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-                cache_ide_preflight_enabled=cache_ide_preflight_enabled,
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 env_vars_advanced_mode=env_vars_advanced_mode,
@@ -311,7 +282,19 @@ class EnvironmentsPageActionsMixin:
                 agent_selection=agent_selection,
                 use_cross_agents=use_cross_agents,
                 cross_agent_allowlist=cross_agent_allowlist,
-                **issue_294_values,
+                agentsnova_auto_review_mode=agentsnova_auto_review_mode,
+                agentsnova_auto_reactions_mode=agentsnova_auto_reactions_mode,
+                agentsnova_marker_comment_mode=agentsnova_marker_comment_mode,
+                interactive_pr_prompt_enabled=interactive_pr_prompt_enabled,
+                interactive_pr_no_prompt_mode=interactive_pr_no_prompt_mode,
+                setup_agents_missing_prompt_enabled=setup_agents_missing_prompt_enabled,
+                interactive_pull_before_run_enabled=interactive_pull_before_run_enabled,
+                gh_branch_work_mode=gh_branch_work_mode,
+                gh_task_branch_naming_style=gh_task_branch_naming_style,
+                gh_task_branch_custom_template=gh_task_branch_custom_template,
+                gpu_override_mode=gpu_override_mode,
+                network_host_override_mode=network_host_override_mode,
+                opencode_interactive_mode=opencode_interactive_mode,
             )
         else:
             env = replace(
@@ -319,17 +302,11 @@ class EnvironmentsPageActionsMixin:
                 name=name,
                 color=str(self._color.currentData() or "slate"),
                 max_agents_running=max_agents_running,
-                headless_desktop_enabled=bool(
-                    self._headless_desktop_enabled.isChecked()
-                ),
-                ide_system_override=ide_system_override,
+                headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
-                container_caching_enabled=bool(
-                    self._container_caching_enabled.isChecked()
-                ),
+                container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-                cache_ide_preflight_enabled=cache_ide_preflight_enabled,
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 env_vars_advanced_mode=env_vars_advanced_mode,
@@ -352,7 +329,19 @@ class EnvironmentsPageActionsMixin:
                 agent_selection=agent_selection,
                 use_cross_agents=use_cross_agents,
                 cross_agent_allowlist=cross_agent_allowlist,
-                **issue_294_values,
+                agentsnova_auto_review_mode=agentsnova_auto_review_mode,
+                agentsnova_auto_reactions_mode=agentsnova_auto_reactions_mode,
+                agentsnova_marker_comment_mode=agentsnova_marker_comment_mode,
+                interactive_pr_prompt_enabled=interactive_pr_prompt_enabled,
+                interactive_pr_no_prompt_mode=interactive_pr_no_prompt_mode,
+                setup_agents_missing_prompt_enabled=setup_agents_missing_prompt_enabled,
+                interactive_pull_before_run_enabled=interactive_pull_before_run_enabled,
+                gh_branch_work_mode=gh_branch_work_mode,
+                gh_task_branch_naming_style=gh_task_branch_naming_style,
+                gh_task_branch_custom_template=gh_task_branch_custom_template,
+                gpu_override_mode=gpu_override_mode,
+                network_host_override_mode=network_host_override_mode,
+                opencode_interactive_mode=opencode_interactive_mode,
             )
         save_environment(env)
         self.updated.emit(preferred_env_id if preferred_env_id is not None else env_id)
@@ -361,7 +350,7 @@ class EnvironmentsPageActionsMixin:
     def selected_environment_id(self) -> str:
         return str(self._env_select.currentData() or "")
 
-    def _draft_environment_from_form(self) -> Environment | None:
+    def _draft_environment_from_form(self, *args: object) -> Environment | None:
         env_id = self._current_env_id
         if not env_id:
             return None
@@ -374,19 +363,11 @@ class EnvironmentsPageActionsMixin:
             max_agents_running = -1
 
         # Get workspace type and target from existing environment
-        workspace_type = (
-            existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
-        )
-        workspace_target = (
-            str(existing.workspace_target or "").strip() if existing else ""
-        )
+        workspace_type = existing.workspace_type or WORKSPACE_NONE if existing else WORKSPACE_NONE
+        workspace_target = str(existing.workspace_target or "").strip() if existing else ""
         gh_locked = True
-        gh_use_host_cli = (
-            bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
-        )
-        gh_context_enabled = (
-            bool(getattr(existing, "gh_context_enabled", False)) if existing else False
-        )
+        gh_use_host_cli = bool(getattr(existing, "gh_use_host_cli", True)) if existing else False
+        gh_context_enabled = bool(getattr(existing, "gh_context_enabled", False)) if existing else False
 
         if existing and workspace_type == WORKSPACE_CLONED:
             gh_context_enabled = bool(self._gh_context_enabled.isChecked())
@@ -400,47 +381,25 @@ class EnvironmentsPageActionsMixin:
         else:
             gh_context_enabled = False
         github_polling_enabled = bool(self._github_polling_enabled.isChecked())
-        agentsnova_trusted_mode = normalize_trusted_mode(
-            self._agentsnova_trusted_mode.currentData() or "inherit"
-        )
-        ide_system_override_raw = str(
-            self._ide_system_override.currentData() or ""
-        ).strip()
-        ide_system_override = (
-            normalize_ide_system_name(ide_system_override_raw)
-            if ide_system_override_raw
-            else ""
-        )
-        agentsnova_trusted_users_env = (
-            self._agentsnova_trusted_users_env.get_usernames()
-        )
+        agentsnova_trusted_mode = normalize_trusted_mode(self._agentsnova_trusted_mode.currentData() or "inherit")
+        agentsnova_trusted_users_env = self._agentsnova_trusted_users_env.get_usernames()
 
         env_vars, errors = self._env_vars_tab.get_env_vars()
         if errors:
-            QMessageBox.warning(
-                self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12])
-            )
+            QMessageBox.warning(self, "Invalid env vars", "Fix env vars:\n" + "\n".join(errors[:12]))
             return None
 
         mounts, mount_errors = self._mounts_tab.get_mounts()
         if mount_errors:
-            QMessageBox.warning(
-                self, "Invalid mounts", "Fix mounts:\n" + "\n".join(mount_errors[:12])
-            )
+            QMessageBox.warning(self, "Invalid mounts", "Fix mounts:\n" + "\n".join(mount_errors[:12]))
             return None
         env_vars_advanced_mode = bool(self._env_vars_tab.is_advanced_mode())
         mounts_advanced_mode = bool(self._mounts_tab.is_advanced_mode())
-        env_vars_advanced_acknowledged = bool(
-            self._env_vars_tab.is_advanced_acknowledged()
-        )
+        env_vars_advanced_acknowledged = bool(self._env_vars_tab.is_advanced_acknowledged())
         mounts_advanced_acknowledged = bool(self._mounts_tab.is_advanced_acknowledged())
-        ports, ports_unlocked, ports_advanced_acknowledged, port_errors = (
-            self._ports_tab.get_ports()
-        )
+        ports, ports_unlocked, ports_advanced_acknowledged, port_errors = self._ports_tab.get_ports()
         if port_errors:
-            QMessageBox.warning(
-                self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12])
-            )
+            QMessageBox.warning(self, "Invalid ports", "Fix ports:\n" + "\n".join(port_errors[:12]))
             return None
         name = (self._name.text() or "").strip() or env_id
         prompts, prompts_unlocked = self._prompts_tab.get_prompts()
@@ -450,16 +409,22 @@ class EnvironmentsPageActionsMixin:
         use_cross_agents = bool(self._use_cross_agents.isChecked())
         cross_agent_allowlist = self._agents_tab.get_cross_agent_allowlist()
 
-        cache_system_preflight_enabled = bool(
-            self._cache_system_preflight_enabled.isChecked()
-        )
-        cache_settings_preflight_enabled = bool(
-            self._cache_settings_preflight_enabled.isChecked()
-        )
-        cache_ide_preflight_enabled = bool(
-            self._cache_ide_preflight_enabled.isChecked()
-        )
+        cache_system_preflight_enabled = bool(self._cache_system_preflight_enabled.isChecked())
+        cache_settings_preflight_enabled = bool(self._cache_settings_preflight_enabled.isChecked())
         issue_294_values = self._issue_294_environment_values()
+        agentsnova_auto_review_mode = cast(str, issue_294_values["agentsnova_auto_review_mode"])
+        agentsnova_auto_reactions_mode = cast(str, issue_294_values["agentsnova_auto_reactions_mode"])
+        agentsnova_marker_comment_mode = cast(str, issue_294_values["agentsnova_marker_comment_mode"])
+        interactive_pr_prompt_enabled = cast(bool, issue_294_values["interactive_pr_prompt_enabled"])
+        interactive_pr_no_prompt_mode = cast(str, issue_294_values["interactive_pr_no_prompt_mode"])
+        setup_agents_missing_prompt_enabled = cast(bool, issue_294_values["setup_agents_missing_prompt_enabled"])
+        interactive_pull_before_run_enabled = cast(bool, issue_294_values["interactive_pull_before_run_enabled"])
+        gh_branch_work_mode = cast(str, issue_294_values["gh_branch_work_mode"])
+        gh_task_branch_naming_style = cast(str, issue_294_values["gh_task_branch_naming_style"])
+        gh_task_branch_custom_template = cast(str, issue_294_values["gh_task_branch_custom_template"])
+        gpu_override_mode = cast(str, issue_294_values["gpu_override_mode"])
+        network_host_override_mode = cast(str, issue_294_values["network_host_override_mode"])
+        opencode_interactive_mode = cast(str, issue_294_values["opencode_interactive_mode"])
 
         if existing is None:
             return Environment(
@@ -468,17 +433,11 @@ class EnvironmentsPageActionsMixin:
                 color=str(self._color.currentData() or "slate"),
                 host_workdir="",
                 max_agents_running=max_agents_running,
-                headless_desktop_enabled=bool(
-                    self._headless_desktop_enabled.isChecked()
-                ),
-                ide_system_override=ide_system_override,
+                headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
                 cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
-                container_caching_enabled=bool(
-                    self._container_caching_enabled.isChecked()
-                ),
+                container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
                 cache_system_preflight_enabled=cache_system_preflight_enabled,
                 cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-                cache_ide_preflight_enabled=cache_ide_preflight_enabled,
                 env_vars=env_vars,
                 extra_mounts=mounts,
                 env_vars_advanced_mode=env_vars_advanced_mode,
@@ -501,7 +460,19 @@ class EnvironmentsPageActionsMixin:
                 agent_selection=agent_selection,
                 use_cross_agents=use_cross_agents,
                 cross_agent_allowlist=cross_agent_allowlist,
-                **issue_294_values,
+                agentsnova_auto_review_mode=agentsnova_auto_review_mode,
+                agentsnova_auto_reactions_mode=agentsnova_auto_reactions_mode,
+                agentsnova_marker_comment_mode=agentsnova_marker_comment_mode,
+                interactive_pr_prompt_enabled=interactive_pr_prompt_enabled,
+                interactive_pr_no_prompt_mode=interactive_pr_no_prompt_mode,
+                setup_agents_missing_prompt_enabled=setup_agents_missing_prompt_enabled,
+                interactive_pull_before_run_enabled=interactive_pull_before_run_enabled,
+                gh_branch_work_mode=gh_branch_work_mode,
+                gh_task_branch_naming_style=gh_task_branch_naming_style,
+                gh_task_branch_custom_template=gh_task_branch_custom_template,
+                gpu_override_mode=gpu_override_mode,
+                network_host_override_mode=network_host_override_mode,
+                opencode_interactive_mode=opencode_interactive_mode,
             )
 
         return replace(
@@ -510,12 +481,10 @@ class EnvironmentsPageActionsMixin:
             color=str(self._color.currentData() or "slate"),
             max_agents_running=max_agents_running,
             headless_desktop_enabled=bool(self._headless_desktop_enabled.isChecked()),
-            ide_system_override=ide_system_override,
             cache_desktop_build=bool(self._cache_desktop_build.isChecked()),
             container_caching_enabled=bool(self._container_caching_enabled.isChecked()),
             cache_system_preflight_enabled=cache_system_preflight_enabled,
             cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-            cache_ide_preflight_enabled=cache_ide_preflight_enabled,
             env_vars=env_vars,
             extra_mounts=mounts,
             env_vars_advanced_mode=env_vars_advanced_mode,
@@ -538,7 +507,19 @@ class EnvironmentsPageActionsMixin:
             agent_selection=agent_selection,
             use_cross_agents=use_cross_agents,
             cross_agent_allowlist=cross_agent_allowlist,
-            **issue_294_values,
+            agentsnova_auto_review_mode=agentsnova_auto_review_mode,
+            agentsnova_auto_reactions_mode=agentsnova_auto_reactions_mode,
+            agentsnova_marker_comment_mode=agentsnova_marker_comment_mode,
+            interactive_pr_prompt_enabled=interactive_pr_prompt_enabled,
+            interactive_pr_no_prompt_mode=interactive_pr_no_prompt_mode,
+            setup_agents_missing_prompt_enabled=setup_agents_missing_prompt_enabled,
+            interactive_pull_before_run_enabled=interactive_pull_before_run_enabled,
+            gh_branch_work_mode=gh_branch_work_mode,
+            gh_task_branch_naming_style=gh_task_branch_naming_style,
+            gh_task_branch_custom_template=gh_task_branch_custom_template,
+            gpu_override_mode=gpu_override_mode,
+            network_host_override_mode=network_host_override_mode,
+            opencode_interactive_mode=opencode_interactive_mode,
         )
 
     def _on_test_preflight(self) -> None:

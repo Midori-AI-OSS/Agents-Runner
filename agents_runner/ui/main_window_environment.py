@@ -3,6 +3,13 @@ from __future__ import annotations
 import os
 import threading
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import MainWindowHints
+else:
+    MainWindowHints = object
+
 
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_CLONED
@@ -15,10 +22,9 @@ from agents_runner.environments import managed_repo_checkout_path
 from agents_runner.environments import save_environment
 from agents_runner.gh_management import git_list_remote_heads
 from agents_runner.gh_management import is_gh_available
-from agents_runner.ide_systems import get_default_ide_system_name
 
 
-class MainWindowEnvironmentMixin:
+class MainWindowEnvironmentMixin(MainWindowHints):
     @staticmethod
     def _is_internal_environment_id(env_id: str) -> bool:
         return str(env_id or "").strip() == SYSTEM_ENV_ID
@@ -28,9 +34,7 @@ class MainWindowEnvironmentMixin:
 
     def _user_environment_map(self) -> dict[str, Environment]:
         return {
-            env.env_id: env
-            for env in self._environments.values()
-            if not self._is_internal_environment_id(env.env_id)
+            env.env_id: env for env in self._environments.values() if not self._is_internal_environment_id(env.env_id)
         }
 
     def _environment_list(self) -> list[Environment]:
@@ -40,9 +44,14 @@ class MainWindowEnvironmentMixin:
         )
 
     def _environment_effective_workdir(
-        self, env: Environment | None, fallback: str
+        self,
+        env: Environment | None,
+        fallback: str,
+        *,
+        settings: dict[str, object] | None = None,
     ) -> str:
         fallback = os.path.expanduser(str(fallback or "").strip()) or os.getcwd()
+        settings_data = settings or self._settings_data
         if env is None:
             return fallback
         workspace_type = env.workspace_type or WORKSPACE_NONE
@@ -50,7 +59,9 @@ class MainWindowEnvironmentMixin:
             return os.path.expanduser(str(env.workspace_target or "").strip())
         if workspace_type == WORKSPACE_CLONED:
             workdir = managed_repo_checkout_path(
-                env.env_id, data_dir=os.path.dirname(self._state_path)
+                env.env_id,
+                data_dir=os.path.dirname(self._state_path),
+                workspace_location=settings_data.get("task_workspace_location"),
             )
             try:
                 os.makedirs(workdir, exist_ok=True)
@@ -59,9 +70,7 @@ class MainWindowEnvironmentMixin:
             return workdir
         return fallback
 
-    def _new_task_workspace(
-        self, env: Environment | None, task_id: str | None = None
-    ) -> tuple[str, bool, str]:
+    def _new_task_workspace(self, env: Environment | None, task_id: str | None = None) -> tuple[str, bool, str]:
         if env is None:
             return "—", False, "Pick an environment first."
 
@@ -79,6 +88,7 @@ class MainWindowEnvironmentMixin:
                 env.env_id,
                 data_dir=os.path.dirname(self._state_path),
                 task_id=task_id,
+                workspace_location=self._settings_data.get("task_workspace_location"),
             )
             target = str(env.workspace_target or "").strip()
             if not target:
@@ -95,17 +105,13 @@ class MainWindowEnvironmentMixin:
         self,
         env: Environment | None,
         base_branch: str,
+        *args: object,
+        **kwargs: object,
     ) -> None:
-        if (
-            env is None
-            or str(getattr(env, "workspace_type", "") or "") != WORKSPACE_CLONED
-        ):
+        if env is None or str(getattr(env, "workspace_type", "") or "") != WORKSPACE_CLONED:
             return
         normalized_base = str(base_branch or "").strip()
-        if (
-            str(getattr(env, "gh_last_base_branch", "") or "").strip()
-            == normalized_base
-        ):
+        if str(getattr(env, "gh_last_base_branch", "") or "").strip() == normalized_base:
             return
         env.gh_last_base_branch = normalized_base
         save_environment(env)
@@ -113,10 +119,11 @@ class MainWindowEnvironmentMixin:
 
     def _refresh_active_environment_repo_branches(
         self,
-        *,
+        *args: object,
         trigger_reason: str,
         show_loading_ui: bool,
         preserve_current_selection: bool,
+        **kwargs: object,
     ) -> None:
         env = self._environments.get(self._active_environment_id())
         self._sync_new_task_repo_controls(
@@ -158,9 +165,7 @@ class MainWindowEnvironmentMixin:
                 self._new_task.set_repo_branches([])
                 return
             env_id = str(env.env_id or "").strip()
-            fallback_branches = list(
-                getattr(self, "_repo_branches_cache", {}).get(env_id, [])
-            )
+            fallback_branches = list(getattr(self, "_repo_branches_cache", {}).get(env_id, []))
             fallback_selected = ""
             last_branch = str(getattr(env, "gh_last_base_branch", "") or "").strip()
             if last_branch and last_branch in fallback_branches:
@@ -214,14 +219,10 @@ class MainWindowEnvironmentMixin:
             return
         request_meta = self._repo_branches_request_meta.pop(request_id, {})
 
-        preserve_current_selection = bool(
-            request_meta.get("preserve_current_selection")
-        )
+        preserve_current_selection = bool(request_meta.get("preserve_current_selection"))
         fallback_branch_values = request_meta.get("fallback_branches", [])
         fallback_branches = [
-            str(branch or "").strip()
-            for branch in fallback_branch_values
-            if str(branch or "").strip()
+            str(branch or "").strip() for branch in fallback_branch_values if str(branch or "").strip()
         ]
         fallback_selected_raw = str(request_meta.get("fallback_selected") or "").strip()
         fallback_selected = fallback_selected_raw if fallback_selected_raw else None
@@ -241,7 +242,7 @@ class MainWindowEnvironmentMixin:
             else:
                 self._new_task.set_repo_branches_loading(False)
             return
-        cleaned = [str(b or "").strip() for b in branches]
+        cleaned = [str(b or "").strip() for b in branches]  # pyright: ignore[reportUnknownVariableType,reportUnknownArgumentType]
         cleaned = [b for b in cleaned if b]
         if not cleaned:
             if fallback_branches:
@@ -271,29 +272,17 @@ class MainWindowEnvironmentMixin:
             preserve_current_selection=preserve_current_selection,
         )
 
-    def _populate_environment_pickers(self) -> None:
+    def _populate_environment_pickers(self, *args: object) -> None:
         active_id = self._active_environment_id()
         envs = self._environment_list()
         disk_envs = load_environments()
         stains = {e.env_id: e.color for e in envs}
         workspace_types = {e.env_id: e.workspace_type or WORKSPACE_NONE for e in envs}
         template_statuses = {
-            e.env_id: bool(
-                getattr(
-                    disk_envs.get(e.env_id) or e, "midoriai_template_detected", False
-                )
-            )
-            for e in envs
+            e.env_id: bool(getattr(disk_envs.get(e.env_id) or e, "midoriai_template_detected", False)) for e in envs
         }
         desktop_enabled = {
-            e.env_id: (
-                e.headless_desktop_enabled
-                or self._settings_data.get("headless_desktop_enabled", False)
-            )
-            for e in envs
-        }
-        ide_system_overrides = {
-            e.env_id: str(getattr(e, "ide_system_override", "") or "").strip()
+            e.env_id: (e.headless_desktop_enabled or self._settings_data.get("headless_desktop_enabled", False))
             for e in envs
         }
 
@@ -301,20 +290,13 @@ class MainWindowEnvironmentMixin:
         self._new_task.set_environment_workspace_types(workspace_types)
         self._new_task.set_environment_template_injection_status(template_statuses)
         self._new_task.set_environment_desktop_enabled(desktop_enabled)
-        self._new_task.set_environment_ide_overrides(
-            ide_system_overrides=ide_system_overrides,
-        )
-        self._dashboard.set_environment_filter_options(
-            [(e.env_id, e.name or e.env_id) for e in envs]
-        )
+        self._dashboard.set_environment_filter_options([(e.env_id, e.name or e.env_id) for e in envs])
         if hasattr(self, "_tasks_page"):
             self._tasks_page.set_environments(self._user_environment_map(), active_id)
 
         self._syncing_environment = True
         try:
-            self._new_task.set_environments(
-                [(e.env_id, e.name or e.env_id) for e in envs], active_id=active_id
-            )
+            self._new_task.set_environments([(e.env_id, e.name or e.env_id) for e in envs], active_id=active_id)
             self._new_task.set_environment_id(active_id)
         finally:
             self._syncing_environment = False
@@ -328,14 +310,12 @@ class MainWindowEnvironmentMixin:
     ) -> None:
         env = self._environments.get(self._active_environment_id())
         # Get effective agent and config dir (environment agent_selection overrides settings)
-        agent_cli, _ = self._effective_agent_and_config(env=env)
+        agent_cli, _, _ = self._effective_agent_and_config(env=env)
         if hasattr(self, "_root"):
             try:
                 from agents_runner.ui.graphics import normalize_ui_theme_name
 
-                ui_theme = normalize_ui_theme_name(
-                    self._settings_data.get("ui_theme"), allow_auto=True
-                )
+                ui_theme = normalize_ui_theme_name(self._settings_data.get("ui_theme"), allow_auto=True)
                 if ui_theme == "auto":
                     self._root.set_agent_theme(agent_cli)
                 else:
@@ -346,12 +326,7 @@ class MainWindowEnvironmentMixin:
         workdir, ready, message = self._new_task_workspace(env)
 
         workspace_type = env.workspace_type or WORKSPACE_NONE if env else WORKSPACE_NONE
-        if (
-            env
-            and ready
-            and workspace_type == WORKSPACE_MOUNTED
-            and os.path.isdir(workdir)
-        ):
+        if env and ready and workspace_type == WORKSPACE_MOUNTED and os.path.isdir(workdir):
             try:
                 from agents_runner.environments.midoriai_template import (
                     apply_midoriai_template_detection,
@@ -380,20 +355,10 @@ class MainWindowEnvironmentMixin:
             terminal_id=str(self._settings_data.get("interactive_terminal_id") or ""),
             command=self._default_interactive_command(agent_cli),
         )
-        self._new_task.set_ide_defaults(
-            ide_system=str(
-                self._settings_data.get("ide_system_default")
-                or get_default_ide_system_name()
-            ),
-        )
         self._populate_environment_pickers()
-        if hasattr(self, "_radio_controller") and hasattr(
-            self, "_update_window_title_from_radio_state"
-        ):
+        if hasattr(self, "_radio_controller") and hasattr(self, "_update_window_title_from_radio_state"):
             try:
-                self._update_window_title_from_radio_state(
-                    self._radio_controller.state_snapshot()
-                )
+                self._update_window_title_from_radio_state(self._radio_controller.state_snapshot())
             except Exception:
                 pass
 
@@ -419,9 +384,7 @@ class MainWindowEnvironmentMixin:
         if not envs:
             active_workdir = str(self._settings_data.get("host_workdir") or os.getcwd())
             try:
-                max_agents_running = int(
-                    str(self._settings_data.get("max_agents_running", -1)).strip()
-                )
+                max_agents_running = int(str(self._settings_data.get("max_agents_running", -1)).strip())
             except Exception:
                 max_agents_running = -1
             env = Environment(
@@ -478,9 +441,7 @@ class MainWindowEnvironmentMixin:
                 task.environment_id = self._active_environment_id()
         if self._envs_page.isVisible():
             current_selected = self._envs_page.selected_environment_id()
-            selected = (
-                preferred_env_id or current_selected or self._active_environment_id()
-            )
+            selected = preferred_env_id or current_selected or self._active_environment_id()
             if self._is_internal_environment_id(selected):
                 selected = self._active_environment_id()
             if not (preferred_env_id and preferred_env_id == current_selected):

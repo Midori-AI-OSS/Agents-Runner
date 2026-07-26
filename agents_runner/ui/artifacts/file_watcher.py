@@ -8,10 +8,10 @@ in the staging directory during task runtime.
 from __future__ import annotations
 
 import errno
-import logging
 import os
 from pathlib import Path
 
+from midori_ai_logger import MidoriAiLogger
 from PySide6.QtCore import (
     QFileSystemWatcher,
     QObject,
@@ -24,7 +24,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtWidgets import QApplication
 
-logger = logging.getLogger(__name__)
+logger = MidoriAiLogger(channel=None, name=__name__)
 _TRANSIENT_STAGING_ERRNOS = {errno.ENOENT, errno.ENOTDIR}
 
 
@@ -71,10 +71,7 @@ class ArtifactFileWatcher(QObject):
         gui_thread = app.thread() if app is not None else self.thread()
 
         if requested_parent is not None and requested_parent.thread() is not gui_thread:
-            logger.warning(
-                "ArtifactFileWatcher parent is not in the GUI thread; "
-                "ignoring parent for thread safety."
-            )
+            logger.warning("ArtifactFileWatcher parent is not in the GUI thread; ignoring parent for thread safety.")
             requested_parent = None
 
         if self.thread() is not gui_thread:
@@ -83,7 +80,7 @@ class ArtifactFileWatcher(QObject):
         self._requested_parent = requested_parent
         if self._requested_parent is not None:
             # Attach on the GUI thread so QObject parenting rules are respected.
-            QMetaObject.invokeMethod(self, "_attach_parent", Qt.QueuedConnection)
+            QMetaObject.invokeMethod(self, "_attach_parent", Qt.ConnectionType.QueuedConnection)
 
         self._staging_dir = staging_dir
         self._debounce_ms = debounce_ms
@@ -93,7 +90,7 @@ class ArtifactFileWatcher(QObject):
         if QThread.currentThread() is not gui_thread:
             # Construct Qt children on the GUI thread to avoid cross-thread parenting
             # warnings ("Cannot create children for a parent that is in a different thread").
-            QMetaObject.invokeMethod(self, "_init_qt_objects", Qt.QueuedConnection)
+            QMetaObject.invokeMethod(self, "_init_qt_objects", Qt.ConnectionType.QueuedConnection)
         else:
             self._init_qt_objects()
 
@@ -116,10 +113,8 @@ class ArtifactFileWatcher(QObject):
         self._debounce_timer.timeout.connect(self._emit_change)
 
         # Ensure callbacks that manipulate the debounce timer run on our owning thread.
-        self._watcher.directoryChanged.connect(
-            self._on_directory_changed, Qt.QueuedConnection
-        )
-        self._watcher.fileChanged.connect(self._on_file_changed, Qt.QueuedConnection)
+        self._watcher.directoryChanged.connect(self._on_directory_changed, Qt.ConnectionType.QueuedConnection)
+        self._watcher.fileChanged.connect(self._on_file_changed, Qt.ConnectionType.QueuedConnection)
 
     def start(self) -> None:
         """Start watching the staging directory.
@@ -127,7 +122,7 @@ class ArtifactFileWatcher(QObject):
         Safe to call from any thread.
         """
         if QThread.currentThread() is not self.thread():
-            QMetaObject.invokeMethod(self, "_start_impl", Qt.QueuedConnection)
+            QMetaObject.invokeMethod(self, "_start_impl", Qt.ConnectionType.QueuedConnection)
             return
         self._start_impl()
 
@@ -151,7 +146,7 @@ class ArtifactFileWatcher(QObject):
         Safe to call from any thread.
         """
         if QThread.currentThread() is not self.thread():
-            QMetaObject.invokeMethod(self, "_stop_impl", Qt.QueuedConnection)
+            QMetaObject.invokeMethod(self, "_stop_impl", Qt.ConnectionType.QueuedConnection)
             return
         self._stop_impl()
 
@@ -189,7 +184,7 @@ class ArtifactFileWatcher(QObject):
         # or while shutting down), initialize Qt objects from the owning thread.
         if self._debounce_timer is None:
             if QThread.currentThread() is not self.thread():
-                QMetaObject.invokeMethod(self, "_schedule_emit", Qt.QueuedConnection)
+                QMetaObject.invokeMethod(self, "_schedule_emit", Qt.ConnectionType.QueuedConnection)
                 return
 
             self._init_qt_objects()
@@ -199,7 +194,7 @@ class ArtifactFileWatcher(QObject):
         else:
             # Keep timer start/stop confined to the owning Qt thread.
             if QThread.currentThread() is not self.thread():
-                QMetaObject.invokeMethod(self, "_schedule_emit", Qt.QueuedConnection)
+                QMetaObject.invokeMethod(self, "_schedule_emit", Qt.ConnectionType.QueuedConnection)
                 return
 
         self._debounce_timer.start(self._debounce_ms)
@@ -230,9 +225,7 @@ class ArtifactFileWatcher(QObject):
             removed_dirs = watched_dirs - current_dirs
             if removed_dirs:
                 watcher.removePaths(list(removed_dirs))
-                logger.debug(
-                    f"Removed {len(removed_dirs)} deleted directories from watcher"
-                )
+                logger.debug(f"Removed {len(removed_dirs)} deleted directories from watcher")
 
         except Exception as e:
             logger.error(f"Failed to refresh watched directories: {e}")
@@ -254,9 +247,7 @@ class ArtifactFileWatcher(QObject):
                 return
             logger.warning(f"Failed to walk staging dir {self._staging_dir}: {exc}")
 
-        for root, dirnames, _ in os.walk(
-            self._staging_dir, followlinks=False, onerror=_on_walk_error
-        ):
+        for root, dirnames, _ in os.walk(self._staging_dir, followlinks=False, onerror=_on_walk_error):
             root_path = Path(root)
             pruned_dirs: list[str] = []
             for dirname in dirnames:

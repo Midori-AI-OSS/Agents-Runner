@@ -6,6 +6,7 @@ import tomli
 import tomli_w
 
 from datetime import datetime
+from collections.abc import Iterator
 from typing import Any
 
 from agents_runner.prompt_sanitizer import sanitize_prompt
@@ -19,7 +20,7 @@ TASKS_DONE_DIR_NAME = "done"
 def strip_none_for_toml(value: Any) -> Any:
     if isinstance(value, dict):
         cleaned: dict[str, Any] = {}
-        for key, item in value.items():
+        for key, item in value.items():  # pyright: ignore[reportUnknownVariableType]
             if item is None:
                 continue
             cleaned_item = strip_none_for_toml(item)
@@ -29,7 +30,7 @@ def strip_none_for_toml(value: Any) -> Any:
         return cleaned
     if isinstance(value, (list, tuple)):
         cleaned_list: list[Any] = []
-        for item in value:
+        for item in value:  # pyright: ignore[reportUnknownVariableType]
             if item is None:
                 continue
             cleaned_item = strip_none_for_toml(item)
@@ -80,15 +81,17 @@ def load_state(path: str) -> dict[str, Any]:
             "tasks": [],
             "settings": {},
             "environments": [],
+            "agent_configs": [],
         }
     with open(path, "rb") as f:
         payload = tomli.load(f)
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         return {
             "version": STATE_VERSION,
             "tasks": [],
             "settings": {},
             "environments": [],
+            "agent_configs": [],
         }
     version = payload.get("version")
     if version != STATE_VERSION:
@@ -97,17 +100,21 @@ def load_state(path: str) -> dict[str, Any]:
             "tasks": [],
             "settings": {},
             "environments": [],
+            "agent_configs": [],
         }
     payload.setdefault("version", STATE_VERSION)
     payload.setdefault("tasks", [])
     payload.setdefault("settings", {})
     payload.setdefault("environments", [])
+    payload.setdefault("agent_configs", [])
     if not isinstance(payload["tasks"], list):
         payload["tasks"] = []
     if not isinstance(payload["settings"], dict):
         payload["settings"] = {}
     if not isinstance(payload["environments"], list):
         payload["environments"] = []
+    if not isinstance(payload["agent_configs"], list):
+        payload["agent_configs"] = []
     return payload
 
 
@@ -116,9 +123,7 @@ def save_state(path: str, payload: dict[str, Any]) -> None:
     payload = dict(payload)
     payload["version"] = STATE_VERSION
 
-    fd, tmp_path = tempfile.mkstemp(
-        prefix="state-", suffix=".toml", dir=os.path.dirname(path)
-    )
+    fd, tmp_path = tempfile.mkstemp(prefix="state-", suffix=".toml", dir=os.path.dirname(path))
     try:
         with os.fdopen(fd, "wb") as f:
             tomli_w.dump(strip_none_for_toml(payload), f)
@@ -148,9 +153,7 @@ def ensure_task_dirs(state_path: str) -> tuple[str, str]:
 
 
 def _safe_task_filename(task_id: str) -> str:
-    cleaned = "".join(
-        ch for ch in str(task_id or "") if ch.isalnum() or ch in {"-", "_"}
-    ).strip()
+    cleaned = "".join(ch for ch in str(task_id or "") if ch.isalnum() or ch in {"-", "_"}).strip()
     if not cleaned:
         cleaned = f"task-{time.time_ns()}"
     return f"{cleaned}.toml"
@@ -202,9 +205,7 @@ def _archive_active_task_file_if_present(state_path: str, task_id: str) -> None:
         pass
 
 
-def save_task_payload(
-    state_path: str, payload: dict[str, Any], *, archived: bool
-) -> None:
+def save_task_payload(state_path: str, payload: dict[str, Any], *, archived: bool) -> None:
     task_id = str(payload.get("task_id") or "").strip()
     if not task_id:
         return
@@ -230,14 +231,12 @@ def load_active_task_payloads(state_path: str) -> list[dict[str, Any]]:
                 payload = tomli.load(f)
         except Exception:
             continue
-        if isinstance(payload, dict):
+        if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             payloads.append(payload)
     return payloads
 
 
-def load_task_payload(
-    state_path: str, task_id: str, *, archived: bool
-) -> dict[str, Any] | None:
+def load_task_payload(state_path: str, task_id: str, *, archived: bool) -> dict[str, Any] | None:
     task_id = str(task_id or "").strip()
     if not task_id:
         return None
@@ -249,12 +248,10 @@ def load_task_payload(
             payload = tomli.load(f)
     except Exception:
         return None
-    return payload if isinstance(payload, dict) else None
+    return payload if isinstance(payload, dict) else None  # pyright: ignore[reportUnnecessaryIsInstance]
 
 
-def load_done_task_payloads(
-    state_path: str, *, offset: int = 0, limit: int = 10
-) -> list[dict[str, Any]]:
+def load_done_task_payloads(state_path: str, *, offset: int = 0, limit: int = 10) -> list[dict[str, Any]]:
     try:
         offset = max(0, int(offset))
     except Exception:
@@ -294,9 +291,80 @@ def load_done_task_payloads(
                 payload = tomli.load(f)
         except Exception:
             continue
-        if isinstance(payload, dict):
+        if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
             payloads.append(payload)
     return payloads
+
+
+def load_all_done_task_payloads(state_path: str) -> list[dict[str, Any]]:
+    done = tasks_done_dir(state_path)
+    if not os.path.isdir(done):
+        return []
+    payloads: list[dict[str, Any]] = []
+    try:
+        names = sorted(name for name in os.listdir(done) if name.endswith(".toml"))
+    except OSError:
+        return []
+    for name in names:
+        path = os.path.join(done, name)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "rb") as f:
+                payload = tomli.load(f)
+        except Exception:
+            continue
+        if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+            payloads.append(payload)
+    return payloads
+
+
+def iter_done_task_payloads(state_path: str) -> Iterator[dict[str, Any]]:
+    done = tasks_done_dir(state_path)
+    if not os.path.isdir(done):
+        return
+    try:
+        entries = os.scandir(done)
+    except OSError:
+        return
+    with entries:
+        for entry in entries:
+            if not entry.name.endswith(".toml"):
+                continue
+            try:
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                with open(entry.path, "rb") as f:
+                    payload = tomli.load(f)
+            except Exception:
+                continue
+            if isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+                yield payload
+
+
+def cleanup_old_done_task_files(retention_days: int = 30) -> int:
+    state_path = default_state_path()
+    done = tasks_done_dir(state_path)
+    if not os.path.isdir(done):
+        return 0
+    cutoff = time.time() - (retention_days * 86400)
+    removed = 0
+    try:
+        for entry in os.scandir(done):
+            if not entry.name.endswith(".toml"):
+                continue
+            try:
+                if not entry.is_file(follow_symlinks=False):
+                    continue
+                if entry.stat().st_mtime >= cutoff:
+                    continue
+                os.unlink(entry.path)
+                removed += 1
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return removed
 
 
 def serialize_task(task: Any) -> dict[str, Any]:
@@ -335,6 +403,8 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "gh_branch": getattr(task, "gh_branch", ""),
         "gh_pr_url": getattr(task, "gh_pr_url", ""),
         "gh_pr_metadata_path": getattr(task, "gh_pr_metadata_path", ""),
+        "gh_pr_unavailable_reason": getattr(task, "gh_pr_unavailable_reason", ""),
+        "gh_pr_unavailable_status": getattr(task, "gh_pr_unavailable_status", ""),
         "gh_context_path": getattr(task, "gh_context_path", ""),
         "git": git_payload,
         "agent_cli": getattr(task, "agent_cli", ""),
@@ -343,16 +413,12 @@ def serialize_task(task: Any) -> dict[str, Any]:
         "launch_mode": getattr(task, "launch_mode", "agent"),
         "ide_system": getattr(task, "ide_system", ""),
         "ide_display_target": getattr(task, "ide_display_target", ""),
-        "headless_desktop_enabled": bool(
-            getattr(task, "headless_desktop_enabled", False)
-        ),
+        "headless_desktop_enabled": bool(getattr(task, "headless_desktop_enabled", False)),
         "novnc_url": getattr(task, "novnc_url", ""),
-        "desktop_display": getattr(task, "desktop_display", ""),
+        "opencode_web_url": getattr(task, "opencode_web_url", ""),
         "artifacts": list(getattr(task, "artifacts", [])),
         "attempt_history": list(getattr(task, "attempt_history", [])),
-        "finalization_state": str(
-            getattr(task, "finalization_state", "pending") or "pending"
-        ),
+        "finalization_state": str(getattr(task, "finalization_state", "pending") or "pending"),
         "finalization_error": str(getattr(task, "finalization_error", "") or ""),
         "runner_prompt": runner_prompt,
         "runner_config": runner_config_payload,
@@ -393,15 +459,15 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         container_id=data.get("container_id"),
         started_at=_dt_from_str(data.get("started_at")),
         finished_at=_dt_from_str(data.get("finished_at")),
-        gh_use_host_cli=bool(
-            data.get("gh_use_host_cli") if "gh_use_host_cli" in data else True
-        ),
+        gh_use_host_cli=bool(data.get("gh_use_host_cli") if "gh_use_host_cli" in data else True),
         workspace_type=workspace_type,
         gh_repo_root=str(data.get("gh_repo_root") or ""),
         gh_base_branch=str(data.get("gh_base_branch") or ""),
         gh_branch=str(data.get("gh_branch") or ""),
         gh_pr_url=str(data.get("gh_pr_url") or ""),
         gh_pr_metadata_path=str(data.get("gh_pr_metadata_path") or ""),
+        gh_pr_unavailable_reason=str(data.get("gh_pr_unavailable_reason") or ""),
+        gh_pr_unavailable_status=str(data.get("gh_pr_unavailable_status") or ""),
         gh_context_path=str(data.get("gh_context_path") or ""),
         git=git_payload,
         agent_cli=str(data.get("agent_cli") or ""),
@@ -412,8 +478,8 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
         ide_display_target=str(data.get("ide_display_target") or ""),
         headless_desktop_enabled=bool(data.get("headless_desktop_enabled") or False),
         novnc_url=str(data.get("novnc_url") or ""),
+        opencode_web_url=str(data.get("opencode_web_url") or ""),
         vnc_password="",
-        desktop_display=str(data.get("desktop_display") or ""),
         artifacts=list(data.get("artifacts") or []),
         attempt_history=list(data.get("attempt_history") or []),
         finalization_state=str(data.get("finalization_state") or "pending"),
@@ -428,9 +494,7 @@ def deserialize_task(task_cls: type, data: dict[str, Any]) -> Any:
             pass
     raw_runner_config = data.get("runner_config")
     if isinstance(raw_runner_config, dict):
-        runner_config = _deserialize_runner_config(
-            raw_runner_config, task_id=str(task.task_id or "")
-        )
+        runner_config = _deserialize_runner_config(raw_runner_config, task_id=str(task.task_id or ""))
         if runner_config is not None:
             try:
                 task._runner_config = runner_config
@@ -448,7 +512,7 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
         env_vars: dict[str, str] = {}
         raw_env = payload.get("env_vars")
         if isinstance(raw_env, dict):
-            for key, value in raw_env.items():
+            for key, value in raw_env.items():  # pyright: ignore[reportUnknownVariableType]
                 k = str(key).strip()
                 if not k:
                     continue
@@ -457,24 +521,22 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
         extra_mounts: list[str] = []
         raw_mounts = payload.get("extra_mounts")
         if isinstance(raw_mounts, list):
-            extra_mounts = [str(item) for item in raw_mounts if str(item).strip()]
+            extra_mounts = [str(item) for item in raw_mounts if str(item).strip()]  # pyright: ignore[reportUnknownVariableType]
 
         ports: list[str] = []
         raw_ports = payload.get("ports")
         if isinstance(raw_ports, list):
-            ports = [str(item) for item in raw_ports if str(item).strip()]
+            ports = [str(item) for item in raw_ports if str(item).strip()]  # pyright: ignore[reportUnknownVariableType]
 
         agent_cli_args: list[str] = []
         raw_args = payload.get("agent_cli_args")
         if isinstance(raw_args, list):
-            agent_cli_args = [str(item) for item in raw_args if str(item).strip()]
+            agent_cli_args = [str(item) for item in raw_args if str(item).strip()]  # pyright: ignore[reportUnknownVariableType]
 
         custom_command_argv: list[str] = []
         raw_custom_command = payload.get("custom_command_argv")
         if isinstance(raw_custom_command, list):
-            custom_command_argv = [
-                str(item) for item in raw_custom_command if str(item).strip()
-            ]
+            custom_command_argv = [str(item) for item in raw_custom_command if str(item).strip()]  # pyright: ignore[reportUnknownVariableType]
 
         artifact_collection_timeout_s = 30.0
         raw_timeout = payload.get("artifact_collection_timeout_s")
@@ -494,56 +556,29 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             image=str(payload.get("image") or ""),
             host_config_dir=str(payload.get("host_config_dir") or ""),
             host_workdir=str(payload.get("host_workdir") or ""),
+            state_path=str(payload.get("state_path") or ""),
             agent_cli=agent_cli,
             container_config_dir=container_config_dir,
-            container_workdir=str(
-                payload.get("container_workdir") or "/home/midori-ai/workspace"
-            ),
-            auto_remove=bool(
-                payload.get("auto_remove") if "auto_remove" in payload else True
-            ),
-            pull_before_run=bool(
-                payload.get("pull_before_run") if "pull_before_run" in payload else True
-            ),
-            settings_preflight_script=str(
-                payload.get("settings_preflight_script") or ""
-            ).strip()
-            or None,
-            ide_preflight_script=str(payload.get("ide_preflight_script") or "").strip()
-            or None,
-            headless_desktop_enabled=bool(
-                payload.get("headless_desktop_enabled") or False
-            ),
+            container_workdir=str(payload.get("container_workdir") or "/home/midori-ai/workspace"),
+            auto_remove=bool(payload.get("auto_remove") if "auto_remove" in payload else True),
+            pull_before_run=bool(payload.get("pull_before_run") if "pull_before_run" in payload else True),
+            settings_preflight_script=str(payload.get("settings_preflight_script") or "").strip() or None,
+            headless_desktop_enabled=bool(payload.get("headless_desktop_enabled") or False),
             desktop_cache_enabled=bool(payload.get("desktop_cache_enabled") or False),
-            container_caching_enabled=bool(
-                payload.get("container_caching_enabled") or False
-            ),
-            cache_system_preflight_enabled=bool(
-                payload.get("cache_system_preflight_enabled") or False
-            ),
-            cache_settings_preflight_enabled=bool(
-                payload.get("cache_settings_preflight_enabled") or False
-            ),
-            cache_ide_preflight_enabled=bool(
-                payload.get("cache_ide_preflight_enabled") or False
-            ),
+            container_caching_enabled=bool(payload.get("container_caching_enabled") or False),
+            cache_system_preflight_enabled=bool(payload.get("cache_system_preflight_enabled") or False),
+            cache_settings_preflight_enabled=bool(payload.get("cache_settings_preflight_enabled") or False),
             gpu_enabled=bool(payload.get("gpu_enabled") or False),
-            setup_agents_missing_prompt_enabled=bool(
-                payload.get("setup_agents_missing_prompt_enabled") or False
-            ),
+            network_host=bool(payload.get("network_host") or False),
+            setup_agents_missing_prompt_enabled=bool(payload.get("setup_agents_missing_prompt_enabled") or False),
             workspace_type=str(payload.get("workspace_type") or "none"),
             workspace_target=str(payload.get("workspace_target") or ""),
             container_settings_preflight_path=str(
-                payload.get("container_settings_preflight_path")
-                or "/tmp/agents-runner-preflight-settings-{task_id}.sh"
+                payload.get("container_settings_preflight_path") or "/tmp/agents-runner-preflight-settings-{task_id}.sh"
             ),
             container_setup_agents_preflight_path=str(
                 payload.get("container_setup_agents_preflight_path")
                 or "/tmp/agents-runner-preflight-setup-agents-{task_id}.sh"
-            ),
-            container_ide_preflight_path=str(
-                payload.get("container_ide_preflight_path")
-                or "/tmp/agents-runner-preflight-ide-{task_id}.sh"
             ),
             env_vars=env_vars,
             extra_mounts=extra_mounts,
@@ -551,46 +586,22 @@ def _deserialize_runner_config(payload: dict[str, Any], *, task_id: str) -> Any:
             agent_cli_args=agent_cli_args,
             environment_id=str(payload.get("environment_id") or ""),
             launch_mode=str(payload.get("launch_mode") or "agent"),
-            ide_system=str(payload.get("ide_system") or ""),
-            ide_display_target=str(payload.get("ide_display_target") or ""),
-            ide_auto_mounts_enabled=bool(
-                payload.get("ide_auto_mounts_enabled") or False
-            ),
             custom_command_argv=custom_command_argv,
-            custom_verify_executable=str(
-                payload.get("custom_verify_executable") or ""
-            ).strip(),
-            gh_repo=(
-                str(payload.get("gh_repo") or "").strip()
-                if str(payload.get("gh_repo") or "").strip()
-                else None
-            ),
-            gh_prefer_gh_cli=bool(
-                payload.get("gh_prefer_gh_cli")
-                if "gh_prefer_gh_cli" in payload
-                else True
-            ),
+            custom_verify_executable=str(payload.get("custom_verify_executable") or "").strip(),
+            gh_repo=(str(payload.get("gh_repo") or "").strip() if str(payload.get("gh_repo") or "").strip() else None),
+            gh_prefer_gh_cli=bool(payload.get("gh_prefer_gh_cli") if "gh_prefer_gh_cli" in payload else True),
             gh_recreate_if_needed=bool(
-                payload.get("gh_recreate_if_needed")
-                if "gh_recreate_if_needed" in payload
-                else True
+                payload.get("gh_recreate_if_needed") if "gh_recreate_if_needed" in payload else True
             ),
             gh_base_branch=(
                 str(payload.get("gh_base_branch") or "").strip()
                 if str(payload.get("gh_base_branch") or "").strip()
                 else None
             ),
-            gh_branch_work_mode=str(
-                payload.get("gh_branch_work_mode") or "task_branch"
-            ).strip()
-            or "task_branch",
-            gh_task_branch_naming_style=str(
-                payload.get("gh_task_branch_naming_style") or "standard"
-            ).strip()
+            gh_branch_work_mode=str(payload.get("gh_branch_work_mode") or "task_branch").strip() or "task_branch",
+            gh_task_branch_naming_style=str(payload.get("gh_task_branch_naming_style") or "standard").strip()
             or "standard",
-            gh_task_branch_custom_template=str(
-                payload.get("gh_task_branch_custom_template") or "{task_id}"
-            ).strip()
+            gh_task_branch_custom_template=str(payload.get("gh_task_branch_custom_template") or "{task_id}").strip()
             or "{task_id}",
             gh_pr_head_ref=(
                 str(payload.get("gh_pr_head_ref") or "").strip()
@@ -639,7 +650,7 @@ def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
         return {}
 
     result = {}
-    for provider_name, data in watch_data.items():
+    for provider_name, data in watch_data.items():  # pyright: ignore[reportUnknownVariableType]
         if not isinstance(data, dict):
             continue
 
@@ -658,7 +669,7 @@ def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
 
         # Deserialize windows
         windows = []
-        for w_data in data.get("windows", []):
+        for w_data in data.get("windows", []):  # pyright: ignore[reportUnknownVariableType]
             if not isinstance(w_data, dict):
                 continue
             reset_at = None
@@ -688,7 +699,7 @@ def load_watch_state(state: dict[str, Any]) -> dict[str, Any]:
             raw_data=data.get("raw_data", {}),
         )
 
-    return result
+    return result  # pyright: ignore[reportUnknownVariableType]
 
 
 def save_watch_state(state: dict[str, Any], watch_states: dict[str, Any]) -> None:

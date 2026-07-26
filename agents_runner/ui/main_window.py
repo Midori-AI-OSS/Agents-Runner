@@ -3,30 +3,39 @@ from __future__ import annotations
 import os
 import re
 import threading
+import time
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import Signal
-from PySide6.QtGui import QCloseEvent
-from PySide6.QtGui import QResizeEvent
+from PySide6.QtGui import QCloseEvent, QImage, QResizeEvent
+from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QMainWindow
+from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
+from PySide6.QtNetwork import QNetworkAccessManager
+
 from agents_runner.environments import Environment
-from agents_runner.ide_systems import IDE_DISPLAY_CONTAINER_DESKTOP
-from agents_runner.ide_systems import get_default_ide_system_name
 from agents_runner.persistence import default_state_path
 from agents_runner.ui.bridges import TaskRunnerBridge
 from agents_runner.ui.constants import APP_TITLE
 from agents_runner.ui.graphics import GlassRoot
+from agents_runner.ui.graphics import normalize_ui_theme_name
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.radio import RadioController
+from agents_runner.ui.radio.art_colors import build_dynamic_spec
+from agents_runner.ui.radio.art_colors import download_art
+from agents_runner.ui.radio.art_colors import extract_dominant_colors
+from agents_runner.ui.radio.art_colors import hash_to_style
+from agents_runner.ui.themes.dynamic.background import reset_dynamic_state
+from agents_runner.ui.themes.dynamic.background import set_art_spec as set_dynamic_art_spec
 from agents_runner.ui.pages import DashboardPage
 from agents_runner.ui.pages import EnvironmentsPage
 from agents_runner.ui.pages import NewTaskPage
@@ -60,7 +69,7 @@ if TYPE_CHECKING:
     from agents_runner.ui.task_event_proxy import TaskEventProxy
 
 
-class MainWindow(
+class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
     QMainWindow,
     MainWindowCapacityMixin,
     MainWindowNavigationMixin,
@@ -97,16 +106,14 @@ class MainWindow(
             "host_workdir": os.environ.get("CODEX_HOST_WORKDIR", os.getcwd()),
             "active_environment_id": "default",
             "interactive_terminal_id": "",
-            "ide_system_default": get_default_ide_system_name(),
-            "ide_display_target_default": IDE_DISPLAY_CONTAINER_DESKTOP,
-            "ide_novnc_auto_open_enabled": True,
-            "ide_novnc_auto_open_mode": "viewing_only",
+            "opencode_interactive_mode": "terminal",
             "window_w": 1280,
             "window_h": 720,
             "max_agents_running": -1,
             "append_pixelarch_context": False,
             "headless_desktop_enabled": False,
             "gpu_enabled": False,
+            "network_host": False,
             "auto_navigate_on_run_agent_start": False,
             "auto_navigate_on_run_interactive_start": False,
             "ui_theme": "auto",
@@ -128,6 +135,12 @@ class MainWindow(
             "agentsnova_auto_reactions_enabled": True,
             "agentsnova_trusted_users_global": [],
             "agentsnova_review_guard_mode": "reaction",
+            "task_workspace_location": "app_data",
+            "task_workspace_cleanup_retention_days": 30,
+            "task_workspace_cleanup_interval_minutes": 60,
+            "task_workspace_cleanup_scan_delay_seconds": 5,
+            "task_workspace_cleanup_size_threshold_gb": 50,
+            "task_workspace_cleanup_size_popup_suppressed": False,
         }
         self._environments: dict[str, Environment] = {}
         self._syncing_environment = False
@@ -142,15 +155,18 @@ class MainWindow(
         self._run_started_s: dict[str, float] = {}
         self._dashboard_log_refresh_s: dict[str, float] = {}
         self._interactive_watch: dict[str, tuple[str, threading.Event]] = {}
-        self._ide_novnc_auto_open_timers: dict[str, QTimer] = {}
-        self._ide_novnc_auto_open_urls: dict[str, str] = {}
-        self._ide_novnc_auto_open_ready_s: dict[str, float] = {}
-        self._ide_novnc_auto_open_deferred: set[str] = set()
-        self._ide_novnc_auto_opened_tasks: set[str] = set()
         self._repo_branches_request_id: int = 0
         self._repo_branches_request_meta: dict[int, dict[str, object]] = {}
         self._repo_branches_cache: dict[str, list[str]] = {}
+        self._task_workspace_cleanup_last_check_s = time.time()
+        self._task_workspace_cleanup_running = False
+        self._size_cleanup_popup_shown_this_session = False
+        self._task_workspace_migration_thread: QThread | None = None
+        self._task_workspace_migration_worker: object | None = None
         self._state_path = default_state_path()
+        self._active_art_channel: str = ""
+        self._active_art_url: str = ""
+        self._has_dynamic_spec: bool = False
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(450)
@@ -164,15 +180,13 @@ class MainWindow(
 
         self._watch_states: dict[str, AgentWatchState] = {}
 
-        self.host_log.connect(self._on_host_log, Qt.QueuedConnection)
-        self.host_pr_url.connect(self._on_host_pr_url, Qt.QueuedConnection)
-        self.host_artifacts.connect(self._on_host_artifacts, Qt.QueuedConnection)
-        self.interactive_finished.connect(
-            self._on_interactive_finished, Qt.QueuedConnection
-        )
-        self.repo_branches_ready.connect(
-            self._on_repo_branches_ready, Qt.QueuedConnection
-        )
+        self.host_log.connect(self._on_host_log, Qt.ConnectionType.QueuedConnection)
+        self.host_pr_url.connect(self._on_host_pr_url, Qt.ConnectionType.QueuedConnection)
+        self.host_artifacts.connect(self._on_host_artifacts, Qt.ConnectionType.QueuedConnection)
+        self.interactive_finished.connect(self._on_interactive_finished, Qt.ConnectionType.QueuedConnection)
+        self.repo_branches_ready.connect(self._on_repo_branches_ready, Qt.ConnectionType.QueuedConnection)
+
+        self._size_cleanup_popup_requested.connect(self._on_size_cleanup_popup, Qt.ConnectionType.QueuedConnection)
 
         self._dashboard_ticker = QTimer(self)
         self._dashboard_ticker.setInterval(1000)
@@ -193,6 +207,7 @@ class MainWindow(
         self._recovery_ticker.start()
 
         self._radio_controller = RadioController(self)
+        self._art_network = QNetworkAccessManager(self)
 
         self._root = GlassRoot()
         self.setCentralWidget(self._root)
@@ -208,25 +223,25 @@ class MainWindow(
 
         self._btn_home = QToolButton()
         self._btn_home.setText("Home")
-        self._btn_home.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_home.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_home.setIcon(lucide_icon("house"))
         self._btn_home.clicked.connect(self._show_dashboard)
 
         self._btn_new = QToolButton()
         self._btn_new.setText("Tasks")
-        self._btn_new.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_new.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_new.setIcon(lucide_icon("folder-plus"))
         self._btn_new.clicked.connect(self._show_tasks)
 
         self._btn_envs = QToolButton()
         self._btn_envs.setText("Environments")
-        self._btn_envs.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_envs.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_envs.setIcon(lucide_icon("folder"))
         self._btn_envs.clicked.connect(self._show_environments)
 
         self._btn_settings = QToolButton()
         self._btn_settings.setText("Settings")
-        self._btn_settings.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self._btn_settings.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self._btn_settings.setIcon(lucide_icon("settings"))
         self._btn_settings.clicked.connect(self._show_settings)
 
@@ -237,34 +252,27 @@ class MainWindow(
         top_layout.addStretch(1)
         self._radio_control = RadioControlWidget(top)
         self._radio_control.setVisible(self._radio_controller.qt_available)
-        top_layout.addWidget(self._radio_control, 0, Qt.AlignRight | Qt.AlignVCenter)
+        top_layout.addWidget(
+            self._radio_control,
+            0,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        )
 
-        self._radio_control.play_requested.connect(
-            self._on_radio_control_play_requested
-        )
-        self._radio_control.volume_changed.connect(
-            self._on_radio_control_volume_changed
-        )
-        self._radio_controller.state_changed.connect(
-            self._on_radio_state_changed, Qt.QueuedConnection
-        )
+        self._radio_control.play_requested.connect(self._on_radio_control_play_requested)
+        self._radio_control.volume_changed.connect(self._on_radio_control_volume_changed)
+        self._radio_controller.state_changed.connect(self._on_radio_state_changed, Qt.ConnectionType.QueuedConnection)
 
         outer.addWidget(top)
 
-        self._dashboard = DashboardPage(
-            load_past_batch_callback=self._load_past_tasks_batch
-        )
+        self._dashboard = DashboardPage(load_past_batch_callback=self._load_past_tasks_batch)
         self._dashboard.task_selected.connect(self._open_task_details)
         self._dashboard.clean_old_requested.connect(self._clean_old_tasks)
         self._dashboard.task_discard_requested.connect(self._discard_task_from_ui)
         self._new_task = NewTaskPage()
         self._new_task.requested_run.connect(self._start_task_from_ui)
         self._new_task.requested_launch.connect(self._start_interactive_task_from_ui)
-        self._new_task.requested_launch_ide.connect(self._start_ide_task_from_ui)
         self._new_task.environment_changed.connect(self._on_new_task_env_changed)
-        self._new_task.base_branch_changed.connect(
-            self._on_new_task_base_branch_changed
-        )
+        self._new_task.base_branch_changed.connect(self._on_new_task_base_branch_changed)
         self._new_task.back_requested.connect(self._show_dashboard)
         self._tasks_page = TasksPage(new_task_page=self._new_task)
         self._tasks_page.auto_review_requested.connect(self._on_auto_review_requested)
@@ -275,17 +283,22 @@ class MainWindow(
         self._details.container_action_requested.connect(self._on_task_container_action)
         self._envs_page = EnvironmentsPage()
         self._envs_page.back_requested.connect(self._show_dashboard)
-        self._envs_page.updated.connect(self._reload_environments, Qt.QueuedConnection)
+        self._envs_page.updated.connect(self._reload_environments, Qt.ConnectionType.QueuedConnection)
+        self._envs_page.updated.connect(self.refresh_agent_config_usage_counts, Qt.ConnectionType.QueuedConnection)
         self._envs_page.test_preflight_requested.connect(
-            self._on_environment_test_preflight, Qt.QueuedConnection
+            self._on_environment_test_preflight, Qt.ConnectionType.QueuedConnection
         )
-        self._settings = SettingsPage(
-            radio_supported=self._radio_controller.qt_available
-        )
+        self._settings = SettingsPage(radio_supported=self._radio_controller.qt_available)
         self._settings.back_requested.connect(self._show_dashboard)
-        self._settings.saved.connect(self._apply_settings, Qt.QueuedConnection)
+        self._settings.saved.connect(self._apply_settings, Qt.ConnectionType.QueuedConnection)
         self._settings.test_preflight_requested.connect(
-            self._on_settings_test_preflight, Qt.QueuedConnection
+            self._on_settings_test_preflight, Qt.ConnectionType.QueuedConnection
+        )
+        self._settings.move_task_workspaces_requested.connect(
+            self._on_move_task_workspaces_requested, Qt.ConnectionType.QueuedConnection
+        )
+        self._settings.force_cleanup_requested.connect(
+            self._on_force_cleanup_requested, Qt.ConnectionType.QueuedConnection
         )
 
         self._stack = QWidget()
@@ -338,13 +351,6 @@ class MainWindow(
         # Clean up external viewer process
         if hasattr(self, "_details"):
             self._details.cleanup()
-        for timer in list(getattr(self, "_ide_novnc_auto_open_timers", {}).values()):
-            try:
-                timer.stop()
-                timer.deleteLater()
-            except Exception:
-                pass
-        self._ide_novnc_auto_open_timers.clear()
         super().closeEvent(event)
 
     def _sync_radio_controller_from_settings(
@@ -354,17 +360,11 @@ class MainWindow(
         previous_enabled: bool | None = None,
     ) -> None:
         enabled = bool(self._settings_data.get("radio_enabled") or False)
-        channel = RadioController.normalize_channel(
-            self._settings_data.get("radio_channel")
-        )
-        quality = RadioController.normalize_quality(
-            self._settings_data.get("radio_quality")
-        )
+        channel = RadioController.normalize_channel(self._settings_data.get("radio_channel"))
+        quality = RadioController.normalize_quality(self._settings_data.get("radio_quality"))
         volume = RadioController.clamp_volume(self._settings_data.get("radio_volume"))
         autostart = bool(self._settings_data.get("radio_autostart") or False)
-        loudness_boost_enabled = bool(
-            self._settings_data.get("radio_loudness_boost_enabled") or False
-        )
+        loudness_boost_enabled = bool(self._settings_data.get("radio_loudness_boost_enabled") or False)
         loudness_boost_factor = RadioController.normalize_loudness_boost_factor(
             self._settings_data.get("radio_loudness_boost_factor")
         )
@@ -378,9 +378,7 @@ class MainWindow(
         self._settings_data["radio_loudness_boost_factor"] = loudness_boost_factor
 
         if not self._radio_controller.qt_available:
-            self._update_window_title_from_radio_state(
-                self._radio_controller.state_snapshot()
-            )
+            self._update_window_title_from_radio_state(self._radio_controller.state_snapshot())
             return
 
         self._radio_controller.set_channel(channel)
@@ -391,9 +389,7 @@ class MainWindow(
         )
         self._radio_controller.set_volume(volume)
 
-        start_when_enabled = bool(
-            user_initiated and enabled and previous_enabled is False
-        )
+        start_when_enabled = bool(user_initiated and enabled and previous_enabled is False)
         self._radio_controller.set_enabled(
             enabled,
             start_when_enabled=start_when_enabled,
@@ -412,9 +408,7 @@ class MainWindow(
 
         snapshot = self._radio_controller.state_snapshot()
         connection_state = str(snapshot.get("connection_state") or "").strip().lower()
-        is_active = bool(snapshot.get("is_playing")) or bool(
-            snapshot.get("desired_playing")
-        )
+        is_active = bool(snapshot.get("is_playing")) or bool(snapshot.get("desired_playing"))
         if connection_state == "reconnecting":
             is_active = True
 
@@ -440,34 +434,74 @@ class MainWindow(
         self._schedule_save()
 
     def _on_radio_state_changed(self, state: object) -> None:
-        snapshot = (
-            dict(state)
-            if isinstance(state, dict)
-            else self._radio_controller.state_snapshot()
-        )
+        snapshot = dict(state) if isinstance(state, dict) else self._radio_controller.state_snapshot()  # pyright: ignore[reportUnknownVariableType]
         qt_available = bool(snapshot.get("qt_available"))
         self._radio_control.setVisible(qt_available)
         if qt_available:
-            self._radio_control.set_service_available(
-                bool(snapshot.get("service_available"))
-            )
+            self._radio_control.set_service_available(bool(snapshot.get("service_available")))
+            self._radio_control.set_desired_playing(bool(snapshot.get("desired_playing")))
             self._radio_control.set_playing(bool(snapshot.get("is_playing")))
-            self._radio_control.set_connection_state(
-                str(snapshot.get("connection_state") or "")
-            )
+            self._radio_control.set_connection_state(str(snapshot.get("connection_state") or ""))
             self._radio_control.set_radio_enabled(bool(snapshot.get("enabled")))
             try:
                 volume_value = int(snapshot.get("volume") or 70)
             except Exception:
                 volume_value = 70
             self._radio_control.set_volume(volume_value)
-            self._radio_control.set_status_tooltip(
-                str(snapshot.get("status_text") or "")
-            )
+            self._radio_control.set_status_tooltip(str(snapshot.get("status_text") or ""))
 
         self._update_window_title_from_radio_state(snapshot)
+        self._update_dynamic_theme_from_radio(snapshot)
 
-    def _update_window_title_from_radio_state(self, state: dict[str, object]) -> None:
+    def _update_dynamic_theme_from_radio(self, state: dict[str, Any]) -> None:
+        ui_theme = normalize_ui_theme_name(self._settings_data.get("ui_theme"), allow_auto=False)
+        if ui_theme != "dynamic":
+            if self._has_dynamic_spec:
+                reset_dynamic_state()
+                self._has_dynamic_spec = False
+            return
+
+        is_playing = bool(state.get("is_playing"))
+        art_data = state.get("art")
+        if isinstance(art_data, dict):
+            art_url = str(art_data.get("art_url") or "").strip()
+            track_title = str(state.get("current_track") or "").strip()
+            has_art = bool(art_data.get("has_art"))
+            art_channel = str(art_data.get("channel") or "").strip()
+        else:
+            art_url = ""
+            track_title = ""
+            has_art = False
+            art_channel = ""
+
+        if not is_playing or not has_art or not art_url:
+            if not is_playing and str(state.get("connection_state") or "") == "reconnecting":
+                return
+            self._has_dynamic_spec = False
+            set_dynamic_art_spec(None, "blobs")
+            self._active_art_channel = ""
+            self._active_art_url = ""
+            return
+
+        if art_url == self._active_art_url and self._has_dynamic_spec:
+            return
+
+        self._active_art_channel = art_channel
+        self._active_art_url = art_url
+        style = hash_to_style(track_title) if track_title else "blobs"
+
+        def _on_art_downloaded(image: QImage | None) -> None:
+            if image is None or image.isNull():
+                set_dynamic_art_spec(None, "")
+                return
+            colors = extract_dominant_colors(image, n=4)
+            spec = build_dynamic_spec(colors, style)
+            set_dynamic_art_spec(spec, style)
+            self._has_dynamic_spec = True
+
+        download_art(art_url, self._art_network, _on_art_downloaded)
+
+    def _update_window_title_from_radio_state(self, state: dict[str, Any]) -> None:
         if not bool(state.get("qt_available")):
             self.setWindowTitle(APP_TITLE)
             return
@@ -477,9 +511,7 @@ class MainWindow(
             return
 
         channel_label = str(state.get("channel_label") or "all").strip() or "all"
-        current_track = self._normalize_radio_window_track_title(
-            state.get("current_track")
-        )
+        current_track = self._normalize_radio_window_track_title(state.get("current_track"))
         last_track = self._normalize_radio_window_track_title(state.get("last_track"))
         service_available = bool(state.get("service_available"))
         degraded_from_playback = bool(state.get("degraded_from_playback"))
@@ -495,9 +527,7 @@ class MainWindow(
         self.setWindowTitle(f"{APP_TITLE} [{channel_label}]")
 
     def _active_environment_window_title(self) -> str:
-        active_env_id = str(
-            self._settings_data.get("active_environment_id") or ""
-        ).strip()
+        active_env_id = str(self._settings_data.get("active_environment_id") or "").strip()
         if not active_env_id:
             active_env_id = "default"
         env = self._environments.get(active_env_id)
@@ -508,9 +538,7 @@ class MainWindow(
         return active_env_id
 
     def _refresh_radio_channel_options(self, *, disable_on_failure: bool) -> None:
-        selected_channel = RadioController.normalize_channel(
-            self._settings_data.get("radio_channel")
-        )
+        selected_channel = RadioController.normalize_channel(self._settings_data.get("radio_channel"))
         if not self._radio_controller.qt_available:
             self._settings.set_radio_channel_options(
                 self._radio_channel_options,
@@ -520,9 +548,7 @@ class MainWindow(
             return
 
         def _handle_channels(channels: object, error_text: str) -> None:
-            current_selected = RadioController.normalize_channel(
-                self._settings_data.get("radio_channel")
-            )
+            current_selected = RadioController.normalize_channel(self._settings_data.get("radio_channel"))
 
             if error_text or not isinstance(channels, list):
                 if disable_on_failure:
@@ -534,7 +560,7 @@ class MainWindow(
                 return
 
             normalized: list[str] = []
-            for raw in channels:
+            for raw in channels:  # pyright: ignore[reportUnknownVariableType]
                 channel = RadioController.normalize_channel(raw)
                 if not channel or channel in normalized:
                     continue
@@ -555,9 +581,7 @@ class MainWindow(
         if not track:
             return ""
 
-        parts = [
-            part.strip() for part in re.split(r"\s+[—–-]\s+", track) if part.strip()
-        ]
+        parts = [part.strip() for part in re.split(r"\s+[—–-]\s+", track) if part.strip()]
         if not parts:
             return ""
 
@@ -574,3 +598,35 @@ class MainWindow(
         if not parts:
             return ""
         return " - ".join(parts)
+
+    def _on_size_cleanup_popup(self, removed_count: int) -> None:
+        if self._size_cleanup_popup_shown_this_session:
+            return
+        self._size_cleanup_popup_shown_this_session = True
+
+        threshold_gb = int(self._settings_data.get("task_workspace_cleanup_size_threshold_gb", 50))
+
+        msg_box = QMessageBox(self)
+        msg_box.setIcon(QMessageBox.Icon.Information)
+        msg_box.setWindowTitle("Workspace Size Cleanup")
+        msg_box.setText(
+            f"Task workspaces exceeded the {threshold_gb} GB size limit.\n"
+            f"{removed_count} old workspace(s) were removed."
+        )
+        msg_box.setInformativeText("Consider using a RAM drive for scratch data to avoid disk limits.")
+
+        checkbox = QCheckBox("Don't show again")
+        msg_box.setCheckBox(checkbox)
+
+        msg_box.setStandardButtons(QMessageBox.StandardButton.Close)
+        open_settings_btn = msg_box.addButton("Open Settings", QMessageBox.ButtonRole.AcceptRole)
+
+        msg_box.exec()
+
+        if checkbox.isChecked():
+            self._settings_data["task_workspace_cleanup_size_popup_suppressed"] = True
+            self._schedule_save()
+
+        if msg_box.clickedButton() == open_settings_btn:
+            self._settings.show()
+            self._settings._on_nav_button_clicked("cleanup")  # pyright: ignore[reportPrivateUsage]

@@ -37,7 +37,7 @@ from agents_runner.docker.phase_image_builder import PREFLIGHTS_DIR
 from agents_runner.docker.phase_image_builder import ensure_phase_image
 from agents_runner.log_format import format_log
 from agents_runner.midoriai_template import (
-    MidoriAITemplateDetection,
+    MidoriaiTemplateDetection,
     scan_midoriai_agents_template,
 )
 from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
@@ -45,9 +45,7 @@ from agents_runner.setup_agents import prepare_setup_agents_phase
 from agents_runner.setup_agents import missing_setup_agents_instruction
 
 
-INSTALL_PREFLIGHT_PATH_TEMPLATE = (
-    "/tmp/agents-runner-preflight-install-agent-{task_id}.sh"
-)
+INSTALL_PREFLIGHT_PATH_TEMPLATE = "/tmp/agents-runner-preflight-install-agent-{task_id}.sh"
 
 
 @dataclass(frozen=True)
@@ -61,24 +59,21 @@ class RuntimeEnvironment:
     container_cwd: str
     config_container_dir: str
     config_extra_mounts: list[str]
-    template_detection: MidoriAITemplateDetection
+    template_detection: MidoriaiTemplateDetection
     container_name: str
     task_token: str
     artifacts_staging_dir: Path
     install_container_path: str
     settings_container_path: str
     setup_agents_container_path: str
-    ide_container_path: str
     install_preflight_tmp_path: str | None
     settings_preflight_tmp_path: str | None
     setup_agents_preflight_tmp_path: str | None
-    ide_preflight_tmp_path: str | None
     preflights_host_dir: str
     system_preflight_enabled: bool
     install_preflight_cached: bool
     system_preflight_cached: bool
     settings_preflight_cached: bool
-    ide_preflight_cached: bool
     runtime_image: str
     desktop_enabled: bool
     desktop_cached: bool
@@ -88,7 +83,6 @@ class RuntimeEnvironment:
     agent_cli: str
     prompt_for_agent: str
     launch_mode: str
-    ide_display_target: str
     custom_command_argv: list[str]
     custom_verify_executable: str
 
@@ -102,27 +96,23 @@ class WorkerSetup:
         prompt: str,
         on_log: Callable[[str], None],
         on_state: Callable[[dict[str, Any]], None],
+        check_stop: Callable[[], bool] | None = None,
     ) -> None:
         self._config = config
         self._prompt = sanitize_prompt((prompt or "").strip())
         self._on_log = on_log
         self._on_state = on_state
+        self._check_stop = check_stop
 
-    def prepare_runtime_environment(
-        self, preflight_tmp_paths: list[str]
-    ) -> RuntimeEnvironment:
+    def prepare_runtime_environment(self, preflight_tmp_paths: list[str]) -> RuntimeEnvironment:
         """Prepare the complete runtime environment."""
         platform_config = self._setup_platform()
         workspace_config = self._resolve_workspace(platform_config.agent_cli)
-        template_detection = self._detect_and_persist_template(
-            workspace_config.host_mount
-        )
+        template_detection = self._detect_and_persist_template(workspace_config.host_mount)
         artifacts_staging_dir = self._create_artifacts_directory()
         setup_agents_script: str | None = None
         setup_agents_prompt_instruction: str | None = None
-        allow_missing_setup_agents_prompt = bool(
-            self._config.setup_agents_missing_prompt_enabled
-        )
+        allow_missing_setup_agents_prompt = bool(self._config.setup_agents_missing_prompt_enabled)
         try:
             setup_agents = prepare_setup_agents_phase(
                 host_workdir=workspace_config.host_mount,
@@ -145,12 +135,8 @@ class WorkerSetup:
                 )
             )
             if allow_missing_setup_agents_prompt:
-                setup_agents_prompt_instruction = missing_setup_agents_instruction(
-                    launch_mode=self._config.launch_mode
-                )
-        self.pull_image_if_needed(
-            platform_config.forced_platform, platform_config.platform_args
-        )
+                setup_agents_prompt_instruction = missing_setup_agents_instruction(launch_mode=self._config.launch_mode)
+        self.pull_image_if_needed(platform_config.forced_platform, platform_config.platform_args)
 
         agent_probe_available: bool | None = None
         install_plan = None
@@ -177,12 +163,8 @@ class WorkerSetup:
                     agent_cli=platform_config.agent_cli,
                     include_internal=False,
                 )
-        install_script = (
-            str(install_plan.script_content or "").strip() if install_plan else ""
-        )
-        install_phase_name = (
-            str(install_plan.phase_name or "").strip() if install_plan else ""
-        )
+        install_script = str(install_plan.script_content or "").strip() if install_plan else ""
+        install_phase_name = str(install_plan.phase_name or "").strip() if install_plan else ""
         preflight_config = self._prepare_preflight_scripts(
             preflight_tmp_paths,
             install_script=install_script,
@@ -196,7 +178,10 @@ class WorkerSetup:
 
         # Assemble final prompt
         prompt_assembler = PromptAssembler(
-            self._prompt, self._config.environment_id, self._on_log
+            self._prompt,
+            self._config.environment_id,
+            self._on_log,
+            state_path=self._config.state_path,
         )
         final_prompt = prompt_assembler.assemble_prompt(
             platform_config.agent_cli,
@@ -204,10 +189,7 @@ class WorkerSetup:
             caching_config.desktop_enabled,
             caching_config.desktop_display,
         )
-        if (
-            not allow_missing_setup_agents_prompt
-            and not str(setup_agents_script or "").strip()
-        ):
+        if not allow_missing_setup_agents_prompt and not str(setup_agents_script or "").strip():
             setup_agents_prompt_instruction = None
             self._on_log(
                 format_log(
@@ -233,26 +215,21 @@ class WorkerSetup:
             config_extra_mounts=workspace_config.config_extra_mounts,
             template_detection=template_detection,
             container_name=(
-                self._config.container_name
-                if self._config.container_name
-                else f"agents-runner-{uuid.uuid4().hex[:10]}"
+                self._config.container_name if self._config.container_name else f"agents-runner-{uuid.uuid4().hex[:10]}"
             ),
             task_token=self._config.task_id or "task",
             artifacts_staging_dir=artifacts_staging_dir,
             install_container_path=preflight_config.install_container_path,
             settings_container_path=preflight_config.settings_container_path,
             setup_agents_container_path=preflight_config.setup_agents_container_path,
-            ide_container_path=preflight_config.ide_container_path,
             install_preflight_tmp_path=preflight_config.install_preflight_tmp_path,
             settings_preflight_tmp_path=preflight_config.settings_preflight_tmp_path,
             setup_agents_preflight_tmp_path=preflight_config.setup_agents_preflight_tmp_path,
-            ide_preflight_tmp_path=preflight_config.ide_preflight_tmp_path,
             preflights_host_dir=str(caching_config.preflights_host_dir),
             system_preflight_enabled=caching_config.system_preflight_enabled,
             install_preflight_cached=caching_config.install_preflight_cached,
             system_preflight_cached=caching_config.system_preflight_cached,
             settings_preflight_cached=caching_config.settings_preflight_cached,
-            ide_preflight_cached=caching_config.ide_preflight_cached,
             runtime_image=caching_config.runtime_image,
             desktop_enabled=caching_config.desktop_enabled,
             desktop_cached=caching_config.desktop_cached,
@@ -262,10 +239,7 @@ class WorkerSetup:
             agent_cli=platform_config.agent_cli,
             prompt_for_agent=final_prompt,
             launch_mode=str(self._config.launch_mode or "agent"),
-            ide_display_target=str(self._config.ide_display_target or ""),
-            custom_command_argv=[
-                str(part) for part in self._config.custom_command_argv
-            ],
+            custom_command_argv=[str(part) for part in self._config.custom_command_argv],
             custom_verify_executable=str(self._config.custom_verify_executable or ""),
         )
 
@@ -336,29 +310,19 @@ class WorkerSetup:
 
     def _resolve_workspace(self, agent_cli: str) -> _WorkspaceConfig:
         """Resolve workspace mount points."""
-        host_mount = os.path.abspath(
-            os.path.expanduser(str(self._config.host_workdir or "").strip())
-        )
-        container_cwd = (
-            str(self._config.container_workdir or "").strip()
-            or "/home/midori-ai/workspace"
-        )
+        host_mount = os.path.abspath(os.path.expanduser(str(self._config.host_workdir or "").strip()))
+        container_cwd = str(self._config.container_workdir or "").strip() or "/home/midori-ai/workspace"
 
         return self._WorkspaceConfig(
             host_mount=host_mount,
             container_cwd=container_cwd,
             config_container_dir=(
-                str(self._config.container_config_dir or "").strip()
-                or container_config_dir(agent_cli)
+                str(self._config.container_config_dir or "").strip() or container_config_dir(agent_cli)
             ),
-            config_extra_mounts=additional_config_mounts(
-                agent_cli, self._config.host_config_dir
-            ),
+            config_extra_mounts=additional_config_mounts(agent_cli, self._config.host_config_dir),
         )
 
-    def _detect_and_persist_template(
-        self, host_mount: str
-    ) -> MidoriAITemplateDetection:
+    def _detect_and_persist_template(self, host_mount: str) -> MidoriaiTemplateDetection:
         """Detect and persist Midori AI template."""
         template_detection = scan_midoriai_agents_template(host_mount)
 
@@ -369,18 +333,12 @@ class WorkerSetup:
                 env = load_environments().get(str(self._config.environment_id))
                 if env is not None:
                     if env.midoriai_template_likelihood == 0.0:
-                        env.midoriai_template_likelihood = (
-                            template_detection.midoriai_template_likelihood
-                        )
-                        env.midoriai_template_detected = (
-                            template_detection.midoriai_template_detected
-                        )
-                        env.midoriai_template_detected_path = (
-                            template_detection.midoriai_template_detected_path
-                        )
+                        env.midoriai_template_likelihood = template_detection.midoriai_template_likelihood
+                        env.midoriai_template_detected = template_detection.midoriai_template_detected
+                        env.midoriai_template_detected_path = template_detection.midoriai_template_detected_path
                         save_environment(env)
                     else:
-                        template_detection = MidoriAITemplateDetection(
+                        template_detection = MidoriaiTemplateDetection(
                             midoriai_template_likelihood=env.midoriai_template_likelihood,
                             midoriai_template_detected=env.midoriai_template_detected,
                             midoriai_template_detected_path=env.midoriai_template_detected_path,
@@ -410,19 +368,10 @@ class WorkerSetup:
     def _create_artifacts_directory(self) -> Path:
         """Create artifacts staging directory."""
         artifacts_staging_dir = (
-            Path.home()
-            / ".midoriai"
-            / "agents-runner"
-            / "artifacts"
-            / (self._config.task_id or "task")
-            / "staging"
+            Path.home() / ".midoriai" / "agents-runner" / "artifacts" / (self._config.task_id or "task") / "staging"
         )
         artifacts_staging_dir.mkdir(parents=True, exist_ok=True)
-        self._on_log(
-            format_log(
-                "host", "none", "INFO", f"artifacts staging: {artifacts_staging_dir}"
-            )
-        )
+        self._on_log(format_log("host", "none", "INFO", f"artifacts staging: {artifacts_staging_dir}"))
         return artifacts_staging_dir
 
     @dataclass(frozen=True)
@@ -430,11 +379,9 @@ class WorkerSetup:
         install_container_path: str
         settings_container_path: str
         setup_agents_container_path: str
-        ide_container_path: str
         install_preflight_tmp_path: str | None
         settings_preflight_tmp_path: str | None
         setup_agents_preflight_tmp_path: str | None
-        ide_preflight_tmp_path: str | None
 
     def _prepare_preflight_scripts(
         self,
@@ -448,7 +395,6 @@ class WorkerSetup:
         install_preflight_tmp_path = None
         settings_preflight_tmp_path = None
         setup_agents_preflight_tmp_path = None
-        ide_preflight_tmp_path = None
 
         if install_script.strip():
             install_preflight_tmp_path = write_preflight_script(
@@ -482,43 +428,22 @@ class WorkerSetup:
                     )
                 )
                 setup_agents_preflight_tmp_path = None
-        if (self._config.ide_preflight_script or "").strip():
-            ide_preflight_tmp_path = write_preflight_script(
-                str(self._config.ide_preflight_script),
-                "ide",
-                self._config.task_id,
-                preflight_tmp_paths,
-            )
-
         return self._PreflightConfig(
-            install_container_path=INSTALL_PREFLIGHT_PATH_TEMPLATE.replace(
-                "{task_id}", task_token
-            ),
-            settings_container_path=self._config.container_settings_preflight_path.replace(
-                "{task_id}", task_token
-            ),
+            install_container_path=INSTALL_PREFLIGHT_PATH_TEMPLATE.replace("{task_id}", task_token),
+            settings_container_path=self._config.container_settings_preflight_path.replace("{task_id}", task_token),
             setup_agents_container_path=self._config.container_setup_agents_preflight_path.replace(
-                "{task_id}", task_token
-            ),
-            ide_container_path=self._config.container_ide_preflight_path.replace(
                 "{task_id}", task_token
             ),
             install_preflight_tmp_path=install_preflight_tmp_path,
             settings_preflight_tmp_path=settings_preflight_tmp_path,
             setup_agents_preflight_tmp_path=setup_agents_preflight_tmp_path,
-            ide_preflight_tmp_path=ide_preflight_tmp_path,
         )
 
-    def pull_image_if_needed(
-        self, forced_platform: str | None, platform_args: list[str]
-    ) -> None:
+    def pull_image_if_needed(self, forced_platform: str | None, platform_args: list[str]) -> None:
         """Pull Docker image if needed."""
         should_pull = (
             self._config.pull_before_run
-            or (
-                forced_platform
-                and not has_platform_image(self._config.image, forced_platform)
-            )
+            or (forced_platform and not has_platform_image(self._config.image, forced_platform))
             or (not forced_platform and not has_image(self._config.image))
         )
 
@@ -530,7 +455,9 @@ class WorkerSetup:
                 else f"image missing; docker pull {self._config.image}"
             )
             self._on_log(format_log("host", "none", "INFO", msg))
-            pull_image(self._config.image, platform_args=platform_args)
+            pull_image(
+                self._config.image, platform_args=platform_args, on_log=self._on_log, check_stop=self._check_stop
+            )
             self._on_log(format_log("host", "none", "INFO", "pull complete"))
 
     @dataclass(frozen=True)
@@ -540,7 +467,6 @@ class WorkerSetup:
         install_preflight_cached: bool
         system_preflight_cached: bool
         settings_preflight_cached: bool
-        ide_preflight_cached: bool
         runtime_image: str
         desktop_enabled: bool
         desktop_cached: bool
@@ -565,9 +491,7 @@ class WorkerSetup:
         system_preflight_script = ""
         if system_preflight_path.is_file():
             try:
-                system_preflight_script = system_preflight_path.read_text(
-                    encoding="utf-8"
-                )
+                system_preflight_script = system_preflight_path.read_text(encoding="utf-8")
             except Exception:
                 system_preflight_script = ""
 
@@ -585,7 +509,6 @@ class WorkerSetup:
         install_preflight_cached = False
         system_preflight_cached = False
         settings_preflight_cached = False
-        ide_preflight_cached = False
         container_caching_enabled = bool(self._config.container_caching_enabled)
 
         # install agent CLI
@@ -610,11 +533,7 @@ class WorkerSetup:
             runtime_image = next_image
 
         # system
-        if (
-            container_caching_enabled
-            and self._config.cache_system_preflight_enabled
-            and system_preflight_enabled
-        ):
+        if container_caching_enabled and self._config.cache_system_preflight_enabled and system_preflight_enabled:
             self._on_log(
                 format_log(
                     "phase",
@@ -666,59 +585,13 @@ class WorkerSetup:
             )
             settings_preflight_cached = next_image != runtime_image
             runtime_image = next_image
-        elif (
-            container_caching_enabled and self._config.cache_settings_preflight_enabled
-        ):
+        elif container_caching_enabled and self._config.cache_settings_preflight_enabled:
             self._on_log(
                 format_log(
                     "phase",
                     "cache",
                     "WARN",
                     "settings caching enabled but settings script is empty",
-                )
-            )
-
-        # ide
-        ide_preflight_script = str(self._config.ide_preflight_script or "")
-        launch_mode = str(self._config.launch_mode or "").strip().lower()
-        cache_ide_enabled = (
-            container_caching_enabled
-            and self._config.cache_ide_preflight_enabled
-            and launch_mode == "ide"
-        )
-        if cache_ide_enabled and ide_preflight_script.strip():
-            ide_name = "".join(
-                ch
-                for ch in str(self._config.ide_system or "").strip().lower()
-                if ch.isalnum() or ch in {"-", "_"}
-            )
-            if not ide_name:
-                ide_name = "default"
-            phase_name = f"ide-{ide_name}"
-            self._on_log(
-                format_log(
-                    "phase",
-                    "cache",
-                    "INFO",
-                    f"{phase_name} caching enabled; checking cached layer",
-                )
-            )
-            next_image = ensure_phase_image(
-                base_image=runtime_image,
-                phase_name=phase_name,
-                script_content=ide_preflight_script,
-                preflights_dir=preflights_host_dir,
-                on_log=self._on_log,
-            )
-            ide_preflight_cached = next_image != runtime_image
-            runtime_image = next_image
-        elif cache_ide_enabled:
-            self._on_log(
-                format_log(
-                    "phase",
-                    "cache",
-                    "WARN",
-                    "ide caching enabled but ide script is empty",
                 )
             )
 
@@ -734,9 +607,7 @@ class WorkerSetup:
                 )
             )
             try:
-                runtime_image = ensure_desktop_image(
-                    desktop_base_image, on_log=self._on_log
-                )
+                runtime_image = ensure_desktop_image(desktop_base_image, on_log=self._on_log)
                 if runtime_image != desktop_base_image:
                     desktop_cached = True
                     self._on_log(
@@ -774,7 +645,6 @@ class WorkerSetup:
             install_preflight_cached=install_preflight_cached,
             system_preflight_cached=system_preflight_cached,
             settings_preflight_cached=settings_preflight_cached,
-            ide_preflight_cached=ide_preflight_cached,
             runtime_image=runtime_image,
             desktop_enabled=desktop_enabled,
             desktop_cached=desktop_cached,

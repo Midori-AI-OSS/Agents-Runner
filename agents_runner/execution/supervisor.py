@@ -8,10 +8,14 @@ fallback to alternate agents, and intelligent error classification.
 from __future__ import annotations
 
 import os
+import shlex
 from typing import Any
 from typing import Callable
 from typing import Literal
 
+from agents_runner.agent_configs.model import AgentConfig
+from agents_runner.agent_configs.storage import load_agent_configs
+from agents_runner.agent_configs.storage import resolve_agent_config
 from agents_runner.agent_cli import additional_config_mounts
 from agents_runner.agent_cli import default_host_config_dir
 from agents_runner.docker.config import DockerRunnerConfig
@@ -23,8 +27,28 @@ from agents_runner.execution.supervisor_types import AttemptKey
 from agents_runner.execution.supervisor_types import SupervisorConfig
 from agents_runner.execution.supervisor_types import SupervisorResult
 from agents_runner.log_format import format_log
+from agents_runner.persistence import default_state_path
 from agents_runner.prompts import RetryContext
 from agents_runner.prompts import build_task_prompt
+
+
+def _resolved_agent_config_cli_flags_text(
+    config: AgentConfig | None,
+) -> str:
+    cli_flags = str(getattr(config, "cli_flags", "") or "").strip()
+    parts: list[str] = []
+    for flag, value in (
+        ("--agent", getattr(config, "agent", "") if config is not None else ""),
+        ("--model", getattr(config, "model", "") if config is not None else ""),
+        ("--variant", getattr(config, "variant", "") if config is not None else ""),
+    ):
+        resolved_value = str(value or "").strip()
+        if resolved_value:
+            parts.extend([flag, resolved_value])
+    prefixed_flags = " ".join(shlex.quote(part) for part in parts)
+    if prefixed_flags and cli_flags:
+        return f"{prefixed_flags} {cli_flags}"
+    return prefixed_flags or cli_flags
 
 
 class TaskSupervisor:
@@ -47,9 +71,9 @@ class TaskSupervisor:
         on_log: Callable[[str], None],
         on_retry: Callable[[int, str, float], None],
         on_agent_switch: Callable[[str, str], None],
-        on_done: Callable[[int, str | None, list[str], dict[str, Any]], None]
-        | None = None,
+        on_done: Callable[[int, str | None, list[str], dict[str, Any]], None] | None = None,
         watch_states: dict[str, Any] | None = None,
+        agent_configs: dict[str, AgentConfig] | None = None,
     ) -> None:
         """Initialize task supervisor.
 
@@ -75,6 +99,7 @@ class TaskSupervisor:
         self._on_agent_switch = on_agent_switch
         self._on_done = on_done
         self._watch_states = watch_states or {}
+        self._agent_configs = self._normalize_agent_configs(agent_configs)
 
         # State tracking
         self._agent_chain: list[AgentInstance] = []
@@ -95,6 +120,41 @@ class TaskSupervisor:
         self._last_logs: list[str] = []
         self._last_container_state: dict[str, Any] = {}
         self._user_stop_reason: Literal["cancel", "kill"] | None = None
+
+    def _normalize_agent_configs(self, agent_configs: dict[str, AgentConfig] | None) -> dict[str, AgentConfig]:
+        if agent_configs:
+            return {
+                config_id: config
+                for config_id, config in agent_configs.items()
+                if str(config_id or "").strip() and isinstance(config, AgentConfig)  # pyright: ignore[reportUnnecessaryIsInstance]
+            }
+        state_path = str(getattr(self._config, "state_path", "") or "").strip()
+        if not state_path:
+            state_path = default_state_path()
+        try:
+            return {
+                config_id: config
+                for config in load_agent_configs(state_path)
+                if (config_id := str(getattr(config, "config_id", "") or "").strip())
+            }
+        except Exception:
+            return {}
+
+    def _resolved_agent_config(self, agent: AgentInstance) -> AgentConfig | None:
+        return resolve_agent_config(str(getattr(agent, "config_id", "") or ""), self._agent_configs)
+
+    def _resolved_agent_cli(self, agent: AgentInstance) -> str:
+        config = self._resolved_agent_config(agent)
+        agent_cli = (
+            str(getattr(config, "agent_cli", "") if config is not None else self._config.agent_cli or "codex")
+            .strip()
+            .lower()
+        )
+        return agent_cli or "codex"
+
+    def _resolved_agent_cli_flags_text(self, agent: AgentInstance) -> str:
+        config = self._resolved_agent_config(agent)
+        return _resolved_agent_config_cli_flags_text(config)
 
     @property
     def container_id(self) -> str | None:
@@ -133,9 +193,7 @@ class TaskSupervisor:
         """User requested graceful cancellation (terminal, no retry/fallback)."""
         if self._user_stop_reason is None:
             self._user_stop_reason = "cancel"
-            self._on_log(
-                format_log("supervisor", "none", "INFO", "user_cancel requested")
-            )
+            self._on_log(format_log("supervisor", "none", "INFO", "user_cancel requested"))
         if self._current_worker:
             self._current_worker.request_stop()
 
@@ -143,9 +201,7 @@ class TaskSupervisor:
         """User requested force kill (terminal, no retry/fallback)."""
         if self._user_stop_reason is None:
             self._user_stop_reason = "kill"
-            self._on_log(
-                format_log("supervisor", "none", "INFO", "user_kill requested")
-            )
+            self._on_log(format_log("supervisor", "none", "INFO", "user_kill requested"))
         if self._current_worker:
             request_kill = getattr(self._current_worker, "request_kill", None)
             if callable(request_kill):
@@ -166,11 +222,7 @@ class TaskSupervisor:
         while self._current_agent_index < len(self._agent_chain):
             if self._user_stop_reason is not None:
                 result = self._result_for_user_stop()
-                self._on_log(
-                    format_log(
-                        "supervisor", "task", "INFO", "retry skipped due to user stop"
-                    )
-                )
+                self._on_log(format_log("supervisor", "task", "INFO", "retry skipped due to user stop"))
                 if self._on_done:
                     self._on_done(
                         result.exit_code,
@@ -180,9 +232,7 @@ class TaskSupervisor:
                     )
                 return result
 
-            next_agent = self._next_available_agent(
-                start_index=self._current_agent_index
-            )
+            next_agent = self._next_available_agent(start_index=self._current_agent_index)
             if next_agent is None:
                 result = self._result_for_exhausted_agents()
                 if self._on_done:
@@ -198,9 +248,10 @@ class TaskSupervisor:
             if next_index != self._current_agent_index:
                 self._current_agent_index = next_index
 
-            if current_agent_cli and current_agent_cli != agent.agent_cli:
-                self._on_agent_switch(current_agent_cli, agent.agent_cli)
-            current_agent_cli = agent.agent_cli
+            next_agent_cli = self._resolved_agent_cli(agent)
+            if current_agent_cli and current_agent_cli != next_agent_cli:
+                self._on_agent_switch(current_agent_cli, next_agent_cli)
+            current_agent_cli = next_agent_cli
 
             attempt_key = self._attempt_key(agent)
             self._attempted.add(attempt_key)
@@ -209,11 +260,7 @@ class TaskSupervisor:
             result = self._try_agent(agent)
 
             if self._user_stop_reason is not None:
-                self._on_log(
-                    format_log(
-                        "supervisor", "task", "INFO", "retry skipped due to user stop"
-                    )
-                )
+                self._on_log(format_log("supervisor", "task", "INFO", "retry skipped due to user stop"))
                 if self._on_done:
                     self._on_done(
                         result.exit_code,
@@ -233,7 +280,7 @@ class TaskSupervisor:
                 self._attempt_history.append(
                     {
                         "attempt_number": int(self._total_attempts),
-                        "agent_cli": agent.agent_cli,
+                        "agent_cli": attempt_key.agent_cli,
                         "agent_id": agent.agent_id,
                         "host_config_dir": attempt_key.host_config_dir,
                         "agent_cli_args": list(attempt_key.agent_cli_args),
@@ -266,7 +313,7 @@ class TaskSupervisor:
             self._attempt_history.append(
                 {
                     "attempt_number": int(self._total_attempts),
-                    "agent_cli": agent.agent_cli,
+                    "agent_cli": attempt_key.agent_cli,
                     "agent_id": agent.agent_id,
                     "host_config_dir": attempt_key.host_config_dir,
                     "agent_cli_args": list(attempt_key.agent_cli_args),
@@ -283,13 +330,9 @@ class TaskSupervisor:
 
             # Select the next distinct agent+config in the fallback chain.
             self._current_agent_index += 1
-            next_candidate = self._next_available_agent(
-                start_index=self._current_agent_index
-            )
+            next_candidate = self._next_available_agent(start_index=self._current_agent_index)
             if next_candidate is None:
-                exhausted = self._result_for_exhausted_agents(
-                    last_exit_code=result.exit_code
-                )
+                exhausted = self._result_for_exhausted_agents(last_exit_code=result.exit_code)
                 if self._on_done:
                     self._on_done(
                         exhausted.exit_code,
@@ -301,7 +344,7 @@ class TaskSupervisor:
 
             next_attempt_number = int(self._total_attempts) + 1
             _, candidate = next_candidate
-            self._on_retry(next_attempt_number, candidate.agent_cli, 0.0)
+            self._on_retry(next_attempt_number, self._resolved_agent_cli(candidate), 0.0)
             continue
 
         # Should not reach here
@@ -326,9 +369,7 @@ class TaskSupervisor:
             # Use default agent from config
             default_agent = AgentInstance(
                 agent_id="default",
-                agent_cli=self._config.agent_cli,
-                config_dir=self._config.host_config_dir,
-                cli_flags="",
+                config_id="",
             )
             self._agent_chain = [default_agent]
             return
@@ -380,13 +421,11 @@ class TaskSupervisor:
                 "supervisor",
                 "task",
                 "INFO",
-                f"agent chain: {' -> '.join(a.agent_cli for a in chain)}",
+                "agent chain: " + " -> ".join(self._resolved_agent_cli(agent) for agent in chain),
             )
         )
 
-    def _next_available_agent(
-        self, *, start_index: int
-    ) -> tuple[int, AgentInstance] | None:
+    def _next_available_agent(self, *, start_index: int) -> tuple[int, AgentInstance] | None:
         for index in range(max(0, int(start_index)), len(self._agent_chain)):
             agent = self._agent_chain[index]
             key = self._attempt_key(agent)
@@ -398,7 +437,7 @@ class TaskSupervisor:
                         "supervisor",
                         "cooldown",
                         "INFO",
-                        f"skipping {agent.agent_cli} (agent+config) due to cooldown",
+                        f"skipping {self._resolved_agent_cli(agent)} (agent+config) due to cooldown",
                     )
                 )
                 continue
@@ -428,21 +467,16 @@ class TaskSupervisor:
                     total_configured_attempts=len(self._agent_chain) or None,
                     previous_agent=str(previous.get("agent_cli") or "unknown"),
                     previous_config=str(previous.get("host_config_dir") or "unknown"),
-                    previous_failure_category=str(
-                        previous.get("failure_category") or "unknown"
-                    ),
-                    previous_failure_summary=str(
-                        previous.get("failure_message") or "unknown"
-                    ),
+                    previous_failure_category=str(previous.get("failure_category") or "unknown"),
+                    previous_failure_summary=str(previous.get("failure_message") or "unknown"),
                 ),
             )
 
         # Build agent-specific config
+        agent_cli = self._resolved_agent_cli(agent)
         agent_config = self._build_agent_config(agent)
         config_mount_sources = [str(agent_config.host_config_dir or "").strip()]
-        for mount_spec in additional_config_mounts(
-            agent.agent_cli, agent_config.host_config_dir
-        ):
+        for mount_spec in additional_config_mounts(agent_config.agent_cli, agent_config.host_config_dir):
             src = str(mount_spec or "").split(":", 1)[0].strip()
             if src:
                 config_mount_sources.append(src)
@@ -455,7 +489,7 @@ class TaskSupervisor:
                 "supervisor",
                 "attempt",
                 "INFO",
-                f"selected agent={agent.agent_cli} config={agent_config.host_config_dir} config_mounts=[{preview}]",
+                f"selected agent={agent_cli} config={agent_config.host_config_dir} config_mounts=[{preview}]",
             )
         )
 
@@ -489,7 +523,7 @@ class TaskSupervisor:
             error=self._last_error,
             artifacts=self._last_artifacts,
             metadata={
-                "agent_used": agent.agent_cli,
+                "agent_used": agent_config.agent_cli,
                 "agent_id": agent.agent_id,
                 "retry_count": max(0, int(self._total_attempts) - 1),
                 "total_attempts": self._total_attempts,
@@ -515,14 +549,14 @@ class TaskSupervisor:
         Returns:
             DockerRunnerConfig configured for this agent
         """
+        agent_cli = self._resolved_agent_cli(agent)
         host_config_dir = self._resolve_host_config_dir(agent)
         # Parse agent CLI args
         agent_cli_args: list[str] = []
-        if agent.cli_flags:
-            import shlex
-
+        flags_text = self._resolved_agent_cli_flags_text(agent)
+        if flags_text:
             try:
-                agent_cli_args = shlex.split(agent.cli_flags)
+                agent_cli_args = shlex.split(flags_text)
             except ValueError:
                 # Invalid flags, use empty list
                 pass
@@ -532,38 +566,32 @@ class TaskSupervisor:
             image=self._config.image,
             host_config_dir=host_config_dir,
             host_workdir=self._config.host_workdir,
-            agent_cli=agent.agent_cli,
+            state_path=self._config.state_path,
+            agent_cli=agent_cli,
             container_config_dir=self._config.container_config_dir,
             container_workdir=self._config.container_workdir,
             auto_remove=self._config.auto_remove,
             pull_before_run=self._config.pull_before_run,
             settings_preflight_script=self._config.settings_preflight_script,
-            ide_preflight_script=self._config.ide_preflight_script,
             headless_desktop_enabled=self._config.headless_desktop_enabled,
             desktop_cache_enabled=self._config.desktop_cache_enabled,
             container_caching_enabled=self._config.container_caching_enabled,
             cache_system_preflight_enabled=self._config.cache_system_preflight_enabled,
             cache_settings_preflight_enabled=self._config.cache_settings_preflight_enabled,
-            cache_ide_preflight_enabled=self._config.cache_ide_preflight_enabled,
             gpu_enabled=self._config.gpu_enabled,
-            setup_agents_missing_prompt_enabled=(
-                self._config.setup_agents_missing_prompt_enabled
-            ),
+            network_host=self._config.network_host,
+            setup_agents_missing_prompt_enabled=(self._config.setup_agents_missing_prompt_enabled),
             environment_id=self._config.environment_id,
             workspace_type=self._config.workspace_type,
             workspace_target=self._config.workspace_target,
             gh_context_file_path=self._config.gh_context_file_path,
             container_settings_preflight_path=self._config.container_settings_preflight_path,
             container_setup_agents_preflight_path=self._config.container_setup_agents_preflight_path,
-            container_ide_preflight_path=self._config.container_ide_preflight_path,
             env_vars=self._config.env_vars,
             extra_mounts=self._config.extra_mounts,
             ports=self._config.ports,
             agent_cli_args=agent_cli_args or self._config.agent_cli_args,
             launch_mode=self._config.launch_mode,
-            ide_system=self._config.ide_system,
-            ide_display_target=self._config.ide_display_target,
-            ide_auto_mounts_enabled=self._config.ide_auto_mounts_enabled,
             custom_command_argv=list(self._config.custom_command_argv),
             custom_verify_executable=self._config.custom_verify_executable,
             gh_repo=self._config.gh_repo,
@@ -581,11 +609,14 @@ class TaskSupervisor:
         return config
 
     def _resolve_host_config_dir(self, agent: AgentInstance) -> str:
-        configured = os.path.expanduser(str(agent.config_dir or "").strip())
+        config = self._resolved_agent_config(agent)
+        configured = os.path.expanduser(
+            str(getattr(config, "config_dir", "") if config is not None else self._config.host_config_dir or "").strip()
+        )
         if configured:
             host_config_dir = configured
         else:
-            host_config_dir = default_host_config_dir(agent.agent_cli)
+            host_config_dir = default_host_config_dir(self._resolved_agent_cli(agent))
         host_config_dir = str(host_config_dir or "").strip()
         if host_config_dir:
             host_config_dir = os.path.abspath(host_config_dir)
@@ -624,7 +655,7 @@ class TaskSupervisor:
         self._last_container_state = {}
 
     def _attempt_key(self, agent: AgentInstance) -> AttemptKey:
-        agent_cli = str(agent.agent_cli or "").strip().lower() or "codex"
+        agent_cli = self._resolved_agent_cli(agent)
         host_config_dir = self._resolve_host_config_dir(agent)
 
         agent_cli_args = self._effective_agent_cli_args(agent)
@@ -635,11 +666,10 @@ class TaskSupervisor:
         )
 
     def _effective_agent_cli_args(self, agent: AgentInstance) -> list[str]:
-        if agent.cli_flags:
-            import shlex
-
+        flags_text = self._resolved_agent_cli_flags_text(agent)
+        if flags_text:
             try:
-                return list(shlex.split(agent.cli_flags))
+                return list(shlex.split(flags_text))
             except ValueError:
                 return []
         return list(self._config.agent_cli_args or [])
@@ -679,16 +709,10 @@ class TaskSupervisor:
             )
         )
 
-    def _result_for_exhausted_agents(
-        self, *, last_exit_code: int | None = None
-    ) -> SupervisorResult:
+    def _result_for_exhausted_agents(self, *, last_exit_code: int | None = None) -> SupervisorResult:
         from agents_runner.core.agent.keys import cooldown_key
 
-        attempted = [
-            f"{a.get('agent_cli')}[{a.get('agent_id')}]"
-            for a in self._attempt_history
-            if a.get("agent_cli")
-        ]
+        attempted = [f"{a.get('agent_cli')}[{a.get('agent_id')}]" for a in self._attempt_history if a.get("agent_cli")]
 
         on_cooldown: list[str] = []
         for agent in self._agent_chain:
@@ -702,9 +726,7 @@ class TaskSupervisor:
             if watch_state and watch_state.is_on_cooldown() and ckey:
                 until = getattr(watch_state, "cooldown_until", None)
                 until_s = until.isoformat() if until else "unknown"
-                on_cooldown.append(
-                    f"{agent.agent_cli}[{agent.agent_id}] until {until_s}"
-                )
+                on_cooldown.append(f"{self._resolved_agent_cli(agent)}[{agent.agent_id}] until {until_s}")
 
         parts: list[str] = []
         if attempted:

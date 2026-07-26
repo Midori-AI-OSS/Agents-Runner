@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QPlainTextEdit
+from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QTabWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
@@ -24,10 +25,12 @@ from PySide6.QtWidgets import QWidget
 from agents_runner.ui.pages.artifacts_tab import ArtifactsTab
 
 from agents_runner.artifacts import get_artifact_info
+from agents_runner.agent_display import get_agent_display_name
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.task_model import task_display_status
+from agents_runner.ui.url_open import open_external_url
 from agents_runner.ui.utils import format_duration
 from agents_runner.ui.utils import rgba
 from agents_runner.ui.utils import status_color
@@ -35,10 +38,11 @@ from agents_runner.ui.widgets import GlassCard
 from agents_runner.ui.widgets import LogHighlighter
 from agents_runner.ui.widgets import StatusGlyph
 
-import logging
 import sys
 
-logger = logging.getLogger(__name__)
+from midori_ai_logger import MidoriAiLogger
+
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 class TaskDetailsPage(QWidget):
@@ -54,6 +58,7 @@ class TaskDetailsPage(QWidget):
         self._desktop_viewer_process: QProcess | None = None
         self._desktop_viewer_url: str = ""
         self._desktop_viewer_output_lines: list[str] = []
+        self._pending_log_lines: list[str] = []
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -74,21 +79,28 @@ class TaskDetailsPage(QWidget):
         self._review_pr.triggered.connect(self._on_pr_triggered)
         self._review = QToolButton()
         self._review.setText("Review")
-        self._review.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._review.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._review.setMenu(self._review_menu)
         self._review.setPopupMode(QToolButton.InstantPopup)
         self._review.setVisible(False)
 
         self._desktop_btn = QToolButton()
         self._desktop_btn.setText("Desktop")
-        self._desktop_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._desktop_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._desktop_btn.clicked.connect(self._launch_desktop_viewer)
         self._desktop_btn.setVisible(False)
 
+        self._opencode_web_btn = QToolButton()
+        self._opencode_web_btn.setText("OpenCode Web")
+        self._opencode_web_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self._opencode_web_btn.clicked.connect(self._launch_opencode_web)
+        self._opencode_web_btn.setVisible(False)
+
         header_layout.addWidget(self._title)
         header_layout.addWidget(self._subtitle, 1)
-        header_layout.addWidget(self._review, 0, Qt.AlignRight)
-        header_layout.addWidget(self._desktop_btn, 0, Qt.AlignRight)
+        header_layout.addWidget(self._review, 0, Qt.AlignmentFlag.AlignRight)
+        header_layout.addWidget(self._opencode_web_btn, 0, Qt.AlignmentFlag.AlignRight)
+        header_layout.addWidget(self._desktop_btn, 0, Qt.AlignmentFlag.AlignRight)
         layout.addWidget(header)
 
         self._tabs = QTabWidget()
@@ -126,6 +138,7 @@ class TaskDetailsPage(QWidget):
         # Right side: Container state + Prompt cards stacked vertically
         right_column = QVBoxLayout()
         right_column.setSpacing(14)
+        self._right_column = right_column
 
         # Container state card (top-right)
         state_card = GlassCard()
@@ -137,7 +150,7 @@ class TaskDetailsPage(QWidget):
         stitle.setStyleSheet("font-size: 14px; font-weight: 650;")
 
         self._btn_freeze = QToolButton()
-        self._btn_freeze.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_freeze.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_freeze.setAutoRaise(True)
         self._btn_freeze.setIcon(lucide_icon("pause"))
         self._btn_freeze.setIconSize(QSize(16, 16))
@@ -145,17 +158,15 @@ class TaskDetailsPage(QWidget):
         self._btn_freeze.clicked.connect(lambda: self._emit_container_action("freeze"))
 
         self._btn_unfreeze = QToolButton()
-        self._btn_unfreeze.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_unfreeze.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_unfreeze.setAutoRaise(True)
         self._btn_unfreeze.setIcon(lucide_icon("play"))
         self._btn_unfreeze.setIconSize(QSize(16, 16))
         self._btn_unfreeze.setToolTip("Unfreeze: Resume the container")
-        self._btn_unfreeze.clicked.connect(
-            lambda: self._emit_container_action("unfreeze")
-        )
+        self._btn_unfreeze.clicked.connect(lambda: self._emit_container_action("unfreeze"))
 
         self._btn_stop = QToolButton()
-        self._btn_stop.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_stop.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_stop.setAutoRaise(True)
         self._btn_stop.setIcon(lucide_icon("square"))
         self._btn_stop.setIconSize(QSize(16, 16))
@@ -163,7 +174,7 @@ class TaskDetailsPage(QWidget):
         self._btn_stop.clicked.connect(lambda: self._emit_container_action("stop"))
 
         self._btn_kill = QToolButton()
-        self._btn_kill.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_kill.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_kill.setAutoRaise(True)
         self._btn_kill.setIcon(lucide_icon("circle-x"))
         self._btn_kill.setIconSize(QSize(16, 16))
@@ -184,7 +195,7 @@ class TaskDetailsPage(QWidget):
         self._glyph = StatusGlyph(size=44)
         self._status = QLabel("idle")
         self._status.setStyleSheet("font-size: 16px; font-weight: 750;")
-        state_row.addWidget(self._glyph, 0, Qt.AlignLeft)
+        state_row.addWidget(self._glyph, 0, Qt.AlignmentFlag.AlignLeft)
         state_row.addWidget(self._status, 1)
 
         details = QGridLayout()
@@ -208,20 +219,21 @@ class TaskDetailsPage(QWidget):
 
         # Prompt card (bottom-right)
         prompt_card = GlassCard()
+        self._prompt_card = prompt_card
         prompt_layout = QVBoxLayout(prompt_card)
         prompt_layout.setContentsMargins(18, 16, 18, 16)
         prompt_layout.setSpacing(10)
 
         prompt_title_row = QHBoxLayout()
         prompt_title_row.setSpacing(8)
-        prompt_title = QLabel("Prompt")
-        prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
-        prompt_title_row.addWidget(prompt_title)
+        self._prompt_title = QLabel("Prompt")
+        self._prompt_title.setStyleSheet("font-size: 14px; font-weight: 650;")
+        prompt_title_row.addWidget(self._prompt_title)
         prompt_title_row.addStretch(1)
 
         self._btn_copy_prompt = QToolButton()
         self._btn_copy_prompt.setText("Copy")
-        self._btn_copy_prompt.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._btn_copy_prompt.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._btn_copy_prompt.setToolTip("Copy prompt to clipboard")
         self._btn_copy_prompt.clicked.connect(self._copy_prompt_to_clipboard)
         prompt_title_row.addWidget(self._btn_copy_prompt)
@@ -229,6 +241,10 @@ class TaskDetailsPage(QWidget):
         self._prompt = QPlainTextEdit()
         self._prompt.setReadOnly(True)
         self._prompt.setMaximumBlockCount(2000)
+        self._prompt.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
 
         cfg = QGridLayout()
         cfg.setHorizontalSpacing(10)
@@ -237,13 +253,17 @@ class TaskDetailsPage(QWidget):
         self._workdir = QLabel("—")
         self._workdir_label = QLabel("Host Workdir")
         self._container = QLabel("—")
-        self._container.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._workdir.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._container.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._workdir.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
+        self._novnc_label = QLabel("noVNC URL")
         self._novnc_url = QLabel("—")
-        self._novnc_url.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self._desktop_display = QLabel("—")
-        self._desktop_display.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self._novnc_url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._opencode_web_url_label = QLabel("OpenCode Web URL")
+        self._opencode_web_url = QLabel("—")
+        self._opencode_web_url.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._agent_system = QLabel("—")
+        self._agent_system.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
 
         self._workdir_row = 0
         cfg.addWidget(self._workdir_label, self._workdir_row, 0)
@@ -252,16 +272,19 @@ class TaskDetailsPage(QWidget):
         cfg.addWidget(QLabel("Container ID"), self._container_row, 0)
         cfg.addWidget(self._container, self._container_row, 1)
         self._novnc_row = 2
-        cfg.addWidget(QLabel("noVNC URL"), self._novnc_row, 0)
+        cfg.addWidget(self._novnc_label, self._novnc_row, 0)
         cfg.addWidget(self._novnc_url, self._novnc_row, 1)
-        self._display_row = 3
-        cfg.addWidget(QLabel("DISPLAY"), self._display_row, 0)
-        cfg.addWidget(self._desktop_display, self._display_row, 1)
+        self._opencode_web_url_row = 3
+        cfg.addWidget(self._opencode_web_url_label, self._opencode_web_url_row, 0)
+        cfg.addWidget(self._opencode_web_url, self._opencode_web_url_row, 1)
+        self._agent_system_row = 4
+        cfg.addWidget(QLabel("Agent System"), self._agent_system_row, 0)
+        cfg.addWidget(self._agent_system, self._agent_system_row, 1)
 
         prompt_layout.addLayout(prompt_title_row)
         prompt_layout.addWidget(self._prompt, 1)
         prompt_layout.addLayout(cfg)
-        right_column.addWidget(prompt_card, 1)
+        right_column.addWidget(prompt_card)
 
         mid.addLayout(right_column, 2)
 
@@ -284,6 +307,11 @@ class TaskDetailsPage(QWidget):
         self._ticker.timeout.connect(self._tick_uptime)
         self._ticker.start()
 
+        self._log_flush_timer = QTimer(self)
+        self._log_flush_timer.setSingleShot(True)
+        self._log_flush_timer.setInterval(20)
+        self._log_flush_timer.timeout.connect(self._flush_pending_logs)
+
         self._last_task: Task | None = None
 
     def showEvent(self, event: QShowEvent) -> None:
@@ -303,9 +331,7 @@ class TaskDetailsPage(QWidget):
         """Show the Artifacts tab if not already visible."""
         if self._artifacts_tab_visible:
             return
-        self._artifacts_tab_index = self._tabs.addTab(
-            self._artifacts_tab_widget, "Artifacts"
-        )
+        self._artifacts_tab_index = self._tabs.addTab(self._artifacts_tab_widget, "Artifacts")
         self._artifacts_tab_visible = True
 
     def _hide_artifacts_tab(self) -> None:
@@ -329,16 +355,13 @@ class TaskDetailsPage(QWidget):
         can_pr = task.requires_git_metadata()
         branch_matches_base = bool(
             str(task.gh_branch or "").strip()
-            and str(task.gh_branch or "").strip()
-            == str(task.gh_base_branch or "").strip()
+            and str(task.gh_branch or "").strip() == str(task.gh_base_branch or "").strip()
         )
 
         pr_url = str(task.gh_pr_url or "").strip()
         self._review_pr.setVisible(can_pr)
         self._review_pr.setEnabled(
-            can_pr
-            and not task.is_active()
-            and (pr_url.startswith("http") or not branch_matches_base)
+            can_pr and not task.is_active() and (pr_url.startswith("http") or not branch_matches_base)
         )
         self._review_pr.setText("Open PR" if pr_url.startswith("http") else "Create PR")
 
@@ -381,6 +404,14 @@ class TaskDetailsPage(QWidget):
         task_id = str(self._last_task.task_id or self._current_task_id or "")
         self.launch_desktop_viewer_for_task(task_id=task_id, url=url)
 
+    def _launch_opencode_web(self) -> None:
+        """Open the stored OpenCode Web URL for the current task."""
+        if not self._last_task:
+            return
+        url = str(self._last_task.opencode_web_url or "").strip()
+        if url:
+            open_external_url(url)
+
     def launch_desktop_viewer_for_task(self, *, task_id: str, url: str) -> bool:
         """Launch viewer for a specific task noVNC URL."""
         url = str(url or "").strip()
@@ -391,9 +422,7 @@ class TaskDetailsPage(QWidget):
         try:
             from PySide6 import QtWebEngineWidgets as _  # noqa: F401
         except Exception:
-            logger.warning(
-                "QtWebEngine not available; opening noVNC URL in system browser instead"
-            )
+            logger.warning("QtWebEngine not available; opening noVNC URL in system browser instead")
             QDesktopServices.openUrl(QUrl(url))
             return True
 
@@ -416,12 +445,8 @@ class TaskDetailsPage(QWidget):
         title = f"Task {task_id}" if task_id else "Desktop"
 
         self._desktop_viewer_process = QProcess(self)
-        self._desktop_viewer_process.setProcessChannelMode(
-            QProcess.ProcessChannelMode.MergedChannels
-        )
-        self._desktop_viewer_process.readyReadStandardOutput.connect(
-            self._on_viewer_output
-        )
+        self._desktop_viewer_process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self._desktop_viewer_process.readyReadStandardOutput.connect(self._on_viewer_output)
         self._desktop_viewer_process.finished.connect(self._on_viewer_finished)
 
         # Use sys.executable to get the current Python interpreter
@@ -446,19 +471,13 @@ class TaskDetailsPage(QWidget):
             session_type = str(env.value("XDG_SESSION_TYPE") or "").strip().lower()
         except Exception:
             session_type = ""
-        allow_wayland = str(
-            env.value("AGENTS_RUNNER_DESKTOP_VIEWER_ALLOW_WAYLAND") or ""
-        ).strip().lower() in {
+        allow_wayland = str(env.value("AGENTS_RUNNER_DESKTOP_VIEWER_ALLOW_WAYLAND") or "").strip().lower() in {
             "1",
             "true",
             "yes",
             "on",
         }
-        if (
-            session_type == "wayland"
-            and not allow_wayland
-            and not env.contains("QT_QPA_PLATFORM")
-        ):
+        if session_type == "wayland" and not allow_wayland and not env.contains("QT_QPA_PLATFORM"):
             env.insert("QT_QPA_PLATFORM", "xcb")
         self._desktop_viewer_process.setProcessEnvironment(env)
         self._desktop_viewer_process.start(sys.executable, args)
@@ -478,9 +497,7 @@ class TaskDetailsPage(QWidget):
         if proc is None:
             return
         try:
-            chunk = bytes(proc.readAllStandardOutput()).decode(
-                "utf-8", errors="replace"
-            )
+            chunk = bytes(proc.readAllStandardOutput()).decode("utf-8", errors="replace")
         except Exception:
             return
 
@@ -495,9 +512,7 @@ class TaskDetailsPage(QWidget):
         if len(self._desktop_viewer_output_lines) > 250:
             self._desktop_viewer_output_lines = self._desktop_viewer_output_lines[-250:]
 
-    def _on_viewer_finished(
-        self, exit_code: int, exit_status: QProcess.ExitStatus
-    ) -> None:
+    def _on_viewer_finished(self, exit_code: int, exit_status: QProcess.ExitStatus) -> None:
         """Handle desktop viewer process exit."""
         try:
             if exit_status == QProcess.ExitStatus.CrashExit:
@@ -551,6 +566,8 @@ class TaskDetailsPage(QWidget):
         self._title.setText(f"Task {task.task_id}")
         self._subtitle.setText(task.prompt_one_line())
         self._prompt.setPlainText(task.prompt)
+        has_prompt = bool(str(task.prompt or "").strip())
+        self._sync_prompt_runtime_layout(has_prompt=has_prompt)
 
         # Show/hide Host Workdir based on workspace type
         is_cloned = task.workspace_type == WORKSPACE_CLONED
@@ -560,10 +577,14 @@ class TaskDetailsPage(QWidget):
             self._workdir.setText(task.host_workdir)
 
         self._container.setText(task.container_id or "—")
+        self._agent_system.setText(self._agent_system_label(task))
         self._tabs.setCurrentIndex(self._task_tab_index)
         self._sync_desktop_button(task)
+        self._sync_opencode_web_button(task)
         self._sync_artifacts(task)
         self._sync_container_actions(task)
+        self._pending_log_lines.clear()
+        self._log_flush_timer.stop()
         self._logs.setPlainText("\n".join(task.logs[-5000:]))
         QTimer.singleShot(0, self._scroll_logs_to_bottom)
         self._apply_status(task)
@@ -571,10 +592,28 @@ class TaskDetailsPage(QWidget):
         self._sync_review_menu(task)
 
     def append_log(self, task_id: str, line: str) -> None:
+        self.append_logs(task_id, [line])
+
+    def append_logs(self, task_id: str, lines: list[str]) -> None:
         if self._current_task_id != task_id:
             return
+        appendable = [line for line in lines if line]
+        if not appendable:
+            return
+        self._pending_log_lines.extend(appendable)
+        if len(self._pending_log_lines) >= 120:
+            self._flush_pending_logs()
+            return
+        if not self._log_flush_timer.isActive():
+            self._log_flush_timer.start()
+
+    def _flush_pending_logs(self) -> None:
+        if not self._pending_log_lines:
+            return
         should_follow = self._logs_is_at_bottom()
-        self._logs.appendPlainText(line)
+        batch = self._pending_log_lines
+        self._pending_log_lines = []
+        self._logs.appendPlainText("\n".join(batch))
         if should_follow:
             QTimer.singleShot(0, self._scroll_logs_to_bottom)
 
@@ -583,7 +622,9 @@ class TaskDetailsPage(QWidget):
             return
         self._last_task = task
         self._container.setText(task.container_id or "—")
+        self._agent_system.setText(self._agent_system_label(task))
         self._sync_desktop_button(task)
+        self._sync_opencode_web_button(task)
         self._sync_artifacts(task)
         self._sync_container_actions(task)
         self._exit.setText("—" if task.exit_code is None else str(task.exit_code))
@@ -604,7 +645,39 @@ class TaskDetailsPage(QWidget):
 
         self._desktop_btn.setVisible(should_show)
         self._novnc_url.setText(url if url else "—")
-        self._desktop_display.setText(str(task.desktop_display or ":1") if url else "—")
+        self._novnc_label.setVisible(bool(url))
+        self._novnc_url.setVisible(bool(url))
+
+    def _sync_opencode_web_button(self, task: Task) -> None:
+        url = str(task.opencode_web_url or "").strip()
+        self._opencode_web_btn.setVisible(bool(task.is_active() and url))
+        self._opencode_web_url.setText(url if url else "—")
+        self._opencode_web_url_label.setVisible(bool(url))
+        self._opencode_web_url.setVisible(bool(url))
+
+    def _sync_prompt_runtime_layout(self, *, has_prompt: bool) -> None:
+        self._prompt_title.setText("Prompt" if has_prompt else "Runtime Details")
+        self._btn_copy_prompt.setVisible(has_prompt)
+        self._prompt.setVisible(has_prompt)
+        if has_prompt:
+            self._prompt_card.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Expanding,
+            )
+            self._right_column.setStretch(1, 1)
+        else:
+            self._prompt_card.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Preferred,
+            )
+            self._right_column.setStretch(1, 0)
+        self._prompt_card.updateGeometry()
+
+    def _agent_system_label(self, task: Task) -> str:
+        if task.is_opencode_web_run():
+            return "OpenCode Web"
+        agent_label = get_agent_display_name(str(task.agent_cli or "").strip())
+        return agent_label if agent_label.strip() else "—"
 
     def _sync_artifacts(self, task: Task) -> None:
         """
@@ -651,9 +724,7 @@ class TaskDetailsPage(QWidget):
         status = task_display_status(task)
         color = status_color(task.status)
         self._status.setText(status)
-        self._status.setStyleSheet(
-            f"font-size: 16px; font-weight: 750; color: {rgba(color, 235)};"
-        )
+        self._status.setStyleSheet(f"font-size: 16px; font-weight: 750; color: {rgba(color, 235)};")
         if task.is_active():
             self._glyph.set_mode("spinner", color)
         elif task.is_done():

@@ -61,20 +61,14 @@ class EnvVarsTabWidget(QWidget):
         self._table = QTableWidget()
         self._table.setColumnCount(3)
         self._table.setHorizontalHeaderLabels(["Key", "Value", ""])
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_KEY, QHeaderView.Stretch
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_VALUE, QHeaderView.Stretch
-        )
-        self._table.horizontalHeader().setSectionResizeMode(
-            self._COL_REMOVE, QHeaderView.ResizeToContents
-        )
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_KEY, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_VALUE, QHeaderView.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeToContents)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
         self._table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
         self._table.setSelectionMode(QTableWidget.NoSelection)
-        self._table.setFocusPolicy(Qt.NoFocus)
+        self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         simple_layout.addWidget(self._table, 1)
 
@@ -108,12 +102,12 @@ class EnvVarsTabWidget(QWidget):
         footer_row.addWidget(self._add_label)
         self._add_btn = QToolButton()
         self._add_btn.setText("Add")
-        self._add_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._add_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._add_btn.clicked.connect(self._on_add_row)
         footer_row.addWidget(self._add_btn)
         footer_row.addStretch(1)
         self._mode_btn = QToolButton()
-        self._mode_btn.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._mode_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._mode_btn.clicked.connect(self._on_mode_clicked)
         footer_row.addWidget(self._mode_btn)
         layout.addLayout(footer_row)
@@ -133,13 +127,9 @@ class EnvVarsTabWidget(QWidget):
             for key, value in sorted((env_vars or {}).items(), key=lambda item: item[0])
             if str(key or "").strip()
         ]
-        self._advanced_mode = (
-            bool(advanced_mode) if advanced_mode is not None else False
-        )
+        self._advanced_mode = bool(advanced_mode) if advanced_mode is not None else False
         self._advanced_acknowledged = (
-            bool(advanced_acknowledged)
-            if advanced_acknowledged is not None
-            else bool(self._advanced_mode)
+            bool(advanced_acknowledged) if advanced_acknowledged is not None else bool(self._advanced_mode)
         )
 
         self._advanced_text.blockSignals(True)
@@ -268,26 +258,20 @@ class EnvVarsTabWidget(QWidget):
 
                 key_edit = QLineEdit(str(row.key or ""))
                 key_edit.setPlaceholderText("KEY")
-                key_edit.textChanged.connect(
-                    lambda text, i=row_index: self._on_key_changed(i, text)
-                )
+                key_edit.textChanged.connect(lambda text, i=row_index: self._on_key_changed(i, text))
                 self._table.setCellWidget(row_index, self._COL_KEY, key_edit)
 
                 value_edit = QLineEdit(str(row.value or ""))
                 value_edit.setPlaceholderText("Value")
-                value_edit.textChanged.connect(
-                    lambda text, i=row_index: self._on_value_changed(i, text)
-                )
+                value_edit.textChanged.connect(lambda text, i=row_index: self._on_value_changed(i, text))
                 self._table.setCellWidget(row_index, self._COL_VALUE, value_edit)
 
                 remove_btn = QToolButton()
                 remove_btn.setObjectName("RowTrash")
                 remove_btn.setIcon(lucide_icon("trash-2"))
-                remove_btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+                remove_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
                 remove_btn.setToolTip("Remove row")
-                remove_btn.clicked.connect(
-                    lambda _=False, i=row_index: self._on_remove_row(i)
-                )
+                remove_btn.clicked.connect(lambda _=False, i=row_index: self._on_remove_row(i))
                 self._table.setCellWidget(row_index, self._COL_REMOVE, remove_btn)
         finally:
             self._table.blockSignals(False)

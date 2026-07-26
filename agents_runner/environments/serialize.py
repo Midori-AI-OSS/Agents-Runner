@@ -1,10 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 from typing import cast
-
-from agents_runner.ide_systems import normalize_ide_system_name
-from agents_runner.ide_systems import available_ide_system_names
 
 from .model import ENVIRONMENT_VERSION
 from .model import Environment
@@ -17,6 +15,7 @@ from .model import normalize_agentsnova_marker_comment_mode
 from .model import normalize_gh_branch_work_mode
 from .model import normalize_gh_task_branch_custom_template
 from .model import normalize_gh_task_branch_naming_style
+from .model import normalize_opencode_interactive_override
 from .model import PromptConfig
 from .model import AgentSelection
 from .model import AgentInstance
@@ -48,20 +47,6 @@ def _normalize_trusted_mode(value: Any) -> str:
     return "inherit"
 
 
-def _normalize_ide_safe_mode_map(raw: Any) -> dict[str, bool]:
-    if not isinstance(raw, dict):
-        return {}
-    valid_systems = {str(name).strip().lower() for name in available_ide_system_names()}
-    rows = cast(dict[object, object], raw)
-    normalized: dict[str, bool] = {}
-    for key, value in rows.items():
-        ide_system = str(key or "").strip().lower()
-        if not ide_system or ide_system not in valid_systems:
-            continue
-        normalized[ide_system] = bool(value)
-    return normalized
-
-
 def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) -> str:
     base = (desired or "").strip()
     if not base:
@@ -79,16 +64,14 @@ def _unique_agent_id(existing: set[str], desired: str, *, fallback_prefix: str) 
         i += 1
 
 
-def _validate_cross_agent_allowlist(
-    raw_allowlist: Any, agents: list[AgentInstance]
-) -> list[str]:
+def _validate_cross_agent_allowlist(raw_allowlist: Any, agents: list[AgentInstance]) -> list[str]:
     """Validate and sanitize cross-agent allowlist.
 
     Validation rules:
     1. Coerce to list[str], strip empties, de-dupe
     2. If agents list is empty, return empty list
     3. Filter unknown agent_ids (must exist in agents list)
-    4. Enforce max 1 allowlisted per agent_cli (keep first occurrence)
+    4. Preserve allowlist order after filtering
 
     Args:
         raw_allowlist: Raw allowlist data from JSON
@@ -108,17 +91,10 @@ def _validate_cross_agent_allowlist(
     if not agents:
         return []
 
-    # Build lookups for validation
     known_ids = {a.agent_id for a in agents}
-    cli_to_id: dict[str, str] = {}  # Normalized CLI -> first matching agent_id
-    for a in agents:
-        normalized_cli = a.agent_cli.strip().lower()
-        if normalized_cli not in cli_to_id:
-            cli_to_id[normalized_cli] = a.agent_id
 
     # Filter and deduplicate
     seen_ids: set[str] = set()
-    seen_clis: set[str] = set()
     validated: list[str] = []
 
     for agent_id in allowlist:
@@ -130,22 +106,76 @@ def _validate_cross_agent_allowlist(
         if agent_id in seen_ids:
             continue
 
-        # Find the agent and check CLI uniqueness
-        agent = next((a for a in agents if a.agent_id == agent_id), None)
-        if not agent:
-            continue
-
-        normalized_cli = agent.agent_cli.strip().lower()
-
-        # Enforce max 1 per CLI (keep first occurrence)
-        if normalized_cli in seen_clis:
-            continue
-
         validated.append(agent_id)
         seen_ids.add(agent_id)
-        seen_clis.add(normalized_cli)
 
     return validated
+
+
+def prune_missing_config_ids(env: Environment, valid_config_ids: set[str]) -> Environment:
+    """Return a copy of ``env`` with missing agent config references pruned."""
+
+    selection = env.agent_selection
+    if selection is None:
+        return env
+
+    kept_agents: list[AgentInstance] = []
+    removed_agent_ids: set[str] = set()
+    for agent in selection.agents:
+        config_id = str(getattr(agent, "config_id", "") or "").strip()
+        if config_id and config_id not in valid_config_ids:
+            agent_id = str(getattr(agent, "agent_id", "") or "").strip()
+            if agent_id:
+                removed_agent_ids.add(agent_id)
+            continue
+        kept_agents.append(
+            AgentInstance(
+                agent_id=str(getattr(agent, "agent_id", "") or "").strip(),
+                config_id=config_id,
+            )
+        )
+
+    if not removed_agent_ids:
+        return env
+
+    cleaned_fallbacks: dict[str, str] = {}
+    for raw_agent_id, raw_fallback_id in selection.agent_fallbacks.items():
+        agent_id = str(raw_agent_id or "").strip()
+        fallback_id = str(raw_fallback_id or "").strip()
+        if not agent_id or not fallback_id:
+            continue
+        if agent_id in removed_agent_ids or fallback_id in removed_agent_ids:
+            continue
+        cleaned_fallbacks[agent_id] = fallback_id
+
+    pinned_agent_id = str(selection.pinned_agent_id or "").strip()
+    if pinned_agent_id in removed_agent_ids:
+        pinned_agent_id = ""
+
+    cleaned_allowlist: list[str] = []
+    for raw_agent_id in env.cross_agent_allowlist:
+        agent_id = str(raw_agent_id or "").strip()
+        if not agent_id or agent_id in removed_agent_ids:
+            continue
+        cleaned_allowlist.append(agent_id)
+
+    if not kept_agents:
+        return replace(
+            env,
+            agent_selection=None,
+            cross_agent_allowlist=cleaned_allowlist,
+        )
+
+    return replace(
+        env,
+        agent_selection=replace(
+            selection,
+            agents=kept_agents,
+            agent_fallbacks=cleaned_fallbacks,
+            pinned_agent_id=pinned_agent_id,
+        ),
+        cross_agent_allowlist=cleaned_allowlist,
+    )
 
 
 def _serialize_prompts(prompts: list[PromptConfig]) -> list[dict[str, Any]]:
@@ -225,29 +255,15 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         max_agents_running = -1
 
     headless_desktop_enabled = bool(payload.get("headless_desktop_enabled", False))
-    gpu_override_mode = normalize_gpu_override_mode(
-        payload.get("gpu_override_mode", "inherit")
-    )
-    ide_system_override_raw = str(payload.get("ide_system_override") or "").strip()
-    ide_system_override = (
-        normalize_ide_system_name(ide_system_override_raw)
-        if ide_system_override_raw
-        else ""
+    gpu_override_mode = normalize_gpu_override_mode(payload.get("gpu_override_mode", "inherit"))
+    network_host_override_mode = normalize_gpu_override_mode(payload.get("network_host_override_mode", "inherit"))
+    opencode_interactive_mode = normalize_opencode_interactive_override(
+        payload.get("opencode_interactive_mode", "inherit")
     )
     cache_desktop_build = bool(payload.get("cache_desktop_build", False))
     container_caching_enabled = bool(payload.get("container_caching_enabled", False))
-    cache_system_preflight_enabled = bool(
-        payload.get("cache_system_preflight_enabled", False)
-    )
-    cache_settings_preflight_enabled = bool(
-        payload.get("cache_settings_preflight_enabled", False)
-    )
-    cache_ide_preflight_enabled = bool(
-        payload.get("cache_ide_preflight_enabled", False)
-    )
-    ide_safe_mode_by_system = _normalize_ide_safe_mode_map(
-        payload.get("ide_safe_mode_by_system", {})
-    )
+    cache_system_preflight_enabled = bool(payload.get("cache_system_preflight_enabled", False))
+    cache_settings_preflight_enabled = bool(payload.get("cache_settings_preflight_enabled", False))
 
     env_vars_raw = payload.get("env_vars", {})
     env_vars: dict[str, object] = (
@@ -257,77 +273,51 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     )
 
     extra_mounts_raw = payload.get("extra_mounts", [])
-    extra_mounts: list[object] = (
-        cast(list[object], extra_mounts_raw)
-        if isinstance(extra_mounts_raw, list)
-        else []
-    )
+    extra_mounts: list[object] = cast(list[object], extra_mounts_raw) if isinstance(extra_mounts_raw, list) else []
     env_vars_advanced_mode = bool(payload.get("env_vars_advanced_mode", False))
     mounts_advanced_mode = bool(payload.get("mounts_advanced_mode", False))
-    env_vars_advanced_acknowledged = bool(
-        payload.get("env_vars_advanced_acknowledged", False)
-    ) or bool(env_vars_advanced_mode)
-    mounts_advanced_acknowledged = bool(
-        payload.get("mounts_advanced_acknowledged", False)
-    ) or bool(mounts_advanced_mode)
+    env_vars_advanced_acknowledged = bool(payload.get("env_vars_advanced_acknowledged", False)) or bool(
+        env_vars_advanced_mode
+    )
+    mounts_advanced_acknowledged = bool(payload.get("mounts_advanced_acknowledged", False)) or bool(
+        mounts_advanced_mode
+    )
 
     ports_raw = payload.get("ports", [])
-    ports: list[object] = (
-        cast(list[object], ports_raw) if isinstance(ports_raw, list) else []
-    )
+    ports: list[object] = cast(list[object], ports_raw) if isinstance(ports_raw, list) else []
     ports_unlocked = bool(payload.get("ports_unlocked", False))
-    ports_advanced_acknowledged = bool(
-        payload.get("ports_advanced_acknowledged", False)
-    ) or bool(ports_unlocked)
+    ports_advanced_acknowledged = bool(payload.get("ports_advanced_acknowledged", False)) or bool(ports_unlocked)
 
     gh_management_locked = bool(payload.get("gh_management_locked", False))
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
     github_polling_enabled = bool(payload.get("github_polling_enabled", False))
-    agentsnova_trusted_users_env = _normalize_usernames(
-        payload.get("agentsnova_trusted_users_env", [])
-    )
-    agentsnova_trusted_mode = _normalize_trusted_mode(
-        payload.get("agentsnova_trusted_mode", "inherit")
-    )
-    agentsnova_auto_review_mode = normalize_agentsnova_auto_mode(
-        payload.get("agentsnova_auto_review_mode", "inherit")
-    )
+    agentsnova_trusted_users_env = _normalize_usernames(payload.get("agentsnova_trusted_users_env", []))
+    agentsnova_trusted_mode = _normalize_trusted_mode(payload.get("agentsnova_trusted_mode", "inherit"))
+    agentsnova_auto_review_mode = normalize_agentsnova_auto_mode(payload.get("agentsnova_auto_review_mode", "inherit"))
     agentsnova_auto_reactions_mode = normalize_agentsnova_auto_mode(
         payload.get("agentsnova_auto_reactions_mode", "inherit")
     )
     agentsnova_marker_comment_mode = normalize_agentsnova_marker_comment_mode(
         payload.get("agentsnova_marker_comment_mode", "inherit")
     )
-    interactive_pr_prompt_enabled = bool(
-        payload.get("interactive_pr_prompt_enabled", True)
-    )
+    interactive_pr_prompt_enabled = bool(payload.get("interactive_pr_prompt_enabled", True))
     interactive_pr_no_prompt_mode = normalize_interactive_pr_no_prompt_mode(
         payload.get("interactive_pr_no_prompt_mode", "auto_create_pr")
     )
-    setup_agents_missing_prompt_enabled = bool(
-        payload.get("setup_agents_missing_prompt_enabled", False)
-    )
-    interactive_pull_before_run_enabled = bool(
-        payload.get("interactive_pull_before_run_enabled", True)
-    )
-    gh_branch_work_mode = normalize_gh_branch_work_mode(
-        payload.get("gh_branch_work_mode", "task_branch")
-    )
+    setup_agents_missing_prompt_enabled = bool(payload.get("setup_agents_missing_prompt_enabled", False))
+    interactive_pull_before_run_enabled = bool(payload.get("interactive_pull_before_run_enabled", True))
+    gh_branch_work_mode = normalize_gh_branch_work_mode(payload.get("gh_branch_work_mode", "task_branch"))
     gh_task_branch_naming_style = normalize_gh_task_branch_naming_style(
         payload.get("gh_task_branch_naming_style", "standard")
     )
     gh_task_branch_custom_template = normalize_gh_task_branch_custom_template(
-        payload.get(
-            "gh_task_branch_custom_template", GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT
-        )
+        payload.get("gh_task_branch_custom_template", GH_TASK_BRANCH_CUSTOM_TEMPLATE_DEFAULT)
     )
 
     # Migration: Rename gh_pr_metadata_enabled to gh_context_enabled
     # Check both old and new field names for backward compatibility
-    gh_context_enabled = bool(
-        payload.get("gh_context_enabled", payload.get("gh_pr_metadata_enabled", False))
-    )
+    gh_context_enabled = bool(payload.get("gh_context_enabled", payload.get("gh_pr_metadata_enabled", False)))
 
     # Migration: workspace_type from gh_management_mode
     # Prefer new key, fallback to old key
@@ -345,26 +335,20 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
 
     # Migration: workspace_target from gh_management_target
     # Prefer new key, fallback to old key for backward compatibility
-    workspace_target = str(
-        payload.get("workspace_target") or payload.get("gh_management_target") or ""
-    ).strip()
+    workspace_target = str(payload.get("workspace_target") or payload.get("gh_management_target") or "").strip()
 
     # Normalize using the new function
     workspace_type = normalize_workspace_type(workspace_type)
 
     try:
-        midoriai_template_likelihood = float(
-            payload.get("midoriai_template_likelihood", 0.0)
-        )
+        midoriai_template_likelihood = float(payload.get("midoriai_template_likelihood", 0.0))
     except (TypeError, ValueError):
         midoriai_template_likelihood = 0.0
     midoriai_template_likelihood = max(0.0, min(1.0, midoriai_template_likelihood))
     midoriai_template_detected = bool(payload.get("midoriai_template_detected", False))
     midoriai_template_detected_path_raw = payload.get("midoriai_template_detected_path")
     midoriai_template_detected_path = (
-        str(midoriai_template_detected_path_raw).strip()
-        if isinstance(midoriai_template_detected_path_raw, str)
-        else ""
+        str(midoriai_template_detected_path_raw).strip() if isinstance(midoriai_template_detected_path_raw, str) else ""
     )
     midoriai_template_detected_path = midoriai_template_detected_path or None
 
@@ -375,9 +359,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         for p in prompts_list:
             if not isinstance(p, dict):
                 continue
-            p_dict: dict[str, object] = {
-                str(k): v for k, v in cast(dict[object, object], p).items()
-            }
+            p_dict: dict[str, object] = {str(k): v for k, v in cast(dict[object, object], p).items()}
             prompt_path = str(p_dict.get("prompt_path", "")).strip()
             text = str(p_dict.get("text", ""))
 
@@ -411,9 +393,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     agents: list[AgentInstance] = []
     if isinstance(agent_selection_data, dict):
         raw_selection_dict = cast(dict[object, object], agent_selection_data)
-        selection_dict: dict[str, object] = {
-            str(k): v for k, v in raw_selection_dict.items()
-        }
+        selection_dict: dict[str, object] = {str(k): v for k, v in raw_selection_dict.items()}
         selection_mode = str(selection_dict.get("selection_mode", "round-robin"))
         pinned_agent_id = str(selection_dict.get("pinned_agent_id", "") or "").strip()
 
@@ -425,24 +405,16 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
             for raw in agents_list:
                 if not isinstance(raw, dict):
                     continue
-                raw_dict: dict[str, object] = {
-                    str(k): v for k, v in cast(dict[object, object], raw).items()
-                }
-                agent_cli = str(raw_dict.get("agent_cli") or "").strip()
+                raw_dict: dict[str, object] = {str(k): v for k, v in cast(dict[object, object], raw).items()}
                 agent_id = str(raw_dict.get("agent_id") or "").strip()
-                config_dir = str(raw_dict.get("config_dir") or "").strip()
-                cli_flags = str(raw_dict.get("cli_flags") or "").strip()
-                if not agent_cli:
+                config_id = str(raw_dict.get("config_id") or "").strip()
+                unique_id = _unique_agent_id(seen_ids, agent_id, fallback_prefix=config_id.lower())
+                if not unique_id:
                     continue
-                unique_id = _unique_agent_id(
-                    seen_ids, agent_id, fallback_prefix=agent_cli.lower()
-                )
                 agents.append(
                     AgentInstance(
                         agent_id=unique_id,
-                        agent_cli=agent_cli,
-                        config_dir=config_dir,
-                        cli_flags=cli_flags,
+                        config_id=config_id,
                     )
                 )
 
@@ -481,9 +453,7 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     # Cross-agent delegation settings
     use_cross_agents = bool(payload.get("use_cross_agents", False))
     cross_agent_allowlist_raw = payload.get("cross_agent_allowlist", [])
-    cross_agent_allowlist = _validate_cross_agent_allowlist(
-        cross_agent_allowlist_raw, agents
-    )
+    cross_agent_allowlist = _validate_cross_agent_allowlist(cross_agent_allowlist_raw, agents)
 
     return Environment(
         env_id=env_id,
@@ -494,13 +464,12 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         max_agents_running=max_agents_running,
         headless_desktop_enabled=headless_desktop_enabled,
         gpu_override_mode=gpu_override_mode,
-        ide_system_override=ide_system_override,
+        network_host_override_mode=network_host_override_mode,
+        opencode_interactive_mode=opencode_interactive_mode,
         cache_desktop_build=cache_desktop_build,
         container_caching_enabled=container_caching_enabled,
         cache_system_preflight_enabled=cache_system_preflight_enabled,
         cache_settings_preflight_enabled=cache_settings_preflight_enabled,
-        cache_ide_preflight_enabled=cache_ide_preflight_enabled,
-        ide_safe_mode_by_system=ide_safe_mode_by_system,
         env_vars={str(k): str(v) for k, v in env_vars.items() if str(k).strip()},
         extra_mounts=[str(item) for item in extra_mounts if str(item).strip()],
         env_vars_advanced_mode=env_vars_advanced_mode,
@@ -546,29 +515,17 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
 
     if env.agent_selection and env.agent_selection.agents:
         agents_list_for_validation = env.agent_selection.agents
-        agents_list = [
-            {
-                "agent_id": a.agent_id,
-                "agent_cli": a.agent_cli,
-                "config_dir": a.config_dir,
-                "cli_flags": a.cli_flags,
-            }
-            for a in (env.agent_selection.agents or [])
-        ]
+        agents_list = [{"agent_id": a.agent_id, "config_id": a.config_id} for a in (env.agent_selection.agents or [])]
 
         selection_payload = {
             "agents": agents_list,
             "selection_mode": env.agent_selection.selection_mode,
-            "pinned_agent_id": str(
-                getattr(env.agent_selection, "pinned_agent_id", "") or ""
-            ).strip(),
+            "pinned_agent_id": str(getattr(env.agent_selection, "pinned_agent_id", "") or "").strip(),
             "agent_fallbacks": dict(env.agent_selection.agent_fallbacks),
         }
 
     # Validate cross-agent allowlist before serializing
-    validated_allowlist = _validate_cross_agent_allowlist(
-        env.cross_agent_allowlist, agents_list_for_validation
-    )
+    validated_allowlist = _validate_cross_agent_allowlist(env.cross_agent_allowlist, agents_list_for_validation)
     workspace_type = normalize_workspace_type(getattr(env, "workspace_type", "none"))
     workspace_target = str(getattr(env, "workspace_target", "") or "").strip()
     host_workdir = str(getattr(env, "host_workdir", "") or "").strip()
@@ -581,65 +538,38 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "host_workdir": host_workdir,
         "agent_cli_args": env.agent_cli_args,
         "max_agents_running": int(env.max_agents_running),
-        "headless_desktop_enabled": bool(
-            getattr(env, "headless_desktop_enabled", False)
-        ),
+        "headless_desktop_enabled": bool(getattr(env, "headless_desktop_enabled", False)),
         "gpu_override_mode": normalize_gpu_override_mode(
             str(getattr(env, "gpu_override_mode", "inherit") or "inherit")
         ),
-        "ide_system_override": (
-            normalize_ide_system_name(
-                str(getattr(env, "ide_system_override", "") or "")
-            )
-            if str(getattr(env, "ide_system_override", "") or "").strip()
-            else ""
+        "network_host_override_mode": normalize_gpu_override_mode(
+            str(getattr(env, "network_host_override_mode", "inherit") or "inherit")
+        ),
+        "opencode_interactive_mode": normalize_opencode_interactive_override(
+            str(getattr(env, "opencode_interactive_mode", "inherit") or "inherit")
         ),
         "cache_desktop_build": bool(getattr(env, "cache_desktop_build", False)),
-        "container_caching_enabled": bool(
-            getattr(env, "container_caching_enabled", False)
-        ),
-        "cache_system_preflight_enabled": bool(
-            getattr(env, "cache_system_preflight_enabled", False)
-        ),
-        "cache_settings_preflight_enabled": bool(
-            getattr(env, "cache_settings_preflight_enabled", False)
-        ),
-        "cache_ide_preflight_enabled": bool(
-            getattr(env, "cache_ide_preflight_enabled", False)
-        ),
-        "ide_safe_mode_by_system": _normalize_ide_safe_mode_map(
-            getattr(env, "ide_safe_mode_by_system", {})
-        ),
+        "container_caching_enabled": bool(getattr(env, "container_caching_enabled", False)),
+        "cache_system_preflight_enabled": bool(getattr(env, "cache_system_preflight_enabled", False)),
+        "cache_settings_preflight_enabled": bool(getattr(env, "cache_settings_preflight_enabled", False)),
         "env_vars": dict(env.env_vars),
         "extra_mounts": list(env.extra_mounts),
         "env_vars_advanced_mode": bool(getattr(env, "env_vars_advanced_mode", False)),
         "mounts_advanced_mode": bool(getattr(env, "mounts_advanced_mode", False)),
-        "env_vars_advanced_acknowledged": bool(
-            getattr(env, "env_vars_advanced_acknowledged", False)
-        ),
-        "mounts_advanced_acknowledged": bool(
-            getattr(env, "mounts_advanced_acknowledged", False)
-        ),
+        "env_vars_advanced_acknowledged": bool(getattr(env, "env_vars_advanced_acknowledged", False)),
+        "mounts_advanced_acknowledged": bool(getattr(env, "mounts_advanced_acknowledged", False)),
         "ports": list(getattr(env, "ports", [])),
         "ports_unlocked": bool(getattr(env, "ports_unlocked", False)),
-        "ports_advanced_acknowledged": bool(
-            getattr(env, "ports_advanced_acknowledged", False)
-        ),
+        "ports_advanced_acknowledged": bool(getattr(env, "ports_advanced_acknowledged", False)),
         "gh_management_locked": bool(env.gh_management_locked),
         "workspace_type": workspace_type,
         "workspace_target": workspace_target,
-        "gh_last_base_branch": str(
-            getattr(env, "gh_last_base_branch", "") or ""
-        ).strip(),
+        "gh_last_base_branch": str(getattr(env, "gh_last_base_branch", "") or "").strip(),
         "gh_use_host_cli": bool(env.gh_use_host_cli),
         "gh_context_enabled": bool(env.gh_context_enabled),  # Save with new name
         "github_polling_enabled": bool(getattr(env, "github_polling_enabled", False)),
-        "agentsnova_trusted_users_env": _normalize_usernames(
-            getattr(env, "agentsnova_trusted_users_env", [])
-        ),
-        "agentsnova_trusted_mode": _normalize_trusted_mode(
-            getattr(env, "agentsnova_trusted_mode", "inherit")
-        ),
+        "agentsnova_trusted_users_env": _normalize_usernames(getattr(env, "agentsnova_trusted_users_env", [])),
+        "agentsnova_trusted_mode": _normalize_trusted_mode(getattr(env, "agentsnova_trusted_mode", "inherit")),
         "agentsnova_auto_review_mode": normalize_agentsnova_auto_mode(
             getattr(env, "agentsnova_auto_review_mode", "inherit")
         ),
@@ -649,21 +579,13 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "agentsnova_marker_comment_mode": normalize_agentsnova_marker_comment_mode(
             getattr(env, "agentsnova_marker_comment_mode", "inherit")
         ),
-        "interactive_pr_prompt_enabled": bool(
-            getattr(env, "interactive_pr_prompt_enabled", True)
-        ),
+        "interactive_pr_prompt_enabled": bool(getattr(env, "interactive_pr_prompt_enabled", True)),
         "interactive_pr_no_prompt_mode": normalize_interactive_pr_no_prompt_mode(
             getattr(env, "interactive_pr_no_prompt_mode", "auto_create_pr")
         ),
-        "setup_agents_missing_prompt_enabled": bool(
-            getattr(env, "setup_agents_missing_prompt_enabled", False)
-        ),
-        "interactive_pull_before_run_enabled": bool(
-            getattr(env, "interactive_pull_before_run_enabled", True)
-        ),
-        "gh_branch_work_mode": normalize_gh_branch_work_mode(
-            getattr(env, "gh_branch_work_mode", "task_branch")
-        ),
+        "setup_agents_missing_prompt_enabled": bool(getattr(env, "setup_agents_missing_prompt_enabled", False)),
+        "interactive_pull_before_run_enabled": bool(getattr(env, "interactive_pull_before_run_enabled", True)),
+        "gh_branch_work_mode": normalize_gh_branch_work_mode(getattr(env, "gh_branch_work_mode", "task_branch")),
         "gh_task_branch_naming_style": normalize_gh_task_branch_naming_style(
             getattr(env, "gh_task_branch_naming_style", "standard")
         ),
@@ -679,12 +601,9 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "midoriai_template_likelihood": float(
             max(0.0, min(1.0, float(getattr(env, "midoriai_template_likelihood", 0.0))))
         ),
-        "midoriai_template_detected": bool(
-            getattr(env, "midoriai_template_detected", False)
-        ),
+        "midoriai_template_detected": bool(getattr(env, "midoriai_template_detected", False)),
         "midoriai_template_detected_path": (
-            str(getattr(env, "midoriai_template_detected_path", "") or "").strip()
-            or None
+            str(getattr(env, "midoriai_template_detected_path", "") or "").strip() or None
         ),
         "prompts": _serialize_prompts(env.prompts or []),
         "prompts_unlocked": bool(env.prompts_unlocked),

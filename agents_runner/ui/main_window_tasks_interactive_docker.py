@@ -6,9 +6,13 @@ and terminal script generation for launching interactive agent tasks.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui.main_window import MainWindow
+
 import os
 import shlex
-import socket
 import tempfile
 from datetime import datetime
 from datetime import timezone
@@ -35,28 +39,14 @@ from agents_runner.log_format import format_log
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.core.shell_templates import git_identity_clause
 from agents_runner.core.shell_templates import shell_log_statement
+from agents_runner.ui.opencode_web import OPENCODE_WEB_CONTAINER_PORT
+from agents_runner.ui.opencode_web import OPENCODE_WEB_HOST
+from agents_runner.ui.opencode_web import allocate_localhost_port
+from agents_runner.ui.opencode_web import publishes_container_port
+from agents_runner.ui.opencode_web import schedule_open_opencode_web_url
+from agents_runner.ui.opencode_web import select_opencode_web_container_port
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.utils import safe_str
-
-
-def _publishes_container_port(spec: str, port: int) -> bool:
-    base = str(spec or "").strip()
-    if not base:
-        return False
-    base = base.split("/", 1)[0]
-    container_part = base.rsplit(":", 1)[-1].strip()
-    if not container_part:
-        return False
-    if container_part.isdigit():
-        return int(container_part) == int(port)
-    if "-" in container_part:
-        left, right = (p.strip() for p in container_part.split("-", 1))
-        if left.isdigit() and right.isdigit():
-            start = int(left)
-            end = int(right)
-            p = int(port)
-            return start <= p <= end
-    return False
 
 
 def _redact_env_assignment(value: str) -> str:
@@ -84,7 +74,7 @@ def _redact_env_args_for_log(env_args: list[str]) -> list[str]:
 
 
 def launch_docker_terminal_task(
-    main_window: object,
+    main_window: MainWindow,
     task: Task,
     env: Environment | None,
     env_id: str,
@@ -104,11 +94,9 @@ def launch_docker_terminal_task(
     container_workdir: str,
     settings_preflight_script: str | None,
     setup_agents_script: str | None,
-    ide_preflight_script: str | None,
     install_preflight_script: str,
     install_phase_name: str,
     extra_preflight_script: str,
-    ide_display_target: str,
     stain: str | None,
     spinner: str | None,
     desired_base: str = "",
@@ -123,7 +111,10 @@ def launch_docker_terminal_task(
     desktop_preflight_script_override: str | None = None,
     shell_mode: bool = False,
     shell: str = "bash",
+    opencode_web_mode: bool = False,
     gpu_enabled: bool = False,
+    network_host: bool = False,
+    ports_for_task: list[str] | None = None,
 ) -> None:
     """Construct Docker command, generate host shell script, and launch terminal.
 
@@ -155,11 +146,9 @@ def launch_docker_terminal_task(
         container_workdir: Container workspace directory path
         settings_preflight_script: Global preflight script
         setup_agents_script: Repo setup-agents preflight script
-        ide_preflight_script: Optional IDE install preflight script
         install_preflight_script: Optional install preflight script
         install_phase_name: Optional install phase cache name
         extra_preflight_script: Additional preflight script (help mode, etc.)
-        ide_display_target: IDE runtime display metadata
         stain: Task color stain
         spinner: Task spinner color
         desired_base: Desired base branch for git
@@ -174,7 +163,10 @@ def launch_docker_terminal_task(
         desktop_preflight_script_override: Optional precomputed desktop script
         shell_mode: If True, run shell instead of agent command
         shell: Shell to use when shell_mode is True (bash, sh, zsh, fish, tmux)
+        opencode_web_mode: If True, run OpenCode Web and open its host URL
         gpu_enabled: If True, request Docker GPU runtime (`--gpus all`)
+        network_host: If True, use Docker host networking (`--network host`)
+        ports_for_task: Runtime publish specs for this launch (defaults to env.ports)
     """
     # Apply desktop preflight script override if provided, before desktop detection
     desktop_preflight_script = str(extra_preflight_script or "")
@@ -203,18 +195,12 @@ def launch_docker_terminal_task(
     system_preflight_cached = False
     desktop_preflight_cached = False
     settings_preflight_cached = False
-    container_caching_enabled = bool(
-        env and getattr(env, "container_caching_enabled", False)
-    )
+    container_caching_enabled = bool(env and getattr(env, "container_caching_enabled", False))
     cache_system_enabled = bool(
-        container_caching_enabled
-        and env
-        and getattr(env, "cache_system_preflight_enabled", False)
+        container_caching_enabled and env and getattr(env, "cache_system_preflight_enabled", False)
     )
     cache_settings_enabled = bool(
-        container_caching_enabled
-        and env
-        and getattr(env, "cache_settings_preflight_enabled", False)
+        container_caching_enabled and env and getattr(env, "cache_settings_preflight_enabled", False)
     )
     desktop_cache_enabled = bool(env and getattr(env, "cache_desktop_build", False))
     desktop_cache_enabled = desktop_cache_enabled and desktop_enabled
@@ -231,7 +217,7 @@ def launch_docker_terminal_task(
     )
 
     def on_phase_log(line: str) -> None:
-        main_window._on_task_log(task_id, line)
+        main_window._on_task_log(task_id, line)  # pyright: ignore[reportPrivateUsage]
 
     resolved_probe_available = agent_probe_available_override
     if use_precomputed_cache:
@@ -270,19 +256,13 @@ def launch_docker_terminal_task(
                 )
             )
 
-        if (
-            not resolved_install_preflight_script
-            and cmd_parts
-            and resolved_probe_available is not True
-        ):
+        if not resolved_install_preflight_script and cmd_parts and resolved_probe_available is not True:
             install_plan = resolve_agent_install_plan(
                 agent_cli=str(cmd_parts[0]),
                 include_internal=False,
             )
             if install_plan is not None:
-                resolved_install_preflight_script = str(
-                    install_plan.script_content or ""
-                ).strip()
+                resolved_install_preflight_script = str(install_plan.script_content or "").strip()
                 resolved_install_phase_name = str(install_plan.phase_name or "").strip()
 
         if container_caching_enabled and resolved_install_preflight_script:
@@ -324,9 +304,7 @@ def launch_docker_terminal_task(
             if desktop_preflight_cached:
                 desktop_run_path = preflights_host_dir / "desktop_run.sh"
                 try:
-                    desktop_preflight_script = desktop_run_path.read_text(
-                        encoding="utf-8"
-                    )
+                    desktop_preflight_script = desktop_run_path.read_text(encoding="utf-8")
                 except Exception:
                     desktop_preflight_script = ""
                 if not desktop_preflight_script.strip():
@@ -391,19 +369,16 @@ def launch_docker_terminal_task(
     # Prepare preflight scripts and get mounts.
     # Desktop caching only pre-installs desktop dependencies into an image layer;
     # runtime desktop services still need to start for each container launch.
-    preflight_clause, preflight_mounts, tmp_paths, desktop_start_clause = (
-        _prepare_preflight_scripts(
-            task_token=task_token,
-            ide_preflight_script=str(ide_preflight_script or ""),
-            desktop_preflight_script=desktop_preflight_script,
-            settings_preflight_script=settings_preflight_script,
-            setup_agents_script=setup_agents_script,
-            install_preflight_script=resolved_install_preflight_script,
-            skip_install=install_preflight_cached,
-            skip_system=skip_system_preflight,
-            skip_desktop=False,
-            skip_settings=settings_preflight_cached,
-        )
+    preflight_clause, preflight_mounts, tmp_paths, desktop_start_clause = _prepare_preflight_scripts(
+        task_token=task_token,
+        desktop_preflight_script=desktop_preflight_script,
+        settings_preflight_script=settings_preflight_script,
+        setup_agents_script=setup_agents_script,
+        install_preflight_script=resolved_install_preflight_script,
+        skip_install=install_preflight_cached,
+        skip_system=skip_system_preflight,
+        skip_desktop=False,
+        skip_settings=settings_preflight_cached,
     )
 
     if preflight_clause is None:
@@ -426,6 +401,10 @@ def launch_docker_terminal_task(
             if not k:
                 continue
             env_args.extend(["-e", f"{k}={value}"])
+        if "UV_PROJECT_ENVIRONMENT" not in ((env.env_vars or {}) if env else {}):
+            env_args.extend(["-e", "UV_PROJECT_ENVIRONMENT=/tmp/.uv-venv"])
+        if "UV_PYTHON_INSTALL_DIR" not in ((env.env_vars or {}) if env else {}):
+            env_args.extend(["-e", "UV_PYTHON_INSTALL_DIR=/tmp/.uv-python"])
         env_args.extend(["-e", "MIDORI_AI_AGENTS_RUNNER_INTERACTIVE=true"])
 
         # Check if we need to forward GH_TOKEN
@@ -436,36 +415,85 @@ def launch_docker_terminal_task(
         if forward_gh_token:
             gh_token = resolve_github_token()
             if gh_token:
-                env_args.extend(
-                    ["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"]
-                )
+                env_args.extend(["-e", f"GH_TOKEN={gh_token}", "-e", f"GITHUB_TOKEN={gh_token}"])
 
-        # Allocate port for desktop mode
+        ports_source = (  # pyright: ignore[reportUnknownVariableType]
+            list(ports_for_task or [])
+            if ports_for_task is not None
+            else list((getattr(env, "ports", None) or []) if env else [])
+        )
+
+        # Allocate ports for managed local services.
         port_args: list[str] = []
+        opencode_web_url = ""
+        opencode_web_host_port = 0
+        opencode_web_container_port = OPENCODE_WEB_CONTAINER_PORT
+        if opencode_web_mode:
+            if network_host:
+                opencode_web_host_port = allocate_localhost_port()
+                opencode_web_container_port = opencode_web_host_port
+            else:
+                opencode_web_container_port = select_opencode_web_container_port(ports_source)
+                opencode_web_host_port = allocate_localhost_port()
+                port_args.extend(
+                    [
+                        "-p",
+                        (f"{OPENCODE_WEB_HOST}:{opencode_web_host_port}:{opencode_web_container_port}"),
+                    ]
+                )
+            opencode_web_url = f"http://{OPENCODE_WEB_HOST}:{opencode_web_host_port}"
+            task.opencode_web_url = opencode_web_url
+            main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
+                task_id,
+                format_log(
+                    "opencode",
+                    "web",
+                    "INFO",
+                    (
+                        "mapped web ui: "
+                        f"{OPENCODE_WEB_HOST}:{opencode_web_host_port} -> "
+                        f"container port {opencode_web_container_port}"
+                    ),
+                ),
+            )
+            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+            main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
+            main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
+
         if desktop_enabled:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                s.bind(("127.0.0.1", 0))
-                host_port = int(s.getsockname()[1])
-            finally:
-                s.close()
-            port_args = ["-p", f"127.0.0.1:{host_port}:6080"]
+            host_port = allocate_localhost_port()
+            if network_host:
+                vnc_host_port = allocate_localhost_port()
+                while vnc_host_port == host_port:
+                    vnc_host_port = allocate_localhost_port()
+                env_args.extend(
+                    [
+                        "-e",
+                        f"VNC_PORT={vnc_host_port}",
+                        "-e",
+                        f"NOVNC_PORT={host_port}",
+                    ]
+                )
+            else:
+                port_args.extend(["-p", f"127.0.0.1:{host_port}:6080"])
             env_args.extend(["-e", f"AGENTS_RUNNER_TASK_ID={task_token}"])
             task.headless_desktop_enabled = True
-            task.desktop_display = ":1"
             task.novnc_url = f"http://127.0.0.1:{host_port}/vnc.html"
-            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            main_window._details.update_task(task)
-            main_window._schedule_save()
+            main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+            main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
+            main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
-        # Apply environment-specified ports (if any)
-        for port_spec in (getattr(env, "ports", None) or []) if env else []:
-            spec = str(port_spec or "").strip()
-            if not spec:
-                continue
-            if desktop_enabled and _publishes_container_port(spec, 6080):
-                continue
-            port_args.extend(["-p", spec])
+        # Apply environment-specified ports (or task runtime overrides)
+        if not network_host:
+            for port_spec in ports_source:  # pyright: ignore[reportUnknownVariableType]
+                spec = str(port_spec or "").strip()
+                if not spec:
+                    continue
+                if desktop_enabled and publishes_container_port(spec, 6080):
+                    continue
+                if opencode_web_mode and publishes_container_port(spec, opencode_web_container_port):
+                    continue
+                port_args.extend(["-p", spec])
 
         # Prepare extra mounts
         all_mounts: list[str] = []
@@ -476,7 +504,7 @@ def launch_docker_terminal_task(
         all_mounts.append(f"{artifacts_staging_dir}:/tmp/agents-artifacts")
 
         # Add host cache mount if enabled in settings
-        if main_window._settings_data.get("mount_host_cache", False):
+        if main_window._settings_data.get("mount_host_cache", False):  # pyright: ignore[reportPrivateUsage]
             host_cache = os.path.expanduser("~/.cache")
             container_cache = "/home/midori-ai/.cache"
             all_mounts.append(f"{host_cache}:{container_cache}:rw")
@@ -507,18 +535,25 @@ def launch_docker_terminal_task(
             else:
                 target_cmd = f"/bin/{shell}"
             verify_clause = ""
+        elif opencode_web_mode:
+            target_cmd = f"opencode web --port {opencode_web_container_port} --hostname 0.0.0.0"
+            verify_clause = verify_cli_clause("opencode")
         else:
             target_cmd = " ".join(shlex.quote(part) for part in cmd_parts)
             verify_clause = ""
             if cmd_parts and cmd_parts[0] in set(available_agents()):
                 verify_clause = verify_cli_clause(cmd_parts[0])
 
+        runtime_cmd_log = (
+            f"printf '%s\\n' {shlex.quote(format_log('agent', 'cmd', 'INFO', f'running: {target_cmd}'))}; "
+        )
         container_script = (
             "set -euo pipefail; "
-            f"{git_identity_clause()}{preflight_clause}{verify_clause}{desktop_start_clause}{target_cmd}"
+            f"{git_identity_clause()}{preflight_clause}{verify_clause}"
+            f"{desktop_start_clause}{runtime_cmd_log}{target_cmd}"
         )
 
-        main_window._on_task_log(
+        main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
             task_id,
             format_log("agent", "cmd", "INFO", target_cmd),
         )
@@ -539,6 +574,7 @@ def launch_docker_terminal_task(
             container_script=container_script,
             shell_mode=shell_mode,
             gpu_enabled=gpu_enabled,
+            network_host=network_host,
         )
 
         docker_cmd_for_log = _build_docker_command(
@@ -556,14 +592,15 @@ def launch_docker_terminal_task(
             container_script=container_script,
             shell_mode=shell_mode,
             gpu_enabled=gpu_enabled,
+            network_host=network_host,
         )
-        main_window._on_task_log(
+        main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
             task_id,
             format_log("docker", "cmd", "INFO", docker_cmd_for_log),
         )
 
         # Prepare finish file for exit code tracking
-        finish_dir = os.path.dirname(main_window._state_path)
+        finish_dir = os.path.dirname(main_window._state_path)  # pyright: ignore[reportPrivateUsage]
         os.makedirs(finish_dir, exist_ok=True)
         finish_path = os.path.join(finish_dir, f"interactive-finish-{task_id}.txt")
         error_log_path = os.path.join(finish_dir, f"interactive-error-{task_id}.log")
@@ -608,34 +645,30 @@ def launch_docker_terminal_task(
 
         # Log base branch if specified
         if (desired_base or "").strip():
-            main_window._on_task_log(
+            main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
                 task_id,
                 format_log("gh", "branch", "INFO", f"base branch: {desired_base}"),
             )
 
         # Update settings
-        main_window._settings_data["host_workdir"] = host_workdir
-        main_window._settings_data["active_environment_id"] = env_id
-        main_window._settings_data["interactive_terminal_id"] = str(
-            getattr(terminal_opt, "terminal_id", "")
-        )
-        main_window._apply_active_environment_to_new_task()
-        main_window._schedule_save()
+        main_window._settings_data["host_workdir"] = host_workdir  # pyright: ignore[reportPrivateUsage]
+        main_window._settings_data["active_environment_id"] = env_id  # pyright: ignore[reportPrivateUsage]
+        main_window._settings_data["interactive_terminal_id"] = str(getattr(terminal_opt, "terminal_id", ""))  # pyright: ignore[reportPrivateUsage]
+        main_window._apply_active_environment_to_new_task()  # pyright: ignore[reportPrivateUsage]
+        main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
         # Update task status to running
         task.status = "running"
         task.started_at = datetime.now(tz=timezone.utc)
-        main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-        main_window._details.update_task(task)
-        main_window._schedule_save()
+        main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+        main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
+        main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
         # Start finish file watcher
-        main_window._start_interactive_finish_watch(
-            task_id, finish_path, error_log_path
-        )
+        main_window._start_interactive_finish_watch(task_id, finish_path, error_log_path)  # pyright: ignore[reportPrivateUsage]
 
         # Log launch
-        main_window._on_task_log(
+        main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
             task_id,
             format_log(
                 "ui",
@@ -644,11 +677,23 @@ def launch_docker_terminal_task(
                 f"launched in {safe_str(getattr(terminal_opt, 'label', 'Terminal'))}",
             ),
         )
+        if opencode_web_url:
+            main_window._on_task_log(  # pyright: ignore[reportPrivateUsage]
+                task_id,
+                format_log("opencode", "web", "INFO", f"web url: {opencode_web_url}"),
+            )
 
         # Launch terminal
         launch_in_terminal(terminal_opt, host_script, cwd=host_workdir)
-        main_window._maybe_auto_navigate_on_task_start(interactive=True)
-        main_window._new_task.reset_for_new_run()
+        if opencode_web_url and opencode_web_host_port:
+            schedule_open_opencode_web_url(
+                main_window=main_window,
+                task_id=task_id,
+                url=opencode_web_url,
+                host_port=opencode_web_host_port,
+            )
+        main_window._maybe_auto_navigate_on_task_start(interactive=True)  # pyright: ignore[reportPrivateUsage]
+        main_window._new_task.reset_for_new_run()  # pyright: ignore[reportPrivateUsage]
 
     except Exception as exc:
         _handle_launch_error(main_window, task, tmp_paths, stain, spinner, str(exc))
@@ -656,7 +701,6 @@ def launch_docker_terminal_task(
 
 def _prepare_preflight_scripts(
     task_token: str,
-    ide_preflight_script: str,
     desktop_preflight_script: str,
     settings_preflight_script: str | None,
     setup_agents_script: str | None,
@@ -672,7 +716,6 @@ def _prepare_preflight_scripts(
 
     Args:
         task_token: Unique task token for temp file naming
-        ide_preflight_script: IDE install phase script content
         desktop_preflight_script: Desktop phase script content
         settings_preflight_script: Global preflight script
         setup_agents_script: Repo setup-agents script content
@@ -697,36 +740,24 @@ def _prepare_preflight_scripts(
     tmp_paths: dict[str, str] = {
         "system": "",
         "install": "",
-        "ide": "",
         "desktop": "",
         "desktop_start": "",
         "settings": "",
         "setup_agents": "",
     }
 
-    ide_container_path = f"/tmp/agents-runner-preflight-ide-{task_token}.sh"
     desktop_container_path = f"/tmp/agents-runner-preflight-desktop-{task_token}.sh"
-    desktop_start_container_path = (
-        f"/tmp/agents-runner-preflight-desktop-start-{task_token}.sh"
-    )
-    install_container_path = (
-        f"/tmp/agents-runner-preflight-install-agent-{task_token}.sh"
-    )
+    desktop_start_container_path = f"/tmp/agents-runner-preflight-desktop-start-{task_token}.sh"
+    install_container_path = f"/tmp/agents-runner-preflight-install-agent-{task_token}.sh"
     settings_container_path = f"/tmp/agents-runner-preflight-settings-{task_token}.sh"
-    setup_agents_container_path = (
-        f"/tmp/agents-runner-preflight-setup-agents-{task_token}.sh"
-    )
+    setup_agents_container_path = f"/tmp/agents-runner-preflight-setup-agents-{task_token}.sh"
 
-    preflights_host_dir = (
-        Path(__file__).resolve().parent.parent / "preflights"
-    ).resolve()
+    preflights_host_dir = (Path(__file__).resolve().parent.parent / "preflights").resolve()
     preflights_container_dir = "/tmp/agents-runner-preflights"
 
     def _write_preflight_script(script: str, label: str) -> str:
         """Write a preflight script to a temporary file."""
-        fd, tmp_path = tempfile.mkstemp(
-            prefix=f"agents-runner-preflight-{label}-{task_token}-", suffix=".sh"
-        )
+        fd, tmp_path = tempfile.mkstemp(prefix=f"agents-runner-preflight-{label}-{task_token}-", suffix=".sh")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 if not script.endswith("\n"):
@@ -750,16 +781,12 @@ def _prepare_preflight_scripts(
             raise RuntimeError(f"Missing system preflight: {system_preflight_path}")
 
         # Mount the entire preflights directory (read-only) to avoid missing dependency scripts.
-        preflight_mounts.extend(
-            ["-v", f"{preflights_host_dir}:{preflights_container_dir}:ro"]
-        )
+        preflight_mounts.extend(["-v", f"{preflights_host_dir}:{preflights_container_dir}:ro"])
 
         preflights_scripts: dict[str, str] = {}
         try:
             for candidate in sorted(preflights_host_dir.glob("*.sh")):
-                preflights_scripts[candidate.name] = candidate.read_text(
-                    encoding="utf-8"
-                ).strip()
+                preflights_scripts[candidate.name] = candidate.read_text(encoding="utf-8").strip()
         except Exception:
             preflights_scripts = {}
 
@@ -772,27 +799,18 @@ def _prepare_preflight_scripts(
         desktop_start_script = ""
         desktop_preflight_stripped = desktop_install_script.strip()
         if desktop_preflight_stripped:
-            headless_script = preflights_scripts.get(
-                "headless_desktop_novnc.sh", ""
-            ).strip()
-            desktop_install_phase_script = preflights_scripts.get(
-                "desktop_install.sh", ""
-            ).strip()
+            headless_script = preflights_scripts.get("headless_desktop_novnc.sh", "").strip()
+            desktop_install_phase_script = preflights_scripts.get("desktop_install.sh", "").strip()
             desktop_run_script = preflights_scripts.get("desktop_run.sh", "").strip()
             if headless_script and desktop_preflight_stripped == headless_script:
                 if desktop_install_phase_script:
                     desktop_install_script = desktop_install_phase_script
                 if desktop_run_script:
                     desktop_start_script = desktop_run_script
-            elif (
-                desktop_run_script and desktop_preflight_stripped == desktop_run_script
-            ):
+            elif desktop_run_script and desktop_preflight_stripped == desktop_run_script:
                 desktop_install_script = ""
                 desktop_start_script = desktop_run_script
-            elif (
-                desktop_install_phase_script
-                and desktop_preflight_stripped == desktop_install_phase_script
-            ):
+            elif desktop_install_phase_script and desktop_preflight_stripped == desktop_install_phase_script:
                 desktop_install_script = desktop_install_phase_script
                 if desktop_run_script:
                     desktop_start_script = desktop_run_script
@@ -890,14 +908,6 @@ def _prepare_preflight_scripts(
             env_var="PREFLIGHT_SETTINGS",
         )
         _append_optional_phase(
-            label="ide",
-            script=ide_preflight_script,
-            container_path=ide_container_path,
-            tmp_key="ide",
-            skip=False,
-            env_var="PREFLIGHT_IDE",
-        )
-        _append_optional_phase(
             label="desktop",
             script=desktop_install_script,
             container_path=desktop_container_path,
@@ -947,6 +957,7 @@ def _build_docker_command(
     container_script: str,
     shell_mode: bool = False,
     gpu_enabled: bool = False,
+    network_host: bool = False,
 ) -> str:
     """Build complete Docker run command string.
 
@@ -965,17 +976,20 @@ def _build_docker_command(
         container_script: Container script to execute
         shell_mode: If True, skip agent config dir mount (for "To Shell" feature)
         gpu_enabled: If True, add `--gpus all` to docker run
+        network_host: If True, add `--network host` to docker run
 
     Returns:
         Complete Docker command string
     """
     docker_platform_args = docker_platform_args_for_pixelarch()
     gpu_args = ["--gpus", "all"] if bool(gpu_enabled) else []
+    network_args = ["--network", "host"] if bool(network_host) else []
     docker_args: list[str] = [
         "docker",
         "run",
         *docker_platform_args,
         *gpu_args,
+        *network_args,
         "-it",
         "--name",
         container_name,
@@ -1038,7 +1052,6 @@ def _build_host_shell_script(
     host_script_parts = [
         f"CONTAINER_NAME={shlex.quote(container_name)}",
         f"TMP_SYSTEM={shlex.quote(tmp_paths.get('system', ''))}",
-        f"TMP_IDE={shlex.quote(tmp_paths.get('ide', ''))}",
         f"TMP_DESKTOP={shlex.quote(tmp_paths.get('desktop', ''))}",
         f"TMP_DESKTOP_START={shlex.quote(tmp_paths.get('desktop_start', ''))}",
         f"TMP_SETTINGS={shlex.quote(tmp_paths.get('settings', ''))}",
@@ -1048,7 +1061,6 @@ def _build_host_shell_script(
         'write_finish() { STATUS="${1:-0}"; printf "%s\\n" "$STATUS" >"$FINISH_FILE" 2>/dev/null || true; }',
         'cleanup() { docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true; '
         + 'if [ -n "$TMP_SYSTEM" ]; then rm -f -- "$TMP_SYSTEM" >/dev/null 2>&1 || true; fi; '
-        + 'if [ -n "$TMP_IDE" ]; then rm -f -- "$TMP_IDE" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_DESKTOP" ]; then rm -f -- "$TMP_DESKTOP" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_DESKTOP_START" ]; then rm -f -- "$TMP_DESKTOP_START" >/dev/null 2>&1 || true; fi; '
         + 'if [ -n "$TMP_SETTINGS" ]; then rm -f -- "$TMP_SETTINGS" >/dev/null 2>&1 || true; fi; '
@@ -1088,7 +1100,7 @@ def _cleanup_temp_files(tmp_paths: dict[str, str]) -> None:
 
 
 def _handle_launch_error(
-    main_window: object,
+    main_window: MainWindow,
     task: Task,
     tmp_paths: dict[str, str],
     stain: str | None,
@@ -1110,7 +1122,7 @@ def _handle_launch_error(
     task.error = error_message
     task.exit_code = 1
     task.finished_at = datetime.now(tz=timezone.utc)
-    main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-    main_window._details.update_task(task)
-    main_window._schedule_save()
+    main_window._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)  # pyright: ignore[reportPrivateUsage]
+    main_window._details.update_task(task)  # pyright: ignore[reportPrivateUsage]
+    main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
     QMessageBox.warning(main_window, "Failed to launch terminal", error_message)

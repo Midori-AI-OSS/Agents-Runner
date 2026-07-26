@@ -41,10 +41,7 @@ class ThemePreviewDialog(ThemedDialog):
         subtitle.setObjectName("SettingsPaneSubtitle")
         layout.addWidget(subtitle)
 
-        details = QLabel(
-            "This dialog surface is the live theme preview. "
-            "Apply to switch the app background."
-        )
+        details = QLabel("This dialog surface is the live theme preview. Apply to switch the app background.")
         details.setWordWrap(True)
         details.setObjectName("SettingsPaneSubtitle")
         layout.addWidget(details)

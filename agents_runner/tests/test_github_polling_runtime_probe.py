@@ -36,9 +36,7 @@ def test_github_polling_runtime_refresh_counts() -> None:
     """
 
     if str(os.environ.get(_ENABLE_RUNTIME_TEST_ENV, "")).strip() != "1":
-        pytest.skip(
-            "Set RUN_GITHUB_POLL_RUNTIME_TEST=1 to run this multi-minute runtime probe."
-        )
+        pytest.skip("Set RUN_GITHUB_POLL_RUNTIME_TEST=1 to run this multi-minute runtime probe.")
 
     duration_s = _env_int(_DURATION_ENV, 180, minimum=60)
     interval_s = _env_int(_INTERVAL_ENV, 15, minimum=5)
@@ -65,8 +63,7 @@ def test_github_polling_runtime_refresh_counts() -> None:
             first_refresh_delay_s = elapsed_s
 
         print(
-            f"[github-poll-runtime] +{elapsed_s:6.1f}s refreshed {key} for {env_id} "
-            f"(count={counts[key]})",
+            f"[github-poll-runtime] +{elapsed_s:6.1f}s refreshed {key} for {env_id} (count={counts[key]})",
             flush=True,
         )
 
@@ -101,9 +98,7 @@ def test_github_polling_runtime_refresh_counts() -> None:
 
     elapsed_total_s = time.monotonic() - started_at
     total_refreshes = sum(counts.values())
-    first_delay_text = (
-        f"{first_refresh_delay_s:.1f}s" if first_refresh_delay_s is not None else "none"
-    )
+    first_delay_text = f"{first_refresh_delay_s:.1f}s" if first_refresh_delay_s is not None else "none"
 
     print(
         "[github-poll-runtime] summary "

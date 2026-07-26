@@ -47,7 +47,7 @@ class _DashboardScrim(QWidget):
         alpha = int(min(max(self._alpha, 0), 255))
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
         if feather <= 0 or alpha <= 0:
             return
@@ -123,7 +123,7 @@ class DashboardPage(QWidget):
         clear_filters = QToolButton()
         clear_filters.setObjectName("RowTrash")
         clear_filters.setIcon(lucide_icon("rotate-ccw"))
-        clear_filters.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        clear_filters.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         clear_filters.setToolTip("Clear filters")
         clear_filters.setAccessibleName("Clear filters")
         clear_filters.clicked.connect(self._clear_filters)
@@ -133,14 +133,14 @@ class DashboardPage(QWidget):
         self._btn_clean_old.setIcon(lucide_icon("trash-2"))
         self._btn_clean_old.setToolTip("Clean finished tasks")
         self._btn_clean_old.setAccessibleName("Clean finished tasks")
-        self._btn_clean_old.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self._btn_clean_old.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self._btn_clean_old.clicked.connect(self.clean_old_requested.emit)
 
         filters_layout.addWidget(self._filter_text, 1)
         filters_layout.addWidget(self._filter_environment)
         filters_layout.addWidget(self._filter_state)
-        filters_layout.addWidget(clear_filters, 0, Qt.AlignRight)
-        filters_layout.addWidget(self._btn_clean_old, 0, Qt.AlignRight)
+        filters_layout.addWidget(clear_filters, 0, Qt.AlignmentFlag.AlignRight)
+        filters_layout.addWidget(self._btn_clean_old, 0, Qt.AlignmentFlag.AlignRight)
 
         columns = QWidget()
         columns_layout = QHBoxLayout(columns)
@@ -175,7 +175,7 @@ class DashboardPage(QWidget):
 
         pane = QFrame()
         pane.setObjectName("TaskTabPane")
-        pane.setAttribute(Qt.WA_StyledBackground, True)
+        pane.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         pane_layout = QVBoxLayout(pane)
         pane_layout.setContentsMargins(0, 8, 0, 0)
         pane_layout.setSpacing(10)
@@ -190,7 +190,7 @@ class DashboardPage(QWidget):
         self._scroll_active = QScrollArea()
         self._scroll_active.setWidgetResizable(True)
         self._scroll_active.setFrameShape(QScrollArea.NoFrame)
-        self._scroll_active.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll_active.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll_active.setObjectName("TaskScroll")
 
         self._list_active = QWidget()
@@ -210,7 +210,7 @@ class DashboardPage(QWidget):
         self._scroll_past = QScrollArea()
         self._scroll_past.setWidgetResizable(True)
         self._scroll_past.setFrameShape(QScrollArea.NoFrame)
-        self._scroll_past.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._scroll_past.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll_past.setObjectName("TaskScroll")
 
         self._list_past = QWidget()
@@ -222,13 +222,11 @@ class DashboardPage(QWidget):
         self._scroll_past.setWidget(self._list_past)
 
         self._past_loading_indicator = QLabel("Loading more tasks...")
-        self._past_loading_indicator.setStyleSheet(
-            "color: rgba(237, 239, 245, 150); font-size: 11px; padding: 8px;"
-        )
+        self._past_loading_indicator.setStyleSheet("color: rgba(237, 239, 245, 150); font-size: 11px; padding: 8px;")
         self._past_loading_indicator.hide()
 
         past_layout.addWidget(self._scroll_past, 1)
-        past_layout.addWidget(self._past_loading_indicator, 0, Qt.AlignCenter)
+        past_layout.addWidget(self._past_loading_indicator, 0, Qt.AlignmentFlag.AlignCenter)
 
         self._stack.addWidget(active_page)
         self._stack.addWidget(past_page)
@@ -245,9 +243,7 @@ class DashboardPage(QWidget):
         self._rows_past: dict[str, TaskRow] = {}
 
         # Initialize animator after widgets are created
-        self._past_animator = PastTaskAnimator(
-            self._scroll_past, lambda: self._rows_past, parent=self
-        )
+        self._past_animator = PastTaskAnimator(self._scroll_past, lambda: self._rows_past, parent=self)
 
         # Initialize progressive loader
         self._past_loader = PastTaskProgressiveLoader(
@@ -294,9 +290,7 @@ class DashboardPage(QWidget):
             return stains[(stains.index(current) + 1) % len(stains)]
         return stains[0]
 
-    def upsert_task(
-        self, task: Task, stain: str | None = None, spinner_color: QColor | None = None
-    ) -> None:
+    def upsert_task(self, task: Task, stain: str | None = None, spinner_color: QColor | None = None) -> None:
         row = self._rows_active.get(task.task_id)
         if row is None:
             row = TaskRow()
@@ -322,9 +316,7 @@ class DashboardPage(QWidget):
             row.set_stain(stain or self._pick_new_row_stain(self._list_layout_past))
             row.clicked.connect(self._on_row_clicked)
             self._rows_past[task.task_id] = row
-            self._list_layout_past.insertWidget(
-                max(0, self._list_layout_past.count() - 1), row
-            )
+            self._list_layout_past.insertWidget(max(0, self._list_layout_past.count() - 1), row)
             created = True
         elif stain:
             row.set_stain(stain)
@@ -404,9 +396,7 @@ class DashboardPage(QWidget):
         for rows in (self._rows_active, self._rows_past):
             for row in rows.values():
                 task = row.last_task()
-                row.setVisible(
-                    True if task is None else self._row_visible_for_task(task)
-                )
+                row.setVisible(True if task is None else self._row_visible_for_task(task))
 
     def _on_row_clicked(self) -> None:
         row = self.sender()

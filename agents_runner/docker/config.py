@@ -8,41 +8,33 @@ class DockerRunnerConfig:
     image: str
     host_config_dir: str
     host_workdir: str
+    state_path: str = ""
     agent_cli: str = "codex"
     container_config_dir: str = ""
     container_workdir: str = "/home/midori-ai/workspace"
     auto_remove: bool = True
     pull_before_run: bool = True
     settings_preflight_script: str | None = None
-    ide_preflight_script: str | None = None
     headless_desktop_enabled: bool = False
     desktop_cache_enabled: bool = False
     container_caching_enabled: bool = False
     cache_system_preflight_enabled: bool = False
     cache_settings_preflight_enabled: bool = False
-    cache_ide_preflight_enabled: bool = False
     gpu_enabled: bool = False
+    network_host: bool = False
     setup_agents_missing_prompt_enabled: bool = False
     environment_id: str = ""
     workspace_type: str = "none"
     workspace_target: str = ""
     # Use a task-specific filename by default to avoid collisions when multiple
     # runs share a container or temp directory.
-    container_settings_preflight_path: str = (
-        "/tmp/agents-runner-preflight-settings-{task_id}.sh"
-    )
-    container_setup_agents_preflight_path: str = (
-        "/tmp/agents-runner-preflight-setup-agents-{task_id}.sh"
-    )
-    container_ide_preflight_path: str = "/tmp/agents-runner-preflight-ide-{task_id}.sh"
+    container_settings_preflight_path: str = "/tmp/agents-runner-preflight-settings-{task_id}.sh"
+    container_setup_agents_preflight_path: str = "/tmp/agents-runner-preflight-setup-agents-{task_id}.sh"
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
     ports: list[str] = field(default_factory=list)
     agent_cli_args: list[str] = field(default_factory=list)
     launch_mode: str = "agent"
-    ide_system: str = ""
-    ide_display_target: str = ""
-    ide_auto_mounts_enabled: bool = False
     custom_command_argv: list[str] = field(default_factory=list)
     custom_verify_executable: str = ""
     # GitHub repo preparation

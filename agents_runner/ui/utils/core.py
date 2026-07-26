@@ -36,14 +36,6 @@ def safe_str(value: object, default: str = "") -> str:
     return str(value or default).strip() or default
 
 
-def looks_like_agent_help_command(command: str) -> bool:
-    value = str(command or "").strip()
-    if not value:
-        return False
-    lowered = value.lower()
-    return "agent-help" in lowered or ".agent-help" in lowered
-
-
 def status_color(status: str) -> QColor:
     """Map status string to color."""
     color_map = {
@@ -191,9 +183,7 @@ def _ensure_contrast(fill: QColor, text: QColor, *, min_ratio: float) -> QColor:
         if _contrast_ratio(candidate, text) >= min_ratio:
             return candidate
         darkened = blend_rgb(candidate, QColor(0, 0, 0), 0.16)
-        candidate = QColor(
-            darkened.red(), darkened.green(), darkened.blue(), fill.alpha()
-        )
+        candidate = QColor(darkened.red(), darkened.green(), darkened.blue(), fill.alpha())
     return candidate
 
 
@@ -217,9 +207,7 @@ def username_bubble_color(
     hue = fallback.hslHue()
     if hue < 0:
         hue = 210
-    rotated = QColor.fromHsl(
-        (hue + 120) % 360, fallback.hslSaturation(), fallback.lightness()
-    )
+    rotated = QColor.fromHsl((hue + 120) % 360, fallback.hslSaturation(), fallback.lightness())
     return rotated
 
 

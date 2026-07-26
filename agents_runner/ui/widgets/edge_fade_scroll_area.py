@@ -13,13 +13,11 @@ class _ScrollEdgeFadeOverlay(QWidget):
         self._bottom_visible = False
         self._fade_px = 24
         self._fade_alpha = 48
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)
         self.setAutoFillBackground(False)
 
-    def set_state(
-        self, *, top_visible: bool, bottom_visible: bool, fade_px: int, fade_alpha: int
-    ) -> None:
+    def set_state(self, *, top_visible: bool, bottom_visible: bool, fade_px: int, fade_alpha: int) -> None:
         top_visible = bool(top_visible)
         bottom_visible = bool(bottom_visible)
         fade_px = max(0, int(fade_px))
@@ -40,9 +38,7 @@ class _ScrollEdgeFadeOverlay(QWidget):
 
     def paintEvent(self, event: QPaintEvent) -> None:
         del event
-        if (
-            not self._top_visible and not self._bottom_visible
-        ) or self._fade_alpha <= 0:
+        if (not self._top_visible and not self._bottom_visible) or self._fade_alpha <= 0:
             return
 
         width = int(self.width())
@@ -55,7 +51,7 @@ class _ScrollEdgeFadeOverlay(QWidget):
             return
 
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
         color = QColor(0, 0, 0, self._fade_alpha)
 
         if self._top_visible:
@@ -87,8 +83,8 @@ class EdgeFadeScrollArea(QScrollArea):
 
         self.setWidgetResizable(True)
         self.setFrameShape(QScrollArea.NoFrame)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self._overlay = _ScrollEdgeFadeOverlay(self.viewport())
         self._overlay.hide()
@@ -107,9 +103,7 @@ class EdgeFadeScrollArea(QScrollArea):
         self._sync_overlay_geometry()
         self._sync_edge_fades()
 
-    def set_fade_parameters(
-        self, *, fade_px: int | None = None, fade_alpha: int | None = None
-    ) -> None:
+    def set_fade_parameters(self, *, fade_px: int | None = None, fade_alpha: int | None = None) -> None:
         if fade_px is not None:
             self._fade_px = max(0, int(fade_px))
         if fade_alpha is not None:

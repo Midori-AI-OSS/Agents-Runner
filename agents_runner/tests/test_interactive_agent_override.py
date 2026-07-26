@@ -1,47 +1,36 @@
+# pyright: reportPrivateUsage=false, reportIncompatibleMethodOverride=false, reportIncompatibleVariableOverride=false
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
+from agents_runner.agent_configs.model import AgentConfig
+from agents_runner.agent_configs.storage import save_agent_config
 from agents_runner.environments import Environment
 from agents_runner.environments import WORKSPACE_NONE
+from agents_runner.tests._fixtures import FakePrepWorker
+from agents_runner.tests._fixtures import FakeSignal
+from agents_runner.tests._fixtures import FakeThread
 from agents_runner.ui.main_window_environment import MainWindowEnvironmentMixin
 from agents_runner.terminal_apps import TerminalOption
 from agents_runner.ui.main_window_settings import MainWindowSettingsMixin
 from agents_runner.ui.main_window_tasks_interactive import (
     MainWindowTasksInteractiveMixin,
 )
+from agents_runner.ui.task_model import Task
 import agents_runner.ui.main_window_tasks_interactive as interactive_module
 
 
-class _FakeSignal:
-    def connect(self, *_args, **_kwargs) -> None:
-        return
+class _FakePrepWorker(FakePrepWorker):
+    def __init__(self, **_kwargs: object) -> None:
+        super().__init__(**_kwargs)
+        self.stage = FakeSignal()
+        self.log = FakeSignal()
+        self.succeeded = FakeSignal()
+        self.failed = FakeSignal()
 
-
-class _FakeThread:
-    def __init__(self, _parent=None) -> None:
-        self.started = _FakeSignal()
-        self.finished = _FakeSignal()
-
-    def start(self) -> None:
-        return
-
-    def quit(self) -> None:
-        return
-
-    def deleteLater(self) -> None:
-        return
-
-
-class _FakePrepWorker:
-    def __init__(self, **_kwargs) -> None:
-        self.stage = _FakeSignal()
-        self.log = _FakeSignal()
-        self.succeeded = _FakeSignal()
-        self.failed = _FakeSignal()
-
-    def moveToThread(self, _thread) -> None:
+    def moveToThread(self, _thread: object) -> None:
         return
 
     def run(self) -> None:
@@ -52,19 +41,19 @@ class _FakePrepWorker:
 
 
 class _FakePrepBridge:
-    def __init__(self, **_kwargs) -> None:
+    def __init__(self, **_kwargs: object) -> None:
         return
 
-    def on_stage(self, *_args, **_kwargs) -> None:
+    def on_stage(self, *_args: object, **_kwargs: object) -> None:
         return
 
-    def on_log(self, *_args, **_kwargs) -> None:
+    def on_log(self, *_args: object, **_kwargs: object) -> None:
         return
 
-    def on_succeeded(self, *_args, **_kwargs) -> None:
+    def on_succeeded(self, *_args: object, **_kwargs: object) -> None:
         return
 
-    def on_failed(self, *_args, **_kwargs) -> None:
+    def on_failed(self, *_args: object, **_kwargs: object) -> None:
         return
 
     def deleteLater(self) -> None:
@@ -73,11 +62,11 @@ class _FakePrepBridge:
 
 class _FakeMessageBox:
     @staticmethod
-    def critical(*_args, **_kwargs) -> None:
+    def critical(*_args: object, **_kwargs: object) -> None:
         return
 
     @staticmethod
-    def warning(*_args, **_kwargs) -> None:
+    def warning(*_args: object, **_kwargs: object) -> None:
         return
 
 
@@ -85,7 +74,14 @@ class _FakeMessageBox:
 class _DummyDashboard:
     last_task_id: str | None = None
 
-    def upsert_task(self, task, *, stain=None, spinner_color=None) -> None:
+    def upsert_task(
+        self,
+        task: Task,
+        *,
+        stain: object = None,
+        spinner_color: object = None,
+    ) -> None:
+        del stain, spinner_color
         self.last_task_id = task.task_id
 
 
@@ -111,37 +107,67 @@ class _DummyMainWindow(
             "preflight_script": "",
         }
         self._environments = {env.env_id: env}
-        self._tasks: dict[str, object] = {}
-        self._interactive_prep_context: dict[str, object] = {}
-        self._interactive_prep_workers: dict[str, object] = {}
-        self._interactive_prep_threads: dict[str, object] = {}
-        self._interactive_prep_bridges: dict[str, object] = {}
-        self._dashboard = _DummyDashboard()
-        self._new_task = _DummyNewTask()
+        self._tasks: dict[str, Task] = {}
+        self._interactive_prep_context: dict[str, dict[str, Any]] = {}
+        self._interactive_prep_workers: dict[str, Any] = {}
+        self._interactive_prep_threads: dict[str, Any] = {}
+        self._interactive_prep_bridges: dict[str, Any] = {}
+        self._dashboard = cast(Any, _DummyDashboard())
+        self._new_task = cast(Any, _DummyNewTask())
         self._state_path = str(tmp_path / "state.toml")
         self._workdir = str(workdir)
 
     def _active_environment_id(self) -> str:
         return next(iter(self._environments.keys()))
 
-    def _new_task_workspace(self, _env, *, task_id: str) -> tuple[str, bool, str]:
+    def _new_task_workspace(
+        self,
+        env: Environment | None,
+        task_id: str | None = None,
+    ) -> tuple[str, bool, str]:
+        del env, task_id
         return self._workdir, True, ""
 
-    def _schedule_save(self) -> None:
+    def _schedule_save(self, *_args: object) -> None:
+        return
+
+    def _remember_environment_base_branch(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
+        return
+
+    def _refresh_active_environment_repo_branches(self, *args: object, **kwargs: object) -> None:
+        del args, kwargs
         return
 
     def _maybe_auto_navigate_on_task_start(self, *, interactive: bool) -> None:
+        del interactive
         return
 
-    def _on_task_log(self, _task_id: str, _line: str) -> None:
+    def _on_task_log(self, task_id: str, log_line: str) -> None:
+        del task_id, log_line
         return
+
+
+def _docker_which(name: str) -> str | None:
+    return "/usr/bin/docker" if name == "docker" else None
 
 
 def test_interactive_task_uses_plugin_defaults_and_copilot_override(
-    monkeypatch, tmp_path
+    monkeypatch: Any,
+    tmp_path: Path,
 ) -> None:
     workdir = tmp_path / "workspace"
     workdir.mkdir(parents=True, exist_ok=True)
+
+    save_agent_config(
+        str(tmp_path / "state.toml"),
+        AgentConfig(
+            config_id="copilot-override",
+            agent_cli="copilot",
+            config_dir="",
+            cli_flags="--override-flag",
+        ),
+    )
 
     env = Environment(
         env_id="env-override",
@@ -170,12 +196,12 @@ def test_interactive_task_uses_plugin_defaults_and_copilot_override(
     monkeypatch.setattr(
         interactive_module.shutil,
         "which",
-        lambda name: "/usr/bin/docker" if name == "docker" else None,
+        _docker_which,
     )
     monkeypatch.setattr(interactive_module, "QMessageBox", _FakeMessageBox)
     monkeypatch.setattr(interactive_module, "InteractivePrepWorker", _FakePrepWorker)
     monkeypatch.setattr(interactive_module, "InteractivePrepBridge", _FakePrepBridge)
-    monkeypatch.setattr(interactive_module, "QThread", _FakeThread)
+    monkeypatch.setattr(interactive_module, "QThread", FakeThread)
     monkeypatch.setattr(interactive_module, "is_gh_available", lambda: False)
 
     window._start_interactive_task_from_ui(
@@ -190,7 +216,8 @@ def test_interactive_task_uses_plugin_defaults_and_copilot_override(
     )
 
     assert len(window._tasks) == 1
-    default_task_id = window._dashboard.last_task_id
+    dashboard = cast(_DummyDashboard, window._dashboard)
+    default_task_id = dashboard.last_task_id
     assert default_task_id is not None
     default_task = window._tasks[default_task_id]
     assert default_task.agent_cli == "codex"
@@ -198,14 +225,12 @@ def test_interactive_task_uses_plugin_defaults_and_copilot_override(
     assert Path(default_task.host_config_dir).is_absolute()
     assert default_task.agent_instance_id == ""
     assert default_task.agent_cli_args == "--env-flag"
-    assert (
-        window._interactive_prep_context[default_task_id]["command"]
-        == "--sandbox danger-full-access"
-    )
+    assert window._interactive_prep_context[default_task_id]["command"] == "--sandbox danger-full-access"
 
     override = {
         "agent_cli": "copilot",
         "agent_id": "copilot-1",
+        "config_id": "copilot-override",
         "cli_flags": "--override-flag",
     }
 
@@ -221,7 +246,7 @@ def test_interactive_task_uses_plugin_defaults_and_copilot_override(
     )
 
     assert len(window._tasks) == 2
-    override_task_id = window._dashboard.last_task_id
+    override_task_id = dashboard.last_task_id
     assert override_task_id is not None
     assert override_task_id != default_task_id
     override_task = window._tasks[override_task_id]
@@ -231,7 +256,5 @@ def test_interactive_task_uses_plugin_defaults_and_copilot_override(
     assert Path(override_task.host_config_dir).is_absolute()
     assert override_task.host_config_dir != default_task.host_config_dir
     assert override_task.agent_cli_args == "--override-flag"
-    override_command = str(
-        window._interactive_prep_context[override_task_id]["command"] or ""
-    )
+    override_command = str(window._interactive_prep_context[override_task_id]["command"] or "")
     assert "--add-dir /home/midori-ai/workspace" in override_command

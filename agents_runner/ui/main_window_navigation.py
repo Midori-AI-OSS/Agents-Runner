@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtWidgets import QWidget
 
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import MainWindowHints
+else:
+    MainWindowHints = object
 
-class MainWindowNavigationMixin:
+
+class MainWindowNavigationMixin(MainWindowHints):
     def _apply_window_prefs(self) -> None:
         try:
             w = int(self._settings_data.get("window_w") or 1280)
@@ -67,9 +74,9 @@ class MainWindowNavigationMixin:
 
         def _cleanup_effects() -> None:
             if current_page.graphicsEffect() is effect_out:
-                current_page.setGraphicsEffect(None)
+                current_page.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
             if target_page.graphicsEffect() is effect_in:
-                target_page.setGraphicsEffect(None)
+                target_page.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
             animations = getattr(self, "_page_animations", None)
             if isinstance(animations, list):
                 for anim in (anim_out, anim_in):
@@ -104,11 +111,7 @@ class MainWindowNavigationMixin:
         self._transition_to_page(self._dashboard)
 
     def _should_auto_navigate_on_task_start(self, *, interactive: bool) -> bool:
-        key = (
-            "auto_navigate_on_run_interactive_start"
-            if interactive
-            else "auto_navigate_on_run_agent_start"
-        )
+        key = "auto_navigate_on_run_interactive_start" if interactive else "auto_navigate_on_run_agent_start"
         return bool(self._settings_data.get(key) or False)
 
     def _maybe_auto_navigate_on_task_start(self, *, interactive: bool) -> None:
@@ -123,9 +126,7 @@ class MainWindowNavigationMixin:
             return
         was_visible = self._tasks_page.isVisible()
         self._tasks_page.show_new_task_tab(focus_prompt=True)
-        if not was_visible and hasattr(
-            self, "_refresh_active_environment_repo_branches"
-        ):
+        if not was_visible and hasattr(self, "_refresh_active_environment_repo_branches"):
             self._refresh_active_environment_repo_branches(
                 trigger_reason="tasks_entry",
                 show_loading_ui=True,
@@ -144,9 +145,7 @@ class MainWindowNavigationMixin:
         if not self._try_autosave_before_navigation():
             return
         active_id = self._active_environment_id()
-        if hasattr(
-            self, "_is_internal_environment_id"
-        ) and self._is_internal_environment_id(active_id):
+        if hasattr(self, "_is_internal_environment_id") and self._is_internal_environment_id(active_id):
             active_id = "default"
         self._envs_page.set_environments(self._user_environment_map(), active_id)
         self._transition_to_page(self._envs_page)
@@ -160,6 +159,13 @@ class MainWindowNavigationMixin:
         if hasattr(self, "_refresh_radio_channel_options"):
             self._refresh_radio_channel_options(disable_on_failure=True)
         self._transition_to_page(self._settings)
+        # Update force cleanup button state
+        has_active = any(t.is_active() for t in self._tasks.values())
+        has_finalizing = any(
+            str(getattr(t, "finalization_state", "") or "").strip().lower() in {"pending", "running"}
+            for t in self._tasks.values()
+        )
+        self._settings.set_force_cleanup_enabled(not has_active and not has_finalizing)
 
     def _try_autosave_before_navigation(self) -> bool:
         if self._envs_page.isVisible() and not self._envs_page.try_autosave():

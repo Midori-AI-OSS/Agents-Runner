@@ -1,9 +1,12 @@
+# pyright: reportPrivateUsage=false, reportMissingImports=false
 from __future__ import annotations
 
 import os
 import socket
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from PySide6.QtCore import Signal
@@ -75,6 +78,15 @@ class _DummyNewTaskPage(QWidget):
         return
 
 
+def _app() -> QApplication:
+    app = QApplication.instance()
+    if app is None:
+        return QApplication([])
+    if not isinstance(app, QApplication):
+        pytest.skip("QApplication is required for Qt widget lifecycle compatibility.")
+    return app
+
+
 def _pump(app: QApplication, rounds: int = 10) -> None:
     for _ in range(rounds):
         app.processEvents()
@@ -83,7 +95,7 @@ def _pump(app: QApplication, rounds: int = 10) -> None:
 
 def _wait_until(
     app: QApplication,
-    predicate,
+    predicate: Callable[[], bool],
     *,
     timeout_ms: int = 2000,
 ) -> bool:
@@ -137,9 +149,9 @@ def _build_envs() -> dict[str, Environment]:
 def test_tasks_github_button_fade_ignores_mid_animation_changes() -> None:
     _require_live_display()
 
-    app = QApplication.instance() or QApplication([])
+    app = _app()
 
-    page = TasksPage(new_task_page=_DummyNewTaskPage())
+    page = TasksPage(new_task_page=cast(Any, _DummyNewTaskPage()))
     page.resize(1400, 900)
     envs = _build_envs()
     page.set_environments(envs, "supported-a")
@@ -158,8 +170,6 @@ def test_tasks_github_button_fade_ignores_mid_animation_changes() -> None:
     _pump(app, rounds=2)
     assert page._button_fade_animation is first_animation
 
-    assert _wait_until(
-        app, lambda: page._button_fade_animation is None, timeout_ms=2500
-    )
+    assert _wait_until(app, lambda: page._button_fade_animation is None, timeout_ms=2500)
     assert pull_requests_button.isVisible()
     assert issues_button.isVisible()

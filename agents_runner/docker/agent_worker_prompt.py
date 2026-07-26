@@ -6,13 +6,17 @@ including Midori AI template detection and cross-agent support.
 
 from typing import Any, Callable
 
+from agents_runner.agent_configs.model import AgentConfig
+from agents_runner.agent_configs.storage import load_agent_configs
+from agents_runner.agent_configs.storage import resolve_agent_config
 from agents_runner.prompt_sanitizer import sanitize_prompt
 from agents_runner.agent_cli import normalize_agent
 from agents_runner.environments import load_environments
+from agents_runner.persistence import default_state_path
 from agents_runner.prompts import load_prompt
 from agents_runner.prompts.sections import insert_prompt_sections_before_user_prompt
 from agents_runner.log_format import format_log
-from agents_runner.midoriai_template import MidoriAITemplateDetection
+from agents_runner.midoriai_template import MidoriaiTemplateDetection
 
 
 class PromptAssembler:
@@ -23,15 +27,28 @@ class PromptAssembler:
         base_prompt: str,
         environment_id: str | None,
         on_log: Callable[[str], None],
+        state_path: str = "",
     ):
         self._base_prompt = base_prompt
         self._environment_id = environment_id
         self._on_log = on_log
+        self._state_path = str(state_path or "").strip()
+
+    def _load_agent_configs_by_id(self) -> dict[str, AgentConfig]:
+        state_path = self._state_path or default_state_path()
+        try:
+            return {
+                config_id: config
+                for config in load_agent_configs(state_path)
+                if (config_id := str(getattr(config, "config_id", "") or "").strip())
+            }
+        except Exception:
+            return {}
 
     def assemble_prompt(
         self,
         agent_cli: str,
-        template_detection: MidoriAITemplateDetection,
+        template_detection: MidoriaiTemplateDetection,
         desktop_enabled: bool,
         desktop_display: str,
     ) -> str:
@@ -46,9 +63,7 @@ class PromptAssembler:
                     prompt_for_agent,
                     [combined_template],
                 )
-                self._on_log(
-                    format_log("env", "template", "INFO", "injected template prompts")
-                )
+                self._on_log(format_log("env", "template", "INFO", "injected template prompts"))
 
         if desktop_enabled:
             prompt_for_agent = insert_prompt_sections_before_user_prompt(
@@ -134,9 +149,7 @@ class PromptAssembler:
             env = environments.get(str(self._environment_id))
             if env is not None:
                 cross_agents_enabled = bool(
-                    env.use_cross_agents is True
-                    and env.cross_agent_allowlist
-                    and len(env.cross_agent_allowlist) > 0
+                    env.use_cross_agents is True and env.cross_agent_allowlist and len(env.cross_agent_allowlist) > 0
                 )
                 return (cross_agents_enabled, env)
         except Exception as exc:
@@ -156,8 +169,21 @@ class PromptAssembler:
         if not env.agent_selection or not env.agent_selection.agents:
             return []
 
+        agent_configs = self._load_agent_configs_by_id()
         agent_cli_by_id: dict[str, str] = {
-            agent.agent_id: agent.agent_cli for agent in env.agent_selection.agents
+            str(agent.agent_id or "").strip(): str(
+                getattr(
+                    resolve_agent_config(
+                        str(getattr(agent, "config_id", "") or "").strip(),
+                        agent_configs,
+                    ),
+                    "agent_cli",
+                    "",
+                )
+                or ""
+            ).strip()
+            for agent in env.agent_selection.agents
+            if str(getattr(agent, "agent_id", "") or "").strip()
         }
 
         loaded_allowlist_clis: set[str] = set()
@@ -175,9 +201,7 @@ class PromptAssembler:
                 continue
 
             try:
-                allowlist_cli_prompt = load_prompt(
-                    f"templates/agentcli/{normalized_cli}"
-                ).strip()
+                allowlist_cli_prompt = load_prompt(f"templates/agentcli/{normalized_cli}").strip()
                 if allowlist_cli_prompt:
                     allowlist_templates.append(allowlist_cli_prompt)
                     loaded_allowlist_clis.add(normalized_cli)

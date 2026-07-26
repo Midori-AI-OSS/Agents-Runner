@@ -5,8 +5,8 @@ from PySide6.QtCore import (
     QEvent,
     QParallelAnimationGroup,
     QPropertyAnimation,
+    QPoint,
     QSequentialAnimationGroup,
-    Qt,
 )
 from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
 
@@ -26,7 +26,7 @@ class AnimationPresets:
 
 def fade_in(
     widget: QWidget, duration: int = AnimationPresets.DURATION_NORMAL, delay: int = 0
-) -> QPropertyAnimation:
+) -> QPropertyAnimation | QSequentialAnimationGroup:
     """Create a fade-in animation for a widget."""
     effect = widget.graphicsEffect()
     if not isinstance(effect, QGraphicsOpacityEffect):
@@ -50,9 +50,7 @@ def fade_in(
     return anim
 
 
-def fade_out(
-    widget: QWidget, duration: int = AnimationPresets.DURATION_NORMAL
-) -> QPropertyAnimation:
+def fade_out(widget: QWidget, duration: int = AnimationPresets.DURATION_NORMAL) -> QPropertyAnimation:
     """Create a fade-out animation for a widget."""
     effect = widget.graphicsEffect()
     if not isinstance(effect, QGraphicsOpacityEffect):
@@ -111,13 +109,13 @@ def slide_fade_in(
 
     start_pos = widget.pos()
     if direction == "up":
-        offset_pos = start_pos + Qt.QPoint(0, distance)
+        offset_pos = start_pos + QPoint(0, distance)
     elif direction == "down":
-        offset_pos = start_pos - Qt.QPoint(0, distance)
+        offset_pos = start_pos - QPoint(0, distance)
     elif direction == "left":
-        offset_pos = start_pos + Qt.QPoint(distance, 0)
+        offset_pos = start_pos + QPoint(distance, 0)
     else:
-        offset_pos = start_pos - Qt.QPoint(distance, 0)
+        offset_pos = start_pos - QPoint(distance, 0)
 
     widget.move(offset_pos)
 
@@ -187,10 +185,7 @@ class _ButtonAnimationFilter:
 
         style = self._button.styleSheet()
         if "background" not in style:
-            style = (
-                self._original_style
-                + "\nQToolButton:hover { background-color: rgba(255, 255, 255, 20); }"
-            )
+            style = self._original_style + "\nQToolButton:hover { background-color: rgba(255, 255, 255, 20); }"
             self._button.setStyleSheet(style)
 
     def _on_hover_leave(self) -> None:

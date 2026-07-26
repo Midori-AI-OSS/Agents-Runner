@@ -15,6 +15,7 @@ PR METADATA (non-interactive only)
   - `title` (<= 72 chars)
   - `body` (markdown)
 - Do not add any other keys.
+- Do not include CLI flags or agent invocation arguments in the PR body.
 
 Example:
 ```toml

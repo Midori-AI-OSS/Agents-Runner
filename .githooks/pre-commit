@@ -25,6 +25,7 @@ print_allowlist() {
   log "  - .agents"
   log "  - .githooks"
   log "  - .github"
+  log "  - .opencode"
   log "  - agents_runner"
   log "  - agents_runner.egg-info"
   log "  - .gitignore"
@@ -66,6 +67,7 @@ declare -A root_allowlist=(
   [".agents"]=1
   [".githooks"]=1
   [".github"]=1
+  [".opencode"]=1
   ["agents_runner"]=1
   ["agents_runner.egg-info"]=1
   [".gitignore"]=1
@@ -247,6 +249,24 @@ fi
 
 if [[ "${tasks_has_task_files}" -eq 1 ]]; then
   log "WARNING: Task files (.md/.txt) exist under .agents/tasks/{wip,done,taskmaster}."
+fi
+
+# ---- logging-usage check ------------------------------------------------
+# Block staged Python files that introduce stdlib logging imports.
+staged_py=()
+mapfile -d '' -t staged_py < <(git diff --cached --name-only -z --diff-filter=ACMR -- '*.py')
+logging_additions=()
+logging_import_pattern='^\+[[:space:]]*import[[:space:]]+logging([[:space:]]|$)|^\+[[:space:]]*from[[:space:]]+logging[[:space:]]+import([[:space:]]|$)'
+for py_file in "${staged_py[@]}"; do
+  [[ -z "${py_file}" ]] && continue
+  if git diff --cached -- "${py_file}" | grep -qE "${logging_import_pattern}"; then
+    logging_additions+=("${py_file}")
+  fi
+done
+if ((${#logging_additions[@]} > 0)); then
+  print_paths "Affected files" "${logging_additions[@]}"
+  log "Remediation: Use midori_ai_logger (MidoriAiLogger) instead. See AGENTS.md."
+  die "Standard logging from Python logging module detected in staged changes."
 fi
 
 if ! command -v uv >/dev/null 2>&1; then

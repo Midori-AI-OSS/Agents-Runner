@@ -1,24 +1,35 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+from midori_ai_logger import MidoriAiLogger
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import MainWindowHints
+else:
+    MainWindowHints = object
+
 from agents_runner.agent_cli import normalize_agent
-from agents_runner.ide_systems import get_default_ide_system_name
-from agents_runner.ide_systems import normalize_ide_display_target
-from agents_runner.ide_systems import normalize_ide_system_name
+from agents_runner.environments import normalize_opencode_interactive_mode
 from agents_runner.log_format import prettify_log_line
+from agents_runner.log_stream import normalize_log_stream_chunk
 from agents_runner.persistence import deserialize_task
 from agents_runner.persistence import load_active_task_payloads
 from agents_runner.persistence import load_state
 from agents_runner.persistence import save_task_payload
 from agents_runner.persistence import save_state
 from agents_runner.persistence import serialize_task
+from agents_runner.environments.task_workspaces import normalize_task_workspace_settings
 from agents_runner.ui.task_model import Task
 from agents_runner.ui.radio import RadioController
 from agents_runner.ui.utils import parse_docker_time
 from agents_runner.ui.utils import stain_color
 from agents_runner.gh.automation_policy import normalize_default_marker_comment_mode
 
+logger = MidoriAiLogger(channel=None, name=__name__)
 
-class MainWindowPersistenceMixin:
+
+class MainWindowPersistenceMixin(MainWindowHints):
     @staticmethod
     def _is_missing_container_error(exc: Exception) -> bool:
         text = str(exc or "").lower()
@@ -76,7 +87,7 @@ class MainWindowPersistenceMixin:
                 task.error = f"{detail}; {reason}" if detail else reason
                 return True
             return False
-        if not isinstance(state, dict) or not state:
+        if not isinstance(state, dict) or not state:  # pyright: ignore[reportUnnecessaryIsInstance]
             return False
 
         incoming = str(state.get("Status") or "").strip().lower()
@@ -103,9 +114,7 @@ class MainWindowPersistenceMixin:
             and task.exit_code is not None
             and (task.status or "").lower() not in {"cancelled", "killed"}
         ):
-            task.status = (
-                "done" if status == "exited" and task.exit_code == 0 else "failed"
-            )
+            task.status = "done" if status == "exited" and task.exit_code == 0 else "failed"
             if task.finished_at is None:
                 from datetime import datetime
                 from datetime import timezone
@@ -113,13 +122,23 @@ class MainWindowPersistenceMixin:
                 task.finished_at = datetime.now(tz=timezone.utc)
         return True
 
-    def _schedule_save(self) -> None:
+    def _schedule_save(self, *_args: object) -> None:
         self._save_timer.start()
 
-    def _save_state(self) -> None:
+    def _save_state(self, *_args: object) -> None:
         from agents_runner.persistence import save_watch_state
 
-        payload = {"settings": dict(self._settings_data)}
+        settings_payload = dict(self._settings_data)
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
+            settings_payload.pop(key, None)
+
+        try:
+            payload = load_state(self._state_path)
+        except Exception:
+            payload = {}
+        if not isinstance(payload, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+            payload = {}
+        payload["settings"] = settings_payload
 
         # Save watch states
         save_watch_state(payload, self._watch_states)
@@ -147,31 +166,21 @@ class MainWindowPersistenceMixin:
         if isinstance(settings, dict):
             self._settings_data.update(settings)
         self._settings_data.pop("stt_mode", None)
-        self._settings_data.pop("ide_auto_mounts_enabled", None)
-        self._settings_data["use"] = normalize_agent(
-            str(self._settings_data.get("use") or "codex")
-        )
+        for key in self._REMOVED_IDE_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
+            self._settings_data.pop(key, None)
+        self._settings_data["use"] = normalize_agent(str(self._settings_data.get("use") or "codex"))
         try:
             self._settings_data["max_agents_running"] = int(
                 str(self._settings_data.get("max_agents_running", -1)).strip()
             )
         except Exception:
             self._settings_data["max_agents_running"] = -1
-        for key in self._REMOVED_LEGACY_SETTINGS_KEYS:
+        for key in self._REMOVED_LEGACY_SETTINGS_KEYS:  # pyright: ignore[reportUnknownVariableType]
             self._settings_data.pop(key, None)
-        self._settings_data.setdefault(
-            "ide_system_default", get_default_ide_system_name()
-        )
-        self._settings_data.setdefault(
-            "ide_display_target_default",
-            normalize_ide_display_target(
-                str(self._settings_data.get("ide_display_target") or "")
-            ),
-        )
-        self._settings_data.setdefault("ide_novnc_auto_open_enabled", True)
-        self._settings_data.setdefault("ide_novnc_auto_open_mode", "viewing_only")
         self._settings_data.setdefault("headless_desktop_enabled", False)
         self._settings_data.setdefault("gpu_enabled", False)
+        self._settings_data.setdefault("network_host", False)
+        self._settings_data.setdefault("opencode_interactive_mode", "terminal")
         self._settings_data.setdefault("auto_navigate_on_run_agent_start", False)
         self._settings_data.setdefault("auto_navigate_on_run_interactive_start", False)
         self._settings_data.setdefault("spellcheck_enabled", True)
@@ -196,41 +205,18 @@ class MainWindowPersistenceMixin:
         )
         self._settings_data.setdefault(
             "agentsnova_auto_marker_comments_mode",
-            legacy_marker_comment_setting
-            if legacy_marker_comment_setting is not None
-            else "keep",
+            legacy_marker_comment_setting if legacy_marker_comment_setting is not None else "keep",
         )
         self._settings_data.setdefault("agentsnova_auto_reactions_enabled", True)
         self._settings_data.setdefault("agentsnova_trusted_users_global", [])
         self._settings_data.setdefault("agentsnova_review_guard_mode", "reaction")
-        self._settings_data["ide_system_default"] = normalize_ide_system_name(
-            str(
-                self._settings_data.get("ide_system_default")
-                or get_default_ide_system_name()
-            )
-        )
-        self._settings_data["ide_display_target_default"] = (
-            normalize_ide_display_target(
-                str(
-                    self._settings_data.get("ide_display_target_default")
-                    or self._settings_data.get("ide_display_target")
-                    or ""
-                )
-            )
-        )
-        self._settings_data["ide_novnc_auto_open_enabled"] = bool(
-            self._settings_data.get("ide_novnc_auto_open_enabled", True)
-        )
-        self._settings_data["ide_novnc_auto_open_mode"] = (
-            "always"
-            if str(self._settings_data.get("ide_novnc_auto_open_mode") or "")
-            .strip()
-            .lower()
-            == "always"
-            else "viewing_only"
-        )
-        self._settings_data["gpu_enabled"] = bool(
-            self._settings_data.get("gpu_enabled") or False
+        self._settings_data.setdefault("task_workspace_cleanup_size_threshold_gb", 50)
+        self._settings_data.setdefault("task_workspace_cleanup_size_popup_suppressed", False)
+        self._settings_data = normalize_task_workspace_settings(self._settings_data)
+        self._settings_data["gpu_enabled"] = bool(self._settings_data.get("gpu_enabled") or False)
+        self._settings_data["network_host"] = bool(self._settings_data.get("network_host") or False)
+        self._settings_data["opencode_interactive_mode"] = normalize_opencode_interactive_mode(
+            str(self._settings_data.get("opencode_interactive_mode") or "terminal")
         )
         try:
             from agents_runner.ui.graphics import normalize_ui_theme_name
@@ -241,48 +227,34 @@ class MainWindowPersistenceMixin:
         except Exception:
             self._settings_data["ui_theme"] = "auto"
 
-        self._settings_data["radio_enabled"] = bool(
-            self._settings_data.get("radio_enabled") or False
-        )
+        self._settings_data["radio_enabled"] = bool(self._settings_data.get("radio_enabled") or False)
         self._settings_data["popup_theme_animation_enabled"] = bool(
             self._settings_data.get("popup_theme_animation_enabled", True)
         )
-        self._settings_data["radio_autostart"] = bool(
-            self._settings_data.get("radio_autostart") or False
-        )
+        self._settings_data["radio_autostart"] = bool(self._settings_data.get("radio_autostart") or False)
         self._settings_data["radio_channel"] = RadioController.normalize_channel(
             self._settings_data.get("radio_channel")
         )
         self._settings_data["radio_quality"] = RadioController.normalize_quality(
             self._settings_data.get("radio_quality")
         )
-        self._settings_data["radio_volume"] = RadioController.clamp_volume(
-            self._settings_data.get("radio_volume")
-        )
+        self._settings_data["radio_volume"] = RadioController.clamp_volume(self._settings_data.get("radio_volume"))
         self._settings_data["radio_loudness_boost_enabled"] = bool(
             self._settings_data.get("radio_loudness_boost_enabled") or False
         )
-        self._settings_data["radio_loudness_boost_factor"] = (
-            RadioController.normalize_loudness_boost_factor(
-                self._settings_data.get("radio_loudness_boost_factor")
-            )
+        self._settings_data["radio_loudness_boost_factor"] = RadioController.normalize_loudness_boost_factor(
+            self._settings_data.get("radio_loudness_boost_factor")
         )
-        self._settings_data["agentsnova_auto_marker_comments_mode"] = (
-            normalize_default_marker_comment_mode(
-                self._settings_data.get(
-                    "agentsnova_auto_marker_comments_mode",
-                    legacy_marker_comment_setting
-                    if legacy_marker_comment_setting is not None
-                    else "keep",
-                )
+        self._settings_data["agentsnova_auto_marker_comments_mode"] = normalize_default_marker_comment_mode(
+            self._settings_data.get(
+                "agentsnova_auto_marker_comments_mode",
+                legacy_marker_comment_setting if legacy_marker_comment_setting is not None else "keep",
             )
         )
         self._settings_data["agentsnova_auto_reactions_enabled"] = bool(
             self._settings_data.get("agentsnova_auto_reactions_enabled", True)
         )
-        self._settings_data["github_polling_enabled"] = bool(
-            self._settings_data.get("github_polling_enabled") or False
-        )
+        self._settings_data["github_polling_enabled"] = bool(self._settings_data.get("github_polling_enabled") or False)
         try:
             self._settings_data["github_poll_startup_delay_s"] = max(
                 0, int(self._settings_data.get("github_poll_startup_delay_s", 35))
@@ -290,12 +262,10 @@ class MainWindowPersistenceMixin:
         except Exception:
             self._settings_data["github_poll_startup_delay_s"] = 35
         trusted_users_raw = self._settings_data.get("agentsnova_trusted_users_global")
-        trusted_users_rows = (
-            trusted_users_raw if isinstance(trusted_users_raw, list) else []
-        )
+        trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
         trusted_users: list[str] = []
         seen_users: set[str] = set()
-        for row in trusted_users_rows:
+        for row in trusted_users_rows:  # pyright: ignore[reportUnknownVariableType]
             username = str(row or "").strip().lstrip("@").lower()
             if not username or username in seen_users:
                 continue
@@ -312,17 +282,21 @@ class MainWindowPersistenceMixin:
         items = load_active_task_payloads(self._state_path)
         loaded: list[Task] = []
         for item in items:
-            if not isinstance(item, dict):
+            if not isinstance(item, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
                 continue
             task = deserialize_task(Task, item)
             if not task.task_id:
                 continue
             if task.logs:
-                task.logs = [
-                    prettify_log_line(line)
-                    for line in task.logs
-                    if isinstance(line, str)
-                ]
+                normalized_logs: list[str] = []
+                for line in task.logs:
+                    if not isinstance(line, str):
+                        continue
+                    for normalized_line in normalize_log_stream_chunk(line):
+                        cleaned = prettify_log_line(normalized_line)
+                        if cleaned:
+                            normalized_logs.append(cleaned)
+                task.logs = normalized_logs[-5000:]
             synced = False
             status = (task.status or "").lower()
             if status != "queued":
@@ -357,9 +331,6 @@ class MainWindowPersistenceMixin:
                     )
 
         if repair_count > 0:
-            import logging
-
-            logger = logging.getLogger(__name__)
             logger.info(f"Repaired git metadata for {repair_count} tasks")
 
         for task in loaded:
@@ -368,7 +339,6 @@ class MainWindowPersistenceMixin:
             stain = env.color if env else None
             spinner = stain_color(env.color) if env else None
             self._dashboard.upsert_task(task, stain=stain, spinner_color=spinner)
-            self._maybe_schedule_ide_novnc_auto_open(task)
 
         # Run startup reconciliation once
         # Guard prevents accidental re-runs if _load_state() is called multiple times

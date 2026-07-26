@@ -90,6 +90,22 @@ GPU_OVERRIDE_MODES = (
     GPU_OVERRIDE_MODE_DISABLED,
 )
 
+OPENCODE_INTERACTIVE_MODE_TERMINAL = "terminal"
+OPENCODE_INTERACTIVE_MODE_WEB = "web"
+OPENCODE_INTERACTIVE_MODE_ASK = "ask"
+OPENCODE_INTERACTIVE_MODES = (
+    OPENCODE_INTERACTIVE_MODE_TERMINAL,
+    OPENCODE_INTERACTIVE_MODE_WEB,
+    OPENCODE_INTERACTIVE_MODE_ASK,
+)
+OPENCODE_INTERACTIVE_OVERRIDE_INHERIT = "inherit"
+OPENCODE_INTERACTIVE_OVERRIDE_MODES = (
+    OPENCODE_INTERACTIVE_OVERRIDE_INHERIT,
+    OPENCODE_INTERACTIVE_MODE_TERMINAL,
+    OPENCODE_INTERACTIVE_MODE_WEB,
+    OPENCODE_INTERACTIVE_MODE_ASK,
+)
+
 
 def normalize_workspace_type(value: str) -> str:
     """Normalize workspace type to canonical values."""
@@ -156,6 +172,22 @@ def normalize_gpu_override_mode(value: str) -> str:
     return GPU_OVERRIDE_MODE_INHERIT
 
 
+def normalize_opencode_interactive_mode(value: str) -> str:
+    """Normalize global OpenCode interactive launch mode values."""
+    normalized = str(value or "").strip().lower()
+    if normalized in OPENCODE_INTERACTIVE_MODES:
+        return normalized
+    return OPENCODE_INTERACTIVE_MODE_TERMINAL
+
+
+def normalize_opencode_interactive_override(value: str) -> str:
+    """Normalize environment-level OpenCode interactive launch mode overrides."""
+    normalized = str(value or "").strip().lower()
+    if normalized in OPENCODE_INTERACTIVE_OVERRIDE_MODES:
+        return normalized
+    return OPENCODE_INTERACTIVE_OVERRIDE_INHERIT
+
+
 @dataclass
 class PromptConfig:
     enabled: bool = False
@@ -169,12 +201,13 @@ class AgentInstance:
 
     ``agent_id`` must be unique within the environment so it can be referenced by
     fallback mappings and UI controls.
+
+    ``config_id`` references an :class:`~agents_runner.agent_configs.model.AgentConfig`
+    stored in application state.
     """
 
     agent_id: str
-    agent_cli: str
-    config_dir: str = ""
-    cli_flags: str = ""
+    config_id: str = ""
 
 
 @dataclass
@@ -195,13 +228,12 @@ class Environment:
     max_agents_running: int = -1
     headless_desktop_enabled: bool = False
     gpu_override_mode: str = GPU_OVERRIDE_MODE_INHERIT
-    ide_system_override: str = ""
+    network_host_override_mode: str = GPU_OVERRIDE_MODE_INHERIT
+    opencode_interactive_mode: str = OPENCODE_INTERACTIVE_OVERRIDE_INHERIT
     cache_desktop_build: bool = False
     container_caching_enabled: bool = False
     cache_system_preflight_enabled: bool = False
     cache_settings_preflight_enabled: bool = False
-    cache_ide_preflight_enabled: bool = False
-    ide_safe_mode_by_system: dict[str, bool] = field(default_factory=dict)
     env_vars: dict[str, str] = field(default_factory=dict)
     extra_mounts: list[str] = field(default_factory=list)
     env_vars_advanced_mode: bool = False

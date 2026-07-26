@@ -4,6 +4,13 @@ import os
 import threading
 import webbrowser
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agents_runner.ui._mixin_hints import MainWindowHints
+else:
+    MainWindowHints = object
+
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QMessageBox
@@ -13,7 +20,7 @@ from agents_runner.gh_management import git_current_branch
 from agents_runner.log_format import format_log
 
 
-class MainWindowTaskReviewMixin:
+class MainWindowTaskReviewMixin(MainWindowHints):
     def _on_task_pr_requested(self, task_id: str) -> None:
         task_id = str(task_id or "").strip()
         task = self._tasks.get(task_id)
@@ -47,21 +54,37 @@ class MainWindowTaskReviewMixin:
         repo_root = str(task.gh_repo_root or "").strip()
         branch = str(task.gh_branch or "").strip()
 
-        if not repo_root and env:
+        if not repo_root:
+            repo_root = str(task.host_workdir or "").strip()
+            if repo_root:
+                task.gh_repo_root = repo_root
+
+        if (not repo_root or not os.path.isdir(repo_root)) and env:
             from agents_runner.environments.paths import managed_repo_checkout_path
+            from agents_runner.environments.task_workspaces import (
+                task_workspace_candidates,
+            )
 
             repo_root = managed_repo_checkout_path(
                 env.env_id,
                 data_dir=os.path.dirname(self._state_path),
                 task_id=task_id,
+                workspace_location=self._settings_data.get("task_workspace_location"),
             )
+            if not os.path.isdir(repo_root):
+                repo_root = next(
+                    (
+                        candidate
+                        for candidate in task_workspace_candidates(
+                            env.env_id,
+                            task_id,
+                            data_dir=os.path.dirname(self._state_path),
+                        )
+                        if os.path.isdir(candidate)
+                    ),
+                    repo_root,
+                )
             # Persist the repo_root to the task for future use
-            if repo_root:
-                task.gh_repo_root = repo_root
-
-        # If still missing, try to get from task's host_workdir
-        if not repo_root:
-            repo_root = str(task.host_workdir or "").strip()
             if repo_root:
                 task.gh_repo_root = repo_root
 
@@ -82,9 +105,7 @@ class MainWindowTaskReviewMixin:
                     fallback_path = str(task.host_workdir or "").strip()
                     if fallback_path:
                         task.gh_repo_root = fallback_path
-                        repo_root = (
-                            fallback_path  # Update local variable for consistency
-                        )
+                        repo_root = fallback_path  # Update local variable for consistency
                 self._schedule_save()
 
         if not repo_root:
@@ -131,10 +152,7 @@ class MainWindowTaskReviewMixin:
             return
         base_display = base_branch or "auto"
         message = f"Create a PR from {branch} -> {base_display}?\n\nThis will commit and push any local changes."
-        if (
-            QMessageBox.question(self, "Create pull request?", message)
-            != QMessageBox.StandardButton.Yes
-        ):
+        if QMessageBox.question(self, "Create pull request?", message) != QMessageBox.StandardButton.Yes:
             return
 
         prompt_text = str(task.prompt or "")
@@ -144,9 +162,7 @@ class MainWindowTaskReviewMixin:
 
         self._on_task_log(
             task_id,
-            format_log(
-                "gh", "pr", "INFO", f"PR requested ({branch} -> {base_display})"
-            ),
+            format_log("gh", "pr", "INFO", f"PR requested ({branch} -> {base_display})"),
         )
         threading.Thread(
             target=self._finalize_gh_management_worker,
@@ -160,7 +176,6 @@ class MainWindowTaskReviewMixin:
                 bool(task.gh_use_host_cli),
                 pr_metadata_path,
                 str(task.agent_cli or "").strip(),
-                str(task.agent_cli_args or "").strip(),
                 is_override,
             ),
             daemon=True,

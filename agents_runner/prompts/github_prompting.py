@@ -30,10 +30,7 @@ def build_default_request_line(
 ) -> str:
     normalized = str(item_type or "").strip().lower()
     if normalized == "pr":
-        return (
-            "Review GitHub pull request "
-            f"#{int(number)} for repository {repo_owner}/{repo_name}."
-        )
+        return f"Review GitHub pull request #{int(number)} for repository {repo_owner}/{repo_name}."
     return f"Fix GitHub issue #{int(number)} for repository {repo_owner}/{repo_name}."
 
 

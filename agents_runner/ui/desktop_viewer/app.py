@@ -13,7 +13,6 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -22,6 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from midori_ai_logger import MidoriAiLogger
+
+from agents_runner.ui.icons import app_icon
 
 logger = MidoriAiLogger(channel=None, name=__name__)
 
@@ -144,9 +145,7 @@ def run_desktop_viewer(args: list[str]) -> int:
     _maybe_install_exception_hooks(args)
     _debug_log(f"XDG_SESSION_TYPE={os.environ.get('XDG_SESSION_TYPE')}")
     _debug_log(f"QT_QPA_PLATFORM={os.environ.get('QT_QPA_PLATFORM')}")
-    _debug_log(
-        f"QTWEBENGINE_CHROMIUM_FLAGS={os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS')}"
-    )
+    _debug_log(f"QTWEBENGINE_CHROMIUM_FLAGS={os.environ.get('QTWEBENGINE_CHROMIUM_FLAGS')}")
 
     try:
         from PySide6.QtWebEngineWidgets import QWebEngineView as _QWebEngineView
@@ -170,16 +169,12 @@ def run_desktop_viewer(args: list[str]) -> int:
     app = QApplication.instance()
     if app is None:
         app = QApplication(args)
-
-    # Set application icon if available
-    icon_path = Path(__file__).parent.parent / "midoriai-logo.png"
-    if icon_path.exists():
-        app.setWindowIcon(QIcon(str(icon_path)))
+    icon = app_icon()
+    if icon is not None:
+        app.setWindowIcon(icon)
 
     if fault_log_path is not None:
-        logger.rprint(
-            f"[Desktop Viewer] faulthandler enabled: {fault_log_path}", mode="normal"
-        )
+        logger.rprint(f"[Desktop Viewer] faulthandler enabled: {fault_log_path}", mode="normal")
 
     window = DesktopViewerWindow(url=parsed.url, title=parsed.title)
     window.show()
@@ -214,8 +209,7 @@ class DesktopViewerWindow(QMainWindow):
             from PySide6.QtWidgets import QLabel
 
             error_label = QLabel(
-                "QtWebEngine not available.\n"
-                "Please install PySide6-WebEngine or open the URL in a browser."
+                "QtWebEngine not available.\nPlease install PySide6-WebEngine or open the URL in a browser."
             )
             error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(error_label)
