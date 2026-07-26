@@ -22,6 +22,8 @@ from PySide6.QtWidgets import (
 )
 from midori_ai_logger import MidoriAiLogger
 
+from agents_runner.ui.icons import app_icon
+
 logger = MidoriAiLogger(channel=None, name=__name__)
 
 QWebEngineView = None
@@ -167,9 +169,6 @@ def run_desktop_viewer(args: list[str]) -> int:
     app = QApplication.instance()
     if app is None:
         app = QApplication(args)
-
-    from agents_runner.ui.icons import app_icon
-
     icon = app_icon()
     if icon is not None:
         app.setWindowIcon(icon)
