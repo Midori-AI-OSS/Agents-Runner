@@ -13,7 +13,6 @@ from pathlib import Path
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -22,6 +21,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 from midori_ai_logger import MidoriAiLogger
+
+from agents_runner.ui.icons import app_icon
 
 logger = MidoriAiLogger(channel=None, name=__name__)
 
@@ -168,11 +169,9 @@ def run_desktop_viewer(args: list[str]) -> int:
     app = QApplication.instance()
     if app is None:
         app = QApplication(args)
-
-    # Set application icon if available
-    icon_path = Path(__file__).parent.parent / "midoriai-logo.png"
-    if icon_path.exists():
-        app.setWindowIcon(QIcon(str(icon_path)))
+    icon = app_icon()
+    if icon is not None:
+        app.setWindowIcon(icon)
 
     if fault_log_path is not None:
         logger.rprint(f"[Desktop Viewer] faulthandler enabled: {fault_log_path}", mode="normal")
