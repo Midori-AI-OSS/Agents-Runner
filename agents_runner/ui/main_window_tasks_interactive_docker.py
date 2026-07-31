@@ -651,10 +651,7 @@ def launch_docker_terminal_task(
             )
 
         # Update settings
-        main_window._settings_data["host_workdir"] = host_workdir  # pyright: ignore[reportPrivateUsage]
-        main_window._settings_data["active_environment_id"] = env_id  # pyright: ignore[reportPrivateUsage]
         main_window._settings_data["interactive_terminal_id"] = str(getattr(terminal_opt, "terminal_id", ""))  # pyright: ignore[reportPrivateUsage]
-        main_window._apply_active_environment_to_new_task()  # pyright: ignore[reportPrivateUsage]
         main_window._schedule_save()  # pyright: ignore[reportPrivateUsage]
 
         # Update task status to running
@@ -693,7 +690,6 @@ def launch_docker_terminal_task(
                 host_port=opencode_web_host_port,
             )
         main_window._maybe_auto_navigate_on_task_start(interactive=True)  # pyright: ignore[reportPrivateUsage]
-        main_window._new_task.reset_for_new_run()  # pyright: ignore[reportPrivateUsage]
 
     except Exception as exc:
         _handle_launch_error(main_window, task, tmp_paths, stain, spinner, str(exc))
