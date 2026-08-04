@@ -58,6 +58,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
                     if len(normalized_logs) > 6000:
                         normalized_logs = normalized_logs[-5000:]
                 task.logs = [format_log_display(prettify_log_line(line)) for line in normalized_logs]
+            self._tasks[task_id] = task
 
         self._details.show_task(task)
         self._show_task_details()
