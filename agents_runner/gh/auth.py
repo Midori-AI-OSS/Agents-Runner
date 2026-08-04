@@ -9,7 +9,7 @@ from typing import cast
 
 from .process import run_gh
 
-_AUTH_CACHE_TTL_S = 15.0
+_AUTH_CACHE_TTL_S = 300.0
 _AUTH_LOGIN_PATTERN = re.compile(r"Logged in to .* account ([A-Za-z0-9-]+)")
 
 _cache_lock = threading.Lock()
