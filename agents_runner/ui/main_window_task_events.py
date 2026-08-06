@@ -58,6 +58,7 @@ class MainWindowTaskEventsMixin(MainWindowHints):
                     if len(normalized_logs) > 6000:
                         normalized_logs = normalized_logs[-5000:]
                 task.logs = [format_log_display(prettify_log_line(line)) for line in normalized_logs]
+            self._tasks[task_id] = task
 
         self._details.show_task(task)
         self._show_task_details()
@@ -578,7 +579,11 @@ class MainWindowTaskEventsMixin(MainWindowHints):
     def _on_host_pr_url(self, task_id: str, pr_url: str) -> None:
         task = self._tasks.get(task_id)
         if task is None:
-            return
+            payload = load_task_payload(self._state_path, task_id, archived=True)
+            if not isinstance(payload, dict):
+                return
+            task = deserialize_task(Task, payload)
+            self._tasks[task_id] = task
         task.gh_pr_url = str(pr_url or "").strip()
         task.git = derive_task_git_metadata(task)
         env = self._environments.get(task.environment_id)
