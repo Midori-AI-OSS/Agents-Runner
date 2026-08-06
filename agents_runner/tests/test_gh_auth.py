@@ -101,6 +101,50 @@ def test_failed_refresh_wakes_waiters(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def test_transient_failure_is_retried_without_normal_cache_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def run_gh(args: list[str], *, timeout_s: float) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise GhManagementError("command timed out")
+        return _status_result(authenticated=True)
+
+    monkeypatch.setattr(auth, "run_gh", run_gh)
+    assert not auth.is_gh_authenticated()
+    assert auth.is_gh_authenticated()
+    assert calls == 2
+
+
+def test_invalidation_during_refresh_reprobes_before_publishing(monkeypatch: pytest.MonkeyPatch) -> None:
+    first_probe_started = threading.Event()
+    release_first_probe = threading.Event()
+    calls = 0
+
+    def run_gh(args: list[str], *, timeout_s: float) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            first_probe_started.set()
+            assert release_first_probe.wait(timeout=2.0)
+            return _status_result(authenticated=True, login="stale-user")
+        return _status_result(authenticated=True, login="fresh-user")
+
+    monkeypatch.setattr(auth, "run_gh", run_gh)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_result = executor.submit(auth.get_gh_auth_snapshot)
+        assert first_probe_started.wait(timeout=2.0)
+        waiting_result = executor.submit(auth.get_gh_auth_snapshot)
+        auth.invalidate_gh_auth_cache()
+        release_first_probe.set()
+
+    assert first_result.result().login == "fresh-user"
+    assert waiting_result.result().login == "fresh-user"
+    assert auth.resolve_authenticated_login() == "fresh-user"
+    assert calls == 2
+
+
 def test_forced_refresh_is_single_flight(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = 0
 

@@ -40,6 +40,7 @@ class GhAuthSnapshot:
 _cache_condition = threading.Condition()
 _cached_snapshot: GhAuthSnapshot | None = None
 _refreshing = False
+_invalidation_generation = 0
 _monotonic: Callable[[], float] = time.monotonic
 
 
@@ -83,7 +84,7 @@ def _refresh_snapshot(*, timeout_s: float) -> GhAuthSnapshot:
         proc = run_gh(["gh", "auth", "status"], timeout_s=timeout_s)
     except GhManagementError as exc:
         error = GhAuthError.TIMEOUT if "timed out" in str(exc).lower() else GhAuthError.UNAVAILABLE
-        return GhAuthSnapshot(authenticated=False, login="", expires_at=_monotonic() + _AUTH_CACHE_TTL_S, error=error)
+        return GhAuthSnapshot(authenticated=False, login="", expires_at=_monotonic(), error=error)
 
     authenticated = proc.returncode == 0
     login = ""
@@ -109,37 +110,44 @@ def get_gh_auth_snapshot(*, timeout_s: float = 10.0, use_cache: bool = True) -> 
             if _cached_snapshot is not None:
                 return _cached_snapshot
         _refreshing = True
+        refresh_generation = _invalidation_generation
 
-    try:
-        snapshot = _refresh_snapshot(timeout_s=timeout_s)
-    except BaseException:
+    while True:
+        try:
+            snapshot = _refresh_snapshot(timeout_s=timeout_s)
+        except BaseException:
+            with _cache_condition:
+                _refreshing = False
+                _cache_condition.notify_all()
+            raise
         with _cache_condition:
+            if refresh_generation != _invalidation_generation:
+                refresh_generation = _invalidation_generation
+                continue
+            _cached_snapshot = snapshot
             _refreshing = False
             _cache_condition.notify_all()
-        raise
-    with _cache_condition:
-        _cached_snapshot = snapshot
-        _refreshing = False
-        _cache_condition.notify_all()
-    return snapshot
+            return snapshot
 
 
 def invalidate_gh_auth_cache() -> None:
     """Expire the current snapshot so the next authentication query refreshes it."""
 
-    global _cached_snapshot
+    global _cached_snapshot, _invalidation_generation
     with _cache_condition:
         _cached_snapshot = None
+        _invalidation_generation += 1
 
 
 def reset_gh_auth_cache(*, monotonic: Callable[[], float] = time.monotonic) -> None:
     """Reset cached state and its clock for deterministic verification."""
 
-    global _cached_snapshot, _monotonic
+    global _cached_snapshot, _invalidation_generation, _monotonic
     with _cache_condition:
         if _refreshing:
             raise RuntimeError("cannot reset GitHub authentication cache during a refresh")
         _cached_snapshot = None
+        _invalidation_generation = 0
         _monotonic = monotonic
 
 
