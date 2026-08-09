@@ -36,3 +36,27 @@ All API-bearing `gh` CLI calls (those that hit `api.github.com`) are throttled b
 - Polling coordinator (`github_work_coordinator.py`) already throttles poll cycles; the scheduler adds the next layer below it.
 - The `run_gh` signature must not change — the wrapper must infer account/host internally.
 - **Bootstrap ordering:** The wrapper calls `resolve_authenticated_login()` to derive the account key. That function itself calls `run_gh(["gh", "api", "user", ...])` — ensure the scheduler can handle this self-call without deadlock (e.g. skip rate-limiting when the account is unknown).
+
+---
+
+## AUDIT FINDINGS (2026-08-09) — FAILED, returned to wip
+
+### FIX 1: `check_existing_pr` in `pr_validation.py` bypasses rate limiter
+
+`pr_validation.py:142-148` calls `subprocess.run(["gh", "pr", "list", ...])` directly instead of via `run_gh`. This bypasses `_rate_limit_acquire` for a `gh pr list` call — which AC #3 explicitly requires to go through the scheduler.
+
+**Call sites:**
+- `pr_validation.py:49` → `validate_pr_prerequisites` → `main_window_tasks_interactive_finalize.py:290`
+- `task_plan.py:338,354` → `_find_next_available_branch` → `plan_repo_task`
+- `main_window_tasks_interactive_finalize.py:324`
+
+**Fix:** Route `check_existing_pr` through `run_gh(["gh", "pr", "list", ...])` instead of raw `subprocess.run`. The function already imports `from .auth import is_gh_authenticated`; add `from .process import run_gh`.
+
+### FIX 2: Missing log warning on out-of-range clamp
+
+AC #1 requires: "out-of-range values clamp to the nearest bound with a log warning." Neither site emits a warning:
+
+- `main_window_settings.py:392` — silent `max(1, min(10, ...))` clamp
+- `rate_limiter.py:27` — silent `max(1, min(10, ...))` clamp
+
+**Fix:** At each clamp site, detect when the raw value was outside [1, 10] and emit a `logger.warning(...)` before clamping. Use `midori_ai_logger` in `main_window_settings.py` (already imported) and add a logger import in `rate_limiter.py`.
