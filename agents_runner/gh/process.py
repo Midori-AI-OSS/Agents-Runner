@@ -2,6 +2,7 @@ import os
 import subprocess
 
 from .errors import GhManagementError
+from .rate_limiter import acquire as _rate_limit_acquire
 
 
 def _noninteractive_env() -> dict[str, str]:
@@ -23,6 +24,7 @@ def run_gh(
     cwd: str | None = None,
     timeout_s: float = 45.0,
 ) -> subprocess.CompletedProcess[str]:
+    _rate_limit_acquire(args)
     try:
         return subprocess.run(
             args,

@@ -130,6 +130,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             "github_poll_interval_s": 30,
             "github_polling_enabled": False,
             "github_poll_startup_delay_s": 35,
+            "github_requests_per_second": 2,
             "agentsnova_auto_review_enabled": True,
             "agentsnova_auto_marker_comments_mode": "keep",
             "agentsnova_auto_reactions_enabled": True,

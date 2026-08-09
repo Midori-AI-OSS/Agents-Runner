@@ -388,6 +388,10 @@ class MainWindowSettingsMixin(MainWindowHints):
             merged["github_poll_startup_delay_s"] = max(0, int(merged.get("github_poll_startup_delay_s", 35)))
         except Exception:
             merged["github_poll_startup_delay_s"] = 35
+        try:
+            merged["github_requests_per_second"] = max(1, min(10, int(merged.get("github_requests_per_second", 2))))
+        except Exception:
+            merged["github_requests_per_second"] = 2
         trusted_users_raw = merged.get("agentsnova_trusted_users_global")
         trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
         trusted_users: list[str] = []
