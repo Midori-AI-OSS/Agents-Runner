@@ -7,6 +7,8 @@ import time
 
 from typing import Callable
 
+from midori_ai_logger import MidoriAiLogger
+
 
 _monotonic = time.monotonic
 _module_lock = threading.Lock()
@@ -14,6 +16,7 @@ _buckets: dict[tuple[str, str], _TokenBucket] = {}
 _rate_limit_guard = threading.local()
 
 _login_resolver: Callable[[], str] = lambda: ""
+logger = MidoriAiLogger(channel=None, name=__name__)
 
 
 def _read_rate_from_state() -> float:
@@ -23,8 +26,14 @@ def _read_rate_from_state() -> float:
         return 2.0
     try:
         state = load_state(default_state_path())
-        rate = state.get("settings", {}).get("github_requests_per_second", 2)
-        return float(max(1, min(10, int(rate))))
+        raw_rate = state.get("settings", {}).get("github_requests_per_second", 2)
+        rate_int = int(raw_rate)
+        if rate_int < 1 or rate_int > 10:
+            logger.warning(
+                "github_requests_per_second %d is outside valid range [1, 10]; clamping.",
+                rate_int,
+            )
+        return float(max(1, min(10, rate_int)))
     except Exception:
         return 2.0
 

@@ -389,7 +389,13 @@ class MainWindowSettingsMixin(MainWindowHints):
         except Exception:
             merged["github_poll_startup_delay_s"] = 35
         try:
-            merged["github_requests_per_second"] = max(1, min(10, int(merged.get("github_requests_per_second", 2))))
+            raw_rate = int(merged.get("github_requests_per_second", 2))
+            if raw_rate < 1 or raw_rate > 10:
+                logger.warning(
+                    "github_requests_per_second %d is outside valid range [1, 10]; clamping.",
+                    raw_rate,
+                )
+            merged["github_requests_per_second"] = max(1, min(10, raw_rate))
         except Exception:
             merged["github_requests_per_second"] = 2
         trusted_users_raw = merged.get("agentsnova_trusted_users_global")
