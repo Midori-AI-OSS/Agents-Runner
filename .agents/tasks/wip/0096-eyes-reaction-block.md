@@ -41,3 +41,31 @@ An `eyes` reaction on any mention anchor is **authoritative**: it permanently bl
   - (a) Add a new signal `task_completed(str item_key)` and wire it from the task lifecycle.
   - (b) Implement this task without the active-task gate initially, and add it in a follow-up task when the completion signal exists.
   - If neither path is viable when the task is implemented, scope down: skip re-review on eyes removal entirely and only implement the permanent block.
+
+## AUDIT FIX NOTES (2026-08-10)
+
+**Verdict: FAIL** — Re-review path (AC 3) deadlocked. See `/tmp/agents-artifacts/6f9b3ed1-audit-summary.audit.md`.
+
+### FIX 1 (BLOCKER): `_collect_auto_reviews` `queued_snapshot` gates out re-review candidates
+
+`_collect_auto_reviews` line 641-642 takes `queued_snapshot = set(self._auto_review_seen_mentions)` and line 787-788 skips any mention in that snapshot. A mention previously emitted is ALWAYS in `_auto_review_seen_mentions`, so it can never re-enter the candidate queue. The re-review path in `_emit_auto_reviews` (lines 554-561) is unreachable dead code.
+
+Fix: modify the `queued_snapshot` construction to exclude mentions that have `_eyes_blocked_anchors` entries:
+```python
+with self._state_lock:
+    queued_snapshot = set(self._auto_review_seen_mentions) - set(self._eyes_blocked_anchors)
+```
+This allows blocked-then-unblocked mentions to re-enter when eyes are removed and the API check passes.
+
+### FIX 2 (HIGH): `_auto_review_emit_keys` not cleared on re-review
+
+`_emit_auto_reviews` re-review path (line 555-559) clears `_auto_review_seen_mentions` but NOT `_auto_review_emit_keys`. The dedup guard at line 566-567 (`if emit_key in self._auto_review_emit_keys: continue`) would block the re-review even after FIX 1.
+
+Fix: after `self._auto_review_seen_mentions.discard(mention_key)` at line 559, also add:
+```python
+self._auto_review_emit_keys.discard(emit_key)
+```
+
+### FIX 3 (MEDIUM): `task_completed` Signal has no consumer
+
+Emitted at line 177 but no `.connect()` anywhere. Either wire it or remove it for now.
