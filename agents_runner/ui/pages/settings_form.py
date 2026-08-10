@@ -766,12 +766,7 @@ class SettingsFormMixin:
             QLabel("Polling startup delay"),
             self._github_poll_startup_delay_s,
         )
-        add_grid_row(
-            github_grid,
-            8,
-            QLabel(""),
-            self._github_poll_rate_warning_label,
-        )
+        github_grid.addWidget(self._github_poll_rate_warning_label, 8, 0, 1, 3)
         add_grid_row(
             github_grid,
             9,
