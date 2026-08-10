@@ -174,7 +174,6 @@ class GitHubWorkCoordinator(QObject):
             return
         with self._state_lock:
             self._active_task_by_item.pop(normalized, None)
-        self.task_completed.emit(normalized)
 
     def is_global_polling_enabled(self) -> bool:
         return bool(self._settings.get("github_polling_enabled") or False)
@@ -557,6 +556,7 @@ class GitHubWorkCoordinator(QObject):
                         if item_key in self._active_task_by_item:
                             continue
                         self._auto_review_seen_mentions.discard(mention_key)
+                        self._auto_review_emit_keys.discard(emit_key)
                     else:
                         continue
                 elif was_blocked:
@@ -639,7 +639,7 @@ class GitHubWorkCoordinator(QObject):
         )
 
         with self._state_lock:
-            queued_snapshot = set(self._auto_review_seen_mentions)
+            queued_snapshot = set(self._auto_review_seen_mentions) - set(self._eyes_blocked_anchors)
 
         results: list[dict[str, object]] = []
         for item in items:
