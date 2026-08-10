@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import enum
 import re
 import threading
 import time
@@ -16,9 +17,52 @@ _monotonic = time.monotonic
 _module_lock = threading.Lock()
 _buckets: dict[tuple[str, str], _TokenBucket] = {}
 _rate_limit_guard = threading.local()
+_priority_stack = threading.local()
 
 _login_resolver: Callable[[], str] = lambda: ""
 logger = MidoriAiLogger(channel=None, name=__name__)
+
+
+class Priority(enum.Enum):
+    HIGH = "high"
+    LOW = "low"
+
+
+class push_priority:
+    """Context manager that pushes a priority onto the thread-local stack.
+
+    All ``run_gh`` calls within the context acquire permits at the
+    pushed priority level.  Supports nesting — the innermost push
+    takes precedence.
+    """
+
+    def __init__(self, priority: Priority) -> None:
+        self._priority: Priority = priority
+
+    def __enter__(self) -> None:
+        stack = _get_priority_stack()
+        stack.append(self._priority)
+
+    def __exit__(self, *_: object) -> None:
+        stack = _get_priority_stack()
+        if stack:
+            stack.pop()
+
+
+def _get_priority_stack() -> list[Priority]:
+    try:
+        return _priority_stack.values
+    except AttributeError:
+        _priority_stack.values = []
+        return _priority_stack.values
+
+
+def _current_priority() -> Priority:
+    stack = _get_priority_stack()
+    if stack:
+        return stack[-1]
+    return Priority.LOW
+
 
 _RATE_LIMIT_MARKER_RE = re.compile(
     r"rate limit exceeded|api rate limit exceeded|secondary rate limit|abuse detection",
@@ -64,36 +108,59 @@ class _TokenBucket:
         self._capacity: float = rate
         self._tokens: float = rate
         self._last_refill: float = _monotonic()
-        self._lock: threading.Lock = threading.Lock()
+        self._condition: threading.Condition = threading.Condition()
         self._pause_until: float | None = None
+        self._high_waiters: int = 0
 
     def pause(self, seconds: float) -> None:
-        """Drain tokens and block refills for the given duration."""
-        with self._lock:
+        """Drain tokens, block refills for the given duration, and wake waiters."""
+        with self._condition:
             self._tokens = 0.0
             self._pause_until = _monotonic() + seconds
+            self._condition.notify_all()
 
-    def consume(self) -> None:
-        pause_remaining = 0.0
-        with self._lock:
-            if self._pause_until is not None:
-                pause_remaining = max(0.0, self._pause_until - _monotonic())
-                if pause_remaining <= 0.0:
-                    self._pause_until = None
-        if pause_remaining > 0.0:
-            time.sleep(pause_remaining)
-            with self._lock:
-                self._pause_until = None
-        with self._lock:
-            self._refill()
-            if self._tokens >= 1.0:
-                self._tokens -= 1.0
-                return
-            deficit = 1.0 - self._tokens
-        time.sleep(deficit / self._rate)
-        with self._lock:
-            self._refill()
-            self._tokens -= 1.0
+    def consume(self, priority: Priority = Priority.LOW) -> None:
+        """Acquire one permit, serving HIGH-priority callers before LOW.
+
+        When a LOW-priority caller is waiting and a HIGH-priority caller
+        arrives, the HIGH caller is served first once tokens become
+        available.  Within the same priority tier, callers proceed in
+        FIFO order.
+        """
+        is_high = priority == Priority.HIGH
+        with self._condition:
+            if is_high:
+                self._high_waiters += 1
+            try:
+                while True:
+                    if self._pause_until is not None:
+                        remaining = max(0.0, self._pause_until - _monotonic())
+                        if remaining <= 0.0:
+                            self._pause_until = None
+                        else:
+                            self._condition.wait(timeout=remaining)
+                            continue
+
+                    self._refill()
+
+                    blocked = not is_high and self._high_waiters > 0
+
+                    if self._tokens >= 1.0 and not blocked:
+                        self._tokens -= 1.0
+                        self._condition.notify_all()
+                        return
+
+                    if self._tokens < 1.0:
+                        deficit = 1.0 - self._tokens
+                        wait = deficit / self._rate
+                    else:
+                        wait = 0.05
+
+                    self._condition.wait(timeout=wait)
+            finally:
+                if is_high:
+                    self._high_waiters -= 1
+                    self._condition.notify_all()
 
     def _refill(self) -> None:
         now = _monotonic()
@@ -118,6 +185,9 @@ def acquire(args: list[str]) -> None:
     Skips git commands, auth status/login probes, and unknown-account
     calls (which handles the bootstrap case where login resolution
     itself triggers a ``run_gh`` call).
+
+    Priority is read from the thread-local context stack (set by
+    callers via ``push_priority``) and defaults to ``LOW``.
     """
     if not args:
         return
@@ -133,12 +203,12 @@ def acquire(args: list[str]) -> None:
         login = _login_resolver()
         if not login:
             return
-        _consume(login, "github.com")
+        _consume(login, "github.com", priority=_current_priority())
     finally:
         _rate_limit_guard.active = False
 
 
-def _consume(login: str, host: str) -> None:
+def _consume(login: str, host: str, *, priority: Priority = Priority.LOW) -> None:
     if not login:
         return
     key = (login, host)
@@ -147,7 +217,7 @@ def _consume(login: str, host: str) -> None:
         if bucket is None:
             bucket = _TokenBucket(_read_rate_from_state())
             _buckets[key] = bucket
-    bucket.consume()
+    bucket.consume(priority=priority)
 
 
 def invalidate_all() -> None:

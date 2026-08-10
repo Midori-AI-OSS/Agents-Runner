@@ -26,6 +26,8 @@ from agents_runner.gh.work_items import has_pull_request_review_reaction
 from agents_runner.gh.work_items import list_issue_comments
 from agents_runner.gh.work_items import list_open_issues
 from agents_runner.gh.work_items import list_open_pull_requests
+from agents_runner.gh.rate_limiter import Priority
+from agents_runner.gh.rate_limiter import push_priority
 from agents_runner.gh.work_items import list_pull_request_review_comments
 from agents_runner.gh.work_items import list_pull_request_reviews
 from agents_runner.gh.automation_policy import (
@@ -131,9 +133,10 @@ class GitHubWorkCoordinator(QObject):
             return
         if not self._begin_fetch(key=key):
             return
+        fetch_priority = Priority.HIGH if force else Priority.LOW
         threading.Thread(
             target=self._fetch_key_worker,
-            args=(normalized_type, normalized_env),
+            args=(normalized_type, normalized_env, fetch_priority),
             daemon=True,
         ).start()
 
@@ -278,7 +281,7 @@ class GitHubWorkCoordinator(QObject):
         finally:
             semaphore.release()
 
-    def _fetch_key_sync(self, *, item_type: str, env_id: str) -> None:
+    def _fetch_key_sync(self, *, item_type: str, env_id: str, priority: Priority = Priority.LOW) -> None:
         normalized_type = self._normalize_item_type(item_type)
         normalized_env = str(env_id or "").strip()
         if not normalized_env:
@@ -286,65 +289,66 @@ class GitHubWorkCoordinator(QObject):
         key = self._cache_key(item_type=normalized_type, env_id=normalized_env)
         if not self._begin_fetch(key=key):
             return
-        self._fetch_key_worker(normalized_type, normalized_env)
+        self._fetch_key_worker(normalized_type, normalized_env, priority=priority)
 
-    def _fetch_key_worker(self, item_type: str, env_id: str) -> None:
-        repo_context: GitHubRepoContext | None = None
-        items: list[GitHubWorkItem] = []
-        auto_reviews: list[dict[str, object]] = []
-        error = ""
+    def _fetch_key_worker(self, item_type: str, env_id: str, priority: Priority = Priority.LOW) -> None:
+        with push_priority(priority):
+            repo_context: GitHubRepoContext | None = None
+            items: list[GitHubWorkItem] = []
+            auto_reviews: list[dict[str, object]] = []
+            error = ""
 
-        try:
-            env = self._environments.get(env_id)
-            repo_context = resolve_environment_github_repo(env)
-            if repo_context is None:
-                key = self._cache_key(item_type=item_type, env_id=env_id)
-                if self._should_preserve_stale_cache_on_missing_repo(key=key, env=env):
-                    error = "transient repo detection unavailable"
-                self._fetch_completed.emit(
-                    item_type,
-                    env_id,
-                    items,
-                    None,
-                    error,
-                    auto_reviews,
-                )
-                return
+            try:
+                env = self._environments.get(env_id)
+                repo_context = resolve_environment_github_repo(env)
+                if repo_context is None:
+                    key = self._cache_key(item_type=item_type, env_id=env_id)
+                    if self._should_preserve_stale_cache_on_missing_repo(key=key, env=env):
+                        error = "transient repo detection unavailable"
+                    self._fetch_completed.emit(
+                        item_type,
+                        env_id,
+                        items,
+                        None,
+                        error,
+                        auto_reviews,
+                    )
+                    return
 
-            if item_type == "pr":
-                items = list_open_pull_requests(
-                    repo_context.repo_owner,
-                    repo_context.repo_name,
-                    limit=30,
-                )
-            else:
-                items = list_open_issues(
-                    repo_context.repo_owner,
-                    repo_context.repo_name,
-                    limit=30,
-                )
+                if item_type == "pr":
+                    items = list_open_pull_requests(
+                        repo_context.repo_owner,
+                        repo_context.repo_name,
+                        limit=30,
+                    )
+                else:
+                    items = list_open_issues(
+                        repo_context.repo_owner,
+                        repo_context.repo_name,
+                        limit=30,
+                    )
 
-            if resolve_effective_auto_review_enabled(
-                settings=self._settings,
-                env=env,
-            ):
-                auto_reviews = self._collect_auto_reviews(
-                    env_id=env_id,
-                    repo_owner=repo_context.repo_owner,
-                    repo_name=repo_context.repo_name,
-                    items=items,
-                )
-        except Exception as exc:
-            error = str(exc)
+                if resolve_effective_auto_review_enabled(
+                    settings=self._settings,
+                    env=env,
+                ):
+                    auto_reviews = self._collect_auto_reviews(
+                        env_id=env_id,
+                        repo_owner=repo_context.repo_owner,
+                        repo_name=repo_context.repo_name,
+                        items=items,
+                    )
+            except Exception as exc:
+                error = str(exc)
 
-        self._fetch_completed.emit(
-            item_type,
-            env_id,
-            items,
-            repo_context,
-            error,
-            auto_reviews,
-        )
+            self._fetch_completed.emit(
+                item_type,
+                env_id,
+                items,
+                repo_context,
+                error,
+                auto_reviews,
+            )
 
     def _begin_fetch(self, *, key: tuple[str, str]) -> bool:
         with self._state_lock:

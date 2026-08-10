@@ -33,6 +33,8 @@ from agents_runner.gh.git_ops import (
 )
 from agents_runner.gh.pr_retry import with_retry
 from agents_runner.gh.process import expand_dir, require_ok, run_gh
+from agents_runner.gh.rate_limiter import Priority
+from agents_runner.gh.rate_limiter import push_priority
 from agents_runner.prompts.loader import load_prompt
 
 _TASK_BRANCH_PREFIXES: tuple[str, ...] = ("midoriaiagents/",)
@@ -498,98 +500,98 @@ def commit_push_and_pr(
             )
 
     _checkout_branch_for_commit()
+    with push_priority(Priority.HIGH):
+        has_worktree_changes = bool(_porcelain_status().strip())
 
-    has_worktree_changes = bool(_porcelain_status().strip())
+        if has_worktree_changes:
+            require_ok(
+                run_gh(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0),
+                args=["git", "add"],
+            )
+            commit_proc = run_gh(["git", "-C", repo_root, "commit", "-m", title], timeout_s=60.0)
+            if commit_proc.returncode != 0:
+                combined = (commit_proc.stdout or "") + "\n" + (commit_proc.stderr or "")
+                if "nothing to commit" not in combined.lower():
+                    require_ok(commit_proc, args=["git", "commit"])
 
-    if has_worktree_changes:
-        require_ok(
-            run_gh(["git", "-C", repo_root, "add", "-A"], timeout_s=30.0),
-            args=["git", "add"],
+        ahead_count = None
+        for base_ref in (base_branch, f"origin/{base_branch}"):
+            count_proc = run_gh(
+                ["git", "-C", repo_root, "rev-list", "--count", f"{base_ref}..HEAD"],
+                timeout_s=15.0,
+            )
+            if count_proc.returncode == 0:
+                try:
+                    ahead_count = int((count_proc.stdout or "").strip() or "0")
+                except ValueError:
+                    ahead_count = None
+                break
+
+        if not has_worktree_changes and (ahead_count is not None and ahead_count <= 0):
+            return None
+
+        # Push with retry for transient network issues
+        def _push_with_retry() -> None:
+            proc = run_gh(["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0)
+            require_ok(proc, args=["git", "push"])
+
+        with_retry(
+            _push_with_retry,
+            operation_name="git push",
+            retry_on=(OSError, TimeoutError, GhManagementError),
         )
-        commit_proc = run_gh(["git", "-C", repo_root, "commit", "-m", title], timeout_s=60.0)
-        if commit_proc.returncode != 0:
-            combined = (commit_proc.stdout or "") + "\n" + (commit_proc.stderr or "")
-            if "nothing to commit" not in combined.lower():
-                require_ok(commit_proc, args=["git", "commit"])
 
-    ahead_count = None
-    for base_ref in (base_branch, f"origin/{base_branch}"):
-        count_proc = run_gh(
-            ["git", "-C", repo_root, "rev-list", "--count", f"{base_ref}..HEAD"],
-            timeout_s=15.0,
-        )
-        if count_proc.returncode == 0:
-            try:
-                ahead_count = int((count_proc.stdout or "").strip() or "0")
-            except ValueError:
-                ahead_count = None
-            break
+        if not use_gh or not is_gh_available():
+            return ""
 
-    if not has_worktree_changes and (ahead_count is not None and ahead_count <= 0):
-        return None
+        if not is_gh_authenticated(timeout_s=10.0, use_cache=True):
+            raise GhManagementError("`gh` is not authenticated; run `gh auth login`")
 
-    # Push with retry for transient network issues
-    def _push_with_retry() -> None:
-        proc = run_gh(["git", "-C", repo_root, "push", "-u", "origin", branch], timeout_s=180.0)
-        require_ok(proc, args=["git", "push"])
+        # Create PR with retry for transient network issues
+        pr_url: str | None = None
 
-    with_retry(
-        _push_with_retry,
-        operation_name="git push",
-        retry_on=(OSError, TimeoutError, GhManagementError),
-    )
-
-    if not use_gh or not is_gh_available():
-        return ""
-
-    if not is_gh_authenticated(timeout_s=10.0, use_cache=True):
-        raise GhManagementError("`gh` is not authenticated; run `gh auth login`")
-
-    # Create PR with retry for transient network issues
-    pr_url: str | None = None
-
-    def _create_pr_with_retry() -> None:
-        nonlocal pr_url
-        proc = run_gh(
-            [
-                "gh",
-                "pr",
-                "create",
-                "--head",
-                branch,
-                "--base",
-                base_branch,
-                "--title",
-                title,
-                "--body",
-                body,
-            ],
-            cwd=repo_root,
-            timeout_s=180.0,
-        )
-        if proc.returncode != 0:
-            out = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
-            for line in out.splitlines():
-                line = line.strip()
-                if line.startswith("http"):
-                    pr_url = line
-                    return
-            require_ok(proc, args=["gh", "pr", "create"])
-        else:
-            out = (proc.stdout or "").strip()
-            if out.startswith("http"):
-                pr_url = out.splitlines()[0].strip()
-            else:
+        def _create_pr_with_retry() -> None:
+            nonlocal pr_url
+            proc = run_gh(
+                [
+                    "gh",
+                    "pr",
+                    "create",
+                    "--head",
+                    branch,
+                    "--base",
+                    base_branch,
+                    "--title",
+                    title,
+                    "--body",
+                    body,
+                ],
+                cwd=repo_root,
+                timeout_s=180.0,
+            )
+            if proc.returncode != 0:
+                out = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
                 for line in out.splitlines():
                     line = line.strip()
                     if line.startswith("http"):
                         pr_url = line
-                        break
+                        return
+                require_ok(proc, args=["gh", "pr", "create"])
+            else:
+                out = (proc.stdout or "").strip()
+                if out.startswith("http"):
+                    pr_url = out.splitlines()[0].strip()
+                else:
+                    for line in out.splitlines():
+                        line = line.strip()
+                        if line.startswith("http"):
+                            pr_url = line
+                            break
 
-    with_retry(
-        _create_pr_with_retry,
-        operation_name="gh pr create",
-        retry_on=(OSError, TimeoutError, GhManagementError),
-    )
+        with_retry(
+            _create_pr_with_retry,
+            operation_name="gh pr create",
+            retry_on=(OSError, TimeoutError, GhManagementError),
+        )
 
-    return pr_url
+        return pr_url
