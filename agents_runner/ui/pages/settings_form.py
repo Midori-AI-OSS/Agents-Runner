@@ -41,6 +41,7 @@ from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_default_agent_system_name
 from agents_runner.environments import load_environments
 from agents_runner.environments import normalize_opencode_interactive_mode
+from agents_runner.environments.github_repo import resolve_environment_github_repo
 from agents_runner.environments.task_workspaces import (
     TASK_WORKSPACE_LOCATION_APP_DATA,
 )
@@ -437,6 +438,22 @@ class SettingsFormMixin:
         self._github_poll_startup_delay_s.setToolTip(
             "Seconds to wait after app startup before beginning background GitHub polling."
         )
+        self._github_poll_interval_s = QLineEdit()
+        self._github_poll_interval_s.setValidator(QIntValidator(5, 3600, self))
+        self._github_poll_interval_s.setPlaceholderText("30")
+        self._github_poll_interval_s.setMaximumWidth(120)
+        self._github_poll_interval_s.setToolTip(
+            "Seconds between GitHub polling cycles across all enabled environments."
+        )
+        self._github_poll_rate_warning_label = QLabel()
+        self._github_poll_rate_warning_label.setStyleSheet("color: #ef4444; font-weight: 600;")
+        self._github_poll_rate_warning_label.setWordWrap(True)
+        self._github_poll_rate_warning_label.setVisible(False)
+        self._github_poll_rate_warning_label.setToolTip(
+            "Each poll cycle sends multiple API requests per environment. "
+            "At this pace, the global account-wide rate limit (5,000 req/hr) could be exhausted. "
+            "Increase the interval or reduce polling-enabled environments to stay within safe limits."
+        )
         self._agentsnova_trusted_users_global = GitHubUsernameListWidget()
         self._agentsnova_trusted_users_global.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -717,8 +734,20 @@ class SettingsFormMixin:
         add_grid_row(
             github_grid,
             6,
+            QLabel("Polling interval (s)"),
+            self._github_poll_interval_s,
+        )
+        add_grid_row(
+            github_grid,
+            7,
             QLabel("Polling startup delay (s)"),
             self._github_poll_startup_delay_s,
+        )
+        add_grid_row(
+            github_grid,
+            8,
+            QLabel(""),
+            self._github_poll_rate_warning_label,
         )
         github_config_body.addLayout(github_grid)
         github_config_body.addStretch(1)
@@ -1352,6 +1381,11 @@ class SettingsFormMixin:
             except Exception:
                 poll_startup_delay_s = 35
             self._github_poll_startup_delay_s.setText(str(poll_startup_delay_s))
+            try:
+                poll_interval_s = max(5, min(3600, int(settings.get("github_poll_interval_s", 30))))
+            except Exception:
+                poll_interval_s = 30
+            self._github_poll_interval_s.setText(str(poll_interval_s))
             trusted_users_raw = settings.get("agentsnova_trusted_users_global", [])
             trusted_users = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
             self._agentsnova_trusted_users_global.set_usernames(trusted_users)
@@ -1535,6 +1569,11 @@ class SettingsFormMixin:
             poll_startup_delay_s = max(0, int(poll_startup_delay_text or "35"))
         except Exception:
             poll_startup_delay_s = 35
+        interval_text = str(self._github_poll_interval_s.text() or "30").strip()
+        try:
+            poll_interval_s = max(5, min(3600, int(interval_text or "30")))
+        except Exception:
+            poll_interval_s = 30
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
@@ -1556,6 +1595,7 @@ class SettingsFormMixin:
             "agentsnova_auto_reactions_enabled": bool(self._agentsnova_auto_reactions_enabled.isChecked()),
             "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
             "github_poll_startup_delay_s": poll_startup_delay_s,
+            "github_poll_interval_s": poll_interval_s,
             "agentsnova_trusted_users_global": self._agentsnova_trusted_users_global.get_usernames(),
             "headless_desktop_enabled": bool(self._headless_desktop_enabled.isChecked()),
             "gpu_enabled": bool(self._gpu_enabled.isChecked()),
@@ -1834,6 +1874,24 @@ class SettingsFormMixin:
             self._queue_debounced_autosave()
         except Exception:
             pass
+
+    def _refresh_github_poll_rate_warning(self, *_args: object) -> None:
+        environments = load_environments().values()
+        count = 0
+        for env in environments:
+            if env.github_polling_enabled and resolve_environment_github_repo(env) is not None:
+                count += 1
+        try:
+            interval = max(5, int(str(self._github_poll_interval_s.text() or "30").strip()))
+        except Exception:
+            interval = 30
+        if count > 10 and interval < 120:
+            self._github_poll_rate_warning_label.setText(
+                f"Warning: {count} polling-enabled environments with interval <2 min may exceed GitHub rate limits at the current pace."
+            )
+            self._github_poll_rate_warning_label.setVisible(True)
+        else:
+            self._github_poll_rate_warning_label.setVisible(False)
 
     def _refresh_terminal_options(self, *, selected_terminal_id: str) -> None:
         selected_id = str(selected_terminal_id or "").strip()

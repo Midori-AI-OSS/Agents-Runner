@@ -13,8 +13,9 @@ if TYPE_CHECKING:
     import threading
     from PySide6.QtCore import QObject, QThread, QTimer, Signal
     from PySide6.QtWidgets import (
-        QComboBox,
         QCheckBox,
+        QComboBox,
+        QLabel,
         QLineEdit,
         QStackedWidget,
         QToolButton,
@@ -389,4 +390,19 @@ if TYPE_CHECKING:
 else:
 
     class EnvironmentsPageHints:
+        pass
+
+
+if TYPE_CHECKING:
+
+    class SettingsPageHints(QObject):
+        _github_poll_interval_s: QLineEdit
+        _github_poll_rate_warning_label: QLabel
+        _github_polling_enabled: QCheckBox
+
+        def _refresh_github_poll_rate_warning(self, *_args: object) -> None: ...
+        def _queue_debounced_autosave(self, *_args: object) -> None: ...
+else:
+
+    class SettingsPageHints:
         pass
