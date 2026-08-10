@@ -3,6 +3,7 @@ import subprocess
 
 from .errors import GhManagementError
 from .rate_limiter import acquire as _rate_limit_acquire
+from .rate_limiter import check_and_handle_rate_limit as _check_rate_limit
 
 
 def _noninteractive_env() -> dict[str, str]:
@@ -26,7 +27,7 @@ def run_gh(
 ) -> subprocess.CompletedProcess[str]:
     _rate_limit_acquire(args)
     try:
-        return subprocess.run(
+        proc = subprocess.run(
             args,
             cwd=cwd,
             check=False,
@@ -36,6 +37,9 @@ def run_gh(
             env=_noninteractive_env(),
             timeout=timeout_s,
         )
+        if proc.returncode != 0:
+            _check_rate_limit(args, proc.stderr or "", proc.stdout or "")
+        return proc
     except subprocess.TimeoutExpired as exc:
         raise GhManagementError(f"command timed out: {' '.join(args)}") from exc
     except OSError as exc:
