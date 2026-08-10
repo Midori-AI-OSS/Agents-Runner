@@ -1,7 +1,10 @@
 import re
 import secrets
 import hashlib
+import subprocess
+import time
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC
 from datetime import datetime
@@ -34,6 +37,8 @@ from agents_runner.gh.git_ops import (
 from agents_runner.gh.pr_retry import with_retry
 from agents_runner.gh.process import expand_dir, require_ok, run_gh
 from agents_runner.gh.rate_limiter import Priority
+from agents_runner.gh.rate_limiter import _parse_rate_limit_seconds
+from agents_runner.gh.rate_limiter import logger
 from agents_runner.gh.rate_limiter import push_priority
 from agents_runner.prompts.loader import load_prompt
 
@@ -403,6 +408,9 @@ def commit_push_and_pr(
     use_gh: bool = True,
     agent_cli: str = "",
     agent_display_name: str | None = None,
+    pr_retry_interval_minutes: int = 5,
+    pr_retry_max_minutes: int = 60,
+    on_log: Callable[[str], None] | None = None,
 ) -> str | None:
     repo_root = expand_dir(repo_root)
     branch = str(branch or "").strip()
@@ -550,9 +558,8 @@ def commit_push_and_pr(
         # Create PR with retry for transient network issues
         pr_url: str | None = None
 
-        def _create_pr_with_retry() -> None:
-            nonlocal pr_url
-            proc = run_gh(
+        def _run_pr_create():
+            return run_gh(
                 [
                     "gh",
                     "pr",
@@ -569,24 +576,92 @@ def commit_push_and_pr(
                 cwd=repo_root,
                 timeout_s=180.0,
             )
+
+        def _extract_pr_url(proc: subprocess.CompletedProcess[str]) -> bool:
+            nonlocal pr_url
             if proc.returncode != 0:
                 out = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
                 for line in out.splitlines():
                     line = line.strip()
                     if line.startswith("http"):
                         pr_url = line
-                        return
-                require_ok(proc, args=["gh", "pr", "create"])
+                        return True
             else:
                 out = (proc.stdout or "").strip()
                 if out.startswith("http"):
                     pr_url = out.splitlines()[0].strip()
-                else:
-                    for line in out.splitlines():
-                        line = line.strip()
-                        if line.startswith("http"):
-                            pr_url = line
+                    return True
+                for line in out.splitlines():
+                    line = line.strip()
+                    if line.startswith("http"):
+                        pr_url = line
+                        return True
+            return False
+
+        def _create_pr_with_retry() -> None:
+            nonlocal pr_url
+            proc = _run_pr_create()
+            if _extract_pr_url(proc):
+                return
+            if proc.returncode == 0:
+                return
+
+            # Rate-limit detection before require_ok
+            if pr_retry_interval_minutes > 0:
+                pause_s = _parse_rate_limit_seconds(proc.stderr or "", proc.stdout or "")
+                if pause_s is not None:
+                    original_msg = ((proc.stderr or "") + "\n" + (proc.stdout or "")).strip()
+                    logger.info(
+                        "[gh-pr-retry] rate-limited: retrying every %d minutes for up to %d minutes",
+                        pr_retry_interval_minutes,
+                        pr_retry_max_minutes,
+                    )
+                    if on_log:
+                        on_log(
+                            "[gh-pr-retry] Waiting for GitHub — will retry gh pr create in "
+                            f"{pr_retry_interval_minutes} minutes"
+                        )
+
+                    start_time = time.monotonic()
+                    max_s = pr_retry_max_minutes * 60
+                    interval_s = pr_retry_interval_minutes * 60
+                    attempt = 0
+
+                    while True:
+                        elapsed = time.monotonic() - start_time
+                        if elapsed > max_s:
+                            raise GhManagementError(
+                                f"[gh-pr-retry] rate-limit retry exhausted after "
+                                f"{pr_retry_max_minutes}m: {original_msg}"
+                            )
+
+                        time.sleep(interval_s)
+                        attempt += 1
+
+                        if on_log:
+                            on_log(
+                                "[gh-pr-retry] Waiting for GitHub — retrying gh pr create now "
+                                f"(attempt {attempt}, elapsed {elapsed:.0f}s)"
+                            )
+
+                        proc = _run_pr_create()
+                        if _extract_pr_url(proc):
+                            return
+                        if proc.returncode == 0:
+                            return
+
+                        still_rate_limited = _parse_rate_limit_seconds(proc.stderr or "", proc.stdout or "")
+                        if still_rate_limited is None:
+                            # Different error — fall through to require_ok / with_retry
                             break
+
+                    # Fall through: non-rate-limit error after retries
+                    if proc.returncode != 0:
+                        require_ok(proc, args=["gh", "pr", "create"])
+                    return
+
+            # Non-rate-limit failure, or disabled (interval=0)
+            require_ok(proc, args=["gh", "pr", "create"])
 
         with_retry(
             _create_pr_with_retry,
