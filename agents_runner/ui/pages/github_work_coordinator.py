@@ -59,6 +59,7 @@ class GitHubWorkCacheEntry:
 class GitHubWorkCoordinator(QObject):
     cache_updated = Signal(str, str)
     auto_review_requested = Signal(str, object)
+    task_completed = Signal(str)
 
     _fetch_completed = Signal(str, str, object, object, str, object)
     _cycle_finished = Signal()
@@ -79,6 +80,9 @@ class GitHubWorkCoordinator(QObject):
         self._auto_review_seen_mentions: set[str] = set()
         self._auto_review_emit_keys: set[str] = set()
         self._auto_review_warned_keys: set[str] = set()
+
+        self._eyes_blocked_anchors: dict[str, float] = {}
+        self._active_task_by_item: dict[str, float] = {}
 
         self._state_lock = threading.Lock()
         self._poll_cycle_running = False
@@ -163,6 +167,14 @@ class GitHubWorkCoordinator(QObject):
                 env_id=normalized_env,
                 force=True,
             )
+
+    def notify_task_completed(self, *, item_key: str) -> None:
+        normalized = str(item_key or "").strip()
+        if not normalized:
+            return
+        with self._state_lock:
+            self._active_task_by_item.pop(normalized, None)
+        self.task_completed.emit(normalized)
 
     def is_global_polling_enabled(self) -> bool:
         return bool(self._settings.get("github_polling_enabled") or False)
@@ -538,8 +550,19 @@ class GitHubWorkCoordinator(QObject):
             )
 
             with self._state_lock:
+                was_blocked = mention_key in self._eyes_blocked_anchors
                 if mention_key in self._auto_review_seen_mentions:
-                    continue
+                    if was_blocked:
+                        self._eyes_blocked_anchors.pop(mention_key, None)
+                        if item_key in self._active_task_by_item:
+                            continue
+                        self._auto_review_seen_mentions.discard(mention_key)
+                    else:
+                        continue
+                elif was_blocked:
+                    self._eyes_blocked_anchors.pop(mention_key, None)
+                    if item_key in self._active_task_by_item:
+                        continue
                 if emit_key in self._auto_review_emit_keys:
                     continue
 
@@ -587,6 +610,8 @@ class GitHubWorkCoordinator(QObject):
                 "pr_is_cross_repo": pr_is_cross_repo,
             }
             self.auto_review_requested.emit(env_id, payload)
+            with self._state_lock:
+                self._active_task_by_item[item_key] = time.time()
 
     def _collect_auto_reviews(
         self,
@@ -783,6 +808,8 @@ class GitHubWorkCoordinator(QObject):
                     )
                     continue
                 if anchor_has_eyes:
+                    with self._state_lock:
+                        self._eyes_blocked_anchors[mention_key] = time.time()
                     continue
 
                 if auto_reactions_enabled:

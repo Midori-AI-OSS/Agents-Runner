@@ -732,6 +732,9 @@ class MainWindowTaskEventsMixin(MainWindowHints):
         task = self._tasks.get(task_id)
         if task is None:
             return
+        item_key = getattr(self, "_auto_review_task_to_item_key", {}).pop(task_id, None)
+        if item_key:
+            self._tasks_page._github_work_coordinator.notify_task_completed(item_key=item_key)
         try:
             self.host_log.emit(
                 task_id,

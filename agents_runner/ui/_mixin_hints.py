@@ -89,6 +89,7 @@ if TYPE_CHECKING:
         _stack: QStackedWidget
         _agent_selection_round_robin_cursor: dict[str, int]
         _fork_notice_seen: set[str]
+        _auto_review_task_to_item_key: dict[str, str]
         _current_env_name: str
 
         host_log: Signal
