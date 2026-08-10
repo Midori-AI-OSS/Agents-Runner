@@ -65,6 +65,7 @@ class GitHubWorkCoordinator(QObject):
 
     _CACHE_TTL_S = 45.0
     _AUTO_REVIEW_THREAD_SCAN_LIMIT = 300
+    _COALESCE_TIMEOUT_S = 30.0
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -73,6 +74,7 @@ class GitHubWorkCoordinator(QObject):
         self._environments: dict[str, Environment] = {}
         self._cache: dict[tuple[str, str], GitHubWorkCacheEntry] = {}
         self._inflight_keys: set[tuple[str, str]] = set()
+        self._inflight_events: dict[tuple[str, str], threading.Event] = {}
 
         self._auto_review_seen_mentions: set[str] = set()
         self._auto_review_emit_keys: set[str] = set()
@@ -254,6 +256,25 @@ class GitHubWorkCoordinator(QObject):
             workers: list[threading.Thread] = []
 
             for index, env_id in enumerate(env_ids):
+                pr_key = self._cache_key(item_type="pr", env_id=env_id)
+                issue_key = self._cache_key(item_type="issue", env_id=env_id)
+
+                pr_inflight = self._is_key_inflight(pr_key)
+                issue_inflight = self._is_key_inflight(issue_key)
+
+                if pr_inflight or issue_inflight:
+                    if pr_inflight and not self._wait_for_inflight(pr_key, timeout_s=self._COALESCE_TIMEOUT_S):
+                        logger.rprint(
+                            f"[github-poll] coalesce timeout for pr key env={env_id}, skipping this cycle",
+                            mode="warn",
+                        )
+                    if issue_inflight and not self._wait_for_inflight(issue_key, timeout_s=self._COALESCE_TIMEOUT_S):
+                        logger.rprint(
+                            f"[github-poll] coalesce timeout for issue key env={env_id}, skipping this cycle",
+                            mode="warn",
+                        )
+                    continue
+
                 semaphore.acquire()
                 worker = threading.Thread(
                     target=self._poll_environment_bundle_worker,
@@ -355,6 +376,11 @@ class GitHubWorkCoordinator(QObject):
             if key in self._inflight_keys:
                 return False
             self._inflight_keys.add(key)
+            event = self._inflight_events.get(key)
+            if event is not None:
+                event.clear()
+            else:
+                self._inflight_events[key] = threading.Event()
 
             current = self._cache.get(key)
             if current is None:
@@ -371,6 +397,20 @@ class GitHubWorkCoordinator(QObject):
             else:
                 self._cache[key] = replace(current, refreshing=True)
         return True
+
+    def _is_key_inflight(self, key: tuple[str, str]) -> bool:
+        with self._state_lock:
+            return key in self._inflight_keys
+
+    def _wait_for_inflight(self, key: tuple[str, str], timeout_s: float = 30.0) -> bool:
+        with self._state_lock:
+            if key not in self._inflight_keys:
+                return True
+            event = self._inflight_events.get(key)
+            if event is None:
+                event = threading.Event()
+                self._inflight_events[key] = event
+        return event.wait(timeout=timeout_s)
 
     def _on_fetch_completed(
         self,
@@ -391,6 +431,9 @@ class GitHubWorkCoordinator(QObject):
         with self._state_lock:
             previous = self._cache.get(key)
             self._inflight_keys.discard(key)
+            event = self._inflight_events.pop(key, None)
+            if event is not None:
+                event.set()
 
             if parsed_context is None and not error:
                 new_entry = GitHubWorkCacheEntry(
