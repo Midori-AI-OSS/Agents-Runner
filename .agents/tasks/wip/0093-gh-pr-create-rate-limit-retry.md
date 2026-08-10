@@ -33,3 +33,19 @@ If `gh pr create` fails specifically due to a rate limit (after the push already
 - The push already uses `with_retry` from `pr_retry.py`. Keep that independent.
 - The PR create call in `commit_push_and_pr` (lines 589-593) currently wraps `_create_pr_with_retry` in `with_retry(retry_on=(OSError, TimeoutError, GhManagementError))`. Rate limits currently hit `require_ok` → `GhManagementError` → caught by `with_retry`. Change: detect rate limit inside `_create_pr_with_retry` BEFORE `require_ok` would raise, then enter the configurable retry loop. Only fall through to `with_retry` for non-rate-limit failures.
 - Reuse the rate-limit detection logic from #0092 (parse error output). Factor into a shared helper if needed, but keep it minimal.
+
+---
+
+## AUDIT FAIL — 2026-08-10 (Nova/Auditor)
+
+Moved `done/` -> `wip/`. Full audit at `/tmp/agents-artifacts/7977e7b2-audit-summary.audit.md`.
+
+**Fix required:**
+
+1. **Wire `github_pr_retry_interval_minutes` and `github_pr_retry_max_minutes` into settings system** - add defaults to `main_window.py` `_settings_data`, `setdefault` in `main_window_persistence.py`, validation in `main_window_settings.py`, and have callers read them from settings and pass to `commit_push_and_pr`.
+
+2. **Connect `on_log` callback** - `tools_github.py` and `main_window_tasks_interactive_finalize.py` must pass an `on_log` that surfaces retry progress to the user.
+
+3. **Fix `with_retry` interaction** - rate-limit exhaustion raising `GhManagementError` gets caught by outer `with_retry`, causing wasteful double-retry (up to 3x the configured max). Use a non-retryable exception or re-raise to bypass.
+
+4. **Fix stale `elapsed`** - recalculate `elapsed` after `time.sleep(interval_s)` before passing to `on_log`.
