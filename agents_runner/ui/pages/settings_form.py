@@ -450,9 +450,33 @@ class SettingsFormMixin:
         self._github_poll_rate_warning_label.setWordWrap(True)
         self._github_poll_rate_warning_label.setVisible(False)
         self._github_poll_rate_warning_label.setToolTip(
-            "Each poll cycle sends multiple API requests per environment. "
+            "Each poll cycle sends multiple API requests per environment capped by the max requests-per-second setting. "
             "At this pace, the global account-wide rate limit (5,000 req/hr) could be exhausted. "
-            "Increase the interval or reduce polling-enabled environments to stay within safe limits."
+            "Increase the polling interval, reduce the max requests-per-second, or reduce polling-enabled environments to stay within safe limits."
+        )
+        self._github_requests_per_second = QLineEdit()
+        self._github_requests_per_second.setValidator(QIntValidator(1, 10, self))
+        self._github_requests_per_second.setPlaceholderText("2")
+        self._github_requests_per_second.setMaximumWidth(120)
+        self._github_requests_per_second.setToolTip(
+            "Maximum GitHub API requests per second across all environments. "
+            "Lower values reduce rate-limit risk; higher values speed up polling and PR operations."
+        )
+        self._github_pr_retry_interval_minutes = QLineEdit()
+        self._github_pr_retry_interval_minutes.setValidator(QIntValidator(0, 60, self))
+        self._github_pr_retry_interval_minutes.setPlaceholderText("5")
+        self._github_pr_retry_interval_minutes.setMaximumWidth(120)
+        self._github_pr_retry_interval_minutes.setToolTip(
+            "Minutes between retries when gh pr create is rate-limited after push. "
+            "Set to 0 to disable rate-limit retry loop."
+        )
+        self._github_pr_retry_max_minutes = QLineEdit()
+        self._github_pr_retry_max_minutes.setValidator(QIntValidator(0, 360, self))
+        self._github_pr_retry_max_minutes.setPlaceholderText("60")
+        self._github_pr_retry_max_minutes.setMaximumWidth(120)
+        self._github_pr_retry_max_minutes.setToolTip(
+            "Maximum total minutes to keep retrying a rate-limited gh pr create before giving up. "
+            "Has no effect when PR retry interval is 0."
         )
         self._agentsnova_trusted_users_global = GitHubUsernameListWidget()
         self._agentsnova_trusted_users_global.setSizePolicy(
@@ -748,6 +772,24 @@ class SettingsFormMixin:
             8,
             QLabel(""),
             self._github_poll_rate_warning_label,
+        )
+        add_grid_row(
+            github_grid,
+            9,
+            QLabel("Max requests per second"),
+            self._github_requests_per_second,
+        )
+        add_grid_row(
+            github_grid,
+            10,
+            QLabel("PR retry interval (min)"),
+            self._github_pr_retry_interval_minutes,
+        )
+        add_grid_row(
+            github_grid,
+            11,
+            QLabel("PR retry max (min)"),
+            self._github_pr_retry_max_minutes,
         )
         github_config_body.addLayout(github_grid)
         github_config_body.addStretch(1)
@@ -1386,6 +1428,21 @@ class SettingsFormMixin:
             except Exception:
                 poll_interval_s = 30
             self._github_poll_interval_s.setText(str(poll_interval_s))
+            try:
+                rps = max(1, min(10, int(settings.get("github_requests_per_second", 2))))
+            except Exception:
+                rps = 2
+            self._github_requests_per_second.setText(str(rps))
+            try:
+                pr_retry_interval = max(0, min(60, int(settings.get("github_pr_retry_interval_minutes", 5))))
+            except Exception:
+                pr_retry_interval = 5
+            self._github_pr_retry_interval_minutes.setText(str(pr_retry_interval))
+            try:
+                pr_retry_max = max(0, min(360, int(settings.get("github_pr_retry_max_minutes", 60))))
+            except Exception:
+                pr_retry_max = 60
+            self._github_pr_retry_max_minutes.setText(str(pr_retry_max))
             trusted_users_raw = settings.get("agentsnova_trusted_users_global", [])
             trusted_users = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
             self._agentsnova_trusted_users_global.set_usernames(trusted_users)
@@ -1574,6 +1631,21 @@ class SettingsFormMixin:
             poll_interval_s = max(5, min(3600, int(interval_text or "30")))
         except Exception:
             poll_interval_s = 30
+        requests_per_second_text = str(self._github_requests_per_second.text() or "2").strip()
+        try:
+            requests_per_second = max(1, min(10, int(requests_per_second_text or "2")))
+        except Exception:
+            requests_per_second = 2
+        pr_retry_interval_text = str(self._github_pr_retry_interval_minutes.text() or "5").strip()
+        try:
+            pr_retry_interval = max(0, min(60, int(pr_retry_interval_text or "5")))
+        except Exception:
+            pr_retry_interval = 5
+        pr_retry_max_text = str(self._github_pr_retry_max_minutes.text() or "60").strip()
+        try:
+            pr_retry_max = max(0, min(360, int(pr_retry_max_text or "60")))
+        except Exception:
+            pr_retry_max = 60
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
@@ -1596,6 +1668,9 @@ class SettingsFormMixin:
             "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
             "github_poll_startup_delay_s": poll_startup_delay_s,
             "github_poll_interval_s": poll_interval_s,
+            "github_requests_per_second": requests_per_second,
+            "github_pr_retry_interval_minutes": pr_retry_interval,
+            "github_pr_retry_max_minutes": pr_retry_max,
             "agentsnova_trusted_users_global": self._agentsnova_trusted_users_global.get_usernames(),
             "headless_desktop_enabled": bool(self._headless_desktop_enabled.isChecked()),
             "gpu_enabled": bool(self._gpu_enabled.isChecked()),

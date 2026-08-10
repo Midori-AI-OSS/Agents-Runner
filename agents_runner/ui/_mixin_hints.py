@@ -400,6 +400,10 @@ if TYPE_CHECKING:
         _github_poll_interval_s: QLineEdit
         _github_poll_rate_warning_label: QLabel
         _github_polling_enabled: QCheckBox
+        _github_poll_startup_delay_s: QLineEdit
+        _github_requests_per_second: QLineEdit
+        _github_pr_retry_interval_minutes: QLineEdit
+        _github_pr_retry_max_minutes: QLineEdit
 
         def _refresh_github_poll_rate_warning(self, *_args: object) -> None: ...
         def _queue_debounced_autosave(self, *_args: object) -> None: ...
