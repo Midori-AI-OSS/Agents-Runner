@@ -630,13 +630,14 @@ def commit_push_and_pr(
                     while True:
                         elapsed = time.monotonic() - start_time
                         if elapsed > max_s:
-                            raise GhManagementError(
+                            raise RuntimeError(
                                 f"[gh-pr-retry] rate-limit retry exhausted after "
                                 f"{pr_retry_max_minutes}m: {original_msg}"
                             )
 
                         time.sleep(interval_s)
                         attempt += 1
+                        elapsed = time.monotonic() - start_time
 
                         if on_log:
                             on_log(

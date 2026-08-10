@@ -127,6 +127,9 @@ async def handle_github_pr_create(
                 body=body,
                 use_gh=True,
                 agent_cli=agent_cli,
+                pr_retry_interval_minutes=5,
+                pr_retry_max_minutes=60,
+                on_log=None,
             ),
         )
     except Exception as exc:

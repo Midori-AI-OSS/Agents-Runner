@@ -389,6 +389,16 @@ class MainWindowSettingsMixin(MainWindowHints):
         except Exception:
             merged["github_poll_startup_delay_s"] = 35
         try:
+            raw_pr_retry_interval = int(merged.get("github_pr_retry_interval_minutes", 5))
+            merged["github_pr_retry_interval_minutes"] = max(0, min(60, raw_pr_retry_interval))
+        except Exception:
+            merged["github_pr_retry_interval_minutes"] = 5
+        try:
+            raw_pr_retry_max = int(merged.get("github_pr_retry_max_minutes", 60))
+            merged["github_pr_retry_max_minutes"] = max(0, min(360, raw_pr_retry_max))
+        except Exception:
+            merged["github_pr_retry_max_minutes"] = 60
+        try:
             raw_rate = int(merged.get("github_requests_per_second", 2))
             if raw_rate < 1 or raw_rate > 10:
                 logger.warning(

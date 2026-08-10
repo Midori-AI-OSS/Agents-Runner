@@ -198,6 +198,8 @@ class MainWindowPersistenceMixin(MainWindowHints):
         self._settings_data.setdefault("github_poll_interval_s", 30)
         self._settings_data.setdefault("github_polling_enabled", False)
         self._settings_data.setdefault("github_poll_startup_delay_s", 35)
+        self._settings_data.setdefault("github_pr_retry_interval_minutes", 5)
+        self._settings_data.setdefault("github_pr_retry_max_minutes", 60)
         self._settings_data.setdefault("github_requests_per_second", 2)
         self._settings_data.setdefault("agentsnova_auto_review_enabled", True)
         legacy_marker_comment_setting = self._settings_data.pop(
