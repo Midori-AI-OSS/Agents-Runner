@@ -17,6 +17,9 @@ dependencies = [
     "tomli-w>=1.1.0",
 ]
 
+[project.scripts]
+agents-runner = "agents_runner.cli:main"
+
 [dependency-groups]
 ci = [
     "ruff>=0.12.0",
