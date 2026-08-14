@@ -25,7 +25,10 @@ All 10 tests in `agents_runner/tests/test_gh_auth.py` fail with `AttributeError:
 - With the hoisted import, the two functions reference the module global, so `monkeypatch.setattr(auth, "run_gh", ...)` intercepts again.
 
 ## Verification Checklist
-- [ ] `uv sync --group ci && .agents/scripts/test` passes with 0 failures
-- [ ] `uv run ruff check .` clean
-- [ ] `uv run ruff format --check .` clean
-- [ ] `agents_runner/tests/test_gh_auth.py` unchanged
+- [x] `uv sync --group ci && .agents/scripts/test` passes with 0 failures
+- [x] `uv run ruff check .` clean
+- [x] `uv run ruff format --check .` clean
+- [x] `agents_runner/tests/test_gh_auth.py` unchanged
+
+## Completion Note
+- Completed: 2026-08-14. Hoisted `from .process import run_gh` to module level in `agents_runner/gh/auth.py` and removed the two inline imports in `_resolve_login_from_api` and `_refresh_snapshot`. Verified: 65 passed, 2 skipped, 0 failures; ruff check and format clean.
