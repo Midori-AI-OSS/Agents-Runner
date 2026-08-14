@@ -13,6 +13,7 @@ from typing import Callable
 from typing import cast
 
 from .errors import GhManagementError
+from .process import run_gh
 
 _AUTH_CACHE_TTL_S = 300.0
 _AUTH_LOGIN_PATTERN = re.compile(r"Logged in to .* account ([A-Za-z0-9-]+)")
@@ -62,8 +63,6 @@ def _parse_login_from_auth_status(text: str) -> str:
 
 
 def _resolve_login_from_api(*, timeout_s: float) -> str:
-    from .process import run_gh
-
     try:
         api_proc = run_gh(["gh", "api", "user", "-H", "Accept: application/vnd.github+json"], timeout_s=timeout_s)
     except GhManagementError:
@@ -81,8 +80,6 @@ def _resolve_login_from_api(*, timeout_s: float) -> str:
 
 
 def _refresh_snapshot(*, timeout_s: float) -> GhAuthSnapshot:
-    from .process import run_gh
-
     try:
         proc = run_gh(["gh", "auth", "status"], timeout_s=timeout_s)
     except GhManagementError as exc:
