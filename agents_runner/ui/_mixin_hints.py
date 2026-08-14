@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         QComboBox,
         QLabel,
         QLineEdit,
+        QSpinBox,
         QStackedWidget,
         QToolButton,
         QVBoxLayout,
