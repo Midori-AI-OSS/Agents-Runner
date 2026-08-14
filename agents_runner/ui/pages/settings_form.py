@@ -8,7 +8,7 @@ from typing import Any
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QEvent, QSignalBlocker, QTimer, Qt, Signal
-from PySide6.QtGui import QIntValidator, QKeyEvent, QMouseEvent
+from PySide6.QtGui import QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QComboBox
@@ -16,7 +16,6 @@ from PySide6.QtWidgets import QDoubleSpinBox
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
-from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QListWidget
@@ -41,6 +40,7 @@ from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_default_agent_system_name
 from agents_runner.environments import load_environments
 from agents_runner.environments import normalize_opencode_interactive_mode
+from agents_runner.environments.github_repo import resolve_environment_github_repo
 from agents_runner.environments.task_workspaces import (
     TASK_WORKSPACE_LOCATION_APP_DATA,
 )
@@ -430,12 +430,52 @@ class SettingsFormMixin:
         self._github_polling_enabled.setToolTip(
             "When enabled, GitHub Issues/PRs poll in the background across enabled environments."
         )
-        self._github_poll_startup_delay_s = QLineEdit()
-        self._github_poll_startup_delay_s.setValidator(QIntValidator(0, 3600, self))
-        self._github_poll_startup_delay_s.setPlaceholderText("35")
-        self._github_poll_startup_delay_s.setMaximumWidth(120)
+        self._github_poll_startup_delay_s = QSpinBox()
+        self._github_poll_startup_delay_s.setRange(0, 3600)
+        self._github_poll_startup_delay_s.setSuffix(" seconds")
+        self._github_poll_startup_delay_s.setValue(35)
         self._github_poll_startup_delay_s.setToolTip(
             "Seconds to wait after app startup before beginning background GitHub polling."
+        )
+        self._github_poll_interval_s = QSpinBox()
+        self._github_poll_interval_s.setRange(5, 3600)
+        self._github_poll_interval_s.setSuffix(" seconds")
+        self._github_poll_interval_s.setValue(30)
+        self._github_poll_interval_s.setToolTip(
+            "Seconds between GitHub polling cycles across all enabled environments."
+        )
+        self._github_poll_rate_warning_label = QLabel()
+        self._github_poll_rate_warning_label.setStyleSheet("color: #ef4444; font-weight: 600;")
+        self._github_poll_rate_warning_label.setWordWrap(True)
+        self._github_poll_rate_warning_label.setVisible(False)
+        self._github_poll_rate_warning_label.setToolTip(
+            "Each poll cycle sends multiple API requests per environment capped by the max requests-per-second setting. "
+            "At this pace, the global account-wide rate limit (5,000 req/hr) could be exhausted. "
+            "Increase the polling interval, reduce the max requests-per-second, or reduce polling-enabled environments to stay within safe limits."
+        )
+        self._github_requests_per_second = QSpinBox()
+        self._github_requests_per_second.setRange(1, 10)
+        self._github_requests_per_second.setSuffix(" per second")
+        self._github_requests_per_second.setValue(2)
+        self._github_requests_per_second.setToolTip(
+            "Maximum GitHub API requests per second across all environments. "
+            "Lower values reduce rate-limit risk; higher values speed up polling and PR operations."
+        )
+        self._github_pr_retry_interval_minutes = QSpinBox()
+        self._github_pr_retry_interval_minutes.setRange(0, 60)
+        self._github_pr_retry_interval_minutes.setSuffix(" minutes")
+        self._github_pr_retry_interval_minutes.setValue(5)
+        self._github_pr_retry_interval_minutes.setToolTip(
+            "Minutes between retries when gh pr create is rate-limited after push. "
+            "Set to 0 to disable rate-limit retry loop."
+        )
+        self._github_pr_retry_max_minutes = QSpinBox()
+        self._github_pr_retry_max_minutes.setRange(0, 360)
+        self._github_pr_retry_max_minutes.setSuffix(" minutes")
+        self._github_pr_retry_max_minutes.setValue(60)
+        self._github_pr_retry_max_minutes.setToolTip(
+            "Maximum total minutes to keep retrying a rate-limited gh pr create before giving up. "
+            "Has no effect when PR retry interval is 0."
         )
         self._agentsnova_trusted_users_global = GitHubUsernameListWidget()
         self._agentsnova_trusted_users_global.setSizePolicy(
@@ -717,8 +757,33 @@ class SettingsFormMixin:
         add_grid_row(
             github_grid,
             6,
-            QLabel("Polling startup delay (s)"),
+            QLabel("Polling interval"),
+            self._github_poll_interval_s,
+        )
+        add_grid_row(
+            github_grid,
+            7,
+            QLabel("Polling startup delay"),
             self._github_poll_startup_delay_s,
+        )
+        github_grid.addWidget(self._github_poll_rate_warning_label, 8, 0, 1, 3)
+        add_grid_row(
+            github_grid,
+            9,
+            QLabel("Max requests"),
+            self._github_requests_per_second,
+        )
+        add_grid_row(
+            github_grid,
+            10,
+            QLabel("PR retry interval"),
+            self._github_pr_retry_interval_minutes,
+        )
+        add_grid_row(
+            github_grid,
+            11,
+            QLabel("PR retry max"),
+            self._github_pr_retry_max_minutes,
         )
         github_config_body.addLayout(github_grid)
         github_config_body.addStretch(1)
@@ -1347,11 +1412,46 @@ class SettingsFormMixin:
                 bool(settings.get("agentsnova_auto_reactions_enabled", True))
             )
             self._github_polling_enabled.setChecked(bool(settings.get("github_polling_enabled") or False))
-            try:
-                poll_startup_delay_s = max(0, int(settings.get("github_poll_startup_delay_s", 35)))
-            except Exception:
-                poll_startup_delay_s = 35
-            self._github_poll_startup_delay_s.setText(str(poll_startup_delay_s))
+            self._github_poll_startup_delay_s.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_poll_startup_delay_s"),
+                    minimum=0,
+                    maximum=3600,
+                    default=35,
+                )
+            )
+            self._github_poll_interval_s.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_poll_interval_s"),
+                    minimum=5,
+                    maximum=3600,
+                    default=30,
+                )
+            )
+            self._github_requests_per_second.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_requests_per_second"),
+                    minimum=1,
+                    maximum=10,
+                    default=2,
+                )
+            )
+            self._github_pr_retry_interval_minutes.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_pr_retry_interval_minutes"),
+                    minimum=0,
+                    maximum=60,
+                    default=5,
+                )
+            )
+            self._github_pr_retry_max_minutes.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_pr_retry_max_minutes"),
+                    minimum=0,
+                    maximum=360,
+                    default=60,
+                )
+            )
             trusted_users_raw = settings.get("agentsnova_trusted_users_global", [])
             trusted_users = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
             self._agentsnova_trusted_users_global.set_usernames(trusted_users)
@@ -1530,11 +1630,11 @@ class SettingsFormMixin:
         self._reset_recommended_preflight_selection()
 
     def get_settings(self) -> dict[str, Any]:
-        poll_startup_delay_text = str(self._github_poll_startup_delay_s.text() or "35").strip()
-        try:
-            poll_startup_delay_s = max(0, int(poll_startup_delay_text or "35"))
-        except Exception:
-            poll_startup_delay_s = 35
+        poll_startup_delay_s = int(self._github_poll_startup_delay_s.value())
+        poll_interval_s = int(self._github_poll_interval_s.value())
+        requests_per_second = int(self._github_requests_per_second.value())
+        pr_retry_interval = int(self._github_pr_retry_interval_minutes.value())
+        pr_retry_max = int(self._github_pr_retry_max_minutes.value())
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
@@ -1556,6 +1656,10 @@ class SettingsFormMixin:
             "agentsnova_auto_reactions_enabled": bool(self._agentsnova_auto_reactions_enabled.isChecked()),
             "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
             "github_poll_startup_delay_s": poll_startup_delay_s,
+            "github_poll_interval_s": poll_interval_s,
+            "github_requests_per_second": requests_per_second,
+            "github_pr_retry_interval_minutes": pr_retry_interval,
+            "github_pr_retry_max_minutes": pr_retry_max,
             "agentsnova_trusted_users_global": self._agentsnova_trusted_users_global.get_usernames(),
             "headless_desktop_enabled": bool(self._headless_desktop_enabled.isChecked()),
             "gpu_enabled": bool(self._gpu_enabled.isChecked()),
@@ -1834,6 +1938,24 @@ class SettingsFormMixin:
             self._queue_debounced_autosave()
         except Exception:
             pass
+
+    def _refresh_github_poll_rate_warning(self, *_args: object) -> None:
+        environments = load_environments().values()
+        count = 0
+        for env in environments:
+            if env.github_polling_enabled and resolve_environment_github_repo(env) is not None:
+                count += 1
+        try:
+            interval = int(self._github_poll_interval_s.value())
+        except Exception:
+            interval = 30
+        if count > 10 and interval < 120:
+            self._github_poll_rate_warning_label.setText(
+                f"Warning: {count} polling-enabled environments with interval <2 min may exceed GitHub rate limits at the current pace."
+            )
+            self._github_poll_rate_warning_label.setVisible(True)
+        else:
+            self._github_poll_rate_warning_label.setVisible(False)
 
     def _refresh_terminal_options(self, *, selected_terminal_id: str) -> None:
         selected_id = str(selected_terminal_id or "").strip()

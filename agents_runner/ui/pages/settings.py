@@ -189,7 +189,13 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._task_workspace_cleanup_interval_minutes.valueChanged.connect(self._queue_debounced_autosave)
         self._task_workspace_cleanup_scan_delay_seconds.valueChanged.connect(self._queue_debounced_autosave)
         self._task_workspace_cleanup_size_threshold_gb.valueChanged.connect(self._queue_debounced_autosave)
-        self._github_poll_startup_delay_s.textChanged.connect(self._queue_debounced_autosave)
+        self._github_poll_startup_delay_s.valueChanged.connect(self._queue_debounced_autosave)
+        self._github_poll_interval_s.valueChanged.connect(self._queue_debounced_autosave)
+        self._github_poll_interval_s.valueChanged.connect(self._refresh_github_poll_rate_warning)
+        self._github_requests_per_second.valueChanged.connect(self._queue_debounced_autosave)
+        self._github_pr_retry_interval_minutes.valueChanged.connect(self._queue_debounced_autosave)
+        self._github_pr_retry_max_minutes.valueChanged.connect(self._queue_debounced_autosave)
+        self._github_polling_enabled.toggled.connect(self._refresh_github_poll_rate_warning)
         self._preflight_script.textChanged.connect(self._queue_debounced_autosave)
         self._agentsnova_trusted_users_global.usernames_changed.connect(self._queue_debounced_autosave)
 
@@ -328,6 +334,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
     def showEvent(self, event: QShowEvent) -> None:
         super().showEvent(event)
         self._start_move_task_workspaces_shift_polling()
+        self._refresh_github_poll_rate_warning()
 
     def hideEvent(self, event: QHideEvent) -> None:
         super().hideEvent(event)

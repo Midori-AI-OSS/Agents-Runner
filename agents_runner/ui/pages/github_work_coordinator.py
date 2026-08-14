@@ -26,6 +26,8 @@ from agents_runner.gh.work_items import has_pull_request_review_reaction
 from agents_runner.gh.work_items import list_issue_comments
 from agents_runner.gh.work_items import list_open_issues
 from agents_runner.gh.work_items import list_open_pull_requests
+from agents_runner.gh.rate_limiter import Priority
+from agents_runner.gh.rate_limiter import push_priority
 from agents_runner.gh.work_items import list_pull_request_review_comments
 from agents_runner.gh.work_items import list_pull_request_reviews
 from agents_runner.gh.automation_policy import (
@@ -57,12 +59,14 @@ class GitHubWorkCacheEntry:
 class GitHubWorkCoordinator(QObject):
     cache_updated = Signal(str, str)
     auto_review_requested = Signal(str, object)
+    task_completed = Signal(str)
 
     _fetch_completed = Signal(str, str, object, object, str, object)
     _cycle_finished = Signal()
 
     _CACHE_TTL_S = 45.0
     _AUTO_REVIEW_THREAD_SCAN_LIMIT = 300
+    _COALESCE_TIMEOUT_S = 30.0
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -71,10 +75,14 @@ class GitHubWorkCoordinator(QObject):
         self._environments: dict[str, Environment] = {}
         self._cache: dict[tuple[str, str], GitHubWorkCacheEntry] = {}
         self._inflight_keys: set[tuple[str, str]] = set()
+        self._inflight_events: dict[tuple[str, str], threading.Event] = {}
 
         self._auto_review_seen_mentions: set[str] = set()
         self._auto_review_emit_keys: set[str] = set()
         self._auto_review_warned_keys: set[str] = set()
+
+        self._eyes_blocked_anchors: dict[str, float] = {}
+        self._active_task_by_item: dict[str, float] = {}
 
         self._state_lock = threading.Lock()
         self._poll_cycle_running = False
@@ -131,9 +139,10 @@ class GitHubWorkCoordinator(QObject):
             return
         if not self._begin_fetch(key=key):
             return
+        fetch_priority = Priority.HIGH if force else Priority.LOW
         threading.Thread(
             target=self._fetch_key_worker,
-            args=(normalized_type, normalized_env),
+            args=(normalized_type, normalized_env, fetch_priority),
             daemon=True,
         ).start()
 
@@ -158,6 +167,13 @@ class GitHubWorkCoordinator(QObject):
                 env_id=normalized_env,
                 force=True,
             )
+
+    def notify_task_completed(self, *, item_key: str) -> None:
+        normalized = str(item_key or "").strip()
+        if not normalized:
+            return
+        with self._state_lock:
+            self._active_task_by_item.pop(normalized, None)
 
     def is_global_polling_enabled(self) -> bool:
         return bool(self._settings.get("github_polling_enabled") or False)
@@ -251,6 +267,25 @@ class GitHubWorkCoordinator(QObject):
             workers: list[threading.Thread] = []
 
             for index, env_id in enumerate(env_ids):
+                pr_key = self._cache_key(item_type="pr", env_id=env_id)
+                issue_key = self._cache_key(item_type="issue", env_id=env_id)
+
+                pr_inflight = self._is_key_inflight(pr_key)
+                issue_inflight = self._is_key_inflight(issue_key)
+
+                if pr_inflight or issue_inflight:
+                    if pr_inflight and not self._wait_for_inflight(pr_key, timeout_s=self._COALESCE_TIMEOUT_S):
+                        logger.rprint(
+                            f"[github-poll] coalesce timeout for pr key env={env_id}, skipping this cycle",
+                            mode="warn",
+                        )
+                    if issue_inflight and not self._wait_for_inflight(issue_key, timeout_s=self._COALESCE_TIMEOUT_S):
+                        logger.rprint(
+                            f"[github-poll] coalesce timeout for issue key env={env_id}, skipping this cycle",
+                            mode="warn",
+                        )
+                    continue
+
                 semaphore.acquire()
                 worker = threading.Thread(
                     target=self._poll_environment_bundle_worker,
@@ -278,7 +313,7 @@ class GitHubWorkCoordinator(QObject):
         finally:
             semaphore.release()
 
-    def _fetch_key_sync(self, *, item_type: str, env_id: str) -> None:
+    def _fetch_key_sync(self, *, item_type: str, env_id: str, priority: Priority = Priority.LOW) -> None:
         normalized_type = self._normalize_item_type(item_type)
         normalized_env = str(env_id or "").strip()
         if not normalized_env:
@@ -286,71 +321,77 @@ class GitHubWorkCoordinator(QObject):
         key = self._cache_key(item_type=normalized_type, env_id=normalized_env)
         if not self._begin_fetch(key=key):
             return
-        self._fetch_key_worker(normalized_type, normalized_env)
+        self._fetch_key_worker(normalized_type, normalized_env, priority=priority)
 
-    def _fetch_key_worker(self, item_type: str, env_id: str) -> None:
-        repo_context: GitHubRepoContext | None = None
-        items: list[GitHubWorkItem] = []
-        auto_reviews: list[dict[str, object]] = []
-        error = ""
+    def _fetch_key_worker(self, item_type: str, env_id: str, priority: Priority = Priority.LOW) -> None:
+        with push_priority(priority):
+            repo_context: GitHubRepoContext | None = None
+            items: list[GitHubWorkItem] = []
+            auto_reviews: list[dict[str, object]] = []
+            error = ""
 
-        try:
-            env = self._environments.get(env_id)
-            repo_context = resolve_environment_github_repo(env)
-            if repo_context is None:
-                key = self._cache_key(item_type=item_type, env_id=env_id)
-                if self._should_preserve_stale_cache_on_missing_repo(key=key, env=env):
-                    error = "transient repo detection unavailable"
-                self._fetch_completed.emit(
-                    item_type,
-                    env_id,
-                    items,
-                    None,
-                    error,
-                    auto_reviews,
-                )
-                return
+            try:
+                env = self._environments.get(env_id)
+                repo_context = resolve_environment_github_repo(env)
+                if repo_context is None:
+                    key = self._cache_key(item_type=item_type, env_id=env_id)
+                    if self._should_preserve_stale_cache_on_missing_repo(key=key, env=env):
+                        error = "transient repo detection unavailable"
+                    self._fetch_completed.emit(
+                        item_type,
+                        env_id,
+                        items,
+                        None,
+                        error,
+                        auto_reviews,
+                    )
+                    return
 
-            if item_type == "pr":
-                items = list_open_pull_requests(
-                    repo_context.repo_owner,
-                    repo_context.repo_name,
-                    limit=30,
-                )
-            else:
-                items = list_open_issues(
-                    repo_context.repo_owner,
-                    repo_context.repo_name,
-                    limit=30,
-                )
+                if item_type == "pr":
+                    items = list_open_pull_requests(
+                        repo_context.repo_owner,
+                        repo_context.repo_name,
+                        limit=30,
+                    )
+                else:
+                    items = list_open_issues(
+                        repo_context.repo_owner,
+                        repo_context.repo_name,
+                        limit=30,
+                    )
 
-            if resolve_effective_auto_review_enabled(
-                settings=self._settings,
-                env=env,
-            ):
-                auto_reviews = self._collect_auto_reviews(
-                    env_id=env_id,
-                    repo_owner=repo_context.repo_owner,
-                    repo_name=repo_context.repo_name,
-                    items=items,
-                )
-        except Exception as exc:
-            error = str(exc)
+                if resolve_effective_auto_review_enabled(
+                    settings=self._settings,
+                    env=env,
+                ):
+                    auto_reviews = self._collect_auto_reviews(
+                        env_id=env_id,
+                        repo_owner=repo_context.repo_owner,
+                        repo_name=repo_context.repo_name,
+                        items=items,
+                    )
+            except Exception as exc:
+                error = str(exc)
 
-        self._fetch_completed.emit(
-            item_type,
-            env_id,
-            items,
-            repo_context,
-            error,
-            auto_reviews,
-        )
+            self._fetch_completed.emit(
+                item_type,
+                env_id,
+                items,
+                repo_context,
+                error,
+                auto_reviews,
+            )
 
     def _begin_fetch(self, *, key: tuple[str, str]) -> bool:
         with self._state_lock:
             if key in self._inflight_keys:
                 return False
             self._inflight_keys.add(key)
+            event = self._inflight_events.get(key)
+            if event is not None:
+                event.clear()
+            else:
+                self._inflight_events[key] = threading.Event()
 
             current = self._cache.get(key)
             if current is None:
@@ -367,6 +408,20 @@ class GitHubWorkCoordinator(QObject):
             else:
                 self._cache[key] = replace(current, refreshing=True)
         return True
+
+    def _is_key_inflight(self, key: tuple[str, str]) -> bool:
+        with self._state_lock:
+            return key in self._inflight_keys
+
+    def _wait_for_inflight(self, key: tuple[str, str], timeout_s: float = 30.0) -> bool:
+        with self._state_lock:
+            if key not in self._inflight_keys:
+                return True
+            event = self._inflight_events.get(key)
+            if event is None:
+                event = threading.Event()
+                self._inflight_events[key] = event
+        return event.wait(timeout=timeout_s)
 
     def _on_fetch_completed(
         self,
@@ -387,6 +442,9 @@ class GitHubWorkCoordinator(QObject):
         with self._state_lock:
             previous = self._cache.get(key)
             self._inflight_keys.discard(key)
+            event = self._inflight_events.pop(key, None)
+            if event is not None:
+                event.set()
 
             if parsed_context is None and not error:
                 new_entry = GitHubWorkCacheEntry(
@@ -491,8 +549,20 @@ class GitHubWorkCoordinator(QObject):
             )
 
             with self._state_lock:
+                was_blocked = mention_key in self._eyes_blocked_anchors
                 if mention_key in self._auto_review_seen_mentions:
-                    continue
+                    if was_blocked:
+                        self._eyes_blocked_anchors.pop(mention_key, None)
+                        if item_key in self._active_task_by_item:
+                            continue
+                        self._auto_review_seen_mentions.discard(mention_key)
+                        self._auto_review_emit_keys.discard(emit_key)
+                    else:
+                        continue
+                elif was_blocked:
+                    self._eyes_blocked_anchors.pop(mention_key, None)
+                    if item_key in self._active_task_by_item:
+                        continue
                 if emit_key in self._auto_review_emit_keys:
                     continue
 
@@ -540,6 +610,8 @@ class GitHubWorkCoordinator(QObject):
                 "pr_is_cross_repo": pr_is_cross_repo,
             }
             self.auto_review_requested.emit(env_id, payload)
+            with self._state_lock:
+                self._active_task_by_item[item_key] = time.time()
 
     def _collect_auto_reviews(
         self,
@@ -567,7 +639,7 @@ class GitHubWorkCoordinator(QObject):
         )
 
         with self._state_lock:
-            queued_snapshot = set(self._auto_review_seen_mentions)
+            queued_snapshot = set(self._auto_review_seen_mentions) - set(self._eyes_blocked_anchors)
 
         results: list[dict[str, object]] = []
         for item in items:
@@ -736,6 +808,8 @@ class GitHubWorkCoordinator(QObject):
                     )
                     continue
                 if anchor_has_eyes:
+                    with self._state_lock:
+                        self._eyes_blocked_anchors[mention_key] = time.time()
                     continue
 
                 if auto_reactions_enabled:
