@@ -12,7 +12,7 @@ Add a generic Usage pane to the Settings page showing the app process's programm
 - Record at the two raw `subprocess.run(["gh", ...])` call sites that bypass `run_gh`:
   - `agents_runner/gh/pr_validation.py` line 116 (`gh --version` internal version check)
   - `agents_runner/github_token.py` line 24 (`gh auth token` internal auth check)
-- New Settings pane: register a `_SettingsPaneSpec` in `_default_pane_specs()` (`agents_runner/ui/pages/settings_form.py`, line 125) under the GitHub section and build the page via `_build_pages()` (line 570). Pane body is only a total request count and a line graph of requests per minute for the trailing 60 minutes (custom QPainter widget, no new dependencies, no rounded corners). Keep `settings_form.py` additions minimal; place the pane widget in a small module (e.g. `agents_runner/ui/widgets/`).
+- New Settings pane: register a `_SettingsPaneSpec` in `_default_pane_specs()` (`agents_runner/ui/pages/settings_form.py`, line 125) with `section="Usage"` so it appears under its own Usage navigation section (not the GitHub section) and build the page via `_build_pages()` (line 570). Pane body is only a total request count and a line graph of requests per minute for the trailing 60 minutes (custom QPainter widget, no new dependencies, no rounded corners). Keep `settings_form.py` additions minimal; place the pane widget in a small module (e.g. `agents_runner/ui/widgets/`).
 - Refresh: 60 s QTimer on `SettingsPage` (`agents_runner/ui/pages/settings.py`), started in `showEvent`, stopped in `hideEvent` (mirror the existing polling start/stop pattern at lines 334-341).
 
 ## Out of scope
@@ -27,7 +27,7 @@ Add a generic Usage pane to the Settings page showing the app process's programm
 1. Every programmatic `gh` subprocess launch by the app process increments the in-memory total, including internal auth checks (`gh auth status`, `gh api user`, `gh auth token`) and version checks (`gh --version`), including failed launches (non-zero exit, timeout, OSError).
 2. `git` launches and interactive terminal commands do not increment the counter.
 3. The counter resets on app restart (no persistence).
-4. Settings shows a new Usage pane with the total request count and a line graph of requests per minute for the trailing 60 minutes (60 one-minute buckets).
+4. Settings navigation shows a new Usage section containing the Usage pane with the total request count and a line graph of requests per minute for the trailing 60 minutes (60 one-minute buckets); the pane is not placed under the GitHub section.
 5. While the Settings page is visible, the pane refreshes automatically once per minute; no refresh timer runs while hidden.
 6. The pane contains no explanatory/descriptive copy; only the total and the chart (minimal data labels allowed).
 7. `uv run ruff check .` and `uv run ruff format --check .` clean; `uv run basedpyright` passes.
@@ -38,9 +38,10 @@ Add a generic Usage pane to the Settings page showing the app process's programm
 - Recording at attempt time (before the subprocess call) guarantees failed launches count.
 - `run_gh` runs on worker threads: guard the counter with a lock; a ring of 60 buckets indexed by `int(time.time()) // 60` suffices for the chart.
 - UI rule: no `border-radius`/`addRoundedRect` in app widgets; keep the chart sharp/square.
+- `_build_navigation()` (`settings_form.py`, line 889) renders one nav section label per unique `spec.section`, so a spec with `section="Usage"` (e.g. `key="usage"`, `title="Usage"`) creates the Usage section with no navigation code changes.
 
 ## Verification Checklist
-- [ ] Launch app; open Settings → Usage pane; total increments as gh-backed operations run
+- [ ] Launch app; open Settings → Usage (own navigation section, not under GitHub); total increments as gh-backed operations run
 - [ ] A failed gh operation (non-zero exit, timeout, or missing binary) still counts
 - [ ] Git-backed operations and interactive terminal usage do not count
 - [ ] Chart shows per-minute buckets for the trailing 60 minutes and updates within 1 minute while Settings is visible
