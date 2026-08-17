@@ -70,6 +70,7 @@ from agents_runner.ui.widgets import EdgeFadeScrollArea
 from agents_runner.ui.widgets import ArcSpinner
 from agents_runner.ui.widgets.artifact_highlighter import ArtifactSyntaxHighlighter
 from agents_runner.ui.widgets.theme_preview import ThemePreviewTile
+from agents_runner.ui.widgets.usage_pane import GhUsagePaneWidget
 from agents_runner.ui.constants import (
     GRID_HORIZONTAL_SPACING,
     GRID_VERTICAL_SPACING,
@@ -134,6 +135,12 @@ class SettingsFormMixin:
                 key="storage",
                 title="Storage",
                 subtitle="Local task workspace storage and migration.",
+                section="General",
+            ),
+            _SettingsPaneSpec(
+                key="usage",
+                title="Usage",
+                subtitle="",
                 section="General",
             ),
             _SettingsPaneSpec(
@@ -885,6 +892,12 @@ class SettingsFormMixin:
             radio_body.addLayout(radio_grid)
             radio_body.addStretch(1)
             self._register_page("radio", radio_page)
+
+        usage_page, usage_body = self._create_page(specs_by_key["usage"])
+        self._usage_pane = GhUsagePaneWidget(usage_page)
+        usage_body.addWidget(self._usage_pane)
+        usage_body.addStretch(1)
+        self._register_page("usage", usage_page)
 
     def _build_navigation(self, nav_layout: QVBoxLayout) -> None:
         sections: dict[str, list[_SettingsPaneSpec]] = {}

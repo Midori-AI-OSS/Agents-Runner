@@ -63,6 +63,10 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._autosave_timer.setInterval(AUTOSAVE_DISCRETE_MS)
         self._autosave_timer.timeout.connect(self._emit_saved)
 
+        self._usage_refresh_timer = QTimer(self)
+        self._usage_refresh_timer.setInterval(60_000)
+        self._usage_refresh_timer.timeout.connect(self._refresh_usage_pane)
+
         self._pane_animation: QParallelAnimationGroup | None = None
         self._pane_rest_pos: QPoint | None = None
         self._compact_mode = False
@@ -335,10 +339,23 @@ class SettingsPage(QWidget, SettingsFormMixin):
         super().showEvent(event)
         self._start_move_task_workspaces_shift_polling()
         self._refresh_github_poll_rate_warning()
+        self._start_usage_pane_refresh()
 
     def hideEvent(self, event: QHideEvent) -> None:
         super().hideEvent(event)
         self._stop_move_task_workspaces_shift_polling()
+        self._stop_usage_pane_refresh()
+
+    def _start_usage_pane_refresh(self) -> None:
+        if not self._usage_refresh_timer.isActive():
+            self._usage_refresh_timer.start()
+        self._refresh_usage_pane()
+
+    def _stop_usage_pane_refresh(self) -> None:
+        self._usage_refresh_timer.stop()
+
+    def _refresh_usage_pane(self) -> None:
+        self._usage_pane.refresh()
 
     def _update_navigation_mode(self) -> None:
         compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD

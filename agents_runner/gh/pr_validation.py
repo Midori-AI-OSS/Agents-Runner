@@ -13,6 +13,7 @@ import subprocess
 from .auth import is_gh_authenticated
 from .errors import GhManagementError
 from .process import run_gh
+from .usage_counts import record_gh_launch
 
 
 def validate_pr_prerequisites(
@@ -113,6 +114,7 @@ def _validate_gh_cli(use_gh: bool) -> tuple[bool, str]:
 
     # Check if gh is installed
     try:
+        record_gh_launch()
         result = subprocess.run(
             ["gh", "--version"],
             capture_output=True,
