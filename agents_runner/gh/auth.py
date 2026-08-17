@@ -1,3 +1,5 @@
+"""Shared, single-flight GitHub CLI authentication state."""
+
 from __future__ import annotations
 
 import json
@@ -5,18 +7,41 @@ import re
 import threading
 import time
 
+from dataclasses import dataclass
+from enum import Enum
+from typing import Callable
 from typing import cast
 
+from .errors import GhManagementError
 from .process import run_gh
 
-_AUTH_CACHE_TTL_S = 15.0
+_AUTH_CACHE_TTL_S = 300.0
 _AUTH_LOGIN_PATTERN = re.compile(r"Logged in to .* account ([A-Za-z0-9-]+)")
 
-_cache_lock = threading.Lock()
-_cached_auth_ready = False
-_cached_auth_expires_at = 0.0
-_cached_login = ""
-_cached_login_expires_at = 0.0
+
+class GhAuthError(Enum):
+    """Failure state for an authentication status refresh."""
+
+    NONE = "none"
+    TIMEOUT = "timeout"
+    UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class GhAuthSnapshot:
+    """The authentication values produced by one ``gh auth status`` probe."""
+
+    authenticated: bool
+    login: str
+    expires_at: float
+    error: GhAuthError = GhAuthError.NONE
+
+
+_cache_condition = threading.Condition()
+_cached_snapshot: GhAuthSnapshot | None = None
+_refreshing = False
+_invalidation_generation = 0
+_monotonic: Callable[[], float] = time.monotonic
 
 
 def _safe_text(value: object) -> str:
@@ -29,98 +54,118 @@ def _as_object_dict(value: object) -> dict[object, object] | None:
     return cast(dict[object, object], value)
 
 
-def _cache_auth_state(value: bool, *, now_s: float) -> None:
-    global _cached_auth_ready, _cached_auth_expires_at
-    _cached_auth_ready = bool(value)
-    _cached_auth_expires_at = now_s + _AUTH_CACHE_TTL_S
-
-
-def _cache_login(value: str, *, now_s: float) -> str:
-    global _cached_login, _cached_login_expires_at
-    _cached_login = _safe_text(value).lower()
-    _cached_login_expires_at = now_s + _AUTH_CACHE_TTL_S
-    return _cached_login
-
-
 def _parse_login_from_auth_status(text: str) -> str:
     for line in str(text or "").splitlines():
         match = _AUTH_LOGIN_PATTERN.search(line)
-        if not match:
-            continue
-        return _safe_text(match.group(1)).lower()
+        if match:
+            return _safe_text(match.group(1)).lower()
     return ""
 
 
-def is_gh_authenticated(*, timeout_s: float = 10.0, use_cache: bool = True) -> bool:
-    now_s = time.time()
-    if use_cache:
-        with _cache_lock:
-            if _cached_auth_expires_at > now_s:
-                return _cached_auth_ready
+def _resolve_login_from_api(*, timeout_s: float) -> str:
+    try:
+        api_proc = run_gh(["gh", "api", "user", "-H", "Accept: application/vnd.github+json"], timeout_s=timeout_s)
+    except GhManagementError:
+        return ""
+    if api_proc.returncode != 0:
+        return ""
+    try:
+        data = json.loads(_safe_text(api_proc.stdout))
+    except (TypeError, ValueError):
+        return ""
+    data_dict = _as_object_dict(data)
+    if data_dict is None:
+        return ""
+    return _safe_text(data_dict.get("login")).lower()
 
-    proc = run_gh(["gh", "auth", "status"], timeout_s=timeout_s)
-    ready = proc.returncode == 0
-    with _cache_lock:
-        _cache_auth_state(ready, now_s=now_s)
-    return ready
+
+def _refresh_snapshot(*, timeout_s: float) -> GhAuthSnapshot:
+    try:
+        proc = run_gh(["gh", "auth", "status"], timeout_s=timeout_s)
+    except GhManagementError as exc:
+        error = GhAuthError.TIMEOUT if "timed out" in str(exc).lower() else GhAuthError.UNAVAILABLE
+        return GhAuthSnapshot(authenticated=False, login="", expires_at=_monotonic(), error=error)
+
+    authenticated = proc.returncode == 0
+    login = ""
+    if authenticated:
+        combined_output = "\n".join(part for part in (_safe_text(proc.stdout), _safe_text(proc.stderr)) if part)
+        login = _parse_login_from_auth_status(combined_output)
+        if not login:
+            login = _resolve_login_from_api(timeout_s=timeout_s)
+    return GhAuthSnapshot(authenticated=authenticated, login=login, expires_at=_monotonic() + _AUTH_CACHE_TTL_S)
+
+
+def get_gh_auth_snapshot(*, timeout_s: float = 10.0, use_cache: bool = True) -> GhAuthSnapshot:
+    """Return one shared snapshot, coalescing concurrent normal and forced refreshes."""
+
+    global _cached_snapshot, _refreshing
+    with _cache_condition:
+        now_s = _monotonic()
+        if use_cache and _cached_snapshot is not None and _cached_snapshot.expires_at > now_s:
+            return _cached_snapshot
+        if _refreshing:
+            while _refreshing:
+                _cache_condition.wait()
+            if _cached_snapshot is not None:
+                return _cached_snapshot
+        _refreshing = True
+        refresh_generation = _invalidation_generation
+
+    while True:
+        try:
+            snapshot = _refresh_snapshot(timeout_s=timeout_s)
+        except BaseException:
+            with _cache_condition:
+                _refreshing = False
+                _cache_condition.notify_all()
+            raise
+        with _cache_condition:
+            if refresh_generation != _invalidation_generation:
+                refresh_generation = _invalidation_generation
+                continue
+            _cached_snapshot = snapshot
+            _refreshing = False
+            _cache_condition.notify_all()
+            return snapshot
+
+
+def invalidate_gh_auth_cache() -> None:
+    """Expire the current snapshot so the next authentication query refreshes it."""
+
+    global _cached_snapshot, _invalidation_generation
+    with _cache_condition:
+        _cached_snapshot = None
+        _invalidation_generation += 1
+    from .rate_limiter import invalidate_all as _invalidate_rate_limiter
+
+    _invalidate_rate_limiter()
+
+
+def reset_gh_auth_cache(*, monotonic: Callable[[], float] = time.monotonic) -> None:
+    """Reset cached state and its clock for deterministic verification."""
+
+    global _cached_snapshot, _invalidation_generation, _monotonic
+    with _cache_condition:
+        if _refreshing:
+            raise RuntimeError("cannot reset GitHub authentication cache during a refresh")
+        _cached_snapshot = None
+        _invalidation_generation = 0
+        _monotonic = monotonic
+
+
+def is_gh_authenticated(*, timeout_s: float = 10.0, use_cache: bool = True) -> bool:
+    return get_gh_auth_snapshot(timeout_s=timeout_s, use_cache=use_cache).authenticated
 
 
 def resolve_authenticated_login(*, timeout_s: float = 10.0, use_cache: bool = True) -> str:
-    now_s = time.time()
-    if use_cache:
-        with _cache_lock:
-            if _cached_login_expires_at > now_s:
-                return _cached_login
+    return get_gh_auth_snapshot(timeout_s=timeout_s, use_cache=use_cache).login
 
-    status_proc = run_gh(["gh", "auth", "status"], timeout_s=timeout_s)
-    login = ""
-    if status_proc.returncode == 0:
-        combined = _safe_text(status_proc.stdout) or _safe_text(status_proc.stderr)
-        login = _parse_login_from_auth_status(combined)
-        with _cache_lock:
-            _cache_auth_state(True, now_s=now_s)
-    else:
-        with _cache_lock:
-            _cache_auth_state(False, now_s=now_s)
-        if use_cache:
-            with _cache_lock:
-                return _cache_login("", now_s=now_s)
-        return ""
 
-    if login:
-        with _cache_lock:
-            return _cache_login(login, now_s=now_s)
+def _rate_limit_resolver() -> str:
+    return resolve_authenticated_login(timeout_s=5.0, use_cache=True)
 
-    api_proc = run_gh(
-        [
-            "gh",
-            "api",
-            "user",
-            "-H",
-            "Accept: application/vnd.github+json",
-        ],
-        timeout_s=timeout_s,
-    )
-    if api_proc.returncode != 0:
-        with _cache_lock:
-            return _cache_login("", now_s=now_s)
 
-    payload = _safe_text(api_proc.stdout)
-    if not payload:
-        with _cache_lock:
-            return _cache_login("", now_s=now_s)
+from .rate_limiter import set_login_resolver as _set_login_resolver
 
-    try:
-        data = json.loads(payload)
-    except Exception:
-        with _cache_lock:
-            return _cache_login("", now_s=now_s)
-
-    data_dict = _as_object_dict(data)
-    if data_dict is None:
-        with _cache_lock:
-            return _cache_login("", now_s=now_s)
-
-    parsed_login = _safe_text(data_dict.get("login")).lower()
-    with _cache_lock:
-        return _cache_login(parsed_login, now_s=now_s)
+_set_login_resolver(_rate_limit_resolver)

@@ -13,9 +13,11 @@ if TYPE_CHECKING:
     import threading
     from PySide6.QtCore import QObject, QThread, QTimer, Signal
     from PySide6.QtWidgets import (
-        QComboBox,
         QCheckBox,
+        QComboBox,
+        QLabel,
         QLineEdit,
+        QSpinBox,
         QStackedWidget,
         QToolButton,
         QVBoxLayout,
@@ -88,6 +90,7 @@ if TYPE_CHECKING:
         _stack: QStackedWidget
         _agent_selection_round_robin_cursor: dict[str, int]
         _fork_notice_seen: set[str]
+        _auto_review_task_to_item_key: dict[str, str]
         _current_env_name: str
 
         host_log: Signal
@@ -389,4 +392,23 @@ if TYPE_CHECKING:
 else:
 
     class EnvironmentsPageHints:
+        pass
+
+
+if TYPE_CHECKING:
+
+    class SettingsPageHints(QObject):
+        _github_poll_interval_s: QSpinBox
+        _github_poll_rate_warning_label: QLabel
+        _github_polling_enabled: QCheckBox
+        _github_poll_startup_delay_s: QSpinBox
+        _github_requests_per_second: QSpinBox
+        _github_pr_retry_interval_minutes: QSpinBox
+        _github_pr_retry_max_minutes: QSpinBox
+
+        def _refresh_github_poll_rate_warning(self, *_args: object) -> None: ...
+        def _queue_debounced_autosave(self, *_args: object) -> None: ...
+else:
+
+    class SettingsPageHints:
         pass

@@ -365,6 +365,13 @@ class TaskDetailsPage(QWidget):
         )
         self._review_pr.setText("Open PR" if pr_url.startswith("http") else "Create PR")
 
+        if branch_matches_base and not pr_url.startswith("http") and not task.is_active():
+            self._review_pr.setToolTip(
+                "This task worked directly on the base branch, so there is no separate PR branch to create."
+            )
+        else:
+            self._review_pr.setToolTip("")
+
         self._review.setVisible(can_pr)
         self._review.setEnabled(can_pr and not task.is_active())
 

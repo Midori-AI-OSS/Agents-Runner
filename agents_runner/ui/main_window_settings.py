@@ -388,6 +388,26 @@ class MainWindowSettingsMixin(MainWindowHints):
             merged["github_poll_startup_delay_s"] = max(0, int(merged.get("github_poll_startup_delay_s", 35)))
         except Exception:
             merged["github_poll_startup_delay_s"] = 35
+        try:
+            raw_pr_retry_interval = int(merged.get("github_pr_retry_interval_minutes", 5))
+            merged["github_pr_retry_interval_minutes"] = max(0, min(60, raw_pr_retry_interval))
+        except Exception:
+            merged["github_pr_retry_interval_minutes"] = 5
+        try:
+            raw_pr_retry_max = int(merged.get("github_pr_retry_max_minutes", 60))
+            merged["github_pr_retry_max_minutes"] = max(0, min(360, raw_pr_retry_max))
+        except Exception:
+            merged["github_pr_retry_max_minutes"] = 60
+        try:
+            raw_rate = int(merged.get("github_requests_per_second", 2))
+            if raw_rate < 1 or raw_rate > 10:
+                logger.warning(
+                    "github_requests_per_second %d is outside valid range [1, 10]; clamping.",
+                    raw_rate,
+                )
+            merged["github_requests_per_second"] = max(1, min(10, raw_rate))
+        except Exception:
+            merged["github_requests_per_second"] = 2
         trusted_users_raw = merged.get("agentsnova_trusted_users_global")
         trusted_users_rows = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
         trusted_users: list[str] = []

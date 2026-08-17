@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import subprocess
-
 from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_agent_system
+from agents_runner.agent_systems.github_status import github_auth_status
 from agents_runner.agent_systems.status import AgentStatus
 from agents_runner.agent_systems.status import StatusType
 from agents_runner.agent_systems.status import command_in_path
 from agents_runner.agent_systems.status import installed_status
 from agents_runner.agent_systems.status import not_installed_status
+from agents_runner.gh.auth import get_gh_auth_snapshot
 
 
 def detect_gh_status() -> AgentStatus:
@@ -19,55 +19,7 @@ def detect_gh_status() -> AgentStatus:
     if not command_in_path("gh"):
         return not_installed_status(agent="github")
 
-    try:
-        result = subprocess.run(
-            ["gh", "auth", "status"],
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-    except subprocess.TimeoutExpired:
-        return installed_status(
-            agent="github",
-            logged_in=False,
-            status_text="Unknown (timeout)",
-            status_type=StatusType.UNKNOWN,
-        )
-    except (FileNotFoundError, OSError):
-        return installed_status(
-            agent="github",
-            logged_in=False,
-            status_text="Unknown (gh CLI not found)",
-            status_type=StatusType.UNKNOWN,
-        )
-
-    if result.returncode == 0 and "Logged in" in result.stdout:
-        username = None
-        for line in result.stdout.split("\n"):
-            if "Logged in to github.com account" not in line:
-                continue
-            parts = line.split("account")
-            if len(parts) > 1:
-                username = parts[1].split("(")[0].strip() or None
-                break
-        if username:
-            return installed_status(
-                agent="github",
-                logged_in=True,
-                status_text=f"Logged in as {username}",
-                username=username,
-            )
-        return installed_status(
-            agent="github",
-            logged_in=True,
-            status_text="Logged in",
-        )
-
-    return installed_status(
-        agent="github",
-        logged_in=False,
-        status_text="Not logged in to GitHub",
-    )
+    return github_auth_status(agent="github", snapshot=get_gh_auth_snapshot(timeout_s=5.0, use_cache=True))
 
 
 def detect_all_agents() -> list[AgentStatus]:

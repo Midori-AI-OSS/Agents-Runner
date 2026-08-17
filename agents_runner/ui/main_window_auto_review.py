@@ -76,6 +76,10 @@ class MainWindowAutoReviewMixin(MainWindowHints):
             if resolved_base_branch is None:
                 return
         _agent_cli, host_config_dir, _ = self._effective_agent_and_config(env=env_for_task)
+        try:
+            number = int(payload_dict.get("number") or 0)
+        except Exception:
+            number = 0
         pr_context: dict[str, object] | None = None
         if is_pr:
             pr_context = {
@@ -97,6 +101,11 @@ class MainWindowAutoReviewMixin(MainWindowHints):
         )
         if not task_id:
             return
+
+        item_key = f"{repo_owner.lower()}/{repo_name.lower()}:{item_type}:{number}"
+        if not hasattr(self, "_auto_review_task_to_item_key"):
+            self._auto_review_task_to_item_key: dict[str, str] = {}
+        self._auto_review_task_to_item_key[task_id] = item_key
 
         if is_pr and is_cross_repo:
             self._post_fork_notice_comment(payload=payload_dict)
