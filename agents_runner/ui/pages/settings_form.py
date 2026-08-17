@@ -138,6 +138,12 @@ class SettingsFormMixin:
                 section="General",
             ),
             _SettingsPaneSpec(
+                key="usage",
+                title="Usage",
+                subtitle="",
+                section="General",
+            ),
+            _SettingsPaneSpec(
                 key="cleanup",
                 title="Cleanup",
                 subtitle="Finished workspace retention and scan cadence.",
@@ -184,12 +190,6 @@ class SettingsFormMixin:
                 title="Preflight Script",
                 subtitle="Global setup script executed before setup-agents.sh.",
                 section="Runtime",
-            ),
-            _SettingsPaneSpec(
-                key="usage",
-                title="Usage",
-                subtitle="",
-                section="Usage",
             ),
         ]
         if bool(getattr(self, "_radio_supported", True)):
