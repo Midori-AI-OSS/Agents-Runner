@@ -4,6 +4,7 @@ import subprocess
 from .errors import GhManagementError
 from .rate_limiter import acquire as _rate_limit_acquire
 from .rate_limiter import check_and_handle_rate_limit as _check_rate_limit
+from .usage_counts import record_gh_launch
 
 
 def _noninteractive_env() -> dict[str, str]:
@@ -25,6 +26,8 @@ def run_gh(
     cwd: str | None = None,
     timeout_s: float = 45.0,
 ) -> subprocess.CompletedProcess[str]:
+    if args and args[0] == "gh":
+        record_gh_launch()
     _rate_limit_acquire(args)
     try:
         proc = subprocess.run(
