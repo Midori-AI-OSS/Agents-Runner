@@ -11,6 +11,7 @@ from midori_ai_logger import MidoriAiLogger
 
 from agents_runner.ui.radio.art_models import ArtPayload
 
+from PySide6.QtCore import QEventLoop
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QTimer
 from PySide6.QtCore import QUrl
@@ -58,10 +59,18 @@ class RadioController(QObject):
     WATCHDOG_MIN_RESTART_INTERVAL_S = 0.75
     WATCHDOG_STUCK_STATUS_RESTART_AFTER_S = 3.0
     BOUNDARY_RECONNECT_MIN_INTERVAL_S = 2.0
+    STARTUP_READINESS_TIMEOUT_MS = 3000
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._qt_available = self.probe_qt_multimedia_available()
+        self._radio_available = False
+        self._radio_latched_off = False
+        self._startup_readiness_complete = False
+        self._startup_probe_active = False
+        self._startup_health_payload: dict[str, Any] | None = None
+        self._startup_current_payload: dict[str, Any] | None = None
+        self._startup_failure_reason = ""
         self._service_available = False
         self._service_known = False
         self._enabled = False
@@ -85,6 +94,8 @@ class RadioController(QObject):
         self._current_track_id = ""
         self._degraded_from_playback = False
         self._desired_playing = False
+        self._intentional_stop = False
+        self._source_change_in_progress = False
         self._start_when_service_ready = False
         self._reconnect_attempts = 0
         self._last_reconnect_reason = ""
@@ -107,6 +118,8 @@ class RadioController(QObject):
         self._channel_fade_out: QVariantAnimation | None = None
         self._channel_fade_in: QVariantAnimation | None = None
         self._runtime_timers_active = False
+        self._request_generation = 0
+        self._pending_replies: set[QNetworkReply] = set()
 
         if not self._qt_available:
             self._status_text = "Radio unavailable: Qt multimedia backend failed to initialize."
@@ -114,54 +127,7 @@ class RadioController(QObject):
             return
 
         self._network = QNetworkAccessManager(self)
-        self._health_timer = QTimer(self)
-        self._health_timer.setInterval(self.HEALTH_INTERVAL_MS)
-        self._health_timer.timeout.connect(self._poll_health)
-
-        self._current_timer = QTimer(self)
-        self._current_timer.setInterval(self.CURRENT_INTERVAL_MS)
-        self._current_timer.timeout.connect(self._poll_current)
-        self._reconnect_timer = QTimer(self)
-        self._reconnect_timer.setSingleShot(True)
-        self._reconnect_timer.timeout.connect(self._attempt_reconnect)
-        self._watchdog_timer = QTimer(self)
-        self._watchdog_timer.setInterval(self.WATCHDOG_INTERVAL_MS)
-        self._watchdog_timer.timeout.connect(self._watchdog_tick)
-        self._channel_fade_out = QVariantAnimation(self)
-        self._channel_fade_out.setDuration(self.CHANNEL_SWITCH_FADE_OUT_MS)
-        self._channel_fade_out.setStartValue(1.0)
-        self._channel_fade_out.setEndValue(0.0)
-        self._channel_fade_out.valueChanged.connect(self._on_fade_animation_value)
-        self._channel_fade_out.finished.connect(self._on_channel_fade_out_finished)
-
-        self._channel_fade_in = QVariantAnimation(self)
-        self._channel_fade_in.setDuration(self.CHANNEL_SWITCH_FADE_IN_MS)
-        self._channel_fade_in.setStartValue(0.0)
-        self._channel_fade_in.setEndValue(1.0)
-        self._channel_fade_in.valueChanged.connect(self._on_fade_animation_value)
-        self._channel_fade_in.finished.connect(self._on_channel_fade_in_finished)
-
-        try:
-            self._audio_output = QAudioOutput(self)
-            self._player = QMediaPlayer(self)
-            self._player.setAudioOutput(self._audio_output)
-            self._apply_audio_output_volume()
-            self._player.playbackStateChanged.connect(self._on_playback_state_changed)
-            self._player.errorOccurred.connect(self._on_media_error)
-            self._player.mediaStatusChanged.connect(self._on_media_status_changed)
-            self._status_text = "Radio ready."
-        except Exception as exc:
-            self._log_error_throttled("media_init", f"media init failed: {exc}")
-            self._qt_available = False
-            self._audio_output = None
-            self._player = None
-            self._status_text = "Radio unavailable: Qt multimedia backend failed to initialize."
-            self._emit_state()
-            return
-
-        self._set_runtime_timers_active(True)
-        QTimer.singleShot(0, self._poll_health)
-        QTimer.singleShot(0, self._poll_current)
+        self._status_text = "Radio readiness check pending."
         self._emit_state()
 
     @classmethod
@@ -242,12 +208,148 @@ class RadioController(QObject):
     def qt_available(self) -> bool:
         return self._qt_available
 
+    @property
+    def radio_available(self) -> bool:
+        """Return whether radio passed this process's one-shot readiness gate."""
+        return bool(self._radio_available and not self._radio_latched_off)
+
+    def await_startup_readiness(self) -> bool:
+        """Run the one-shot health/current readiness decision before the window is shown."""
+        if self._startup_readiness_complete:
+            return self.radio_available
+
+        self._startup_readiness_complete = True
+        if not self._qt_available:
+            self._latch_unavailable("Qt multimedia backend unavailable")
+            return False
+        if self._network is None:
+            self._latch_unavailable("radio network manager unavailable")
+            return False
+
+        loop = QEventLoop(self)
+        timeout_timer = QTimer(self)
+        timeout_timer.setSingleShot(True)
+        timeout_timer.setInterval(self.STARTUP_READINESS_TIMEOUT_MS)
+        result = {"complete": False, "success": False, "reason": "startup readiness timed out"}
+        self._startup_probe_active = True
+        self._startup_health_payload = None
+        self._startup_current_payload = None
+
+        def _finish(success: bool, reason: str) -> None:
+            if result["complete"]:
+                return
+            result["complete"] = True
+            result["success"] = bool(success)
+            result["reason"] = str(reason or "startup readiness failed")
+            if loop.isRunning():
+                loop.quit()
+
+        def _on_health(payload: dict[str, Any] | None, error_text: str) -> None:
+            if error_text or payload is None or not self._is_valid_health_payload(payload):
+                _finish(False, error_text or "invalid health response")
+                return
+            self._startup_health_payload = payload
+            if self._startup_current_payload is not None:
+                _finish(True, "startup readiness passed")
+
+        def _on_current(payload: dict[str, Any] | None, error_text: str) -> None:
+            if error_text or payload is None or not self._is_valid_current_payload(payload):
+                _finish(False, error_text or "invalid current-track response")
+                return
+            self._startup_current_payload = payload
+            if self._startup_health_payload is not None:
+                _finish(True, "startup readiness passed")
+
+        timeout_timer.timeout.connect(lambda: _finish(False, "startup readiness timed out"))
+        try:
+            self._request_json(self.HEALTH_ENDPOINT, _on_health)
+            self._request_json(self.CURRENT_ENDPOINT, _on_current)
+            timeout_timer.start()
+            if not result["complete"]:
+                loop.exec()
+        except Exception as exc:
+            _finish(False, f"startup readiness request failed: {exc}")
+        timeout_timer.stop()
+        self._startup_probe_active = False
+
+        if not result["success"]:
+            self._startup_failure_reason = str(result["reason"])
+            self._latch_unavailable(self._startup_failure_reason)
+            return False
+
+        self._radio_available = True
+        self._service_available = True
+        self._service_known = True
+        try:
+            self._initialize_runtime()
+        except Exception as exc:
+            self._log_error_throttled("media_init", f"media init failed: {exc}")
+            self._latch_unavailable("Qt multimedia backend failed to initialize")
+            return False
+
+        self._status_text = "Radio service healthy."
+        current_payload = self._startup_current_payload
+        if current_payload is not None:
+            self._handle_current_response(current_payload, "")
+        self._set_runtime_timers_active(True)
+        self._emit_state()
+        return True
+
+    @staticmethod
+    def _is_valid_health_payload(payload: dict[str, Any]) -> bool:
+        return bool(payload.get("ok"))
+
+    @staticmethod
+    def _is_valid_current_payload(payload: dict[str, Any]) -> bool:
+        return bool(payload.get("ok")) and isinstance(payload.get("data"), dict)
+
+    def _initialize_runtime(self) -> None:
+        self._health_timer = QTimer(self)
+        self._health_timer.setInterval(self.HEALTH_INTERVAL_MS)
+        self._health_timer.timeout.connect(self._poll_health)
+
+        self._current_timer = QTimer(self)
+        self._current_timer.setInterval(self.CURRENT_INTERVAL_MS)
+        self._current_timer.timeout.connect(self._poll_current)
+        self._reconnect_timer = QTimer(self)
+        self._reconnect_timer.setSingleShot(True)
+        self._reconnect_timer.timeout.connect(self._attempt_reconnect)
+        self._watchdog_timer = QTimer(self)
+        self._watchdog_timer.setInterval(self.WATCHDOG_INTERVAL_MS)
+        self._watchdog_timer.timeout.connect(self._watchdog_tick)
+        self._channel_fade_out = QVariantAnimation(self)
+        self._channel_fade_out.setDuration(self.CHANNEL_SWITCH_FADE_OUT_MS)
+        self._channel_fade_out.setStartValue(1.0)
+        self._channel_fade_out.setEndValue(0.0)
+        self._channel_fade_out.valueChanged.connect(self._on_fade_animation_value)
+        self._channel_fade_out.finished.connect(self._on_channel_fade_out_finished)
+
+        self._channel_fade_in = QVariantAnimation(self)
+        self._channel_fade_in.setDuration(self.CHANNEL_SWITCH_FADE_IN_MS)
+        self._channel_fade_in.setStartValue(0.0)
+        self._channel_fade_in.setEndValue(1.0)
+        self._channel_fade_in.valueChanged.connect(self._on_fade_animation_value)
+        self._channel_fade_in.finished.connect(self._on_channel_fade_in_finished)
+
+        if QAudioOutput is None or QMediaPlayer is None:
+            raise RuntimeError("Qt multimedia classes unavailable")
+        self._audio_output = QAudioOutput(self)
+        self._player = QMediaPlayer(self)
+        self._player.setAudioOutput(self._audio_output)
+        self._apply_audio_output_volume()
+        self._player.playbackStateChanged.connect(self._on_playback_state_changed)
+        self._player.errorOccurred.connect(self._on_media_error)
+        self._player.mediaStatusChanged.connect(self._on_media_status_changed)
+
     def state_snapshot(self) -> dict[str, Any]:
         selected_channel = self.normalize_channel(self._channel)
         active_channel = self.normalize_channel(self._active_channel)
         resolved_channel = self.normalize_channel(self._resolved_channel or active_channel or selected_channel)
         return {
             "qt_available": self._qt_available,
+            "radio_available": self.radio_available,
+            "radio_latched_off": self._radio_latched_off,
+            "startup_readiness_complete": self._startup_readiness_complete,
             "service_available": self._service_available,
             "service_known": self._service_known,
             "enabled": self._enabled,
@@ -279,7 +381,7 @@ class RadioController(QObject):
         self.state_changed.emit(dict(self.state_snapshot()))
 
     def _connection_state_value(self) -> str:
-        if not self._qt_available:
+        if not self.radio_available:
             return "unavailable"
         if self._is_reconnecting():
             return "reconnecting"
@@ -307,6 +409,11 @@ class RadioController(QObject):
 
     def set_enabled(self, enabled: bool, *, start_when_enabled: bool = False) -> None:
         enabled = bool(enabled)
+        if not self.radio_available:
+            self._enabled = False
+            self._desired_playing = False
+            self._emit_state()
+            return
         changed = enabled != self._enabled
         self._enabled = enabled
 
@@ -371,6 +478,10 @@ class RadioController(QObject):
         self._emit_state()
 
     def fetch_channels(self, callback: Any) -> None:
+        if not self.radio_available:
+            callback(None, "radio unavailable")
+            return
+
         def _handle(payload: dict[str, Any] | None, error_text: str) -> None:
             if error_text or payload is None:
                 callback(None, error_text or "channels unavailable")
@@ -431,7 +542,7 @@ class RadioController(QObject):
             self._audio_output.setVolume(qt_volume)
 
     def request_start_when_service_ready(self) -> None:
-        if not self._qt_available:
+        if not self.radio_available:
             return
         self._start_when_service_ready = True
         if not self._runtime_timers_active:
@@ -454,9 +565,9 @@ class RadioController(QObject):
         self.start_playback()
 
     def start_playback(self) -> bool:
-        if not self._qt_available:
+        if not self.radio_available:
             self._desired_playing = False
-            self._status_text = "Radio unavailable: Qt multimedia is not available."
+            self._status_text = "Radio unavailable."
             self._emit_state()
             return False
         if not self._enabled:
@@ -491,27 +602,30 @@ class RadioController(QObject):
             self._reset_fade_gain()
             self._cancel_reconnect(reset_attempts=True)
             self._suppress_reconnect_until_s = 0.0
-            self._player.setSource(QUrl(stream_url))
-            self._player.play()
+            self._set_source_and_play(stream_url)
             self._degraded_from_playback = False
             self._status_text = f"Playing Midori AI Radio ({self._active_quality})."
             self._emit_state()
             return True
         except Exception as exc:
             self._log_error_throttled("start_playback", f"playback start failed: {exc}")
-            self._status_text = "Unable to start radio playback."
-            self._emit_state()
+            self._latch_unavailable("radio playback could not start")
             return False
 
     def stop_playback(self) -> None:
         self._desired_playing = False
         self._cancel_reconnect(reset_attempts=True)
         self._suppress_reconnect_until_s = time.monotonic() + self.RECONNECT_SUPPRESS_AFTER_STOP_S
-        if self._player is not None:
-            try:
-                self._player.stop()
-            except Exception:
-                pass
+        self._intentional_stop = True
+        try:
+            if self._player is not None:
+                try:
+                    self._player.stop()
+                except Exception:
+                    pass
+            self._clear_player_source()
+        finally:
+            self._intentional_stop = False
         self._stop_channel_fades()
         self._reset_fade_gain()
         self._is_playing = False
@@ -551,9 +665,13 @@ class RadioController(QObject):
         return url
 
     def _poll_health(self) -> None:
+        if not self.radio_available:
+            return
         self._request_json(self.HEALTH_ENDPOINT, self._handle_health_response)
 
     def _poll_current(self) -> None:
+        if not self.radio_available:
+            return
         self._request_json(
             self.CURRENT_ENDPOINT,
             self._handle_current_response,
@@ -605,6 +723,8 @@ class RadioController(QObject):
     ) -> None:
         if not self._qt_available or self._network is None:
             return
+        if not self.radio_available and not self._startup_probe_active:
+            return
         url = self._build_json_url(
             endpoint,
             include_channel=include_channel,
@@ -614,13 +734,16 @@ class RadioController(QObject):
         request.setRawHeader(b"Accept", b"application/json")
         request.setRawHeader(b"User-Agent", b"midori-ai-agents-runner-radio")
         reply = self._network.get(request)
+        request_generation = self._request_generation
+        self._pending_replies.add(reply)
 
         def _finish() -> None:
-            self._on_json_reply(reply, endpoint, callback)
+            self._pending_replies.discard(reply)
+            self._on_json_reply(reply, endpoint, callback, request_generation)
 
         reply.finished.connect(_finish)
 
-    def _on_json_reply(self, reply: QNetworkReply, endpoint: str, callback: Any) -> None:
+    def _on_json_reply(self, reply: QNetworkReply, endpoint: str, callback: Any, request_generation: int) -> None:
         payload: dict[str, Any] | None = None
         error_text = ""
         is_error = False
@@ -649,6 +772,9 @@ class RadioController(QObject):
         finally:
             reply.deleteLater()
 
+        if request_generation != self._request_generation:
+            return
+
         if is_error:
             self._log_error_throttled(endpoint, f"{endpoint} failed: {error_text}")
             callback(None, error_text)
@@ -661,8 +787,8 @@ class RadioController(QObject):
         payload: dict[str, Any] | None,
         error_text: str,
     ) -> None:
-        if error_text or payload is None:
-            self._set_service_available(False, reason=error_text or "health unavailable")
+        if error_text or payload is None or not self._is_valid_health_payload(payload):
+            self._latch_unavailable(error_text or "health unavailable")
             return
 
         self._set_service_available(True, reason="health ready")
@@ -672,17 +798,13 @@ class RadioController(QObject):
         payload: dict[str, Any] | None,
         error_text: str,
     ) -> None:
-        if error_text or payload is None:
-            self._set_service_available(False, reason=error_text or "current track unavailable")
-            self._current_track_title = ""
-            self._emit_state()
+        if error_text or payload is None or not self._is_valid_current_payload(payload):
+            self._latch_unavailable(error_text or "current track unavailable")
             return
 
         data = payload.get("data")
         if not isinstance(data, dict):
-            self._set_service_available(False, reason="current payload missing data")
-            self._current_track_title = ""
-            self._emit_state()
+            self._latch_unavailable("current payload missing data")
             return
 
         self._set_service_available(True, reason="current track ok")
@@ -777,15 +899,12 @@ class RadioController(QObject):
         if self._is_playing and self._service_available:
             try:
                 if self._player is not None:
-                    self._player.setSource(
-                        QUrl(
-                            self._build_stream_url(
-                                pending,
-                                channel=self._active_channel or self._channel,
-                            )
+                    self._set_source_and_play(
+                        self._build_stream_url(
+                            pending,
+                            channel=self._active_channel or self._channel,
                         )
                     )
-                    self._player.play()
             except Exception as exc:
                 self._log_error_throttled(
                     "quality_apply",
@@ -800,7 +919,59 @@ class RadioController(QObject):
             self._status_text = f"Quality queued ({pending}); will apply on next playback start."
         self._emit_state()
 
+    def _latch_unavailable(self, reason: str) -> None:
+        if self._radio_latched_off:
+            return
+
+        self._radio_latched_off = True
+        self._radio_available = False
+        self._service_available = False
+        self._service_known = True
+        self._enabled = False
+        self._desired_playing = False
+        self._start_when_service_ready = False
+        self._pending_quality = None
+        self._pending_channel = None
+        self._fade_switch_channel = None
+        self._request_generation += 1
+        self._abort_pending_replies()
+        self._set_runtime_timers_active(False)
+        self._stop_channel_fades()
+        self._cancel_reconnect(reset_attempts=True)
+        self._intentional_stop = True
+        try:
+            if self._player is not None:
+                self._player.stop()
+        except Exception:
+            pass
+        self._clear_player_source()
+        self._intentional_stop = False
+        self._is_playing = False
+        self._degraded_from_playback = False
+        self._current_track_title = ""
+        self._last_track_title = ""
+        self._current_track_id = ""
+        self._art_data = {}
+        self._status_text = "Radio unavailable."
+        self._log_error_throttled("service_latched", str(reason or "radio unavailable"))
+        self._emit_state()
+
+    def _abort_pending_replies(self) -> None:
+        replies = tuple(self._pending_replies)
+        self._pending_replies.clear()
+        for reply in replies:
+            try:
+                reply.abort()
+            except Exception:
+                pass
+            try:
+                reply.deleteLater()
+            except Exception:
+                pass
+
     def _set_service_available(self, available: bool, *, reason: str) -> None:
+        if not self.radio_available:
+            return
         available = bool(available)
         previous = self._service_available
         self._service_available = available
@@ -815,15 +986,8 @@ class RadioController(QObject):
                 self.start_playback()
                 return
         else:
-            if not self._reconnect_allow_service_bypass and not self._reconnect_force_restart:
-                self._cancel_reconnect(reset_attempts=False)
-            if previous and self._is_playing and self._last_track_title:
-                self._degraded_from_playback = True
-            if self._is_playing:
-                self._status_text = "Radio unavailable. Playback may degrade until service recovery."
-            else:
-                self._status_text = "Radio service unavailable."
-            self._log_error_throttled("service", reason)
+            self._latch_unavailable(reason)
+            return
 
         if available and (not self._enabled) and self._runtime_timers_active:
             self._set_runtime_timers_active(False)
@@ -832,6 +996,8 @@ class RadioController(QObject):
 
     def _on_playback_state_changed(self, state: Any) -> None:
         if QMediaPlayer is None:
+            return
+        if not self.radio_available:
             return
         playing_state = QMediaPlayer.PlaybackState.PlayingState
         is_playing_now = bool(state == playing_state)
@@ -851,25 +1017,29 @@ class RadioController(QObject):
             if self._is_playing:
                 return
         if self._enabled and self._desired_playing:
-            self._queue_reconnect(
-                "playback state stopped",
-                allow_without_service=True,
-            )
+            self._latch_unavailable("playback stopped unexpectedly")
+            return
         self._emit_state()
 
     def _on_media_error(self, _error: Any, error_string: str) -> None:
+        if not self.radio_available:
+            return
+        if self._intentional_stop or (not self._desired_playing and not self._is_playing):
+            return
         text = str(error_string or "media playback error")
         self._log_error_throttled("media_error", text)
-        self._status_text = "Radio playback error. Attempting to recover..."
-        self._queue_reconnect(
-            "media error",
-            allow_without_service=True,
-            force_restart=True,
-        )
-        self._emit_state()
+        self._latch_unavailable(text)
 
     def _on_media_status_changed(self, status: Any) -> None:
         if QMediaPlayer is None:
+            return
+        if not self.radio_available:
+            return
+        if self._intentional_stop:
+            return
+        if not self._desired_playing and not self._is_playing:
+            return
+        if self._source_change_in_progress:
             return
 
         media_status = self._coerce_media_status(status)
@@ -880,13 +1050,7 @@ class RadioController(QObject):
         if self._reconnect_in_progress and self._is_restart_media_status(media_status):
             return
         if self._is_restart_media_status(media_status):
-            self._queue_reconnect(
-                f"media status {status_name}",
-                allow_without_service=True,
-                force_restart=True,
-                immediate=True,
-            )
-            self._emit_state()
+            self._latch_unavailable(f"media status {status_name}")
 
     def _coerce_media_status(self, status: Any) -> Any | None:
         if QMediaPlayer is None:
@@ -1001,6 +1165,8 @@ class RadioController(QObject):
         force_restart: bool = False,
         immediate: bool = False,
     ) -> None:
+        if not self.radio_available:
+            return
         blocker_reason = self._auto_reconnect_blocker_reason(
             allow_without_service=allow_without_service,
             force_restart=force_restart,
@@ -1031,6 +1197,8 @@ class RadioController(QObject):
         return int(self.RECONNECT_DELAYS_MS[min(attempt_idx, max_idx)])
 
     def _attempt_reconnect(self) -> None:
+        if not self.radio_available:
+            return
         allow_without_service = bool(self._reconnect_allow_service_bypass)
         force_restart = bool(self._reconnect_force_restart)
         blocker_reason = self._auto_reconnect_blocker_reason(
@@ -1056,34 +1224,31 @@ class RadioController(QObject):
         try:
             self._reset_fade_gain()
             if force_restart:
+                self._intentional_stop = True
                 try:
-                    self._player.stop()
-                except Exception:
-                    pass
+                    try:
+                        self._player.stop()
+                    except Exception:
+                        pass
+                    try:
+                        self._player.setSource(QUrl())
+                    except Exception:
+                        pass
+                finally:
+                    self._intentional_stop = False
                 self._is_playing = False
-                try:
-                    self._player.setSource(QUrl())
-                except Exception:
-                    pass
-            self._player.setSource(
-                QUrl(
-                    self._build_stream_url(
-                        quality_to_use,
-                        channel=channel_to_use,
-                    )
+            self._set_source_and_play(
+                self._build_stream_url(
+                    quality_to_use,
+                    channel=channel_to_use,
                 )
             )
-            self._player.play()
         except Exception as exc:
             self._log_error_throttled(
                 "reconnect",
                 f"reconnect failed ({quality_to_use}): {exc}",
             )
-            self._queue_reconnect(
-                "reconnect exception",
-                allow_without_service=allow_without_service,
-                force_restart=force_restart,
-            )
+            self._latch_unavailable("radio reconnect failed")
         finally:
             self._reconnect_in_progress = False
 
@@ -1100,7 +1265,7 @@ class RadioController(QObject):
             self._reconnect_force_restart = False
 
     def _watchdog_tick(self) -> None:
-        if not self._qt_available or self._player is None:
+        if not self.radio_available or self._player is None:
             return
         if not self._enabled or not self._desired_playing:
             return
@@ -1114,25 +1279,13 @@ class RadioController(QObject):
             return
 
         if not self._is_playing:
-            self._queue_reconnect(
-                "watchdog detected stalled playback",
-                allow_without_service=True,
-                force_restart=True,
-                immediate=True,
-            )
-            self._emit_state()
+            self._latch_unavailable("watchdog detected stalled playback")
             return
 
         media_status = self._coerce_media_status(self._player.mediaStatus())
         if self._is_restart_media_status(media_status):
             status_name = self._media_status_name(media_status)
-            self._queue_reconnect(
-                f"watchdog media status {status_name}",
-                allow_without_service=True,
-                force_restart=True,
-                immediate=True,
-            )
-            self._emit_state()
+            self._latch_unavailable(f"watchdog media status {status_name}")
             return
 
         if self._is_stuck_watchdog_status(media_status):
@@ -1141,13 +1294,7 @@ class RadioController(QObject):
             stuck_for_s = now - self._stuck_status_since_s
             if stuck_for_s >= self.WATCHDOG_STUCK_STATUS_RESTART_AFTER_S:
                 status_name = self._media_status_name(media_status)
-                self._queue_reconnect(
-                    f"watchdog stuck media status {status_name}",
-                    allow_without_service=True,
-                    force_restart=True,
-                    immediate=True,
-                )
-                self._emit_state()
+                self._latch_unavailable(f"watchdog stuck media status {status_name}")
         else:
             self._stuck_status_since_s = None
 
@@ -1217,6 +1364,8 @@ class RadioController(QObject):
         self._apply_audio_output_volume()
 
     def _on_channel_fade_out_finished(self) -> None:
+        if not self.radio_available:
+            return
         pending_channel = self.normalize_channel(self._fade_switch_channel or self._channel)
         self._fade_switch_channel = None
         self._pending_channel = None
@@ -1231,15 +1380,12 @@ class RadioController(QObject):
             return
 
         try:
-            self._player.setSource(
-                QUrl(
-                    self._build_stream_url(
-                        quality_to_use,
-                        channel=pending_channel,
-                    )
+            self._set_source_and_play(
+                self._build_stream_url(
+                    quality_to_use,
+                    channel=pending_channel,
                 )
             )
-            self._player.play()
         except Exception as exc:
             self._log_error_throttled(
                 "channel_switch",
@@ -1261,6 +1407,8 @@ class RadioController(QObject):
             self._fallback_restart_for_channel_switch()
 
     def _on_channel_fade_in_finished(self) -> None:
+        if not self.radio_available:
+            return
         self._reset_fade_gain()
         self._emit_state()
 
@@ -1298,12 +1446,27 @@ class RadioController(QObject):
                 timer.stop()
 
     def _poll_runtime_state_soon(self) -> None:
-        if not self._qt_available:
+        if not self.radio_available:
             return
         if self._network is None:
             return
         QTimer.singleShot(0, self._poll_health)
         QTimer.singleShot(0, self._poll_current)
+
+    def _set_source_and_play(self, stream_url: str) -> None:
+        if not self.radio_available:
+            raise RuntimeError("radio is unavailable")
+        if self._player is None:
+            raise RuntimeError("radio player is not ready")
+        previous_transition = self._source_change_in_progress
+        self._source_change_in_progress = True
+        try:
+            self._player.setSource(QUrl(stream_url))
+            if not self.radio_available:
+                raise RuntimeError("radio became unavailable")
+            self._player.play()
+        finally:
+            self._source_change_in_progress = previous_transition
 
     def _clear_player_source(self) -> None:
         if self._player is None:

@@ -66,6 +66,7 @@ from agents_runner.cli import get_opencode_cli_overrides
 from agents_runner.ui.dialogs.theme_preview_dialog import ThemePreviewDialog
 from agents_runner.ui.graphics import available_ui_theme_names
 from agents_runner.ui.graphics import normalize_ui_theme_name
+from agents_runner.ui.graphics import theme_name_for_agent
 from agents_runner.ui.widgets import EdgeFadeScrollArea
 from agents_runner.ui.widgets import ArcSpinner
 from agents_runner.ui.widgets.artifact_highlighter import ArtifactSyntaxHighlighter
@@ -1212,14 +1213,20 @@ class SettingsFormMixin:
 
     def _refresh_theme_options(self, selected: str | None) -> None:
         normalized_selected = normalize_ui_theme_name(selected, allow_auto=True)
+        theme_names = available_ui_theme_names()
+        if not bool(getattr(self, "_radio_supported", True)):
+            theme_names = [name for name in theme_names if name != "dynamic"]
 
         with QSignalBlocker(self._ui_theme):
             self._ui_theme.clear()
             self._ui_theme.addItem("Auto (sync to active agent)", "auto")
-            for theme_name in available_ui_theme_names():
+            for theme_name in theme_names:
                 self._ui_theme.addItem(self._format_theme_label(theme_name), theme_name)
-            self._set_combo_value(self._ui_theme, normalized_selected, fallback="auto")
-        self._refresh_theme_preview_tiles(selected=normalized_selected)
+            selection = normalized_selected
+            if selection == "dynamic" and "dynamic" not in theme_names:
+                selection = "auto"
+            self._set_combo_value(self._ui_theme, selection, fallback="auto")
+        self._refresh_theme_preview_tiles(selected=selection)
 
     def _refresh_theme_preview_tiles(self, selected: str | None) -> None:
         if self._theme_preview_grid is None:
@@ -1227,6 +1234,8 @@ class SettingsFormMixin:
 
         normalized_selected = normalize_ui_theme_name(selected, allow_auto=True)
         theme_names = [name for name in available_ui_theme_names() if str(name).strip()]
+        if not bool(getattr(self, "_radio_supported", True)):
+            theme_names = [name for name in theme_names if name != "dynamic"]
         if theme_names != self._theme_preview_order:
             self._rebuild_theme_preview_tiles(theme_names)
 
@@ -1269,6 +1278,8 @@ class SettingsFormMixin:
         self._theme_preview_grid.setRowStretch(trailing_row, 1)
 
     def _on_theme_combo_changed(self, _index: int) -> None:
+        self._deferred_ui_theme = None
+        self._theme_user_changed = True
         theme_value = normalize_ui_theme_name(
             str(self._ui_theme.currentData() or "auto"),
             allow_auto=True,
@@ -1527,6 +1538,17 @@ class SettingsFormMixin:
             )
             self._refresh_task_workspace_controls()
             theme_value = normalize_ui_theme_name(settings.get("ui_theme"), allow_auto=True)
+            self._theme_user_changed = False
+            self._deferred_ui_theme = None
+            if not bool(getattr(self, "_radio_supported", True)) and theme_value == "dynamic":
+                self._deferred_ui_theme = "dynamic"
+                fallback_theme = normalize_ui_theme_name(
+                    theme_name_for_agent(str(settings.get("use") or "codex")),
+                    allow_auto=False,
+                )
+                if fallback_theme == "dynamic":
+                    fallback_theme = "midoriai_dark"
+                theme_value = fallback_theme
             self._refresh_theme_options(selected=theme_value)
             self._popup_theme_animation_enabled.setChecked(bool(settings.get("popup_theme_animation_enabled", True)))
 
@@ -1648,6 +1670,9 @@ class SettingsFormMixin:
         requests_per_second = int(self._github_requests_per_second.value())
         pr_retry_interval = int(self._github_pr_retry_interval_minutes.value())
         pr_retry_max = int(self._github_pr_retry_max_minutes.value())
+        selected_ui_theme = normalize_ui_theme_name(str(self._ui_theme.currentData() or "auto"), allow_auto=True)
+        if self._deferred_ui_theme and not self._theme_user_changed:
+            selected_ui_theme = self._deferred_ui_theme
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
@@ -1655,7 +1680,7 @@ class SettingsFormMixin:
                 str(self._opencode_interactive_mode.currentData() or "terminal")
             ),
             "interactive_terminal_id": str(self._interactive_terminal.currentData() or ""),
-            "ui_theme": normalize_ui_theme_name(str(self._ui_theme.currentData() or "auto"), allow_auto=True),
+            "ui_theme": selected_ui_theme,
             "popup_theme_animation_enabled": bool(self._popup_theme_animation_enabled.isChecked()),
             "preflight_enabled": bool(self._preflight_enabled.isChecked()),
             "preflight_script": str(self._preflight_script.toPlainText() or ""),

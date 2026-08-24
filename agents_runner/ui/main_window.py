@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
 
 from PySide6.QtNetwork import QNetworkAccessManager
+from PySide6.QtNetwork import QNetworkReply
 
 from agents_runner.environments import Environment
 from agents_runner.persistence import default_state_path
@@ -170,6 +171,8 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._active_art_channel: str = ""
         self._active_art_url: str = ""
         self._has_dynamic_spec: bool = False
+        self._active_art_replies: set[QNetworkReply] = set()
+        self._radio_ui_generation = 0
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(450)
@@ -210,6 +213,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._recovery_ticker.start()
 
         self._radio_controller = RadioController(self)
+        self._radio_controller.await_startup_readiness()
         self._art_network = QNetworkAccessManager(self)
 
         self._root = GlassRoot()
@@ -254,7 +258,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         top_layout.addWidget(self._btn_settings)
         top_layout.addStretch(1)
         self._radio_control = RadioControlWidget(top)
-        self._radio_control.setVisible(self._radio_controller.qt_available)
+        self._radio_control.setVisible(self._radio_controller.radio_available)
         top_layout.addWidget(
             self._radio_control,
             0,
@@ -291,7 +295,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._envs_page.test_preflight_requested.connect(
             self._on_environment_test_preflight, Qt.ConnectionType.QueuedConnection
         )
-        self._settings = SettingsPage(radio_supported=self._radio_controller.qt_available)
+        self._settings = SettingsPage(radio_supported=self._radio_controller.radio_available)
         self._settings.back_requested.connect(self._show_dashboard)
         self._settings.saved.connect(self._apply_settings, Qt.ConnectionType.QueuedConnection)
         self._settings.test_preflight_requested.connect(
@@ -380,7 +384,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._settings_data["radio_loudness_boost_enabled"] = loudness_boost_enabled
         self._settings_data["radio_loudness_boost_factor"] = loudness_boost_factor
 
-        if not self._radio_controller.qt_available:
+        if not self._radio_controller.radio_available:
             self._update_window_title_from_radio_state(self._radio_controller.state_snapshot())
             return
 
@@ -406,7 +410,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             self._radio_controller.cancel_start_when_service_ready()
 
     def _on_radio_control_play_requested(self) -> None:
-        if not self._radio_controller.qt_available:
+        if not self._radio_controller.radio_available:
             return
 
         snapshot = self._radio_controller.state_snapshot()
@@ -438,9 +442,9 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
 
     def _on_radio_state_changed(self, state: object) -> None:
         snapshot = dict(state) if isinstance(state, dict) else self._radio_controller.state_snapshot()  # pyright: ignore[reportUnknownVariableType]
-        qt_available = bool(snapshot.get("qt_available"))
-        self._radio_control.setVisible(qt_available)
-        if qt_available:
+        radio_available = bool(snapshot.get("radio_available")) and self._radio_controller.radio_available
+        self._radio_control.setVisible(radio_available)
+        if radio_available:
             self._radio_control.set_service_available(bool(snapshot.get("service_available")))
             self._radio_control.set_desired_playing(bool(snapshot.get("desired_playing")))
             self._radio_control.set_playing(bool(snapshot.get("is_playing")))
@@ -453,8 +457,53 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             self._radio_control.set_volume(volume_value)
             self._radio_control.set_status_tooltip(str(snapshot.get("status_text") or ""))
 
+        if not radio_available:
+            self._disable_radio_ui()
+            return
+
         self._update_window_title_from_radio_state(snapshot)
         self._update_dynamic_theme_from_radio(snapshot)
+
+    def _disable_radio_ui(self) -> None:
+        self._radio_ui_generation += 1
+        self._abort_active_art_requests()
+        self._radio_control.hide()
+        preserve_dynamic_theme = normalize_ui_theme_name(
+            self._settings_data.get("ui_theme"),
+            allow_auto=False,
+        ) == "dynamic"
+        self._settings.set_radio_supported(
+            False,
+            preserve_dynamic_theme=preserve_dynamic_theme,
+        )
+        if self._settings.isVisible() and self._settings.active_pane_key() == "radio":
+            self._settings.navigate_to_pane("general_preferences")
+        if self._has_dynamic_spec:
+            reset_dynamic_state()
+        set_dynamic_art_spec(None, "")
+        self._has_dynamic_spec = False
+        self._active_art_channel = ""
+        self._active_art_url = ""
+        try:
+            env = self._environments.get(self._active_environment_id())
+            agent_cli, _, _ = self._effective_agent_and_config(env=env)
+            self._root.set_agent_theme(agent_cli)
+        except Exception:
+            pass
+        self.setWindowTitle(self._active_environment_window_title())
+
+    def _abort_active_art_requests(self) -> None:
+        replies = tuple(self._active_art_replies)
+        self._active_art_replies.clear()
+        for reply in replies:
+            try:
+                reply.abort()
+            except Exception:
+                pass
+            try:
+                reply.deleteLater()
+            except Exception:
+                pass
 
     def _update_dynamic_theme_from_radio(self, state: dict[str, Any]) -> None:
         ui_theme = normalize_ui_theme_name(self._settings_data.get("ui_theme"), allow_auto=False)
@@ -492,8 +541,11 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._active_art_channel = art_channel
         self._active_art_url = art_url
         style = hash_to_style(track_title) if track_title else "blobs"
+        art_generation = self._radio_ui_generation
 
         def _on_art_downloaded(image: QImage | None) -> None:
+            if art_generation != self._radio_ui_generation or not self._radio_controller.radio_available:
+                return
             if image is None or image.isNull():
                 set_dynamic_art_spec(None, "")
                 return
@@ -502,11 +554,18 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             set_dynamic_art_spec(spec, style)
             self._has_dynamic_spec = True
 
-        download_art(art_url, self._art_network, _on_art_downloaded)
+        reply = download_art(art_url, self._art_network, _on_art_downloaded)
+        if reply is not None:
+            self._active_art_replies.add(reply)
+
+            def _remove_reply() -> None:
+                self._active_art_replies.discard(reply)
+
+            reply.finished.connect(_remove_reply)
 
     def _update_window_title_from_radio_state(self, state: dict[str, Any]) -> None:
-        if not bool(state.get("qt_available")):
-            self.setWindowTitle(APP_TITLE)
+        if not bool(state.get("radio_available")):
+            self.setWindowTitle(self._active_environment_window_title())
             return
 
         if (not bool(state.get("enabled"))) and (not bool(state.get("is_playing"))):
@@ -542,7 +601,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
 
     def _refresh_radio_channel_options(self, *, disable_on_failure: bool) -> None:
         selected_channel = RadioController.normalize_channel(self._settings_data.get("radio_channel"))
-        if not self._radio_controller.qt_available:
+        if not self._radio_controller.radio_available:
             self._settings.set_radio_channel_options(
                 self._radio_channel_options,
                 selected=selected_channel,

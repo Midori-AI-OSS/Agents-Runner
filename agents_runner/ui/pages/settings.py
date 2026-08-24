@@ -54,6 +54,8 @@ class SettingsPage(QWidget, SettingsFormMixin):
         super().__init__(parent)
         self.setObjectName("SettingsPageRoot")
         self._radio_supported = bool(radio_supported)
+        self._deferred_ui_theme: str | None = None
+        self._theme_user_changed = False
 
         self._state_path = default_state_path()
 
@@ -149,6 +151,44 @@ class SettingsPage(QWidget, SettingsFormMixin):
             self._set_current_pane(first_key, animate=False)
 
         self._update_navigation_mode()
+
+    def active_pane_key(self) -> str:
+        return str(self._active_pane_key or "")
+
+    def navigate_to_pane(self, key: str) -> None:
+        self._navigate_to_pane(key, user_initiated=False)
+
+    def set_radio_supported(self, supported: bool, *, preserve_dynamic_theme: bool = False) -> None:
+        if supported:
+            return
+
+        if preserve_dynamic_theme:
+            self._deferred_ui_theme = "dynamic"
+            self._theme_user_changed = False
+        self._radio_supported = False
+
+        if self._active_pane_key == "radio":
+            self._navigate_to_pane("general_preferences", user_initiated=False)
+
+        radio_button = self._nav_buttons.get("radio")
+        if radio_button is not None:
+            radio_button.setChecked(False)
+            radio_button.setEnabled(False)
+            radio_button.hide()
+
+        compact_index = self._compact_nav.findData("radio")
+        if compact_index >= 0:
+            with QSignalBlocker(self._compact_nav):
+                self._compact_nav.removeItem(compact_index)
+
+        radio_index = self._pane_index_by_key.get("radio")
+        if radio_index is not None:
+            radio_page = self._page_stack.widget(radio_index)
+            if radio_page is not None:
+                radio_page.hide()
+
+        selected = str(self._ui_theme.currentData() or "auto")
+        self._refresh_theme_options(selected=selected)
 
     def _connect_autosave_signals(self) -> None:
         for combo in (

@@ -20,8 +20,8 @@ def download_art(
     art_url: str,
     network: QNetworkAccessManager,
     callback: Callable[[QImage | None], None],
-) -> None:
-    """Download album art from *art_url* and pass the decoded QImage (or None) to *callback*."""
+) -> QNetworkReply:
+    """Download album art and return the reply so callers can cancel stale requests."""
     request = QNetworkRequest(QUrl(art_url))
     reply = network.get(request)
 
@@ -35,6 +35,7 @@ def download_art(
         reply.deleteLater()
 
     reply.finished.connect(_on_finished)
+    return reply
 
 
 def extract_dominant_colors(image: QImage, n: int = 4) -> list[QColor]:
