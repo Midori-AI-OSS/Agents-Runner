@@ -311,7 +311,6 @@ def _cleanup_one_task_workspace(
     data_dir: str | None,
     on_log: Callable[[str], None] | None,
 ) -> bool:
-
     # Safety check: reject symlinks to prevent symlink attacks
     if os.path.islink(task_workspace):
         msg = format_log("cleanup", "safety", "WARN", f"Refusing to remove symlink: {task_workspace}")

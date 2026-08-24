@@ -468,10 +468,13 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._radio_ui_generation += 1
         self._abort_active_art_requests()
         self._radio_control.hide()
-        preserve_dynamic_theme = normalize_ui_theme_name(
-            self._settings_data.get("ui_theme"),
-            allow_auto=False,
-        ) == "dynamic"
+        preserve_dynamic_theme = (
+            normalize_ui_theme_name(
+                self._settings_data.get("ui_theme"),
+                allow_auto=False,
+            )
+            == "dynamic"
+        )
         self._settings.set_radio_supported(
             False,
             preserve_dynamic_theme=preserve_dynamic_theme,

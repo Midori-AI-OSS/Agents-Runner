@@ -318,9 +318,7 @@ class MainWindowEnvironmentMixin(MainWindowHints):
                 ui_theme = normalize_ui_theme_name(self._settings_data.get("ui_theme"), allow_auto=True)
                 radio_controller = getattr(self, "_radio_controller", None)
                 radio_available = (
-                    True
-                    if radio_controller is None
-                    else bool(getattr(radio_controller, "radio_available", False))
+                    True if radio_controller is None else bool(getattr(radio_controller, "radio_available", False))
                 )
                 if ui_theme == "auto" or (ui_theme == "dynamic" and not radio_available):
                     self._root.set_agent_theme(agent_cli)
