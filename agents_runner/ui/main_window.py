@@ -212,6 +212,11 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
         self._recovery_ticker.timeout.connect(self._tick_recovery)
         self._recovery_ticker.start()
 
+        self._dashboard = DashboardPage(load_past_batch_callback=self._load_past_tasks_batch)
+        self._dashboard.task_selected.connect(self._open_task_details)
+        self._dashboard.clean_old_requested.connect(self._clean_old_tasks)
+        self._dashboard.task_discard_requested.connect(self._discard_task_from_ui)
+
         self._radio_controller = RadioController(self)
         self._radio_controller.await_startup_readiness()
         self._art_network = QNetworkAccessManager(self)
@@ -271,10 +276,6 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
 
         outer.addWidget(top)
 
-        self._dashboard = DashboardPage(load_past_batch_callback=self._load_past_tasks_batch)
-        self._dashboard.task_selected.connect(self._open_task_details)
-        self._dashboard.clean_old_requested.connect(self._clean_old_tasks)
-        self._dashboard.task_discard_requested.connect(self._discard_task_from_ui)
         self._new_task = NewTaskPage()
         self._new_task.requested_run.connect(self._start_task_from_ui)
         self._new_task.requested_launch.connect(self._start_interactive_task_from_ui)
