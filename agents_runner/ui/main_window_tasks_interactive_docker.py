@@ -6,7 +6,7 @@ and terminal script generation for launching interactive agent tasks.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from agents_runner.ui.main_window import MainWindow
@@ -18,6 +18,7 @@ from datetime import datetime
 from datetime import timezone
 from pathlib import Path
 
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QMessageBox
 
 from agents_runner.agent_install import probe_agent_executable_in_image
@@ -36,6 +37,7 @@ from agents_runner.docker.phase_image_builder import ensure_phase_image
 from agents_runner.environments import Environment
 from agents_runner.github_token import resolve_github_token
 from agents_runner.log_format import format_log
+from agents_runner.terminal_apps import TerminalOption
 from agents_runner.terminal_apps import launch_in_terminal
 from agents_runner.core.shell_templates import git_identity_clause
 from agents_runner.core.shell_templates import shell_log_statement
@@ -98,7 +100,7 @@ def launch_docker_terminal_task(
     install_phase_name: str,
     extra_preflight_script: str,
     stain: str | None,
-    spinner: str | None,
+    spinner: QColor | None,
     desired_base: str = "",
     skip_image_pull: bool = False,
     runtime_image_override: str | None = None,
@@ -681,7 +683,7 @@ def launch_docker_terminal_task(
             )
 
         # Launch terminal
-        launch_in_terminal(terminal_opt, host_script, cwd=host_workdir)
+        launch_in_terminal(cast(TerminalOption, terminal_opt), host_script, cwd=host_workdir)
         if opencode_web_url and opencode_web_host_port:
             schedule_open_opencode_web_url(
                 main_window=main_window,
@@ -1100,7 +1102,7 @@ def _handle_launch_error(
     task: Task,
     tmp_paths: dict[str, str],
     stain: str | None,
-    spinner: str | None,
+    spinner: QColor | None,
     error_message: str,
 ) -> None:
     """Handle launch error by cleaning up and updating task status.

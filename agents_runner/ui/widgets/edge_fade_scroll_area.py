@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QEvent, Qt
+from typing import cast
+
+from PySide6.QtCore import QEvent, QObject, Qt
 from PySide6.QtGui import QColor, QLinearGradient, QPaintEvent, QPainter
 from PySide6.QtWidgets import QScrollArea, QWidget
 
@@ -121,7 +123,7 @@ class EdgeFadeScrollArea(QScrollArea):
         ):
             self._sync_overlay_geometry()
             self._sync_edge_fades()
-        return super().eventFilter(obj, event)
+        return super().eventFilter(cast(QObject, obj), event)
 
     def _sync_overlay_geometry(self) -> None:
         self._overlay.setGeometry(self.viewport().rect())

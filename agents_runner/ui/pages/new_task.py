@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from PySide6.QtCore import QEasingCurve
 from PySide6.QtCore import QParallelAnimationGroup
@@ -426,7 +426,7 @@ class NewTaskPage(QWidget):
             except (RuntimeError, TypeError):
                 pass  # Already disconnected
         self._run_interactive.clicked.connect(new_slot)
-        self._current_interactive_slot = new_slot
+        self._current_interactive_slot = cast(Callable[..., Any], new_slot)
 
     def _sync_interactive_options(self) -> None:
         env_id = self._active_env_id

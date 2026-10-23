@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any, cast
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QProcess
@@ -506,7 +507,7 @@ class TaskDetailsPage(QWidget):
         if proc is None:
             return
         try:
-            chunk = bytes(proc.readAllStandardOutput()).decode("utf-8", errors="replace")
+            chunk = bytes(cast(Any, proc.readAllStandardOutput())).decode("utf-8", errors="replace")
         except Exception:
             return
 
