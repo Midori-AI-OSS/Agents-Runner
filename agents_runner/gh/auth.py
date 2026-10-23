@@ -170,6 +170,8 @@ def _advance_shared_cache_generation(path: str) -> None:
 def _snapshot_from_shared_row(row: tuple[object, ...]) -> GhAuthSnapshot | None:
     try:
         authenticated, login, error_value, expires_at_epoch = row
+        if not isinstance(expires_at_epoch, (int, float)) or isinstance(expires_at_epoch, bool):
+            return None
         remaining_s = float(expires_at_epoch) - time.time()
         if remaining_s <= 0.0:
             return None
