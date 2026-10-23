@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import threading
-    from PySide6.QtCore import QThread, QTimer, Signal
+    from PySide6.QtCore import QObject, QThread, QTimer, Signal
     from PySide6.QtWidgets import (
         QCheckBox,
         QComboBox,
@@ -302,7 +302,7 @@ else:
 
 if TYPE_CHECKING:
 
-    class EnvironmentsPageHints(QWidget):
+    class EnvironmentsPageHints(QObject):
         _environments: dict[str, Environment]
         _current_env_id: str | None
         _settings_data: dict[str, Any]
@@ -398,7 +398,7 @@ else:
 
 if TYPE_CHECKING:
 
-    class SettingsPageHints(QWidget):
+    class SettingsPageHints(QObject):
         _github_poll_interval_s: QSpinBox
         _github_poll_rate_warning_label: QLabel
         _github_polling_enabled: QCheckBox
