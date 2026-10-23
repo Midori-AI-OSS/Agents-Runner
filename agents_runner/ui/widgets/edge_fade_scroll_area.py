@@ -82,7 +82,7 @@ class EdgeFadeScrollArea(QScrollArea):
         self._fade_alpha = max(0, min(255, int(fade_alpha)))
 
         self.setWidgetResizable(True)
-        self.setFrameShape(QScrollArea.NoFrame)
+        self.setFrameShape(QScrollArea.Shape.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 

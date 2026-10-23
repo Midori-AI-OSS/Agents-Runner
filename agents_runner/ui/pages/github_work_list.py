@@ -57,7 +57,7 @@ class _GitHubWorkRow(QWidget):
         self.setProperty("stain", "slate")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(56)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
@@ -72,7 +72,7 @@ class _GitHubWorkRow(QWidget):
 
         self._actions_host = QWidget(self)
         self._actions_host.setFixedWidth(self._ACTION_PANEL_WIDTH)
-        self._actions_host.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Expanding)
+        self._actions_host.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self._actions_panel = QWidget(self._actions_host)
         actions_layout = QHBoxLayout(self._actions_panel)
         actions_layout.setContentsMargins(0, 0, 0, 0)
@@ -223,7 +223,7 @@ class _GitHubWorkSkeletonRow(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setProperty("stain", "slate")
         self.setFixedHeight(56)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
@@ -312,7 +312,7 @@ class GitHubWorkListPage(QWidget):
 
         self._scroll = QScrollArea()
         self._scroll.setWidgetResizable(True)
-        self._scroll.setFrameShape(QScrollArea.NoFrame)
+        self._scroll.setFrameShape(QScrollArea.Shape.NoFrame)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._scroll.setObjectName("TaskScroll")
 

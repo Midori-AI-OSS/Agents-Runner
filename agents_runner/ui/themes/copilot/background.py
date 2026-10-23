@@ -69,7 +69,7 @@ def copilot_font_metrics(
 ) -> tuple[QFont, QFontMetricsF, float, float]:
     """Get or compute font metrics for Copilot theme code rendering."""
     if font_cache is None or metrics_cache is None:
-        font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+        font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         font.setStyleHint(QFont.StyleHint.Monospace)
         font.setPixelSize(12 if rect.height() >= 920 else 11)
         metrics = QFontMetricsF(font)

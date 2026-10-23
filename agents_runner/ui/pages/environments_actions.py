@@ -98,10 +98,10 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
             self,
             "Delete environment",
             f"Delete environment '{env.name}'?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
-        if confirm != QMessageBox.Yes:
+        if confirm != QMessageBox.StandardButton.Yes:
             return
         delete_environment(env.env_id)
         self.updated.emit("")

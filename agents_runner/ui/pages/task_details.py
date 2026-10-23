@@ -81,7 +81,7 @@ class TaskDetailsPage(QWidget):
         self._review.setText("Review")
         self._review.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._review.setMenu(self._review_menu)
-        self._review.setPopupMode(QToolButton.InstantPopup)
+        self._review.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self._review.setVisible(False)
 
         self._desktop_btn = QToolButton()
