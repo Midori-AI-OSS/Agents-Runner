@@ -6,6 +6,7 @@ import subprocess
 import threading
 import time
 
+from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
@@ -16,7 +17,7 @@ from agents_runner.gh.errors import GhManagementError
 
 
 @pytest.fixture(autouse=True)
-def _reset_auth_cache() -> None:
+def _reset_auth_cache() -> Generator[None, None, None]:
     auth.reset_gh_auth_cache()
     yield
     auth.reset_gh_auth_cache()
