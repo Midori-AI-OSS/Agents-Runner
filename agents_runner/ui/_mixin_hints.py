@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import threading
-    from PySide6.QtCore import QObject, QThread, QTimer, Signal
+    from PySide6.QtCore import QThread, QTimer, Signal
     from PySide6.QtWidgets import (
         QCheckBox,
         QComboBox,
@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         QStackedWidget,
         QToolButton,
         QVBoxLayout,
+        QWidget,
     )
     from agents_runner.core.agent.watch_state import AgentWatchState
     from agents_runner.environments import Environment
@@ -44,7 +45,7 @@ if TYPE_CHECKING:
 
 if TYPE_CHECKING:
 
-    class MainWindowHints(QObject):
+    class MainWindowHints(QWidget):
         _settings_data: dict[str, Any]
         _environments: dict[str, Environment]
         _syncing_environment: bool
@@ -87,7 +88,7 @@ if TYPE_CHECKING:
         _envs_page: EnvironmentsPage
         _settings: SettingsPage
         _tasks_page: TasksPage
-        _stack: QStackedWidget
+        _stack: QWidget
         _agent_selection_round_robin_cursor: dict[str, int]
         _fork_notice_seen: set[str]
         _auto_review_task_to_item_key: dict[str, str]
@@ -301,7 +302,7 @@ else:
 
 if TYPE_CHECKING:
 
-    class EnvironmentsPageHints(QObject):
+    class EnvironmentsPageHints(QWidget):
         _environments: dict[str, Environment]
         _current_env_id: str | None
         _settings_data: dict[str, Any]
@@ -397,7 +398,7 @@ else:
 
 if TYPE_CHECKING:
 
-    class SettingsPageHints(QObject):
+    class SettingsPageHints(QWidget):
         _github_poll_interval_s: QSpinBox
         _github_poll_rate_warning_label: QLabel
         _github_polling_enabled: QCheckBox
