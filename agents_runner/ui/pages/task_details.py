@@ -128,7 +128,7 @@ class TaskDetailsPage(QWidget):
         self._logs = QPlainTextEdit()
         self._logs.setObjectName("LogsView")
         self._logs.setReadOnly(True)
-        self._logs.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self._logs.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         self._logs.setMaximumBlockCount(5000)
         self._log_highlighter = LogHighlighter(self._logs.document())
         logs_layout.addWidget(ltitle)
