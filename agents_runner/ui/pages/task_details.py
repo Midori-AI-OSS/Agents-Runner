@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QProcess
 from PySide6.QtCore import QProcessEnvironment
@@ -54,7 +56,7 @@ class TaskDetailsPage(QWidget):
         super().__init__(parent)
         self._current_task_id: str | None = None
         self._artifacts_tab_visible: bool = False
-        self._environments: dict[str, object] | None = None
+        self._environments: Mapping[str, object] | None = None
         self._desktop_viewer_process: QProcess | None = None
         self._desktop_viewer_url: str = ""
         self._desktop_viewer_output_lines: list[str] = []
@@ -563,7 +565,7 @@ class TaskDetailsPage(QWidget):
         self._btn_stop.setEnabled(has_container and not is_terminal)
         self._btn_kill.setEnabled(has_container and not is_terminal)
 
-    def set_environments(self, environments: dict[str, object]) -> None:
+    def set_environments(self, environments: Mapping[str, object]) -> None:
         """Set the environments dict for looking up cloned repo status."""
         self._environments = environments
 

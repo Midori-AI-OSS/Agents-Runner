@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from PySide6.QtCore import (
     QEasingCurve,
     QParallelAnimationGroup,
@@ -141,7 +143,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._connect_autosave_signals()
         app = QApplication.instance()
         if app is not None:
-            app.applicationStateChanged.connect(self._on_application_state_changed)
+            cast(QApplication, app).applicationStateChanged.connect(self._on_application_state_changed)
 
         if self._pane_specs:
             first_key = self._pane_specs[0].key

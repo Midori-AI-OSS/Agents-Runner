@@ -93,6 +93,8 @@ if TYPE_CHECKING:
         _fork_notice_seen: set[str]
         _auto_review_task_to_item_key: dict[str, str]
         _current_env_name: str
+        _REMOVED_IDE_SETTINGS_KEYS: tuple[str, ...]
+        _REMOVED_LEGACY_SETTINGS_KEYS: tuple[str, ...]
 
         host_log: Signal
         host_pr_url: Signal
@@ -390,6 +392,7 @@ if TYPE_CHECKING:
         def _animate_stack(self, *, forward: bool) -> None: ...
         def _build_navigation(self, nav_layout: QVBoxLayout) -> None: ...
         def _current_environment(self) -> Environment | None: ...
+        def _on_nav_button_clicked(self, key: str) -> None: ...
 else:
 
     class EnvironmentsPageHints:

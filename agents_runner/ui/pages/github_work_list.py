@@ -30,6 +30,7 @@ from agents_runner.gh.work_items import GitHubWorkItem
 from agents_runner.prompts import load_prompt
 from agents_runner.prompts.github_prompting import build_default_request_line
 from agents_runner.prompts.github_prompting import build_primary_request
+from agents_runner.ui.pages.github_work_coordinator import GitHubWorkCoordinator
 from agents_runner.ui.dialogs.github_workroom_dialog import GitHubWorkroomDialog
 from agents_runner.ui.lucide_icons import lucide_icon
 from agents_runner.ui.utils import stain_color
@@ -259,7 +260,7 @@ class GitHubWorkListPage(QWidget):
         self,
         *,
         item_type: str,
-        coordinator: object,
+        coordinator: GitHubWorkCoordinator,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
