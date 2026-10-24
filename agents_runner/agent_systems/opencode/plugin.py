@@ -35,6 +35,7 @@ _TOP_LEVEL_SUBCOMMANDS = {
     "mcp",
     "attach",
     "run",
+    "mini",
     "debug",
     "providers",
     "agent",
@@ -93,6 +94,10 @@ def _has_top_level_project(parts: list[str]) -> bool:
             return False
         return True
     return False
+
+
+def _has_agent_or_model_option(parts: list[str]) -> bool:
+    return any(part in {"--agent", "--model", "-m"} or part.startswith(("--agent=", "--model=")) for part in parts[1:])
 
 
 def _without_variant_option(parts: list[str]) -> list[str]:
@@ -266,7 +271,7 @@ class OpenCodeAgentSystemPlugin:
         if agent_cli_args:
             parts.extend(agent_cli_args)
 
-        if subcommand and subcommand != "run":
+        if subcommand and subcommand not in {"run", "mini"}:
             return _without_variant_option(parts)
 
         if subcommand == "run":
@@ -276,6 +281,10 @@ class OpenCodeAgentSystemPlugin:
                 move_positional_to_end(parts, prompt)
             return parts
 
+        use_mini = subcommand == "mini" or _has_agent_or_model_option(parts)
+        if use_mini and subcommand != "mini":
+            parts.insert(1, "mini")
+
         parts = _without_variant_option(parts)
 
         if prompt:
@@ -283,6 +292,9 @@ class OpenCodeAgentSystemPlugin:
                 move_flag_value_to_end(parts, {"--prompt"})
             else:
                 parts.extend(["--prompt", prompt])
+
+        if use_mini:
+            return parts
 
         if not _has_top_level_project(parts):
             parts.append(WORKSPACE_DIR)

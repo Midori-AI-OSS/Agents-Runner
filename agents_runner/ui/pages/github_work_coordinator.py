@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 import threading
 import time
 
@@ -7,6 +8,7 @@ from dataclasses import dataclass
 from dataclasses import replace
 from datetime import datetime
 from datetime import timezone
+from typing import Any, cast
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QTimer
@@ -523,7 +525,7 @@ class GitHubWorkCoordinator(QObject):
         for review in reviews:
             item_type = self._normalize_item_type(review.get("item_type"))
             try:
-                number = int(review.get("number") or 0)
+                number = int(cast(Any, review.get("number") or 0))
             except Exception:
                 number = 0
             if number <= 0:
@@ -628,7 +630,10 @@ class GitHubWorkCoordinator(QObject):
         ):
             return []
         trusted_users = effective_trusted_users(
-            global_usernames=self._settings.get("agentsnova_trusted_users_global", []),
+            global_usernames=cast(
+                Iterable[object],
+                self._settings.get("agentsnova_trusted_users_global", []),
+            ),
             env=env,
         )
         if not trusted_users:
@@ -774,8 +779,8 @@ class GitHubWorkCoordinator(QObject):
             ordered_candidates = sorted(
                 candidates,
                 key=lambda candidate: (
-                    float(candidate.get("created_at_s", 0.0) or 0.0),
-                    int(candidate.get("sort_id", 0) or 0),
+                    float(cast(Any, candidate.get("created_at_s", 0.0) or 0.0)),
+                    int(cast(Any, candidate.get("sort_id", 0) or 0)),
                 ),
                 reverse=True,
             )
@@ -861,7 +866,7 @@ class GitHubWorkCoordinator(QObject):
     @staticmethod
     def _safe_positive_int(value: object) -> int:
         try:
-            parsed = int(value or 0)
+            parsed = int(cast(Any, value or 0))
         except Exception:
             return 0
         return parsed if parsed > 0 else 0
@@ -1087,14 +1092,14 @@ class GitHubWorkCoordinator(QObject):
 
     def _poll_interval_s(self) -> int:
         try:
-            interval = int(self._settings.get("github_poll_interval_s", 30))
+            interval = int(cast(Any, self._settings.get("github_poll_interval_s", 30)))
         except Exception:
             interval = 30
         return max(5, interval)
 
     def _startup_delay_s(self) -> int:
         try:
-            delay = int(self._settings.get("github_poll_startup_delay_s", 35))
+            delay = int(cast(Any, self._settings.get("github_poll_startup_delay_s", 35)))
         except Exception:
             delay = 35
         return max(0, delay)

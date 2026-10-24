@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 import time
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import MainWindowHints
@@ -134,7 +134,7 @@ class MainWindowAutoReviewMixin(MainWindowHints):
         repo_owner = str(payload.get("repo_owner") or "").strip()
         repo_name = str(payload.get("repo_name") or "").strip()
         try:
-            number = int(payload.get("number") or 0)
+            number = int(cast(Any, payload.get("number") or 0))
         except Exception:
             number = 0
         pr_head_ref = str(payload.get("pr_head_ref") or "").strip()
@@ -177,7 +177,7 @@ class MainWindowAutoReviewMixin(MainWindowHints):
         item_type = str(payload.get("item_type") or "").strip().lower()
         item_type = "pr" if item_type == "pr" else "issue"
         try:
-            number = int(payload.get("number") or 0)
+            number = int(cast(Any, payload.get("number") or 0))
         except Exception:
             number = 0
         if not repo_owner or not repo_name or number <= 0:

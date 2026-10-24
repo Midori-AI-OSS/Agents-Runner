@@ -4,7 +4,7 @@ import os
 import shlex
 import threading
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from midori_ai_logger import MidoriAiLogger
 
@@ -445,7 +445,7 @@ class MainWindowSettingsMixin(MainWindowHints):
         merged = normalize_task_workspace_settings(merged)
         try:
             merged["task_workspace_cleanup_size_threshold_gb"] = max(
-                1, min(1000, int(merged.get("task_workspace_cleanup_size_threshold_gb", 50)))
+                1, min(1000, int(cast(Any, merged.get("task_workspace_cleanup_size_threshold_gb", 50))))
             )
         except Exception:
             merged["task_workspace_cleanup_size_threshold_gb"] = 50

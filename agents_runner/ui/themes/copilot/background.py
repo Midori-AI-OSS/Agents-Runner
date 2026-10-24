@@ -6,6 +6,7 @@ import random
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, cast
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import (
@@ -61,7 +62,7 @@ class _CopilotPane:
 
 
 def copilot_font_metrics(
-    rect: QRect,
+    rect: QRect | QWidget,
     font_cache: QFont | None,
     metrics_cache: QFontMetricsF | None,
     char_w_cache: float,
@@ -69,7 +70,7 @@ def copilot_font_metrics(
 ) -> tuple[QFont, QFontMetricsF, float, float]:
     """Get or compute font metrics for Copilot theme code rendering."""
     if font_cache is None or metrics_cache is None:
-        font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+        font = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont)
         font.setStyleHint(QFont.StyleHint.Monospace)
         font.setPixelSize(12 if rect.height() >= 920 else 11)
         metrics = QFontMetricsF(font)
@@ -144,7 +145,7 @@ def copilot_pick_snippet(
 
 
 def ensure_copilot_panes(
-    rect: QRect,
+    rect: QRect | QWidget,
     panes: list[_CopilotPane],
     rng: random.Random,
     source_files: list[Path],
@@ -287,7 +288,7 @@ def copilot_make_active_line(
     backspace_cps = float(rng.uniform(22.0, 34.0))
 
     try:
-        static_text.prepare(font)
+        cast(Any, static_text).prepare(font)
     except (AttributeError, TypeError):
         pass
 
@@ -365,7 +366,7 @@ def tick_copilot_typed_code(
                 static_text = QStaticText(active.final_text)
                 static_text.setTextFormat(Qt.TextFormat.PlainText)
                 try:
-                    static_text.prepare(font)
+                    cast(Any, static_text).prepare(font)
                 except (AttributeError, TypeError):
                     pass
 
@@ -397,7 +398,7 @@ def tick_copilot_typed_code(
                 active.static_text = QStaticText(active.draw_text)
                 active.static_text.setTextFormat(Qt.TextFormat.PlainText)
                 try:
-                    active.static_text.prepare(font)
+                    cast(Any, active.static_text).prepare(font)
                 except (AttributeError, TypeError):
                     pass
 
@@ -405,7 +406,7 @@ def tick_copilot_typed_code(
         pane.scroll_offset += (0.0 - pane.scroll_offset) * rate
 
 
-def copilot_pane_rects(rect: QRect, panes: list[_CopilotPane]) -> list[QRectF]:
+def copilot_pane_rects(rect: QRect | QWidget, panes: list[_CopilotPane]) -> list[QRectF]:
     """Calculate layout rectangles for code panes."""
     w = float(max(1, rect.width()))
     h = float(max(1, rect.height()))
