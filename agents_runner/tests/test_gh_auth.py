@@ -204,8 +204,13 @@ def test_api_fallback_runs_only_when_status_has_no_login(monkeypatch: pytest.Mon
     assert [call[1] for call in calls] == ["auth", "api", "auth"]
 
 
-def test_ten_repo_auth_polling_stays_under_50_gh_launches_per_minute(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Guard issue #375 by counting app-side gh launches across ten repo contexts."""
+def _simulate_ten_environment_auth_polling(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    window_s: float,
+    poll_times_s: tuple[float, ...],
+) -> None:
+    """Count auth-status launches while ten environment contexts poll shared auth state."""
     elapsed_s = [0.0]
     wall_epoch_s = time.time()
     fake_monotonic = lambda: elapsed_s[0]
@@ -218,31 +223,56 @@ def test_ten_repo_auth_polling_stays_under_50_gh_launches_per_minute(monkeypatch
     auth.reset_gh_auth_cache(monotonic=fake_monotonic)
     assert auth._shared_cache_key() is not None
 
-    repositories = tuple(f"fixture-owner/repository-{index:02d}" for index in range(10))
-    request_times: list[float] = []
-    window_s = 60.0
+    environment_ids = tuple(f"test-environment-{index:02d}" for index in range(10))
+    assert len(environment_ids) == 10
+    checked_environments: list[str] = []
+    launch_times_s: list[float] = []
     max_gh_launches = 50
 
     def run_gh(args: list[str], *, timeout_s: float) -> subprocess.CompletedProcess[str]:
+        assert args == ["gh", "auth", "status"]
         now_s = fake_monotonic()
-        request_times[:] = [request_s for request_s in request_times if now_s - request_s < window_s]
-        request_times.append(now_s)
-        assert len(request_times) <= max_gh_launches, (
-            f"{len(request_times)} gh launches occurred in a rolling 60-second window for 10 repositories"
+        launch_times_s[:] = [launch_s for launch_s in launch_times_s if now_s - launch_s < window_s]
+        launch_times_s.append(now_s)
+        assert len(launch_times_s) <= max_gh_launches, (
+            f"{len(launch_times_s)} gh auth status launches occurred in a rolling {window_s:g}-second "
+            "window for 10 environments"
         )
         return _status_result(authenticated=True)
 
     monkeypatch.setattr(auth, "run_gh", run_gh)
-    assert len(repositories) == 10
-
-    # Six ten-second polls per repository produce 60 potential checks in one minute.
-    for poll_cycle in range(6):
-        elapsed_s[0] = float(poll_cycle * 10)
-        for _repository in repositories:
-            # Model a cold per-process snapshot while retaining the shared SQLite cache.
+    for poll_time_s in poll_times_s:
+        elapsed_s[0] = poll_time_s
+        for environment_id in environment_ids:
+            checked_environments.append(environment_id)
+            # Each environment acts like a fresh process-local cache reading the same shared snapshot.
             with auth._cache_condition:
                 auth._cached_snapshot = None
                 auth._cached_shared_generation = None
             assert auth.is_gh_authenticated()
 
-    assert len(request_times) <= max_gh_launches
+    expected_checks = [environment_id for _ in poll_times_s for environment_id in environment_ids]
+    assert checked_environments == expected_checks
+    assert launch_times_s
+
+
+def test_ten_environment_auth_polling_stays_under_50_gh_launches_per_minute(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Guard issue #375 against more than 50 status launches per minute across ten environments."""
+    _simulate_ten_environment_auth_polling(
+        monkeypatch,
+        window_s=60.0,
+        poll_times_s=(0.0, 10.0, 20.0, 30.0, 40.0, 50.0),
+    )
+
+
+def test_ten_environment_auth_polling_stays_under_50_gh_launches_per_10_seconds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Guard issue #375 against a burst of more than 50 status launches across ten environments."""
+    _simulate_ten_environment_auth_polling(
+        monkeypatch,
+        window_s=10.0,
+        poll_times_s=tuple(float(second) for second in range(10)),
+    )
