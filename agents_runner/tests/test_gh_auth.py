@@ -8,6 +8,8 @@ import time
 
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Callable
 
 import pytest
@@ -17,7 +19,11 @@ from agents_runner.gh.errors import GhManagementError
 
 
 @pytest.fixture(autouse=True)
-def _reset_auth_cache() -> Generator[None, None, None]:
+def _reset_auth_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Generator[None, None, None]:
+    monkeypatch.setattr(auth, "default_state_path", lambda: str(tmp_path / "state.db"))
+    monkeypatch.setenv("GH_CONFIG_DIR", str(tmp_path / "gh-config"))
+    for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
     auth.reset_gh_auth_cache()
     yield
     auth.reset_gh_auth_cache()
@@ -196,3 +202,47 @@ def test_api_fallback_runs_only_when_status_has_no_login(monkeypatch: pytest.Mon
     auth.invalidate_gh_auth_cache()
     assert auth.resolve_authenticated_login() == "status-user"
     assert [call[1] for call in calls] == ["auth", "api", "auth"]
+
+
+def test_ten_repo_auth_polling_stays_under_50_gh_launches_per_minute(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Guard issue #375 by counting app-side gh launches across ten repo contexts."""
+    elapsed_s = [0.0]
+    wall_epoch_s = time.time()
+    fake_monotonic = lambda: elapsed_s[0]
+    fake_time = SimpleNamespace(
+        monotonic=fake_monotonic,
+        time=lambda: wall_epoch_s + elapsed_s[0],
+        time_ns=lambda: int((wall_epoch_s + elapsed_s[0]) * 1_000_000_000),
+    )
+    monkeypatch.setattr(auth, "time", fake_time)
+    auth.reset_gh_auth_cache(monotonic=fake_monotonic)
+    assert auth._shared_cache_key() is not None
+
+    repositories = tuple(f"fixture-owner/repository-{index:02d}" for index in range(10))
+    request_times: list[float] = []
+    window_s = 60.0
+    max_gh_launches = 50
+
+    def run_gh(args: list[str], *, timeout_s: float) -> subprocess.CompletedProcess[str]:
+        now_s = fake_monotonic()
+        request_times[:] = [request_s for request_s in request_times if now_s - request_s < window_s]
+        request_times.append(now_s)
+        assert len(request_times) <= max_gh_launches, (
+            f"{len(request_times)} gh launches occurred in a rolling 60-second window for 10 repositories"
+        )
+        return _status_result(authenticated=True)
+
+    monkeypatch.setattr(auth, "run_gh", run_gh)
+    assert len(repositories) == 10
+
+    # Six ten-second polls per repository produce 60 potential checks in one minute.
+    for poll_cycle in range(6):
+        elapsed_s[0] = float(poll_cycle * 10)
+        for _repository in repositories:
+            # Model a cold per-process snapshot while retaining the shared SQLite cache.
+            with auth._cache_condition:
+                auth._cached_snapshot = None
+                auth._cached_shared_generation = None
+            assert auth.is_gh_authenticated()
+
+    assert len(request_times) <= max_gh_launches
