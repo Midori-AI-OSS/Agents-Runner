@@ -56,10 +56,10 @@ class AutoReviewBranchDialog(ThemedDialog):
         content_layout.addWidget(branch_label)
         content_layout.addWidget(self._branch_combo)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        self._ok_button = buttons.button(QDialogButtonBox.Ok)
+        self._ok_button = buttons.button(QDialogButtonBox.StandardButton.Ok)
         content_layout.addWidget(buttons)
 
         self._update_countdown_text()

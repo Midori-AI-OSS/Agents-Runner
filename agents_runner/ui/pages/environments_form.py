@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import EnvironmentsPageHints
@@ -638,7 +638,7 @@ class EnvironmentsFormMixin(EnvironmentsPageHints):
 
     def _pick_gh_management_folder(self) -> None:
         path = QFileDialog.getExistingDirectory(
-            self,
+            cast(QWidget, self),
             "Select locked Workdir folder",
             self._workspace_target.text() or os.getcwd(),
         )

@@ -813,9 +813,9 @@ class MainWindowTasksAgentMixin(MainWindowHints):
             gh_pr_base_ref=pr_base_ref or None,
             gh_context_file_path=gh_context_file,
         )
-        task._runner_config = config
-        task._runner_prompt = runner_prompt
-        task._agent_selection = resolved_agent_selection or (env.agent_selection if env else None)
+        setattr(task, "_runner_config", config)
+        setattr(task, "_runner_prompt", runner_prompt)
+        setattr(task, "_agent_selection", resolved_agent_selection or (env.agent_selection if env else None))
 
         if self._can_start_new_agent_for_env(env_id):
             self._actually_start_task(task)
