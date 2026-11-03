@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 import threading
 import time
@@ -22,7 +23,7 @@ from agents_runner.gh.errors import GhManagementError
 def _reset_auth_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Generator[None, None, None]:
     monkeypatch.setattr(auth, "default_state_path", lambda: str(tmp_path / "state.db"))
     monkeypatch.setenv("GH_CONFIG_DIR", str(tmp_path / "gh-config"))
-    for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN"):
+    for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"):
         monkeypatch.delenv(name, raising=False)
     auth.reset_gh_auth_cache()
     yield
@@ -122,6 +123,90 @@ def test_transient_failure_is_retried_without_normal_cache_delay(monkeypatch: py
     assert not auth.is_gh_authenticated()
     assert auth.is_gh_authenticated()
     assert calls == 2
+
+
+def test_shared_cache_reuses_transient_failure_only_for_waiting_requests(monkeypatch: pytest.MonkeyPatch) -> None:
+    paths = auth._shared_cache_paths()
+    cache_key = auth._shared_cache_key()
+    assert paths is not None
+    assert cache_key is not None
+    database_path, generation_path = paths
+    generation = "test-generation"
+    Path(generation_path).write_text(generation, encoding="utf-8")
+    refreshed_at_ns = time.time_ns()
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            f"CREATE TABLE IF NOT EXISTS {auth._SHARED_AUTH_CACHE_TABLE} ("
+            "cache_key TEXT PRIMARY KEY, authenticated INTEGER NOT NULL, login TEXT NOT NULL, "
+            "error TEXT NOT NULL, expires_at REAL NOT NULL, refreshed_at_ns INTEGER NOT NULL, generation TEXT NOT NULL)"
+        )
+        connection.execute(
+            f"INSERT INTO {auth._SHARED_AUTH_CACHE_TABLE} "
+            "(cache_key, authenticated, login, error, expires_at, refreshed_at_ns, generation) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (cache_key, 0, "", auth.GhAuthError.TIMEOUT.value, time.time() - 1, refreshed_at_ns, generation),
+        )
+
+    calls = 0
+
+    def run_gh(args: list[str], *, timeout_s: float) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return _status_result(authenticated=True)
+
+    monkeypatch.setattr(auth, "run_gh", run_gh)
+    waiting_snapshot, _ = auth._refresh_shared(timeout_s=1.0, use_cache=False, request_ns=refreshed_at_ns - 1)
+    retried_snapshot, _ = auth._refresh_shared(timeout_s=1.0, use_cache=False, request_ns=refreshed_at_ns + 1)
+
+    assert waiting_snapshot.error == auth.GhAuthError.TIMEOUT
+    assert retried_snapshot.authenticated
+    assert calls == 1
+
+
+def test_shared_cache_reads_generation_after_acquiring_write_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def run_gh(args: list[str], *, timeout_s: float) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return _status_result(authenticated=True, login="stale-user" if calls == 1 else "fresh-user")
+
+    monkeypatch.setattr(auth, "run_gh", run_gh)
+    auth._refresh_shared(timeout_s=1.0, use_cache=False, request_ns=0)
+
+    paths = auth._shared_cache_paths()
+    assert paths is not None
+    database_path, generation_path = paths
+    original_read_generation = auth._read_shared_cache_generation
+    generation_read = threading.Event()
+    allow_generation_read = threading.Event()
+
+    def read_generation(path: str) -> str:
+        generation = original_read_generation(path)
+        if not generation_read.is_set():
+            generation_read.set()
+            assert allow_generation_read.wait(timeout=2.0)
+        return generation
+
+    monkeypatch.setattr(auth, "_read_shared_cache_generation", read_generation)
+    blocker = sqlite3.connect(database_path, timeout=1.0, isolation_level=None)
+    blocker.execute("BEGIN IMMEDIATE")
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        refresh = executor.submit(auth._refresh_shared, timeout_s=1.0, use_cache=True, request_ns=0)
+        generation_read.wait(timeout=0.2)
+        allow_generation_read.set()
+        Path(generation_path).write_text("new-generation", encoding="utf-8")
+        blocker.execute("COMMIT")
+        blocker.close()
+        snapshot, _ = refresh.result(timeout=3.0)
+
+    assert snapshot.login == "fresh-user"
+
+
+def test_shared_auth_cache_is_disabled_for_github_enterprise_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_ENTERPRISE_TOKEN", "test-token")
+
+    assert auth._shared_cache_key() is None
 
 
 def test_invalidation_during_refresh_reprobes_before_publishing(monkeypatch: pytest.MonkeyPatch) -> None:

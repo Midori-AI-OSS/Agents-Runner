@@ -108,7 +108,10 @@ def _refresh_snapshot(*, timeout_s: float) -> GhAuthSnapshot:
 def _shared_cache_key() -> str | None:
     if _monotonic is not time.monotonic:
         return None
-    if any(os.environ.get(name) for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN")):
+    if any(
+        os.environ.get(name)
+        for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+    ):
         return None
     config_dir = os.environ.get("GH_CONFIG_DIR")
     if not config_dir:
@@ -167,19 +170,20 @@ def _advance_shared_cache_generation(path: str) -> None:
             pass
 
 
-def _snapshot_from_shared_row(row: tuple[object, ...]) -> GhAuthSnapshot | None:
+def _snapshot_from_shared_row(row: tuple[object, ...], *, reuse_expired_failure: bool = False) -> GhAuthSnapshot | None:
     try:
         authenticated, login, error_value, expires_at_epoch = row
         if not isinstance(expires_at_epoch, (int, float)) or isinstance(expires_at_epoch, bool):
             return None
         remaining_s = float(expires_at_epoch) - time.time()
-        if remaining_s <= 0.0:
+        error = GhAuthError(_safe_text(error_value))
+        if remaining_s <= 0.0 and (not reuse_expired_failure or error == GhAuthError.NONE):
             return None
         return GhAuthSnapshot(
             authenticated=bool(authenticated),
             login=_safe_text(login),
-            expires_at=_monotonic() + remaining_s,
-            error=GhAuthError(_safe_text(error_value)),
+            expires_at=_monotonic() + max(0.0, remaining_s),
+            error=error,
         )
     except (TypeError, ValueError):
         return None
@@ -202,9 +206,9 @@ def _refresh_shared(*, timeout_s: float, use_cache: bool, request_ns: int) -> tu
             "error TEXT NOT NULL, expires_at REAL NOT NULL, refreshed_at_ns INTEGER NOT NULL, generation TEXT NOT NULL)"
         )
         while True:
-            generation = _read_shared_cache_generation(generation_path)
             connection.execute("BEGIN IMMEDIATE")
             try:
+                generation = _read_shared_cache_generation(generation_path)
                 row = connection.execute(
                     f"SELECT authenticated, login, error, expires_at, refreshed_at_ns, generation "
                     f"FROM {_SHARED_AUTH_CACHE_TABLE} WHERE cache_key = ?",
@@ -212,8 +216,12 @@ def _refresh_shared(*, timeout_s: float, use_cache: bool, request_ns: int) -> tu
                 ).fetchone()
                 if row is not None:
                     try:
-                        cached_snapshot = _snapshot_from_shared_row(row[:4])
-                        request_is_coalesced = use_cache or int(row[4]) > request_ns
+                        request_started_before_refresh = int(row[4]) > request_ns
+                        cached_snapshot = _snapshot_from_shared_row(
+                            row[:4],
+                            reuse_expired_failure=request_started_before_refresh,
+                        )
+                        request_is_coalesced = use_cache or request_started_before_refresh
                         if cached_snapshot is not None and row[5] == generation and request_is_coalesced:
                             connection.execute("COMMIT")
                             return cached_snapshot, f"{database_path}:{cache_key}:{generation}"
