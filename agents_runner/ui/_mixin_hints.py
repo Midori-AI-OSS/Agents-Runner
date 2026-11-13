@@ -327,6 +327,8 @@ if TYPE_CHECKING:
         _use_cross_agents: QCheckBox
         _gh_context_enabled: QCheckBox
         _github_polling_enabled: QCheckBox
+        _github_poll_inactive_filter_mode: QComboBox
+        _github_poll_inactive_max_age_days: QSpinBox
         _agentsnova_trusted_mode: QComboBox
         _agentsnova_auto_review_mode: QComboBox
         _agentsnova_auto_reactions_mode: QComboBox
@@ -404,6 +406,8 @@ if TYPE_CHECKING:
 
     class SettingsPageHints(QObject):
         _github_poll_interval_s: QSpinBox
+        _github_poll_inactive_filter_enabled: QCheckBox
+        _github_poll_inactive_max_age_days: QSpinBox
         _github_poll_rate_warning_label: QLabel
         _github_polling_enabled: QCheckBox
         _github_poll_startup_delay_s: QSpinBox

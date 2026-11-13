@@ -29,6 +29,7 @@ from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QFileDialog
 from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QSpinBox
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QStackedWidget
 from PySide6.QtWidgets import QGraphicsOpacityEffect
@@ -90,6 +91,8 @@ class _WizardEnvironmentData:
     headless_desktop_enabled: bool
     container_caching_enabled: bool
     gh_context_enabled: bool
+    github_poll_inactive_filter_mode: str
+    github_poll_inactive_max_age_days: int
     agentsnova_auto_review_mode: str
     agentsnova_auto_reactions_mode: str
     agentsnova_marker_comment_mode: str
@@ -450,6 +453,17 @@ class NewEnvironmentWizard(ThemedDialog):
         self._auto_review_combo.setToolTip(
             "Override whether @agentsnova mentions auto-queue review work for this environment."
         )
+        self._github_poll_inactive_filter_mode = QComboBox()
+        self._github_poll_inactive_filter_mode.addItem("Inherit global setting", "inherit")
+        self._github_poll_inactive_filter_mode.addItem("Enabled", "enabled")
+        self._github_poll_inactive_filter_mode.addItem("Disabled", "disabled")
+        self._github_poll_inactive_filter_mode.setToolTip(
+            "Override whether inactive issue/PR filtering is enabled for this environment."
+        )
+        self._github_poll_inactive_max_age_days = QSpinBox()
+        self._github_poll_inactive_max_age_days.setRange(0, 3650)
+        self._github_poll_inactive_max_age_days.setSuffix(" days")
+        self._github_poll_inactive_max_age_days.setToolTip("0 means inherit the global maximum age setting.")
 
         self._auto_reactions_combo = QComboBox()
         for label, value in (
@@ -578,8 +592,12 @@ class NewEnvironmentWizard(ThemedDialog):
         agentsnova_grid = QGridLayout()
         configure_form_grid(agentsnova_grid)
         add_grid_row(agentsnova_grid, 0, QLabel("Auto review mode"), self._auto_review_combo)
-        add_grid_row(agentsnova_grid, 1, QLabel("Auto reactions mode"), self._auto_reactions_combo)
-        add_grid_row(agentsnova_grid, 2, QLabel("Marker comment mode"), self._marker_comment_combo)
+        add_grid_row(agentsnova_grid, 1, QLabel("Inactive filtering mode"), self._github_poll_inactive_filter_mode)
+        add_grid_row(
+            agentsnova_grid, 2, QLabel("Inactive maximum age override"), self._github_poll_inactive_max_age_days
+        )
+        add_grid_row(agentsnova_grid, 3, QLabel("Auto reactions mode"), self._auto_reactions_combo)
+        add_grid_row(agentsnova_grid, 4, QLabel("Marker comment mode"), self._marker_comment_combo)
         agentsnova_body.addLayout(agentsnova_grid)
         agentsnova_body.addStretch(1)
         self._register_page("agentsnova_automation", agentsnova_page)
@@ -1090,6 +1108,8 @@ read
             headless_desktop_enabled=data.headless_desktop_enabled,
             container_caching_enabled=data.container_caching_enabled,
             gh_context_enabled=data.gh_context_enabled,
+            github_poll_inactive_filter_mode=data.github_poll_inactive_filter_mode,
+            github_poll_inactive_max_age_days=data.github_poll_inactive_max_age_days,
             agentsnova_auto_review_mode=data.agentsnova_auto_review_mode,
             agentsnova_auto_reactions_mode=data.agentsnova_auto_reactions_mode,
             agentsnova_marker_comment_mode=data.agentsnova_marker_comment_mode,
@@ -1133,6 +1153,10 @@ read
             headless_desktop_enabled=self._headless_desktop_enabled.isChecked(),
             container_caching_enabled=self._container_caching_enabled.isChecked(),
             gh_context_enabled=self._gh_context_enabled.isChecked(),
+            github_poll_inactive_filter_mode=self._current_combo_data(
+                self._github_poll_inactive_filter_mode, "inherit"
+            ),
+            github_poll_inactive_max_age_days=int(self._github_poll_inactive_max_age_days.value()),
             agentsnova_auto_review_mode=self._current_combo_data(self._auto_review_combo, "inherit"),
             agentsnova_auto_reactions_mode=self._current_combo_data(self._auto_reactions_combo, "inherit"),
             agentsnova_marker_comment_mode=self._current_combo_data(self._marker_comment_combo, "inherit"),

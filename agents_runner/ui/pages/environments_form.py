@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QSpinBox
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -199,6 +200,17 @@ class EnvironmentsFormMixin(EnvironmentsPageHints):
             "Used only when global GitHub polling is disabled. "
             "This control is hidden while global GitHub polling is enabled."
         )
+        self._github_poll_inactive_filter_mode = QComboBox()
+        self._github_poll_inactive_filter_mode.addItem("Inherit global setting", "inherit")
+        self._github_poll_inactive_filter_mode.addItem("Enabled", "enabled")
+        self._github_poll_inactive_filter_mode.addItem("Disabled", "disabled")
+        self._github_poll_inactive_filter_mode.setToolTip(
+            "Override whether inactive issue/PR filtering is enabled for this environment."
+        )
+        self._github_poll_inactive_max_age_days = QSpinBox()
+        self._github_poll_inactive_max_age_days.setRange(0, 3650)
+        self._github_poll_inactive_max_age_days.setSuffix(" days")
+        self._github_poll_inactive_max_age_days.setToolTip("0 means inherit the global maximum age setting.")
         self._agentsnova_trusted_mode = QComboBox()
         self._agentsnova_trusted_mode.addItem("Inherit global trusted users", "inherit")
         self._agentsnova_trusted_mode.addItem("Add environment trusted users", "additive")
@@ -443,39 +455,41 @@ class EnvironmentsFormMixin(EnvironmentsPageHints):
             self._github_polling_enabled_label,
             self._github_polling_enabled_row,
         )
+        add_grid_row(github_grid, 2, QLabel("Inactive filtering mode"), self._github_poll_inactive_filter_mode)
+        add_grid_row(github_grid, 3, QLabel("Inactive maximum age override"), self._github_poll_inactive_max_age_days)
         add_grid_row(
             github_grid,
-            2,
+            4,
             QLabel("Interactive PR prompt"),
             interactive_pr_prompt_row,
         )
         add_grid_row(
             github_grid,
-            3,
+            5,
             self._interactive_pr_no_prompt_mode_label,
             self._interactive_pr_no_prompt_mode_row,
         )
         add_grid_row(
             github_grid,
-            4,
+            6,
             QLabel("Missing setup-agents prompt injection"),
             setup_agents_missing_prompt_row,
         )
         add_grid_row(
             github_grid,
-            5,
+            7,
             QLabel("Interactive pull before run"),
             interactive_pull_before_run_row,
         )
-        add_grid_row(github_grid, 6, QLabel("Trusted mode"), trusted_mode_row)
-        add_grid_row(github_grid, 7, QLabel("Auto review"), auto_review_row)
-        add_grid_row(github_grid, 8, QLabel("Auto reactions"), auto_reactions_row)
-        add_grid_row(github_grid, 9, QLabel("Marker comments"), marker_comment_row)
-        add_grid_row(github_grid, 10, QLabel("Branch workflow"), branch_work_mode_row)
-        add_grid_row(github_grid, 11, QLabel("Task branch naming"), task_branch_naming_row)
+        add_grid_row(github_grid, 8, QLabel("Trusted mode"), trusted_mode_row)
+        add_grid_row(github_grid, 9, QLabel("Auto review"), auto_review_row)
+        add_grid_row(github_grid, 10, QLabel("Auto reactions"), auto_reactions_row)
+        add_grid_row(github_grid, 11, QLabel("Marker comments"), marker_comment_row)
+        add_grid_row(github_grid, 12, QLabel("Branch workflow"), branch_work_mode_row)
+        add_grid_row(github_grid, 13, QLabel("Task branch naming"), task_branch_naming_row)
         add_grid_row(
             github_grid,
-            12,
+            14,
             self._gh_task_branch_custom_template_label,
             self._gh_task_branch_custom_template_row,
         )
