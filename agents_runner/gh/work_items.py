@@ -340,10 +340,13 @@ def _list_api_rows_paginated(
     *,
     limit: int,
     keep_latest: bool = False,
+    newest_first_via_sort: bool = False,
     timeout_s: float = 45.0,
     retry_on_transient: bool = True,
 ) -> list[object]:
     safe_limit = max(1, int(limit))
+    if newest_first_via_sort:
+        path = f"{path}?sort=created&direction=desc"
     per_page = min(_GITHUB_API_PER_PAGE_MAX, safe_limit)
     rows: list[object] = []
     page = 1
@@ -363,6 +366,9 @@ def _list_api_rows_paginated(
         if not page_rows:
             break
         rows.extend(page_rows)
+        if newest_first_via_sort and len(rows) >= safe_limit:
+            rows = rows[:safe_limit]
+            break
         if keep_latest and len(rows) > safe_limit:
             rows = rows[-safe_limit:]
         if not keep_latest and len(rows) >= safe_limit:
@@ -546,6 +552,7 @@ def list_pull_request_review_comments(
         f"repos/{repo}/pulls/{int(pull_number)}/comments",
         limit=limit,
         keep_latest=newest_first,
+        newest_first_via_sort=True,
         timeout_s=45.0,
         retry_on_transient=retry_on_transient,
     )
