@@ -265,8 +265,9 @@ class GitHubWorkCoordinator(QObject):
         try:
             semaphore = threading.Semaphore(2)
             workers: list[threading.Thread] = []
+            eligible_envs: list[str] = []
 
-            for index, env_id in enumerate(env_ids):
+            for env_id in env_ids:
                 pr_key = self._cache_key(item_type="pr", env_id=env_id)
                 issue_key = self._cache_key(item_type="issue", env_id=env_id)
 
@@ -286,21 +287,106 @@ class GitHubWorkCoordinator(QObject):
                         )
                     continue
 
+                eligible_envs.append(env_id)
+
+            repo_groups: dict[str, list[tuple[str, GitHubRepoContext]]] = {}
+            unresolved_envs: list[str] = []
+            for env_id in eligible_envs:
+                repo_context = resolve_environment_github_repo(self._environments.get(env_id))
+                if repo_context is None:
+                    unresolved_envs.append(env_id)
+                    continue
+                repo_slug = f"{repo_context.repo_owner.lower()}/{repo_context.repo_name.lower()}"
+                repo_groups.setdefault(repo_slug, []).append((env_id, repo_context))
+
+            worker_groups: list[list[tuple[str, GitHubRepoContext]] | list[str]] = [
+                *repo_groups.values(),
+                *[[env_id] for env_id in unresolved_envs],
+            ]
+            for index, group in enumerate(worker_groups):
                 semaphore.acquire()
-                worker = threading.Thread(
-                    target=self._poll_environment_bundle_worker,
-                    args=(env_id, semaphore),
-                    daemon=True,
-                )
+                if group and isinstance(group[0], tuple):
+                    worker = threading.Thread(
+                        target=self._poll_repository_group_worker,
+                        args=(cast(list[tuple[str, GitHubRepoContext]], group), semaphore),
+                        daemon=True,
+                    )
+                else:
+                    env_id = cast(list[str], group)[0]
+                    worker = threading.Thread(
+                        target=self._poll_environment_bundle_worker,
+                        args=(env_id, semaphore),
+                        daemon=True,
+                    )
                 worker.start()
                 workers.append(worker)
-                if index < len(env_ids) - 1:
+                if index < len(worker_groups) - 1:
                     time.sleep(2.0)
 
             for worker in workers:
                 worker.join()
         finally:
             self._cycle_finished.emit()
+
+    def _poll_repository_group_worker(
+        self,
+        env_contexts: list[tuple[str, GitHubRepoContext]],
+        semaphore: threading.Semaphore,
+    ) -> None:
+        try:
+            with push_priority(Priority.LOW):
+                for item_type in ("pr", "issue"):
+                    keys = [
+                        (env_id, context)
+                        for env_id, context in env_contexts
+                        if self._begin_fetch(key=self._cache_key(item_type=item_type, env_id=env_id))
+                    ]
+                    if not keys:
+                        continue
+
+                    items: list[GitHubWorkItem] = []
+                    fetch_error = ""
+                    reviews_by_env: dict[str, list[dict[str, object]]] = {}
+                    errors_by_env: dict[str, str] = {}
+                    try:
+                        repo_owner = env_contexts[0][1].repo_owner
+                        repo_name = env_contexts[0][1].repo_name
+                        if item_type == "pr":
+                            items = list_open_pull_requests(repo_owner, repo_name, limit=30)
+                        else:
+                            items = list_open_issues(repo_owner, repo_name, limit=30)
+
+                        if not self._auto_review_seeded:
+                            with self._state_lock:
+                                if not self._auto_review_seeded:
+                                    self._auto_review.seed_from_store(now_epoch=time.time())
+                                    self._auto_review_seeded = True
+                    except Exception as exc:
+                        fetch_error = str(exc)
+
+                    if not fetch_error:
+                        for env_id, context in keys:
+                            try:
+                                reviews_by_env[env_id] = self._auto_review.collect(
+                                    env=self._environments.get(env_id),
+                                    repo_owner=context.repo_owner,
+                                    repo_name=context.repo_name,
+                                    items=items,
+                                )
+                            except Exception as exc:
+                                errors_by_env[env_id] = str(exc)
+
+                    for env_id, context in keys:
+                        self._fetch_completed.emit(
+                            item_type,
+                            env_id,
+                            items,
+                            context,
+                            errors_by_env.get(env_id, fetch_error),
+                            reviews_by_env.get(env_id, []),
+                        )
+        finally:
+            semaphore.release()
 
     def _poll_environment_bundle_worker(
         self,
