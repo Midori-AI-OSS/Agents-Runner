@@ -31,3 +31,14 @@ Verify
 - `uv run ruff check .`
 - `uv run basedpyright`
 - `.agents/scripts/test`
+
+## Completion
+
+- Settings added: `github_poll_inactive_filter_enabled` (default true), `github_poll_inactive_max_age_days` (default 5), per-env `github_poll_inactive_filter_mode` and `github_poll_inactive_max_age_days` (0 = inherit), wired through model/serialize/normalization/defaults/settings UI/environment form/wizard.
+- New `agents_runner/gh/polling_state.py`: encrypted persistent SQLite state (Fernet key file, self-healing quarantine, cross-process init lock, memory fallback) with observation, reservation/ack/release, pending-anchor, and policy-fingerprint tables; unit tested.
+- New `agents_runner/ui/pages/github_auto_review.py`: auto-review collection with activity-based inactivity filter (unparseable timestamps treated as active, pending anchors bypass), observation recording, and durable emission (reserve/ack/release) preserving the existing eyes-consent flow.
+- `github_work_coordinator.py`: delegates auto-review collection; poll cycles fetch pr/issue lists once per repository and publish per environment; per-env auto-review and global emission dedup preserved.
+- `work_items.py`: PR review-comment lists use sort=created&direction=desc and stop at the limit (endpoint-supported); issue comments and reviews pagination unchanged.
+- Tests: `test_gh_polling_state.py` (13) and `test_github_work_coordinator_inactivity_filter.py` (18). Full suite green (102 passed, 1 skipped).
+- Deferred to `not-ready/gh-polling-incremental-fetch.md`: since= incremental fetches and unchanged-parent skip (phase 2).
+

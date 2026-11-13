@@ -330,11 +330,12 @@ def test_shared_repo_fetches_once_per_cycle(monkeypatch: pytest.MonkeyPatch) -> 
     )
     assert len(pr_calls) == len(issue_calls) == 1
     assert sorted(collected) == ["env-a", "env-a", "env-b", "env-b"]
-    assert all(
-        coordinator.get_cache_entry(item_type=kind, env_id=env).items
+    entries = {
+        (env, kind): coordinator.get_cache_entry(item_type=kind, env_id=env)
         for env in ("env-a", "env-b")
         for kind in ("pr", "issue")
-    )
+    }
+    assert all(entry is not None and entry.items for entry in entries.values())
 
 
 def test_env_without_repo_still_completes(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -360,9 +361,14 @@ def test_env_without_repo_still_completes(monkeypatch: pytest.MonkeyPatch) -> No
             for kind in ("pr", "issue")
         )
     )
-    assert all(coordinator.get_cache_entry(item_type=kind, env_id="env-a").items == [] for kind in ("pr", "issue"))
     assert all(
-        coordinator.get_cache_entry(item_type=kind, env_id="env-b").repo_context is not None for kind in ("pr", "issue")
+        (entry := coordinator.get_cache_entry(item_type=kind, env_id="env-a")) is not None and entry.items == []
+        for kind in ("pr", "issue")
+    )
+    assert all(
+        (entry := coordinator.get_cache_entry(item_type=kind, env_id="env-b")) is not None
+        and entry.repo_context is not None
+        for kind in ("pr", "issue")
     )
 
 
