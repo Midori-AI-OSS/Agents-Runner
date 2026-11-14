@@ -131,6 +131,12 @@ def test_sentinel_mismatch_recovers(tmp_path):
     recovered = _store(tmp_path)
     assert recovered.list_processed_mentions() == []
     assert list(tmp_path.glob("state.sqlite3.corrupt-*"))
+    with pytest.raises(ValueError, match="key changed"):
+        store.reserve_mention(emit_key="old", mention_key="old", repo="o/r", item_type="issue", number=1, now_epoch=2)
+    assert recovered.reserve_mention(
+        emit_key="new", mention_key="new", repo="o/r", item_type="issue", number=1, now_epoch=2
+    )
+    assert [row.emit_key for row in recovered.list_processed_mentions()] == ["new"]
 
 
 def test_reservation_lifecycle_and_stale_release(tmp_path):

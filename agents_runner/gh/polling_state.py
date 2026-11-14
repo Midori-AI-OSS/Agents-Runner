@@ -246,19 +246,26 @@ class PollingStateStore:
 
     @contextmanager
     def _write(self) -> Generator[sqlite3.Connection]:
-        connection = self._connect()
-        try:
-            connection.execute("BEGIN IMMEDIATE")
-            yield connection
-            connection.execute("COMMIT")
-        except Exception:
+        with _process_lock(self.lock_path):
+            connection = self._connect()
             try:
-                connection.execute("ROLLBACK")
-            except sqlite3.Error:
-                pass
-            raise
-        finally:
-            connection.close()
+                connection.execute("BEGIN IMMEDIATE")
+                with open(self.key_path, "rb") as key_file:
+                    if key_file.read() != self._key:
+                        raise ValueError("polling state key changed; reopen the store")
+                row = connection.execute("SELECT value FROM meta WHERE key='key_sentinel'").fetchone()
+                if row is None or _decrypt(self._key, row[0]) != _SENTINEL:
+                    raise ValueError("polling state database changed; reopen the store")
+                yield connection
+                connection.execute("COMMIT")
+            except Exception:
+                try:
+                    connection.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
+                raise
+            finally:
+                connection.close()
 
     @contextmanager
     def _read(self) -> Generator[sqlite3.Connection]:
