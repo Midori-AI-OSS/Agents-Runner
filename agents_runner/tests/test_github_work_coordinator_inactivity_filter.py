@@ -7,7 +7,6 @@ from collections.abc import Callable
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
-from types import SimpleNamespace
 
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
@@ -370,6 +369,19 @@ def test_env_without_repo_still_completes(monkeypatch: pytest.MonkeyPatch) -> No
         and entry.repo_context is not None
         for kind in ("pr", "issue")
     )
+
+
+def test_review_comments_default_keeps_oldest_window(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def page(args: list[str], **_kwargs: object) -> list[dict[str, object]]:
+        calls.append(args)
+        return [{"id": number} for number in range(1, 101)]
+
+    monkeypatch.setattr("agents_runner.gh.work_items.run_gh_gh_json_read", page)
+    comments = list_pull_request_review_comments("org", "repo", pull_number=1, limit=2)
+    assert [comment.comment_id for comment in comments] == [1, 2]
+    assert "direction=desc" not in calls[0][1]
 
 
 def test_review_comments_desc_stops_at_limit(monkeypatch: pytest.MonkeyPatch) -> None:
