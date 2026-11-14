@@ -69,6 +69,8 @@ def ensure_github_clone(
     repo = (repo or "").strip()
     if not repo:
         raise GhManagementError("missing GitHub repo")
+    if not (dest_dir or "").strip():
+        raise GhManagementError("missing clone destination")
     dest_dir = expand_dir(dest_dir)
     parent = os.path.dirname(dest_dir)
     os.makedirs(parent, exist_ok=True)
@@ -89,6 +91,7 @@ def ensure_github_clone(
                             f"destination contains a different repo ({existing_label}), expected {desired_label}: {dest_dir}\n"
                             f"failed to move it aside to {backup_dir}: {exc}"
                         ) from exc
+                    ensure_github_clone(repo, dest_dir, prefer_gh=prefer_gh, recreate_if_needed=recreate_if_needed)
                 else:
                     raise GhManagementError(
                         f"destination contains a different repo ({existing_label}), expected {desired_label}: {dest_dir}\n"

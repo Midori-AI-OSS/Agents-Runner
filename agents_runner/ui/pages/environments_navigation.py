@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import EnvironmentsPageHints
@@ -15,6 +15,7 @@ from PySide6.QtCore import (
     QSignalBlocker,
 )
 from PySide6.QtWidgets import QGraphicsOpacityEffect
+from PySide6.QtWidgets import QWidget
 
 from agents_runner.ui.constants import LEFT_NAV_COMPACT_THRESHOLD
 
@@ -33,6 +34,7 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
             self._opencode_interactive_mode,
             self._agentsnova_trusted_mode,
             self._agentsnova_auto_review_mode,
+            self._github_poll_inactive_filter_mode,
             self._agentsnova_auto_reactions_mode,
             self._agentsnova_marker_comment_mode,
             self._interactive_pr_no_prompt_mode,
@@ -57,6 +59,7 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
         ):
             checkbox.toggled.connect(self._queue_debounced_autosave)
         self._gh_task_branch_custom_template.textChanged.connect(self._queue_debounced_autosave)
+        self._github_poll_inactive_max_age_days.valueChanged.connect(self._queue_debounced_autosave)
         self._agentsnova_trusted_users_env.usernames_changed.connect(self._queue_advanced_autosave)
 
     def _on_nav_button_clicked(self, key: str) -> None:
@@ -150,7 +153,7 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
         group.addAnimation(opacity_anim)
 
         def _cleanup() -> None:
-            self._page_stack.move(self._pane_rest_pos)
+            self._page_stack.move(cast(QPoint, self._pane_rest_pos))
             self._page_stack.setGraphicsEffect(None)  # pyright: ignore[reportArgumentType]
             self._pane_animation = None
 
@@ -169,7 +172,7 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
         self.try_autosave(show_validation_errors=False)
 
     def _update_navigation_mode(self) -> None:
-        compact = self.width() < LEFT_NAV_COMPACT_THRESHOLD  # pyright: ignore[reportUnknownVariableType]
+        compact = cast(QWidget, self).width() < LEFT_NAV_COMPACT_THRESHOLD
         if compact == self._compact_mode:
             return
         self._compact_mode = compact

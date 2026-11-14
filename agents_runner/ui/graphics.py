@@ -110,7 +110,7 @@ def available_ui_theme_names() -> list[str]:
     return ordered
 
 
-def normalize_ui_theme_name(theme_name: str | None, *, allow_auto: bool = True) -> str:
+def normalize_ui_theme_name(theme_name: object | None, *, allow_auto: bool = True) -> str:
     """Normalize a persisted theme setting to a discovered value."""
     raw = str(theme_name or "").strip().lower()
     if allow_auto and (not raw or raw == "auto"):

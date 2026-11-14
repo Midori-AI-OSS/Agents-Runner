@@ -110,6 +110,28 @@ def _parse_verbose_models_output(raw_output: str) -> list[dict[str, object]]:
     return models
 
 
+def _parse_model_ids_output(raw_output: str) -> list[dict[str, object]]:
+    """Return model entries from OpenCode versions that list only provider/model IDs."""
+
+    models: list[dict[str, object]] = []
+    for raw_line in raw_output.splitlines():
+        model_id = raw_line.strip()
+        if not _is_model_header(model_id):
+            continue
+
+        provider_id, _, _ = model_id.partition("/")
+        models.append(
+            {
+                "id": model_id,
+                "name": model_id,
+                "provider_id": provider_id,
+                "variants": [],
+            }
+        )
+
+    return models
+
+
 def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -123,7 +145,7 @@ def _string_list(value: object) -> list[str]:
 
 
 def parse_opencode_models() -> list[dict[str, object]]:
-    """Return parsed `opencode models --verbose` output."""
+    """Return OpenCode model metadata, falling back to IDs when verbose is unsupported."""
 
     try:
         result = subprocess.run(
@@ -144,6 +166,31 @@ def parse_opencode_models() -> list[dict[str, object]]:
         detail = str(result.stderr or result.stdout or "").strip()
         if not detail:
             detail = f"exit code {result.returncode}"
+
+        error_output = f"{result.stderr or ''}\n{result.stdout or ''}".casefold()
+        if "--verbose" in error_output and "unrecognized flag" in error_output:
+            try:
+                fallback_result = subprocess.run(
+                    ["opencode", "models"],
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                    timeout=15,
+                )
+            except subprocess.TimeoutExpired as exc:
+                logger.rprint(f"Timed out while loading OpenCode models: {exc}", mode="error")
+                return []
+            except (FileNotFoundError, OSError) as exc:
+                logger.rprint(f"Failed to run `opencode models`: {exc}", mode="error")
+                return []
+
+            if fallback_result.returncode == 0:
+                return _parse_model_ids_output(str(fallback_result.stdout or ""))
+
+            detail = str(fallback_result.stderr or fallback_result.stdout or "").strip()
+            if not detail:
+                detail = f"exit code {fallback_result.returncode}"
+
         logger.rprint(f"OpenCode models command failed: {detail}", mode="error")
         return []
 

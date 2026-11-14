@@ -103,11 +103,11 @@ class PromptsTabWidget(QWidget):
             "Using bad prompts lowers the agent's skill level and will end up with wasted time and effort.\n\n"
             "Only edit if you really know what you're doing.\n\n"
             "Do you want to proceed?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
         )
 
-        if result == QMessageBox.Yes:
+        if result == QMessageBox.StandardButton.Yes:
             self._unlocked = True
             self._unlock_btn.setVisible(False)
             self._warning_label.setVisible(False)

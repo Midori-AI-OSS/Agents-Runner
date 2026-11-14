@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 import os
 from dataclasses import dataclass
 from datetime import datetime
@@ -112,7 +113,7 @@ class ArtifactsTab(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._current_task: Task | None = None
-        self._artifacts: list[ArtifactMeta | StagingArtifactMeta] = []
+        self._artifacts: Sequence[ArtifactMeta | StagingArtifactMeta] = []
         self._temp_files: list[Path] = []
         self._mode: str = "encrypted"  # "staging" or "encrypted"
         self._file_watcher: ArtifactFileWatcher | None = None
@@ -329,9 +330,9 @@ class ArtifactsTab(QWidget):
 
     def _artifact_modified_at(self, artifact: ArtifactMeta | StagingArtifactMeta) -> datetime | None:
         if isinstance(artifact, StagingArtifactMeta):
-            return artifact.modified_at
+            return artifact.modified_at.astimezone()
         try:
-            return datetime.fromisoformat(artifact.encrypted_at)
+            return datetime.fromisoformat(artifact.encrypted_at).astimezone()
         except Exception:
             return None
 
