@@ -19,7 +19,6 @@ from agents_runner.gh.work_items import list_open_issues
 from agents_runner.gh.work_items import list_open_pull_requests
 from agents_runner.gh.rate_limiter import Priority
 from agents_runner.gh.rate_limiter import push_priority
-from agents_runner.gh.automation_policy import resolve_effective_auto_review_enabled
 from agents_runner.gh.polling_state import get_polling_state_store
 from agents_runner.ui.pages.github_auto_review import AutoReviewCollector
 from agents_runner.ui.pages.github_auto_review import mention_item_key

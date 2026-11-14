@@ -7,7 +7,6 @@ from collections.abc import Callable
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
-from types import SimpleNamespace
 
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
