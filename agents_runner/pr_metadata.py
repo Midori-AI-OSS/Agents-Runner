@@ -264,7 +264,9 @@ def load_github_metadata(path: str) -> GitHubMetadataV2 | None:
 
 
 def normalize_pr_title(title: str, *, fallback: str) -> str:
-    candidate = (title or "").strip().splitlines()[0] if title else ""
+    candidate = (title or "").strip()
+    if candidate:
+        candidate = candidate.splitlines()[0]
     if not candidate:
         candidate = (fallback or "").strip()
     if len(candidate) > 72:
