@@ -89,7 +89,7 @@ def _get_artifacts_dir(task_id: str) -> Path:
 
 
 def _is_transient_staging_error(exc: OSError) -> bool:
-    return int(getattr(exc, "errno", -1)) in _TRANSIENT_STAGING_ERRNOS
+    return exc.errno in _TRANSIENT_STAGING_ERRNOS
 
 
 def _canonical_env_name(env_name: object) -> str:
