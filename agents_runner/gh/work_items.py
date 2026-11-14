@@ -552,7 +552,7 @@ def list_pull_request_review_comments(
         f"repos/{repo}/pulls/{int(pull_number)}/comments",
         limit=limit,
         keep_latest=newest_first,
-        newest_first_via_sort=True,
+        newest_first_via_sort=newest_first,
         timeout_s=45.0,
         retry_on_transient=retry_on_transient,
     )
