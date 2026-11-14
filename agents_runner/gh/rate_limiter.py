@@ -249,8 +249,8 @@ def _parse_rate_limit_seconds(stderr: str, stdout: str) -> float | None:
     m = _iso_ts_re.search(combined)
     if m:
         try:
-            ts_str = m.group(1).replace("T", " ").replace("Z", "")
-            ts = datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+            ts_str = m.group(1).replace("t", " ")
+            ts = datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=datetime.timezone.utc)
             seconds = ts.timestamp() - time.time()
             return max(1.0, float(seconds))
         except ValueError:
