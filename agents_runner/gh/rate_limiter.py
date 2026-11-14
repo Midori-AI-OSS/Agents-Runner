@@ -116,7 +116,8 @@ class _TokenBucket:
         """Drain tokens, block refills for the given duration, and wake waiters."""
         with self._condition:
             self._tokens = 0.0
-            self._pause_until = _monotonic() + seconds
+            pause_until = _monotonic() + seconds
+            self._pause_until = max(self._pause_until or pause_until, pause_until)
             self._condition.notify_all()
 
     def consume(self, priority: Priority = Priority.LOW) -> None:
