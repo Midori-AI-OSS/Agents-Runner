@@ -76,9 +76,10 @@ def pr_metadata_host_path(data_dir: str, task_id: str) -> str:
 
 def ensure_pr_metadata_file(path: str, *, task_id: str) -> None:
     """Create a PR metadata file containing only title/body."""
-    path = os.path.abspath(os.path.expanduser(str(path or "").strip()))
+    path = str(path or "").strip()
     if not path:
         raise ValueError("missing PR metadata path")
+    path = os.path.abspath(os.path.expanduser(path))
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
     payload: dict[str, str] = {
@@ -111,9 +112,10 @@ def ensure_github_context_file(
         github_context: Optional GitHub context to include. If None, creates
             file with empty github object that can be populated later.
     """
-    path = os.path.abspath(os.path.expanduser(str(path or "").strip()))
+    path = str(path or "").strip()
     if not path:
         raise ValueError("missing GitHub context path")
+    path = os.path.abspath(os.path.expanduser(path))
 
     os.makedirs(os.path.dirname(path), exist_ok=True)
 
