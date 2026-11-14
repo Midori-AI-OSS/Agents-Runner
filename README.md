@@ -53,6 +53,6 @@ See [.agents/docs/setup-agents.md](.agents/docs/setup-agents.md) for container s
 
 ## Configuration
 
-- **State**: `~/.midoriai/agents-runner/state.json`
+- **State**: `~/.midoriai/agents-runner/state.toml`
 - **Environments**: `~/.midoriai/agents-runner/environments.json`
 - **Agent Config**: `~/.codex`, `~/.claude`, `~/.gemini` or `~/.copilot` → `/home/midori-ai/.{agent}`

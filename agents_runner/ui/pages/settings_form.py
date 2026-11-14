@@ -451,6 +451,17 @@ class SettingsFormMixin:
         self._github_polling_enabled.setToolTip(
             "When enabled, GitHub Issues/PRs poll in the background across enabled environments."
         )
+        self._github_poll_inactive_filter_enabled = QCheckBox("Enabled")
+        self._github_poll_inactive_filter_enabled.setToolTip(
+            "Enabling it skips expensive thread/reaction scans for issues and PRs with no activity for the configured number of days."
+        )
+        self._github_poll_inactive_max_age_days = QSpinBox()
+        self._github_poll_inactive_max_age_days.setRange(1, 3650)
+        self._github_poll_inactive_max_age_days.setSuffix(" days")
+        self._github_poll_inactive_max_age_days.setValue(5)
+        self._github_poll_inactive_max_age_days.setToolTip(
+            "Items whose last activity (updatedAt) is older than this many days are skipped by the inactivity filter."
+        )
         self._github_poll_startup_delay_s = QSpinBox()
         self._github_poll_startup_delay_s.setRange(0, 3600)
         self._github_poll_startup_delay_s.setSuffix(" seconds")
@@ -784,25 +795,37 @@ class SettingsFormMixin:
         add_grid_row(
             github_grid,
             7,
-            QLabel("Polling startup delay"),
-            self._github_poll_startup_delay_s,
+            QLabel("Skip inactive issue/PR scans"),
+            self._github_poll_inactive_filter_enabled,
         )
-        github_grid.addWidget(self._github_poll_rate_warning_label, 8, 0, 1, 3)
+        add_grid_row(
+            github_grid,
+            8,
+            QLabel("Inactive maximum age"),
+            self._github_poll_inactive_max_age_days,
+        )
         add_grid_row(
             github_grid,
             9,
+            QLabel("Polling startup delay"),
+            self._github_poll_startup_delay_s,
+        )
+        github_grid.addWidget(self._github_poll_rate_warning_label, 10, 0, 1, 3)
+        add_grid_row(
+            github_grid,
+            11,
             QLabel("Max requests"),
             self._github_requests_per_second,
         )
         add_grid_row(
             github_grid,
-            10,
+            12,
             QLabel("PR retry interval"),
             self._github_pr_retry_interval_minutes,
         )
         add_grid_row(
             github_grid,
-            11,
+            13,
             QLabel("PR retry max"),
             self._github_pr_retry_max_minutes,
         )
@@ -1439,6 +1462,14 @@ class SettingsFormMixin:
                 bool(settings.get("agentsnova_auto_reactions_enabled", True))
             )
             self._github_polling_enabled.setChecked(bool(settings.get("github_polling_enabled") or False))
+            self._github_poll_inactive_filter_enabled.setChecked(
+                bool(settings.get("github_poll_inactive_filter_enabled", True))
+            )
+            self._github_poll_inactive_max_age_days.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_poll_inactive_max_age_days"), minimum=1, maximum=3650, default=5
+                )
+            )
             self._github_poll_startup_delay_s.setValue(
                 self._clamp_spin_value(
                     settings.get("github_poll_startup_delay_s"),
@@ -1682,6 +1713,8 @@ class SettingsFormMixin:
             ),
             "agentsnova_auto_reactions_enabled": bool(self._agentsnova_auto_reactions_enabled.isChecked()),
             "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
+            "github_poll_inactive_filter_enabled": bool(self._github_poll_inactive_filter_enabled.isChecked()),
+            "github_poll_inactive_max_age_days": int(self._github_poll_inactive_max_age_days.value()),
             "github_poll_startup_delay_s": poll_startup_delay_s,
             "github_poll_interval_s": poll_interval_s,
             "github_requests_per_second": requests_per_second,

@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from agents_runner.gh import repo_clone
+from agents_runner.gh.errors import GhManagementError
+from agents_runner.gh.repo_clone import ensure_github_clone
 
 
 def test_recreate_mismatched_repo_clones_after_backup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -30,3 +32,16 @@ def test_recreate_mismatched_repo_clones_after_backup(monkeypatch: pytest.Monkey
     assert len(backups) == 1
     assert (backups[0] / "original").read_text() == "preserved"
     assert dest.is_dir()
+
+
+@pytest.mark.parametrize("destination", ["", "   "])
+def test_clone_rejects_blank_destination_without_touching_cwd(tmp_path, monkeypatch, destination):
+    monkeypatch.chdir(tmp_path)
+    marker = tmp_path / "marker"
+    marker.write_text("keep")
+
+    with pytest.raises(GhManagementError, match="missing clone destination"):
+        ensure_github_clone("owner/repo", destination, recreate_if_needed=True)
+
+    assert marker.read_text() == "keep"
+    assert list(tmp_path.parent.glob(f"{tmp_path.name}.bak-*")) == []

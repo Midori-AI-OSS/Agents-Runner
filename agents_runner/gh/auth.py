@@ -109,8 +109,7 @@ def _shared_cache_key() -> str | None:
     if _monotonic is not time.monotonic:
         return None
     if any(
-        os.environ.get(name)
-        for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+        os.environ.get(name) for name in ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
     ):
         return None
     config_dir = os.environ.get("GH_CONFIG_DIR")

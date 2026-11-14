@@ -330,9 +330,9 @@ class ArtifactsTab(QWidget):
 
     def _artifact_modified_at(self, artifact: ArtifactMeta | StagingArtifactMeta) -> datetime | None:
         if isinstance(artifact, StagingArtifactMeta):
-            return artifact.modified_at
+            return artifact.modified_at.astimezone()
         try:
-            return datetime.fromisoformat(artifact.encrypted_at)
+            return datetime.fromisoformat(artifact.encrypted_at).astimezone()
         except Exception:
             return None
 

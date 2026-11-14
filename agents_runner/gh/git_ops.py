@@ -196,7 +196,10 @@ def parse_github_url(url: str) -> tuple[str | None, str | None]:
         path = text[len(prefix) :].split("#", 1)[0].split("?", 1)[0]
         return _parse_github_repo_path(path)
 
-    parsed = urlsplit(text)
+    try:
+        parsed = urlsplit(text)
+    except ValueError:
+        return None, None
     if parsed.scheme not in {"http", "https", "ssh"}:
         return None, None
     if (parsed.hostname or "").lower() != "github.com":

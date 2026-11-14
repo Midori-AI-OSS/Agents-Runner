@@ -129,6 +129,8 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             "github_write_confirmation_mode": "always",
             "github_poll_interval_s": 30,
             "github_polling_enabled": False,
+            "github_poll_inactive_filter_enabled": True,
+            "github_poll_inactive_max_age_days": 5,
             "github_poll_startup_delay_s": 35,
             "github_pr_retry_interval_minutes": 5,
             "github_pr_retry_max_minutes": 60,

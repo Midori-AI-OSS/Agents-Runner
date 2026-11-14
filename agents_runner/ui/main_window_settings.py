@@ -384,6 +384,12 @@ class MainWindowSettingsMixin(MainWindowHints):
         except Exception:
             merged["github_poll_interval_s"] = 30
         merged["github_polling_enabled"] = bool(merged.get("github_polling_enabled") or False)
+        merged["github_poll_inactive_filter_enabled"] = bool(merged.get("github_poll_inactive_filter_enabled", True))
+        try:
+            raw_inactive_max_age = int(merged.get("github_poll_inactive_max_age_days", 5))
+            merged["github_poll_inactive_max_age_days"] = max(1, min(3650, raw_inactive_max_age))
+        except Exception:
+            merged["github_poll_inactive_max_age_days"] = 5
         try:
             merged["github_poll_startup_delay_s"] = max(0, int(merged.get("github_poll_startup_delay_s", 35)))
         except Exception:

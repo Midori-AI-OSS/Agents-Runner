@@ -359,6 +359,7 @@ def _cleanup_one_task_workspace(
                         f"Retry failed for {path}: {retry_exc}",
                     )
                 )
+                raise
 
         shutil.rmtree(task_workspace, onexc=handle_remove_error)
 

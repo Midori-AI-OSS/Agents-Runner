@@ -69,6 +69,8 @@ def ensure_github_clone(
     repo = (repo or "").strip()
     if not repo:
         raise GhManagementError("missing GitHub repo")
+    if not (dest_dir or "").strip():
+        raise GhManagementError("missing clone destination")
     dest_dir = expand_dir(dest_dir)
     parent = os.path.dirname(dest_dir)
     os.makedirs(parent, exist_ok=True)
