@@ -101,7 +101,7 @@ def launch_in_terminal(option: TerminalOption, bash_script: str, cwd: str | None
 def linux_terminal_args(terminal_id: str, exe: str, bash_script: str, cwd: str | None) -> list[str]:
     command = bash_script
     if cwd:
-        command = f"cd {shlex_quote(cwd)}; {bash_script}"
+        command = f"cd {shlex_quote(cwd)} || exit; {bash_script}"
 
     if terminal_id in {"kgx", "gnome-console"}:
         return [exe, "--", "bash", "-lc", command]
@@ -173,7 +173,7 @@ def linux_terminal_args(terminal_id: str, exe: str, bash_script: str, cwd: str |
 def _mac_run_osascript_terminal(bash_script: str, cwd: str | None) -> None:
     cmd = bash_script
     if cwd:
-        cmd = f"cd {shlex_quote(cwd)}; {bash_script}"
+        cmd = f"cd {shlex_quote(cwd)} || exit; {bash_script}"
     full = _osascript_quote(f"bash -lc {shlex_quote(cmd)}")
     script = "\n".join(
         [
@@ -189,7 +189,7 @@ def _mac_run_osascript_terminal(bash_script: str, cwd: str | None) -> None:
 def _mac_run_osascript_iterm(bash_script: str, cwd: str | None) -> None:
     cmd = bash_script
     if cwd:
-        cmd = f"cd {shlex_quote(cwd)}; {bash_script}"
+        cmd = f"cd {shlex_quote(cwd)} || exit; {bash_script}"
     full = _osascript_quote(f"bash -lc {shlex_quote(cmd)}")
     script = "\n".join(
         [
