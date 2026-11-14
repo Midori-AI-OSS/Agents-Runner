@@ -91,6 +91,7 @@ def ensure_github_clone(
                             f"destination contains a different repo ({existing_label}), expected {desired_label}: {dest_dir}\n"
                             f"failed to move it aside to {backup_dir}: {exc}"
                         ) from exc
+                    ensure_github_clone(repo, dest_dir, prefer_gh=prefer_gh, recreate_if_needed=recreate_if_needed)
                 else:
                     raise GhManagementError(
                         f"destination contains a different repo ({existing_label}), expected {desired_label}: {dest_dir}\n"
