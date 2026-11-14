@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
 import threading
 import time
 
 from dataclasses import dataclass
 from dataclasses import replace
-from datetime import datetime
-from datetime import timezone
 from typing import Any, cast
 
 from PySide6.QtCore import QObject
@@ -17,30 +14,18 @@ from PySide6.QtCore import Signal
 from agents_runner.environments import Environment
 from agents_runner.environments import GitHubRepoContext
 from agents_runner.environments import resolve_environment_github_repo
-from agents_runner.gh.work_items import GitHubComment
 from agents_runner.gh.work_items import GitHubWorkItem
-from agents_runner.gh.work_items import add_issue_comment_reaction
-from agents_runner.gh.work_items import add_issue_reaction
-from agents_runner.gh.work_items import add_pull_request_review_comment_reaction
-from agents_runner.gh.work_items import add_pull_request_review_reaction
-from agents_runner.gh.work_items import has_issue_reaction
-from agents_runner.gh.work_items import has_pull_request_review_reaction
-from agents_runner.gh.work_items import list_issue_comments
 from agents_runner.gh.work_items import list_open_issues
 from agents_runner.gh.work_items import list_open_pull_requests
 from agents_runner.gh.rate_limiter import Priority
 from agents_runner.gh.rate_limiter import push_priority
-from agents_runner.gh.work_items import list_pull_request_review_comments
-from agents_runner.gh.work_items import list_pull_request_reviews
-from agents_runner.gh.automation_policy import (
-    resolve_effective_auto_reactions_enabled,
-    resolve_effective_auto_review_enabled,
-)
+from agents_runner.gh.automation_policy import resolve_effective_auto_review_enabled
+from agents_runner.gh.polling_state import get_polling_state_store
+from agents_runner.ui.pages.github_auto_review import AutoReviewCollector
+from agents_runner.ui.pages.github_auto_review import mention_item_key
 from agents_runner.prompts import load_prompt
 from agents_runner.prompts.github_prompting import build_default_request_line
 from agents_runner.prompts.github_prompting import build_primary_request
-from agents_runner.prompts.github_prompting import has_agentsnova_mention
-from agents_runner.ui.pages.github_trust import effective_trusted_users
 from midori_ai_logger import MidoriAiLogger
 
 logger = MidoriAiLogger(channel=None, name=__name__)
@@ -67,7 +52,6 @@ class GitHubWorkCoordinator(QObject):
     _cycle_finished = Signal()
 
     _CACHE_TTL_S = 45.0
-    _AUTO_REVIEW_THREAD_SCAN_LIMIT = 300
     _COALESCE_TIMEOUT_S = 30.0
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -79,11 +63,12 @@ class GitHubWorkCoordinator(QObject):
         self._inflight_keys: set[tuple[str, str]] = set()
         self._inflight_events: dict[tuple[str, str], threading.Event] = {}
 
-        self._auto_review_seen_mentions: set[str] = set()
-        self._auto_review_emit_keys: set[str] = set()
-        self._auto_review_warned_keys: set[str] = set()
-
-        self._eyes_blocked_anchors: dict[str, float] = {}
+        self._auto_review = AutoReviewCollector(
+            store=get_polling_state_store(),
+            settings_provider=lambda: self._settings,
+            environments_provider=lambda: self._environments,
+        )
+        self._auto_review_seeded = False
         self._active_task_by_item: dict[str, float] = {}
 
         self._state_lock = threading.Lock()
@@ -176,6 +161,19 @@ class GitHubWorkCoordinator(QObject):
             return
         with self._state_lock:
             self._active_task_by_item.pop(normalized, None)
+        try:
+            repo, item_type, number_text = normalized.split(":", 2)
+            owner, name = repo.split("/", 1)
+            number = int(number_text)
+            store = self._auto_review.store
+            if store is not None:
+                store.ack_item_mentions(
+                    repo=f"{owner}/{name}", item_type=item_type, number=number, now_epoch=time.time()
+                )
+        except Exception as exc:
+            self._auto_review._warn_once(
+                key="store_ack", message=f"[github-auto-review] polling state acknowledgement failed: {exc}"
+            )
 
     def is_global_polling_enabled(self) -> bool:
         return bool(self._settings.get("github_polling_enabled") or False)
@@ -267,8 +265,9 @@ class GitHubWorkCoordinator(QObject):
         try:
             semaphore = threading.Semaphore(2)
             workers: list[threading.Thread] = []
+            eligible_envs: list[str] = []
 
-            for index, env_id in enumerate(env_ids):
+            for env_id in env_ids:
                 pr_key = self._cache_key(item_type="pr", env_id=env_id)
                 issue_key = self._cache_key(item_type="issue", env_id=env_id)
 
@@ -288,21 +287,106 @@ class GitHubWorkCoordinator(QObject):
                         )
                     continue
 
+                eligible_envs.append(env_id)
+
+            repo_groups: dict[str, list[tuple[str, GitHubRepoContext]]] = {}
+            unresolved_envs: list[str] = []
+            for env_id in eligible_envs:
+                repo_context = resolve_environment_github_repo(self._environments.get(env_id))
+                if repo_context is None:
+                    unresolved_envs.append(env_id)
+                    continue
+                repo_slug = f"{repo_context.repo_owner.lower()}/{repo_context.repo_name.lower()}"
+                repo_groups.setdefault(repo_slug, []).append((env_id, repo_context))
+
+            worker_groups: list[list[tuple[str, GitHubRepoContext]] | list[str]] = [
+                *repo_groups.values(),
+                *[[env_id] for env_id in unresolved_envs],
+            ]
+            for index, group in enumerate(worker_groups):
                 semaphore.acquire()
-                worker = threading.Thread(
-                    target=self._poll_environment_bundle_worker,
-                    args=(env_id, semaphore),
-                    daemon=True,
-                )
+                if group and isinstance(group[0], tuple):
+                    worker = threading.Thread(
+                        target=self._poll_repository_group_worker,
+                        args=(cast(list[tuple[str, GitHubRepoContext]], group), semaphore),
+                        daemon=True,
+                    )
+                else:
+                    env_id = cast(list[str], group)[0]
+                    worker = threading.Thread(
+                        target=self._poll_environment_bundle_worker,
+                        args=(env_id, semaphore),
+                        daemon=True,
+                    )
                 worker.start()
                 workers.append(worker)
-                if index < len(env_ids) - 1:
+                if index < len(worker_groups) - 1:
                     time.sleep(2.0)
 
             for worker in workers:
                 worker.join()
         finally:
             self._cycle_finished.emit()
+
+    def _poll_repository_group_worker(
+        self,
+        env_contexts: list[tuple[str, GitHubRepoContext]],
+        semaphore: threading.Semaphore,
+    ) -> None:
+        try:
+            with push_priority(Priority.LOW):
+                for item_type in ("pr", "issue"):
+                    keys = [
+                        (env_id, context)
+                        for env_id, context in env_contexts
+                        if self._begin_fetch(key=self._cache_key(item_type=item_type, env_id=env_id))
+                    ]
+                    if not keys:
+                        continue
+
+                    items: list[GitHubWorkItem] = []
+                    fetch_error = ""
+                    reviews_by_env: dict[str, list[dict[str, object]]] = {}
+                    errors_by_env: dict[str, str] = {}
+                    try:
+                        repo_owner = env_contexts[0][1].repo_owner
+                        repo_name = env_contexts[0][1].repo_name
+                        if item_type == "pr":
+                            items = list_open_pull_requests(repo_owner, repo_name, limit=30)
+                        else:
+                            items = list_open_issues(repo_owner, repo_name, limit=30)
+
+                        if not self._auto_review_seeded:
+                            with self._state_lock:
+                                if not self._auto_review_seeded:
+                                    self._auto_review.seed_from_store(now_epoch=time.time())
+                                    self._auto_review_seeded = True
+                    except Exception as exc:
+                        fetch_error = str(exc)
+
+                    if not fetch_error:
+                        for env_id, context in keys:
+                            try:
+                                reviews_by_env[env_id] = self._auto_review.collect(
+                                    env=self._environments.get(env_id),
+                                    repo_owner=context.repo_owner,
+                                    repo_name=context.repo_name,
+                                    items=items,
+                                )
+                            except Exception as exc:
+                                errors_by_env[env_id] = str(exc)
+
+                    for env_id, context in keys:
+                        self._fetch_completed.emit(
+                            item_type,
+                            env_id,
+                            items,
+                            context,
+                            errors_by_env.get(env_id, fetch_error),
+                            reviews_by_env.get(env_id, []),
+                        )
+        finally:
+            semaphore.release()
 
     def _poll_environment_bundle_worker(
         self,
@@ -362,16 +446,17 @@ class GitHubWorkCoordinator(QObject):
                         limit=30,
                     )
 
-                if resolve_effective_auto_review_enabled(
-                    settings=self._settings,
+                if not self._auto_review_seeded:
+                    with self._state_lock:
+                        if not self._auto_review_seeded:
+                            self._auto_review.seed_from_store(now_epoch=time.time())
+                            self._auto_review_seeded = True
+                auto_reviews = self._auto_review.collect(
                     env=env,
-                ):
-                    auto_reviews = self._collect_auto_reviews(
-                        env_id=env_id,
-                        repo_owner=repo_context.repo_owner,
-                        repo_name=repo_context.repo_name,
-                        items=items,
-                    )
+                    repo_owner=repo_context.repo_owner,
+                    repo_name=repo_context.repo_name,
+                    items=items,
+                )
             except Exception as exc:
                 error = str(exc)
 
@@ -538,7 +623,7 @@ class GitHubWorkCoordinator(QObject):
 
             item_key = str(review.get("item_key") or "").strip()
             if not item_key:
-                item_key = self._mention_item_key(
+                item_key = mention_item_key(
                     repo_owner=repo_owner,
                     repo_name=repo_name,
                     item_type=item_type,
@@ -550,26 +635,18 @@ class GitHubWorkCoordinator(QObject):
                 f"{item_type}:{number}:{trigger_source}:{mention_key}"
             )
 
-            with self._state_lock:
-                was_blocked = mention_key in self._eyes_blocked_anchors
-                if mention_key in self._auto_review_seen_mentions:
-                    if was_blocked:
-                        self._eyes_blocked_anchors.pop(mention_key, None)
-                        if item_key in self._active_task_by_item:
-                            continue
-                        self._auto_review_seen_mentions.discard(mention_key)
-                        self._auto_review_emit_keys.discard(emit_key)
-                    else:
-                        continue
-                elif was_blocked:
-                    self._eyes_blocked_anchors.pop(mention_key, None)
-                    if item_key in self._active_task_by_item:
-                        continue
-                if emit_key in self._auto_review_emit_keys:
-                    continue
-
-                self._auto_review_seen_mentions.add(mention_key)
-                self._auto_review_emit_keys.add(emit_key)
+            repo_slug = f"{repo_owner.strip().lower()}/{repo_name.strip().lower()}"
+            if not self._auto_review.emit_decision(
+                emit_key=emit_key,
+                mention_key=mention_key,
+                repo_slug=repo_slug,
+                item_type=item_type,
+                number=number,
+                item_key=item_key,
+                is_item_active=lambda key: key in self._active_task_by_item,
+                now_epoch=time.time(),
+            ):
+                continue
 
             mention_text = str(review.get("mention_text") or "")
             mention_url = str(review.get("mention_url") or "")
@@ -615,395 +692,6 @@ class GitHubWorkCoordinator(QObject):
             with self._state_lock:
                 self._active_task_by_item[item_key] = time.time()
 
-    def _collect_auto_reviews(
-        self,
-        *,
-        env_id: str,
-        repo_owner: str,
-        repo_name: str,
-        items: list[GitHubWorkItem],
-    ) -> list[dict[str, object]]:
-        env = self._environments.get(env_id)
-        if not resolve_effective_auto_review_enabled(
-            settings=self._settings,
-            env=env,
-        ):
-            return []
-        trusted_users = effective_trusted_users(
-            global_usernames=cast(
-                Iterable[object],
-                self._settings.get("agentsnova_trusted_users_global", []),
-            ),
-            env=env,
-        )
-        if not trusted_users:
-            return []
-        auto_reactions_enabled = resolve_effective_auto_reactions_enabled(
-            settings=self._settings,
-            env=env,
-        )
-
-        with self._state_lock:
-            queued_snapshot = set(self._auto_review_seen_mentions) - set(self._eyes_blocked_anchors)
-
-        results: list[dict[str, object]] = []
-        for item in items:
-            pr_head_ref = str(getattr(item, "head_ref", "") or "")
-            pr_base_ref = str(getattr(item, "base_ref", "") or "")
-            pr_head_repo_owner = str(getattr(item, "head_repo_owner", "") or "")
-            pr_head_repo_name = str(getattr(item, "head_repo_name", "") or "")
-            pr_is_cross_repo = bool(getattr(item, "is_cross_repo", False))
-            item_key = self._mention_item_key(
-                repo_owner=repo_owner,
-                repo_name=repo_name,
-                item_type=item.item_type,
-                number=item.number,
-            )
-            comments = list_issue_comments(
-                repo_owner,
-                repo_name,
-                issue_number=item.number,
-                limit=self._AUTO_REVIEW_THREAD_SCAN_LIMIT,
-                newest_first=True,
-            )
-            candidates: list[dict[str, object]] = []
-
-            def _add_comment_candidate(
-                comment: GitHubComment,
-                *,
-                source: str,
-            ) -> None:
-                if not self._is_trusted_comment_author(comment, trusted_users):
-                    return
-                if not has_agentsnova_mention(comment.body):
-                    return
-                mention_created_at = str(comment.created_at or "")
-                mention_created_at_s = self._parse_iso_timestamp_s(mention_created_at)
-                mention_key = f"{source}:{comment.comment_id}"
-                candidates.append(
-                    {
-                        "source": source,
-                        "mention_key": mention_key,
-                        "mention_text": str(comment.body or ""),
-                        "mention_author": str(comment.author or ""),
-                        "mention_created_at": mention_created_at,
-                        "mention_url": str(comment.url or ""),
-                        "created_at_s": mention_created_at_s or 0.0,
-                        "sort_id": comment.comment_id,
-                        "comment": comment,
-                        "anchor_id": comment.comment_id,
-                    }
-                )
-
-            for comment in comments:
-                _add_comment_candidate(
-                    comment,
-                    source="issue_comment",
-                )
-
-            if item.item_type == "pr":
-                review_comments = list_pull_request_review_comments(
-                    repo_owner,
-                    repo_name,
-                    pull_number=item.number,
-                    limit=self._AUTO_REVIEW_THREAD_SCAN_LIMIT,
-                    newest_first=True,
-                )
-                for comment in review_comments:
-                    _add_comment_candidate(
-                        comment,
-                        source="review_comment",
-                    )
-
-                review_bodies = list_pull_request_reviews(
-                    repo_owner,
-                    repo_name,
-                    pull_number=item.number,
-                    limit=self._AUTO_REVIEW_THREAD_SCAN_LIMIT,
-                    newest_first=True,
-                )
-                for review in review_bodies:
-                    author = str(review.author or "").strip().lower()
-                    if not author or author not in trusted_users:
-                        continue
-                    if not has_agentsnova_mention(review.body):
-                        continue
-                    mention_created_at = str(review.submitted_at or "")
-                    mention_created_at_s = self._parse_iso_timestamp_s(mention_created_at)
-                    mention_key = f"review_body:{review.review_id}"
-                    candidates.append(
-                        {
-                            "source": "review_body",
-                            "mention_key": mention_key,
-                            "mention_text": str(review.body or ""),
-                            "mention_author": str(review.author or ""),
-                            "mention_created_at": mention_created_at,
-                            "mention_url": str(review.url or ""),
-                            "created_at_s": mention_created_at_s or 0.0,
-                            "sort_id": review.review_id,
-                            "anchor_id": review.review_id,
-                        }
-                    )
-
-            body_text = str(getattr(item, "body", "") or "")
-            title_text = str(getattr(item, "title", "") or "")
-            body_has_mention = has_agentsnova_mention(body_text)
-            title_has_mention = has_agentsnova_mention(title_text)
-            if body_has_mention or title_has_mention:
-                if self._is_trusted_item_author(item=item, trusted_users=trusted_users):
-                    mention_text = body_text if body_has_mention else title_text
-                    updated_at = str(getattr(item, "updated_at", "") or "")
-                    created_at = str(getattr(item, "created_at", "") or "")
-                    mention_created_at = updated_at or created_at
-                    mention_created_at_s = self._parse_iso_timestamp_s(mention_created_at)
-                    source = "pr_body" if item.item_type == "pr" else "issue_body"
-                    mention_key = f"{source}:{item_key}"
-                    mention_author = str(getattr(item, "author", "") or "")
-                    candidates.append(
-                        {
-                            "source": source,
-                            "mention_key": mention_key,
-                            "mention_text": str(mention_text or ""),
-                            "mention_author": mention_author,
-                            "mention_created_at": mention_created_at,
-                            "mention_url": str(item.url or ""),
-                            "created_at_s": mention_created_at_s or 0.0,
-                            "sort_id": item.number,
-                            "anchor_id": item.number,
-                        }
-                    )
-
-            if not candidates:
-                continue
-
-            ordered_candidates = sorted(
-                candidates,
-                key=lambda candidate: (
-                    float(cast(Any, candidate.get("created_at_s", 0.0) or 0.0)),
-                    int(cast(Any, candidate.get("sort_id", 0) or 0)),
-                ),
-                reverse=True,
-            )
-
-            for candidate in ordered_candidates:
-                mention_key = str(candidate.get("mention_key") or "").strip()
-                if not mention_key:
-                    continue
-                if mention_key in queued_snapshot:
-                    continue
-
-                source = str(candidate.get("source") or "").strip().lower()
-                try:
-                    anchor_has_eyes = self._anchor_has_any_eyes(
-                        repo_owner=repo_owner,
-                        repo_name=repo_name,
-                        item_number=item.number,
-                        source=source,
-                        anchor_id=candidate.get("anchor_id"),
-                        candidate_comment=candidate.get("comment"),
-                    )
-                except Exception as exc:
-                    self._log_auto_review_warning_once(
-                        key="auto_review_read_eyes_failed",
-                        message=(
-                            "[github-auto-review] skipped auto-start scans: failed to "
-                            "read eyes reaction anchors. "
-                            f"first_error={exc}"
-                        ),
-                    )
-                    continue
-                if anchor_has_eyes:
-                    with self._state_lock:
-                        self._eyes_blocked_anchors[mention_key] = time.time()
-                    continue
-
-                if auto_reactions_enabled:
-                    try:
-                        self._add_anchor_eyes_reaction(
-                            repo_owner=repo_owner,
-                            repo_name=repo_name,
-                            item_number=item.number,
-                            source=source,
-                            anchor_id=candidate.get("anchor_id"),
-                        )
-                    except Exception as exc:
-                        self._log_auto_review_warning_once(
-                            key="auto_review_add_eyes_failed",
-                            message=(
-                                "[github-auto-review] failed to add eyes reactions "
-                                "during auto-start scans. "
-                                f"first_error={exc}"
-                            ),
-                        )
-
-                results.append(
-                    {
-                        "item_type": item.item_type,
-                        "number": item.number,
-                        "url": item.url,
-                        "title": item.title,
-                        "pr_head_ref": pr_head_ref,
-                        "pr_base_ref": pr_base_ref,
-                        "pr_head_repo_owner": pr_head_repo_owner,
-                        "pr_head_repo_name": pr_head_repo_name,
-                        "pr_is_cross_repo": pr_is_cross_repo,
-                        "mention_key": mention_key,
-                        "trigger_source": source,
-                        "mention_text": candidate.get("mention_text", ""),
-                        "mention_author": candidate.get("mention_author", ""),
-                        "mention_created_at": candidate.get("mention_created_at", ""),
-                        "mention_url": candidate.get("mention_url", ""),
-                        "item_key": item_key,
-                    }
-                )
-                queued_snapshot.add(mention_key)
-                if len(results) >= 3:
-                    return results
-                break
-
-        return results
-
-    @staticmethod
-    def _safe_positive_int(value: object) -> int:
-        try:
-            parsed = int(cast(Any, value or 0))
-        except Exception:
-            return 0
-        return parsed if parsed > 0 else 0
-
-    def _log_auto_review_warning_once(self, *, key: str, message: str) -> None:
-        message_text = str(message or "").strip()
-        if not key or not message_text:
-            return
-        should_log = False
-        with self._state_lock:
-            if key not in self._auto_review_warned_keys:
-                self._auto_review_warned_keys.add(key)
-                should_log = True
-        if should_log:
-            logger.rprint(message_text, mode="warn")
-
-    def _anchor_has_any_eyes(
-        self,
-        *,
-        repo_owner: str,
-        repo_name: str,
-        item_number: int,
-        source: str,
-        anchor_id: object,
-        candidate_comment: object | None = None,
-    ) -> bool:
-        if source == "issue_comment":
-            if not isinstance(candidate_comment, GitHubComment):
-                raise ValueError("missing issue comment candidate")
-            return candidate_comment.reactions.eyes > 0
-        if source == "review_comment":
-            if not isinstance(candidate_comment, GitHubComment):
-                raise ValueError("missing review comment candidate")
-            return candidate_comment.reactions.eyes > 0
-        if source == "review_body":
-            review_id = self._safe_positive_int(anchor_id)
-            if review_id <= 0:
-                raise ValueError("invalid review anchor id")
-            return has_pull_request_review_reaction(
-                repo_owner,
-                repo_name,
-                pull_number=item_number,
-                review_id=review_id,
-                reaction="eyes",
-            )
-        if source in {"pr_body", "issue_body"}:
-            return has_issue_reaction(
-                repo_owner,
-                repo_name,
-                issue_number=item_number,
-                reaction="eyes",
-            )
-        raise ValueError(f"unsupported mention source: {source}")
-
-    def _add_anchor_eyes_reaction(
-        self,
-        *,
-        repo_owner: str,
-        repo_name: str,
-        item_number: int,
-        source: str,
-        anchor_id: object,
-    ) -> None:
-        if source == "issue_comment":
-            comment_id = self._safe_positive_int(anchor_id)
-            if comment_id <= 0:
-                raise ValueError("invalid issue comment anchor id")
-            add_issue_comment_reaction(
-                repo_owner,
-                repo_name,
-                comment_id=comment_id,
-                reaction="eyes",
-            )
-            return
-        if source == "review_comment":
-            comment_id = self._safe_positive_int(anchor_id)
-            if comment_id <= 0:
-                raise ValueError("invalid review comment anchor id")
-            add_pull_request_review_comment_reaction(
-                repo_owner,
-                repo_name,
-                comment_id=comment_id,
-                reaction="eyes",
-            )
-            return
-        if source == "review_body":
-            review_id = self._safe_positive_int(anchor_id)
-            if review_id <= 0:
-                raise ValueError("invalid review anchor id")
-            add_pull_request_review_reaction(
-                repo_owner,
-                repo_name,
-                pull_number=item_number,
-                review_id=review_id,
-                reaction="eyes",
-            )
-            return
-        if source in {"pr_body", "issue_body"}:
-            add_issue_reaction(
-                repo_owner,
-                repo_name,
-                issue_number=item_number,
-                reaction="eyes",
-            )
-            return
-        raise ValueError(f"unsupported mention source: {source}")
-
-    @staticmethod
-    def _parse_iso_timestamp_s(value: object) -> float | None:
-        text = str(value or "").strip()
-        if not text:
-            return None
-        try:
-            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-            if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=timezone.utc)
-            return float(parsed.timestamp())
-        except Exception:
-            return None
-
-    @staticmethod
-    def _is_trusted_comment_author(
-        comment: GitHubComment,
-        trusted_users: set[str],
-    ) -> bool:
-        author = str(comment.author or "").strip().lower()
-        return bool(author and author in trusted_users)
-
-    @staticmethod
-    def _is_trusted_item_author(
-        *,
-        item: GitHubWorkItem,
-        trusted_users: set[str],
-    ) -> bool:
-        author = str(getattr(item, "author", "") or "").strip().lower()
-        return bool(author and author in trusted_users)
-
     @staticmethod
     def _normalize_item_type(value: object) -> str:
         normalized = str(value or "").strip().lower()
@@ -1012,24 +700,6 @@ class GitHubWorkCoordinator(QObject):
     @staticmethod
     def _cache_key(*, item_type: str, env_id: str) -> tuple[str, str]:
         return (str(item_type or "").strip().lower(), str(env_id or "").strip())
-
-    @staticmethod
-    def _mention_item_key(
-        *,
-        repo_owner: str,
-        repo_name: str,
-        item_type: str,
-        number: int,
-    ) -> str:
-        try:
-            normalized_number = max(0, int(number))
-        except Exception:
-            normalized_number = 0
-        return (
-            f"{str(repo_owner or '').strip().lower()}/"
-            f"{str(repo_name or '').strip().lower()}:"
-            f"{str(item_type or '').strip().lower()}:{normalized_number}"
-        )
 
     @staticmethod
     def _build_task_prompt(

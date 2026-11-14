@@ -34,6 +34,7 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
             self._opencode_interactive_mode,
             self._agentsnova_trusted_mode,
             self._agentsnova_auto_review_mode,
+            self._github_poll_inactive_filter_mode,
             self._agentsnova_auto_reactions_mode,
             self._agentsnova_marker_comment_mode,
             self._interactive_pr_no_prompt_mode,
@@ -58,6 +59,7 @@ class EnvironmentsNavigationMixin(EnvironmentsPageHints):
         ):
             checkbox.toggled.connect(self._queue_debounced_autosave)
         self._gh_task_branch_custom_template.textChanged.connect(self._queue_debounced_autosave)
+        self._github_poll_inactive_max_age_days.valueChanged.connect(self._queue_debounced_autosave)
         self._agentsnova_trusted_users_env.usernames_changed.connect(self._queue_advanced_autosave)
 
     def _on_nav_button_clicked(self, key: str) -> None:

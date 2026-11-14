@@ -197,6 +197,8 @@ class MainWindowPersistenceMixin(MainWindowHints):
         self._settings_data.setdefault("github_write_confirmation_mode", "always")
         self._settings_data.setdefault("github_poll_interval_s", 30)
         self._settings_data.setdefault("github_polling_enabled", False)
+        self._settings_data.setdefault("github_poll_inactive_filter_enabled", True)
+        self._settings_data.setdefault("github_poll_inactive_max_age_days", 5)
         self._settings_data.setdefault("github_poll_startup_delay_s", 35)
         self._settings_data.setdefault("github_pr_retry_interval_minutes", 5)
         self._settings_data.setdefault("github_pr_retry_max_minutes", 60)
@@ -258,6 +260,15 @@ class MainWindowPersistenceMixin(MainWindowHints):
             self._settings_data.get("agentsnova_auto_reactions_enabled", True)
         )
         self._settings_data["github_polling_enabled"] = bool(self._settings_data.get("github_polling_enabled") or False)
+        self._settings_data["github_poll_inactive_filter_enabled"] = bool(
+            self._settings_data.get("github_poll_inactive_filter_enabled", True)
+        )
+        try:
+            self._settings_data["github_poll_inactive_max_age_days"] = max(
+                1, min(3650, int(self._settings_data.get("github_poll_inactive_max_age_days", 5)))
+            )
+        except Exception:
+            self._settings_data["github_poll_inactive_max_age_days"] = 5
         try:
             self._settings_data["github_poll_startup_delay_s"] = max(
                 0, int(self._settings_data.get("github_poll_startup_delay_s", 35))

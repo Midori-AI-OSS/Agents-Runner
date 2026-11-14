@@ -108,6 +108,10 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
 
     def _issue_294_environment_values(self) -> dict[str, object]:
         return {
+            "github_poll_inactive_filter_mode": normalize_agentsnova_auto_mode(
+                self._github_poll_inactive_filter_mode.currentData() or "inherit"
+            ),
+            "github_poll_inactive_max_age_days": int(self._github_poll_inactive_max_age_days.value()),
             "agentsnova_auto_review_mode": normalize_agentsnova_auto_mode(
                 self._agentsnova_auto_review_mode.currentData() or "inherit"
             ),
@@ -235,6 +239,8 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
         cache_settings_preflight_enabled = bool(self._cache_settings_preflight_enabled.isChecked())
         issue_294_values = self._issue_294_environment_values()
         agentsnova_auto_review_mode = cast(str, issue_294_values["agentsnova_auto_review_mode"])
+        github_poll_inactive_filter_mode = cast(str, issue_294_values["github_poll_inactive_filter_mode"])
+        github_poll_inactive_max_age_days = cast(int, issue_294_values["github_poll_inactive_max_age_days"])
         agentsnova_auto_reactions_mode = cast(str, issue_294_values["agentsnova_auto_reactions_mode"])
         agentsnova_marker_comment_mode = cast(str, issue_294_values["agentsnova_marker_comment_mode"])
         interactive_pr_prompt_enabled = cast(bool, issue_294_values["interactive_pr_prompt_enabled"])
@@ -275,6 +281,8 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
                 github_polling_enabled=github_polling_enabled,
+                github_poll_inactive_filter_mode=github_poll_inactive_filter_mode,
+                github_poll_inactive_max_age_days=github_poll_inactive_max_age_days,
                 agentsnova_trusted_users_env=agentsnova_trusted_users_env,
                 agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
@@ -322,6 +330,8 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
                 github_polling_enabled=github_polling_enabled,
+                github_poll_inactive_filter_mode=github_poll_inactive_filter_mode,
+                github_poll_inactive_max_age_days=github_poll_inactive_max_age_days,
                 agentsnova_trusted_users_env=agentsnova_trusted_users_env,
                 agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
@@ -413,6 +423,8 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
         cache_settings_preflight_enabled = bool(self._cache_settings_preflight_enabled.isChecked())
         issue_294_values = self._issue_294_environment_values()
         agentsnova_auto_review_mode = cast(str, issue_294_values["agentsnova_auto_review_mode"])
+        github_poll_inactive_filter_mode = cast(str, issue_294_values["github_poll_inactive_filter_mode"])
+        github_poll_inactive_max_age_days = cast(int, issue_294_values["github_poll_inactive_max_age_days"])
         agentsnova_auto_reactions_mode = cast(str, issue_294_values["agentsnova_auto_reactions_mode"])
         agentsnova_marker_comment_mode = cast(str, issue_294_values["agentsnova_marker_comment_mode"])
         interactive_pr_prompt_enabled = cast(bool, issue_294_values["interactive_pr_prompt_enabled"])
@@ -453,6 +465,8 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
                 gh_use_host_cli=gh_use_host_cli,
                 gh_context_enabled=gh_context_enabled,
                 github_polling_enabled=github_polling_enabled,
+                github_poll_inactive_filter_mode=github_poll_inactive_filter_mode,
+                github_poll_inactive_max_age_days=github_poll_inactive_max_age_days,
                 agentsnova_trusted_users_env=agentsnova_trusted_users_env,
                 agentsnova_trusted_mode=agentsnova_trusted_mode,
                 prompts=prompts,
@@ -500,6 +514,8 @@ class EnvironmentsPageActionsMixin(EnvironmentsPageHints):
             gh_use_host_cli=gh_use_host_cli,
             gh_context_enabled=gh_context_enabled,
             github_polling_enabled=github_polling_enabled,
+            github_poll_inactive_filter_mode=github_poll_inactive_filter_mode,
+            github_poll_inactive_max_age_days=github_poll_inactive_max_age_days,
             agentsnova_trusted_users_env=agentsnova_trusted_users_env,
             agentsnova_trusted_mode=agentsnova_trusted_mode,
             prompts=prompts,
