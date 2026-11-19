@@ -13,7 +13,7 @@ import traceback
 from pathlib import Path
 
 from midori_ai_logger import MidoriAiLogger
-from PySide6.QtCore import QtMsgType, qInstallMessageHandler
+from PySide6.QtCore import QMessageLogContext, QtMsgType, qInstallMessageHandler
 
 logger = MidoriAiLogger(channel=None, name=__name__)
 
@@ -34,7 +34,7 @@ def _get_log_path() -> Path:
     return _qt_diagnostics_log
 
 
-def _qt_message_handler(msg_type: QtMsgType, context: object, message: str) -> None:
+def _qt_message_handler(msg_type: QtMsgType, context: QMessageLogContext, message: str) -> None:
     """
     Custom Qt message handler that captures warnings with stack traces.
 

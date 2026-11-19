@@ -116,7 +116,8 @@ class _TokenBucket:
         """Drain tokens, block refills for the given duration, and wake waiters."""
         with self._condition:
             self._tokens = 0.0
-            self._pause_until = _monotonic() + seconds
+            pause_until = _monotonic() + seconds
+            self._pause_until = max(self._pause_until or pause_until, pause_until)
             self._condition.notify_all()
 
     def consume(self, priority: Priority = Priority.LOW) -> None:
@@ -249,8 +250,8 @@ def _parse_rate_limit_seconds(stderr: str, stdout: str) -> float | None:
     m = _iso_ts_re.search(combined)
     if m:
         try:
-            ts_str = m.group(1).replace("T", " ").replace("Z", "")
-            ts = datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
+            ts_str = m.group(1).replace("t", " ")
+            ts = datetime.datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=datetime.timezone.utc)
             seconds = ts.timestamp() - time.time()
             return max(1.0, float(seconds))
         except ValueError:

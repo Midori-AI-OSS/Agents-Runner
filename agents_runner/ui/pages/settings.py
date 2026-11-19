@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from PySide6.QtCore import (
     QEasingCurve,
     QParallelAnimationGroup,
@@ -141,7 +143,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._connect_autosave_signals()
         app = QApplication.instance()
         if app is not None:
-            app.applicationStateChanged.connect(self._on_application_state_changed)
+            cast(QApplication, app).applicationStateChanged.connect(self._on_application_state_changed)
 
         if self._pane_specs:
             first_key = self._pane_specs[0].key
@@ -172,6 +174,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
             self._agentsnova_auto_review_enabled,
             self._agentsnova_auto_reactions_enabled,
             self._github_polling_enabled,
+            self._github_poll_inactive_filter_enabled,
             self._headless_desktop_enabled,
             self._gpu_enabled,
             self._network_host,
@@ -195,6 +198,7 @@ class SettingsPage(QWidget, SettingsFormMixin):
         self._task_workspace_cleanup_size_threshold_gb.valueChanged.connect(self._queue_debounced_autosave)
         self._github_poll_startup_delay_s.valueChanged.connect(self._queue_debounced_autosave)
         self._github_poll_interval_s.valueChanged.connect(self._queue_debounced_autosave)
+        self._github_poll_inactive_max_age_days.valueChanged.connect(self._queue_debounced_autosave)
         self._github_poll_interval_s.valueChanged.connect(self._refresh_github_poll_rate_warning)
         self._github_requests_per_second.valueChanged.connect(self._queue_debounced_autosave)
         self._github_pr_retry_interval_minutes.valueChanged.connect(self._queue_debounced_autosave)

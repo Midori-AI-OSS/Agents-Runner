@@ -4,7 +4,7 @@ import os
 import shlex
 import threading
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from midori_ai_logger import MidoriAiLogger
 
@@ -384,6 +384,12 @@ class MainWindowSettingsMixin(MainWindowHints):
         except Exception:
             merged["github_poll_interval_s"] = 30
         merged["github_polling_enabled"] = bool(merged.get("github_polling_enabled") or False)
+        merged["github_poll_inactive_filter_enabled"] = bool(merged.get("github_poll_inactive_filter_enabled", True))
+        try:
+            raw_inactive_max_age = int(merged.get("github_poll_inactive_max_age_days", 5))
+            merged["github_poll_inactive_max_age_days"] = max(1, min(3650, raw_inactive_max_age))
+        except Exception:
+            merged["github_poll_inactive_max_age_days"] = 5
         try:
             merged["github_poll_startup_delay_s"] = max(0, int(merged.get("github_poll_startup_delay_s", 35)))
         except Exception:
@@ -445,7 +451,7 @@ class MainWindowSettingsMixin(MainWindowHints):
         merged = normalize_task_workspace_settings(merged)
         try:
             merged["task_workspace_cleanup_size_threshold_gb"] = max(
-                1, min(1000, int(merged.get("task_workspace_cleanup_size_threshold_gb", 50)))
+                1, min(1000, int(cast(Any, merged.get("task_workspace_cleanup_size_threshold_gb", 50))))
             )
         except Exception:
             merged["task_workspace_cleanup_size_threshold_gb"] = 50

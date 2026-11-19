@@ -4,7 +4,7 @@ import threading
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QEvent, QSignalBlocker, QTimer, Qt, Signal
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QSlider
 from PySide6.QtWidgets import QSpinBox
+from PySide6.QtWidgets import QStackedWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -120,6 +121,19 @@ class _WorkspaceStatusWorker(QObject):
 
 
 class SettingsFormMixin:
+    if TYPE_CHECKING:
+        _pane_specs: list[_SettingsPaneSpec]
+        _nav_buttons: dict[str, QToolButton]
+        _compact_nav: QComboBox
+        _page_stack: QStackedWidget
+        _pane_index_by_key: dict[str, int]
+        move_task_workspaces_requested: Any
+
+        def _on_test_preflight(self) -> None: ...
+        def _on_nav_button_clicked(self, key: str) -> None: ...
+        def _queue_debounced_autosave(self, *_args: object) -> None: ...
+        def isVisible(self) -> bool: ...
+
     _PREFLIGHT_PRESETS_DIRNAME = "preflight-scripts"
     _PREFLIGHT_PRESET_SUFFIXES = {".sh", ".bash", ".zsh"}
 
@@ -342,11 +356,11 @@ class SettingsFormMixin:
         self._move_task_workspaces.setText("Move all tasks")
         self._move_task_workspaces.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._move_task_workspaces.clicked.connect(self._on_move_task_workspaces)
-        self._move_task_workspaces.installEventFilter(self)
+        self._move_task_workspaces.installEventFilter(cast(QObject, self))
         self._task_workspace_migration_blocked = False
         self._move_task_workspaces_shift_pressed = False
         self._move_task_workspaces_shift_click_force = False
-        self._move_task_workspaces_shift_poll_timer = QTimer(self)
+        self._move_task_workspaces_shift_poll_timer = QTimer(cast(QObject, self))
         self._move_task_workspaces_shift_poll_timer.setInterval(50)
         self._move_task_workspaces_shift_poll_timer.timeout.connect(self._poll_move_task_workspaces_shift_state)
 
@@ -437,6 +451,17 @@ class SettingsFormMixin:
         self._github_polling_enabled.setToolTip(
             "When enabled, GitHub Issues/PRs poll in the background across enabled environments."
         )
+        self._github_poll_inactive_filter_enabled = QCheckBox("Enabled")
+        self._github_poll_inactive_filter_enabled.setToolTip(
+            "Enabling it skips expensive thread/reaction scans for issues and PRs with no activity for the configured number of days."
+        )
+        self._github_poll_inactive_max_age_days = QSpinBox()
+        self._github_poll_inactive_max_age_days.setRange(1, 3650)
+        self._github_poll_inactive_max_age_days.setSuffix(" days")
+        self._github_poll_inactive_max_age_days.setValue(5)
+        self._github_poll_inactive_max_age_days.setToolTip(
+            "Items whose last activity (updatedAt) is older than this many days are skipped by the inactivity filter."
+        )
         self._github_poll_startup_delay_s = QSpinBox()
         self._github_poll_startup_delay_s.setRange(0, 3600)
         self._github_poll_startup_delay_s.setSuffix(" seconds")
@@ -490,7 +515,7 @@ class SettingsFormMixin:
             QSizePolicy.Policy.Expanding,
         )
         self._agentsnova_trusted_users_global.set_add_button_visible(False)
-        self._add_trusted_user_global = self._agentsnova_trusted_users_global.create_add_button(self)
+        self._add_trusted_user_global = self._agentsnova_trusted_users_global.create_add_button(cast(QWidget, self))
         self._setup_github_defaults_global = QToolButton()
         self._setup_github_defaults_global.setText("Setup Defaults")
         self._setup_github_defaults_global.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -770,25 +795,37 @@ class SettingsFormMixin:
         add_grid_row(
             github_grid,
             7,
-            QLabel("Polling startup delay"),
-            self._github_poll_startup_delay_s,
+            QLabel("Skip inactive issue/PR scans"),
+            self._github_poll_inactive_filter_enabled,
         )
-        github_grid.addWidget(self._github_poll_rate_warning_label, 8, 0, 1, 3)
+        add_grid_row(
+            github_grid,
+            8,
+            QLabel("Inactive maximum age"),
+            self._github_poll_inactive_max_age_days,
+        )
         add_grid_row(
             github_grid,
             9,
+            QLabel("Polling startup delay"),
+            self._github_poll_startup_delay_s,
+        )
+        github_grid.addWidget(self._github_poll_rate_warning_label, 10, 0, 1, 3)
+        add_grid_row(
+            github_grid,
+            11,
             QLabel("Max requests"),
             self._github_requests_per_second,
         )
         add_grid_row(
             github_grid,
-            10,
+            12,
             QLabel("PR retry interval"),
             self._github_pr_retry_interval_minutes,
         )
         add_grid_row(
             github_grid,
-            11,
+            13,
             QLabel("PR retry max"),
             self._github_pr_retry_max_minutes,
         )
@@ -1082,7 +1119,7 @@ class SettingsFormMixin:
     def _on_agent_configs_add_clicked(self) -> None:
         overrides = get_opencode_cli_overrides()
         dialog = AgentConfigDialog(
-            self,
+            cast(QWidget, self),
             initial_agent=overrides.get("agent", ""),
             initial_model=overrides.get("model", ""),
             initial_variant=overrides.get("variant", ""),
@@ -1095,7 +1132,7 @@ class SettingsFormMixin:
         try:
             save_agent_config(self._resolve_state_path(), config)
         except Exception as exc:
-            QMessageBox.warning(self, "Save failed", str(exc))
+            QMessageBox.warning(cast(QWidget, self), "Save failed", str(exc))
             return
         self._refresh_agent_configs_list(select_config_id=str(config.config_id or ""))
 
@@ -1103,7 +1140,7 @@ class SettingsFormMixin:
         selected = self._selected_agent_config()
         if selected is None:
             return
-        dialog = AgentConfigDialog(self, config=selected)
+        dialog = AgentConfigDialog(cast(QWidget, self), config=selected)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         updated = dialog.agent_config()
@@ -1112,7 +1149,7 @@ class SettingsFormMixin:
         try:
             save_agent_config(self._resolve_state_path(), updated)
         except Exception as exc:
-            QMessageBox.warning(self, "Save failed", str(exc))
+            QMessageBox.warning(cast(QWidget, self), "Save failed", str(exc))
             return
         self._refresh_agent_configs_list(select_config_id=str(updated.config_id or ""))
 
@@ -1140,7 +1177,7 @@ class SettingsFormMixin:
                 "Deleting it will remove this config ID from those environments."
             )
             result = QMessageBox.warning(
-                self,
+                cast(QWidget, self),
                 "Delete agent config?",
                 prompt,
                 QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
@@ -1152,7 +1189,7 @@ class SettingsFormMixin:
         try:
             delete_agent_config(state_path, config_id)
         except Exception as exc:
-            QMessageBox.warning(self, "Delete failed", str(exc))
+            QMessageBox.warning(cast(QWidget, self), "Delete failed", str(exc))
             return
         self._refresh_agent_configs_list()
 
@@ -1280,7 +1317,7 @@ class SettingsFormMixin:
         dialog = ThemePreviewDialog(
             theme_name=normalized_theme,
             theme_label=self._format_theme_label(normalized_theme),
-            parent=self,
+            parent=cast(QWidget, self),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1425,6 +1462,14 @@ class SettingsFormMixin:
                 bool(settings.get("agentsnova_auto_reactions_enabled", True))
             )
             self._github_polling_enabled.setChecked(bool(settings.get("github_polling_enabled") or False))
+            self._github_poll_inactive_filter_enabled.setChecked(
+                bool(settings.get("github_poll_inactive_filter_enabled", True))
+            )
+            self._github_poll_inactive_max_age_days.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_poll_inactive_max_age_days"), minimum=1, maximum=3650, default=5
+                )
+            )
             self._github_poll_startup_delay_s.setValue(
                 self._clamp_spin_value(
                     settings.get("github_poll_startup_delay_s"),
@@ -1668,6 +1713,8 @@ class SettingsFormMixin:
             ),
             "agentsnova_auto_reactions_enabled": bool(self._agentsnova_auto_reactions_enabled.isChecked()),
             "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
+            "github_poll_inactive_filter_enabled": bool(self._github_poll_inactive_filter_enabled.isChecked()),
+            "github_poll_inactive_max_age_days": int(self._github_poll_inactive_max_age_days.value()),
             "github_poll_startup_delay_s": poll_startup_delay_s,
             "github_poll_interval_s": poll_interval_s,
             "github_requests_per_second": requests_per_second,
@@ -1873,7 +1920,7 @@ class SettingsFormMixin:
     def eventFilter(self, watched: QObject, event: QEvent, /) -> bool:
         if not self.isVisible():
             self._set_move_task_workspaces_shift_pressed(False)
-            return super().eventFilter(watched, event)  # pyright: ignore[reportUnknownVariableType]
+            return cast(Any, super()).eventFilter(watched, event)  # pyright: ignore[reportUnknownVariableType]
         if event.type() in {QEvent.Type.KeyPress, QEvent.Type.KeyRelease}:
             self._update_move_task_workspaces_shift_state(event)
         elif event.type() in {
@@ -1896,14 +1943,14 @@ class SettingsFormMixin:
                 QEvent.Type.MouseButtonRelease,
             }:
                 self._refresh_move_task_workspaces_button()
-        return super().eventFilter(watched, event)  # pyright: ignore[reportUnknownVariableType]
+        return cast(Any, super()).eventFilter(watched, event)  # pyright: ignore[reportUnknownVariableType]
 
     def keyPressEvent(self, event: QKeyEvent, /) -> None:
-        super().keyPressEvent(event)
+        cast(Any, super()).keyPressEvent(event)
         self._update_move_task_workspaces_shift_state(event)
 
     def keyReleaseEvent(self, event: QKeyEvent, /) -> None:
-        super().keyReleaseEvent(event)
+        cast(Any, super()).keyReleaseEvent(event)
         self._update_move_task_workspaces_shift_state(event)
 
     def _update_move_task_workspaces_shift_state(self, event: QEvent) -> None:

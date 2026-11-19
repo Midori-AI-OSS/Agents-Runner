@@ -84,7 +84,7 @@ class _FakeMessageBox:
         return
 
 
-def test_opencode_interactive_tui_drops_variant_but_keeps_agent_and_model() -> None:
+def test_opencode_interactive_uses_mini_for_agent_and_model() -> None:
     cmd_parts = OPENCODE_PLUGIN.build_interactive_command_parts(
         cmd_parts=["opencode"],
         agent_cli_args=[
@@ -95,16 +95,18 @@ def test_opencode_interactive_tui_drops_variant_but_keeps_agent_and_model() -> N
             "--variant",
             "max",
         ],
-        prompt="",
+        prompt="Review this workspace",
     )
 
     assert cmd_parts == [
         "opencode",
+        "mini",
         "--agent",
         "worker",
         "--model",
         "deepseek/deepseek-v4-pro",
-        WORKSPACE_DIR,
+        "--prompt",
+        "Review this workspace",
     ]
 
 

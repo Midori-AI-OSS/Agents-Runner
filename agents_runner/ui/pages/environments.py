@@ -366,6 +366,10 @@ class EnvironmentsPage(  # pyright: ignore[reportIncompatibleMethodOverride]
                 self._gh_context_enabled.setChecked(False)
                 self._gh_context_enabled.setEnabled(False)
                 self._github_polling_enabled.setChecked(False)
+                self._github_poll_inactive_filter_mode.setCurrentIndex(
+                    self._github_poll_inactive_filter_mode.findData("inherit")
+                )
+                self._github_poll_inactive_max_age_days.setValue(0)
                 trusted_mode_idx = self._agentsnova_trusted_mode.findData("inherit")
                 if trusted_mode_idx < 0:
                     trusted_mode_idx = 0
@@ -479,6 +483,13 @@ class EnvironmentsPage(  # pyright: ignore[reportIncompatibleMethodOverride]
             self._gh_context_enabled.setChecked(bool(getattr(env, "gh_context_enabled", False)))
             self._gh_context_enabled.setEnabled(context_available)
             self._github_polling_enabled.setChecked(bool(getattr(env, "github_polling_enabled", False)))
+            inactive_mode = normalize_agentsnova_auto_mode(getattr(env, "github_poll_inactive_filter_mode", "inherit"))
+            inactive_mode_idx = self._github_poll_inactive_filter_mode.findData(inactive_mode)
+            if inactive_mode_idx >= 0:
+                self._github_poll_inactive_filter_mode.setCurrentIndex(inactive_mode_idx)
+            self._github_poll_inactive_max_age_days.setValue(
+                max(0, min(3650, int(getattr(env, "github_poll_inactive_max_age_days", 0))))
+            )
             trusted_mode = normalize_trusted_mode(getattr(env, "agentsnova_trusted_mode", "inherit"))
             trusted_mode_idx = self._agentsnova_trusted_mode.findData(trusted_mode)
             if trusted_mode_idx >= 0:

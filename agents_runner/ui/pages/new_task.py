@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from PySide6.QtCore import QEasingCurve
 from PySide6.QtCore import QParallelAnimationGroup
@@ -158,7 +158,7 @@ class NewTaskPage(QWidget):
 
         self._prompt = SpellTextEdit(spellcheck_enabled=self._spellcheck_enabled)
         self._prompt.setPlaceholderText("Describe what you want the agent to do…")
-        self._prompt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._prompt.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._prompt.setTabChangesFocus(True)
 
         self._template_prompt_indicator = QLabel("(i)")
@@ -328,11 +328,11 @@ class NewTaskPage(QWidget):
             "(commonly 'main' or 'master').\n\n"
             "If you need a specific base branch, select it from the dropdown.\n\n"
             "Do you want to proceed?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,  # Default to No for safety
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,  # Default to No for safety
         )
 
-        return reply == QMessageBox.Yes  # pyright: ignore[reportUnknownVariableType]
+        return reply == QMessageBox.StandardButton.Yes  # pyright: ignore[reportUnknownVariableType]
 
     def _update_run_buttons(self) -> None:
         has_terminal = bool(self._terminal_available and self._terminal_id)
@@ -426,7 +426,7 @@ class NewTaskPage(QWidget):
             except (RuntimeError, TypeError):
                 pass  # Already disconnected
         self._run_interactive.clicked.connect(new_slot)
-        self._current_interactive_slot = new_slot
+        self._current_interactive_slot = cast(Callable[..., Any], new_slot)
 
     def _sync_interactive_options(self) -> None:
         env_id = self._active_env_id
@@ -1394,7 +1394,7 @@ class NewTaskPage(QWidget):
             combined = addition
         self._prompt.setPlainText(combined)
         cursor = self._prompt.textCursor()
-        cursor.movePosition(QTextCursor.End)
+        cursor.movePosition(QTextCursor.MoveOperation.End)
         self._prompt.setTextCursor(cursor)
         self._prompt.setFocus(Qt.FocusReason.OtherFocusReason)
 

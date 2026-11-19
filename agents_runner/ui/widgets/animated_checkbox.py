@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPaintEvent
-from PySide6.QtWidgets import QCheckBox, QWidget
+from PySide6.QtWidgets import QCheckBox, QStyle, QStyleOptionButton, QWidget
 
 
 class AnimatedCheckBox(QCheckBox):
@@ -44,12 +44,9 @@ class AnimatedCheckBox(QCheckBox):
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-            style_opt = self.style().subControlRect(
-                self.style().CC_CheckBox,
-                self.style().styleOption(self),
-                self.style().SC_CheckBoxIndicator,
-                self,
-            )
+            style_option = QStyleOptionButton()
+            self.initStyleOption(style_option)
+            style_opt = self.style().subElementRect(QStyle.SubElement.SE_CheckBoxIndicator, style_option, self)
 
             if style_opt.isValid():
                 rect = style_opt.adjusted(4, 4, -4, -4)
