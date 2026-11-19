@@ -2,6 +2,8 @@ import os
 import shutil
 import subprocess
 
+from agents_runner.gh.usage_counts import record_gh_launch
+
 
 def resolve_github_token(*, host: str = "github.com", timeout_s: float = 8.0) -> str | None:
     """Return a GitHub token from the host environment or `gh`, if available.
@@ -21,6 +23,7 @@ def resolve_github_token(*, host: str = "github.com", timeout_s: float = 8.0) ->
         return None
 
     try:
+        record_gh_launch()
         proc = subprocess.run(
             [
                 "gh",

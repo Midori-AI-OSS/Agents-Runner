@@ -14,11 +14,12 @@ import threading
 import time
 from datetime import datetime
 from datetime import timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 if TYPE_CHECKING:
     from agents_runner.ui._mixin_hints import MainWindowHints
+    from agents_runner.ui.main_window import MainWindow
 else:
     MainWindowHints = object
 
@@ -545,7 +546,7 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
         if not task_id:
             return
         log_interactive_prep_diag(
-            main_window=self,
+            main_window=cast("MainWindow", self),
             task_id=task_id,
             prep_id=self._interactive_prep_id(task_id),
             level=level,
@@ -675,7 +676,7 @@ class MainWindowTasksInteractiveMixin(MainWindowHints):
 
         try:
             launch_docker_terminal_task(
-                main_window=self,
+                main_window=cast("MainWindow", self),
                 task=task,
                 env=context.get("env"),
                 env_id=context.get("env_id") or "",

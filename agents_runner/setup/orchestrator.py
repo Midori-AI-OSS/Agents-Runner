@@ -16,6 +16,7 @@ import tempfile
 from datetime import datetime
 from typing import Any, Callable
 
+from agents_runner.gh.auth import invalidate_gh_auth_cache
 from agents_runner.setup.commands import get_setup_command
 from agents_runner.terminal_apps import (
     detect_terminal_options,
@@ -208,7 +209,10 @@ def launch_agent_setup_terminal(agent: str, terminal: TerminalOption) -> bool:
 
     try:
         result = launch_terminal_and_wait(terminal, command, cwd=None)
-        return result.returncode == 0
+        succeeded = result.returncode == 0
+        if succeeded and agent in {"github", "copilot"}:
+            invalidate_gh_auth_cache()
+        return succeeded
     except Exception:
         return False
 

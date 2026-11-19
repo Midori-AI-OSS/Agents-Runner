@@ -436,6 +436,12 @@ class MainWindowTasksInteractiveFinalizeMixin(MainWindowHints):
                     f"[4/6] Creating PR from {branch} -> {base_branch or 'auto'}",
                 ),
             )
+            pr_retry_interval_minutes = int(self._settings_data.get("github_pr_retry_interval_minutes", 5))
+            pr_retry_max_minutes = int(self._settings_data.get("github_pr_retry_max_minutes", 60))
+
+            def _pr_on_log(msg: str) -> None:
+                self.host_log.emit(task_id, msg)
+
             try:
                 display_name = None
                 if task and str(task.agent_cli or "").strip().lower() == "opencode":
@@ -454,6 +460,9 @@ class MainWindowTasksInteractiveFinalizeMixin(MainWindowHints):
                     use_gh=bool(use_gh),
                     agent_cli=agent_cli,
                     agent_display_name=display_name,
+                    pr_retry_interval_minutes=pr_retry_interval_minutes,
+                    pr_retry_max_minutes=pr_retry_max_minutes,
+                    on_log=_pr_on_log,
                 )
             except GhManagementError as exc:
                 self.host_log.emit(task_id, format_log("gh", "pr", "ERROR", f"failed: {exc}"))

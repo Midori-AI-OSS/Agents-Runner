@@ -14,6 +14,9 @@ Or run without cloning:
 # Nightly (bleeding edge, recommended)
 uvx --from "git+https://github.com/Midori-AI-OSS/Agents-Runner.git@nightly" python -m agents_runner
 
+# Moonstone (this branch)
+uvx --from "git+https://github.com/Midori-AI-OSS/Agents-Runner.git@moonstone" python -m agents_runner
+
 # Main (not recommended / fallback)
 uvx --from "git+https://github.com/Midori-AI-OSS/Agents-Runner.git@main" python -m agents_runner
 ```
@@ -50,6 +53,6 @@ See [.agents/docs/setup-agents.md](.agents/docs/setup-agents.md) for container s
 
 ## Configuration
 
-- **State**: `~/.midoriai/agents-runner/state.json`
+- **State**: `~/.midoriai/agents-runner/state.toml`
 - **Environments**: `~/.midoriai/agents-runner/environments.json`
 - **Agent Config**: `~/.codex`, `~/.claude`, `~/.gemini` or `~/.copilot` → `/home/midori-ai/.{agent}`

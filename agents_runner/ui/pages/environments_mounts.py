@@ -86,16 +86,16 @@ class MountsTabWidget(QWidget):
         self._table = QTableWidget()
         self._table.setColumnCount(4)
         self._table.setHorizontalHeaderLabels(["Host path", "Container path", "Mode", ""])
-        self._table.horizontalHeader().setSectionResizeMode(self._COL_HOST_PATH, QHeaderView.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(self._COL_CONTAINER_PATH, QHeaderView.Stretch)
-        self._table.horizontalHeader().setSectionResizeMode(self._COL_MODE, QHeaderView.ResizeToContents)
-        self._table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeToContents)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_HOST_PATH, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_CONTAINER_PATH, QHeaderView.ResizeMode.Stretch)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_MODE, QHeaderView.ResizeMode.ResizeToContents)
+        self._table.horizontalHeader().setSectionResizeMode(self._COL_REMOVE, QHeaderView.ResizeMode.ResizeToContents)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setMinimumSectionSize(TABLE_ROW_HEIGHT)
         self._table.verticalHeader().setDefaultSectionSize(TABLE_ROW_HEIGHT)
-        self._table.setSelectionMode(QTableWidget.NoSelection)
+        self._table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
         self._table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._table.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         simple_layout.addWidget(self._table, 1)
 
         self._advanced_view = QWidget()
@@ -255,10 +255,10 @@ class MountsTabWidget(QWidget):
                 "Advanced mount editing accepts raw host_path:container_path[:mode] entries.\n\n"
                 "Invalid mounts can break tasks or expose filesystem paths unintentionally.\n\n"
                 "Do you want to proceed?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
-            if result != QMessageBox.Yes:
+            if result != QMessageBox.StandardButton.Yes:
                 return
             self._advanced_acknowledged = True
 

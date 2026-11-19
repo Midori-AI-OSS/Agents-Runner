@@ -250,6 +250,8 @@ class Environment:
     gh_use_host_cli: bool = True
     gh_context_enabled: bool = False  # Renamed from gh_pr_metadata_enabled
     github_polling_enabled: bool = False
+    github_poll_inactive_filter_mode: str = AGENTSNOVA_AUTO_MODE_INHERIT
+    github_poll_inactive_max_age_days: int = 0
     agentsnova_trusted_users_env: list[str] = field(default_factory=list)
     agentsnova_trusted_mode: str = "inherit"
     agentsnova_auto_review_mode: str = AGENTSNOVA_AUTO_MODE_INHERIT

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import cast
+
 from PySide6.QtCore import (
     QAbstractAnimation,
     QEvent,
@@ -245,8 +247,14 @@ class StainedGlassButton(QPushButton):
                 y0 = rect.top()
 
                 shard_color = QColor(env.red(), env.green(), env.blue(), 22 + int(12 * pulse))
+                shard_rgb = cast(
+                    tuple[int, int, int, int],
+                    blend_rgb(env, QColor(255, 255, 255), 0.25).getRgb(),
+                )
                 shard_color_2 = QColor(
-                    *blend_rgb(env, QColor(255, 255, 255), 0.25).getRgb()[:3],
+                    shard_rgb[0],
+                    shard_rgb[1],
+                    shard_rgb[2],
                     16 + int(10 * pulse),
                 )
                 edge = QColor(255, 255, 255, 12 + int(6 * pulse))

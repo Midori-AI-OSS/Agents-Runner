@@ -18,6 +18,9 @@ from PySide6.QtWidgets import QMessageBox
 from agents_runner.environments import WORKSPACE_CLONED
 from agents_runner.gh_management import git_current_branch
 from agents_runner.log_format import format_log
+from agents_runner.persistence import deserialize_task
+from agents_runner.persistence import load_task_payload
+from agents_runner.ui.task_model import Task
 
 
 class MainWindowTaskReviewMixin(MainWindowHints):
@@ -25,7 +28,11 @@ class MainWindowTaskReviewMixin(MainWindowHints):
         task_id = str(task_id or "").strip()
         task = self._tasks.get(task_id)
         if task is None:
-            return
+            payload = load_task_payload(self._state_path, task_id, archived=True)
+            if not isinstance(payload, dict):
+                return
+            task = deserialize_task(Task, payload)
+            self._tasks[task_id] = task
 
         env = self._environments.get(task.environment_id)
 

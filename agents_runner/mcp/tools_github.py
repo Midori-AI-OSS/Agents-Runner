@@ -20,7 +20,7 @@ from agents_runner.gh import (
 )
 from agents_runner.mcp.server import MCPServer
 from agents_runner.mcp.types import TextContent, ToolCallResult, ToolDefinition
-from agents_runner.persistence import default_state_path, load_task_payload, save_task_payload
+from agents_runner.persistence import default_state_path, load_state, load_task_payload, save_task_payload
 
 logger = MidoriAiLogger(channel=None, name=__name__)
 logger.console = Console(stderr=True)
@@ -116,6 +116,15 @@ async def handle_github_pr_create(
     body = pr_body or "Automated PR from MCP"
     agent_cli = str(payload.get("agent_cli") or "")
 
+    # Load PR retry settings from the app's state
+    raw_settings = load_state(state_path).get("settings", {})
+    settings_dict: dict[str, Any] = raw_settings if isinstance(raw_settings, dict) else {}
+    pr_retry_interval_minutes = int(settings_dict.get("github_pr_retry_interval_minutes", 5))
+    pr_retry_max_minutes = int(settings_dict.get("github_pr_retry_max_minutes", 60))
+
+    def _pr_on_log(msg: str) -> None:
+        logger.info(msg)
+
     try:
         pr_url: str | None = await asyncio.to_thread(
             partial(
@@ -127,6 +136,9 @@ async def handle_github_pr_create(
                 body=body,
                 use_gh=True,
                 agent_cli=agent_cli,
+                pr_retry_interval_minutes=pr_retry_interval_minutes,
+                pr_retry_max_minutes=pr_retry_max_minutes,
+                on_log=_pr_on_log,
             ),
         )
     except Exception as exc:

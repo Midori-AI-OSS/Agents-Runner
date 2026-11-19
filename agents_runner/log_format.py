@@ -40,8 +40,9 @@ def parse_docker_datetime(value: str | None) -> datetime | None:
 
     if "." in main:
         prefix, frac = main.split(".", 1)
-        frac_digits = "".join(ch for ch in frac if ch.isdigit())
-        frac_digits = (frac_digits[:6]).ljust(6, "0") if frac_digits else "000000"
+        if not frac or not frac.isascii() or not frac.isdigit():
+            return None
+        frac_digits = frac[:6].ljust(6, "0")
         main = f"{prefix}.{frac_digits}"
 
     try:

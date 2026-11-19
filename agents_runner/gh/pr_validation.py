@@ -11,6 +11,9 @@ import os
 import subprocess
 
 from .auth import is_gh_authenticated
+from .errors import GhManagementError
+from .process import run_gh
+from .usage_counts import record_gh_launch
 
 
 def validate_pr_prerequisites(
@@ -111,6 +114,7 @@ def _validate_gh_cli(use_gh: bool) -> tuple[bool, str]:
 
     # Check if gh is installed
     try:
+        record_gh_launch()
         result = subprocess.run(
             ["gh", "--version"],
             capture_output=True,
@@ -139,19 +143,17 @@ def _validate_gh_cli(use_gh: bool) -> tuple[bool, str]:
 def check_existing_pr(repo_root: str, branch: str) -> str | None:
     """Check if PR already exists for branch. Returns PR URL or None."""
     try:
-        result = subprocess.run(
+        result = run_gh(
             ["gh", "pr", "list", "--head", branch, "--json", "url", "--jq", ".[0].url"],
             cwd=repo_root,
-            capture_output=True,
-            text=True,
-            timeout=15.0,
+            timeout_s=15.0,
         )
 
         if result.returncode == 0 and result.stdout:
             url = result.stdout.strip()
             if url.startswith("http"):
                 return url
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+    except (GhManagementError, Exception):
         # If we can't check, assume no PR exists
         pass
 

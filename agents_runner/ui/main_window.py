@@ -5,7 +5,7 @@ import re
 import threading
 import time
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import Qt
 from PySide6.QtCore import QThread
@@ -129,7 +129,12 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             "github_write_confirmation_mode": "always",
             "github_poll_interval_s": 30,
             "github_polling_enabled": False,
+            "github_poll_inactive_filter_enabled": True,
+            "github_poll_inactive_max_age_days": 5,
             "github_poll_startup_delay_s": 35,
+            "github_pr_retry_interval_minutes": 5,
+            "github_pr_retry_max_minutes": 60,
+            "github_requests_per_second": 2,
             "agentsnova_auto_review_enabled": True,
             "agentsnova_auto_marker_comments_mode": "keep",
             "agentsnova_auto_reactions_enabled": True,
@@ -604,7 +609,7 @@ class MainWindow(  # pyright: ignore[reportIncompatibleMethodOverride]
             return
         self._size_cleanup_popup_shown_this_session = True
 
-        threshold_gb = int(self._settings_data.get("task_workspace_cleanup_size_threshold_gb", 50))
+        threshold_gb = int(cast(Any, self._settings_data.get("task_workspace_cleanup_size_threshold_gb", 50)))
 
         msg_box = QMessageBox(self)
         msg_box.setIcon(QMessageBox.Icon.Information)

@@ -121,3 +121,7 @@ def test_ensure_github_clone_rejects_invalid_ref_against_existing_repo(
             "https://example.com/github.com/owner/repo",
             str(dest),
         )
+
+
+def test_parse_github_url_rejects_malformed_authority() -> None:
+    assert parse_github_url("https://[invalid/owner/repo") == (None, None)

@@ -10,6 +10,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import QUrl, Qt
 from PySide6.QtGui import QDesktopServices
@@ -169,6 +170,7 @@ def run_desktop_viewer(args: list[str]) -> int:
     app = QApplication.instance()
     if app is None:
         app = QApplication(args)
+    app = cast(QApplication, app)
     icon = app_icon()
     if icon is not None:
         app.setWindowIcon(icon)

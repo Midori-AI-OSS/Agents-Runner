@@ -5,7 +5,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from midori_ai_logger import MidoriAiLogger
 
@@ -142,13 +142,15 @@ class RadioController(QObject):
         self._channel_fade_in.finished.connect(self._on_channel_fade_in_finished)
 
         try:
-            self._audio_output = QAudioOutput(self)
-            self._player = QMediaPlayer(self)
-            self._player.setAudioOutput(self._audio_output)
+            audio_output = cast(Any, QAudioOutput)(self)
+            player = cast(Any, QMediaPlayer)(self)
+            self._audio_output = audio_output
+            self._player = player
+            player.setAudioOutput(audio_output)
             self._apply_audio_output_volume()
-            self._player.playbackStateChanged.connect(self._on_playback_state_changed)
-            self._player.errorOccurred.connect(self._on_media_error)
-            self._player.mediaStatusChanged.connect(self._on_media_status_changed)
+            player.playbackStateChanged.connect(self._on_playback_state_changed)
+            player.errorOccurred.connect(self._on_media_error)
+            player.mediaStatusChanged.connect(self._on_media_status_changed)
             self._status_text = "Radio ready."
         except Exception as exc:
             self._log_error_throttled("media_init", f"media init failed: {exc}")
@@ -630,7 +632,7 @@ class RadioController(QObject):
                 is_error = True
                 error_text = str(reply.errorString() or "network error")
             else:
-                raw = bytes(reply.readAll()).decode("utf-8", errors="replace")
+                raw = bytes(cast(Any, reply.readAll())).decode("utf-8", errors="replace")
                 parsed = json.loads(raw)
                 if not isinstance(parsed, dict):
                     raise ValueError("invalid JSON envelope")

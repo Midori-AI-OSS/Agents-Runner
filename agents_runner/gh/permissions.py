@@ -121,7 +121,15 @@ def check_pr_creation_capability(
     payload_dict = cast(dict[object, object], payload)
     permissions_raw = payload_dict.get("permissions")
     permissions = cast(dict[object, object], permissions_raw) if isinstance(permissions_raw, dict) else {}
-    can_push = bool(permissions.get("push"))
+    can_push = permissions.get("push")
+    if not isinstance(can_push, bool):
+        return GitHubPrCapability(
+            status="unavailable",
+            can_create_pr=False,
+            reason="GitHub repository permission response did not contain a valid push permission",
+            repo_owner=owner,
+            repo_name=name,
+        )
     if can_push:
         return GitHubPrCapability(
             status="available",

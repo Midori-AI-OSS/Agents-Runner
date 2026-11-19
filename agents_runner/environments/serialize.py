@@ -292,6 +292,13 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
     gh_last_base_branch = str(payload.get("gh_last_base_branch") or "").strip()
     gh_use_host_cli = bool(payload.get("gh_use_host_cli", True))
     github_polling_enabled = bool(payload.get("github_polling_enabled", False))
+    github_poll_inactive_filter_mode = normalize_agentsnova_auto_mode(
+        payload.get("github_poll_inactive_filter_mode", "inherit")
+    )
+    try:
+        github_poll_inactive_max_age_days = max(0, int(payload.get("github_poll_inactive_max_age_days", 0)))
+    except (TypeError, ValueError):
+        github_poll_inactive_max_age_days = 0
     agentsnova_trusted_users_env = _normalize_usernames(payload.get("agentsnova_trusted_users_env", []))
     agentsnova_trusted_mode = _normalize_trusted_mode(payload.get("agentsnova_trusted_mode", "inherit"))
     agentsnova_auto_review_mode = normalize_agentsnova_auto_mode(payload.get("agentsnova_auto_review_mode", "inherit"))
@@ -486,6 +493,8 @@ def environment_from_payload(payload: dict[str, Any]) -> Environment | None:
         gh_use_host_cli=gh_use_host_cli,
         gh_context_enabled=gh_context_enabled,  # Use migrated field name
         github_polling_enabled=github_polling_enabled,
+        github_poll_inactive_filter_mode=github_poll_inactive_filter_mode,
+        github_poll_inactive_max_age_days=github_poll_inactive_max_age_days,
         agentsnova_trusted_users_env=agentsnova_trusted_users_env,
         agentsnova_trusted_mode=agentsnova_trusted_mode,
         agentsnova_auto_review_mode=agentsnova_auto_review_mode,
@@ -568,6 +577,10 @@ def serialize_environment(env: Environment) -> dict[str, Any]:
         "gh_use_host_cli": bool(env.gh_use_host_cli),
         "gh_context_enabled": bool(env.gh_context_enabled),  # Save with new name
         "github_polling_enabled": bool(getattr(env, "github_polling_enabled", False)),
+        "github_poll_inactive_filter_mode": normalize_agentsnova_auto_mode(
+            getattr(env, "github_poll_inactive_filter_mode", "inherit")
+        ),
+        "github_poll_inactive_max_age_days": max(0, int(getattr(env, "github_poll_inactive_max_age_days", 0))),
         "agentsnova_trusted_users_env": _normalize_usernames(getattr(env, "agentsnova_trusted_users_env", [])),
         "agentsnova_trusted_mode": _normalize_trusted_mode(getattr(env, "agentsnova_trusted_mode", "inherit")),
         "agentsnova_auto_review_mode": normalize_agentsnova_auto_mode(

@@ -4,11 +4,11 @@ import threading
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from PySide6.QtCore import QObject
 from PySide6.QtCore import QEvent, QSignalBlocker, QTimer, Qt, Signal
-from PySide6.QtGui import QIntValidator, QKeyEvent, QMouseEvent
+from PySide6.QtGui import QKeyEvent, QMouseEvent
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWidgets import QCheckBox
 from PySide6.QtWidgets import QComboBox
@@ -16,7 +16,6 @@ from PySide6.QtWidgets import QDoubleSpinBox
 from PySide6.QtWidgets import QGridLayout
 from PySide6.QtWidgets import QHBoxLayout
 from PySide6.QtWidgets import QLabel
-from PySide6.QtWidgets import QLineEdit
 from PySide6.QtWidgets import QDialog
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtWidgets import QListWidget
@@ -26,6 +25,7 @@ from PySide6.QtWidgets import QPushButton
 from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtWidgets import QSlider
 from PySide6.QtWidgets import QSpinBox
+from PySide6.QtWidgets import QStackedWidget
 from PySide6.QtWidgets import QToolButton
 from PySide6.QtWidgets import QVBoxLayout
 from PySide6.QtWidgets import QWidget
@@ -41,6 +41,7 @@ from agents_runner.agent_systems import available_agent_system_names
 from agents_runner.agent_systems import get_default_agent_system_name
 from agents_runner.environments import load_environments
 from agents_runner.environments import normalize_opencode_interactive_mode
+from agents_runner.environments.github_repo import resolve_environment_github_repo
 from agents_runner.environments.task_workspaces import (
     TASK_WORKSPACE_LOCATION_APP_DATA,
 )
@@ -70,6 +71,7 @@ from agents_runner.ui.widgets import EdgeFadeScrollArea
 from agents_runner.ui.widgets import ArcSpinner
 from agents_runner.ui.widgets.artifact_highlighter import ArtifactSyntaxHighlighter
 from agents_runner.ui.widgets.theme_preview import ThemePreviewTile
+from agents_runner.ui.widgets.usage_pane import GhUsagePaneWidget
 from agents_runner.ui.constants import (
     GRID_HORIZONTAL_SPACING,
     GRID_VERTICAL_SPACING,
@@ -119,6 +121,19 @@ class _WorkspaceStatusWorker(QObject):
 
 
 class SettingsFormMixin:
+    if TYPE_CHECKING:
+        _pane_specs: list[_SettingsPaneSpec]
+        _nav_buttons: dict[str, QToolButton]
+        _compact_nav: QComboBox
+        _page_stack: QStackedWidget
+        _pane_index_by_key: dict[str, int]
+        move_task_workspaces_requested: Any
+
+        def _on_test_preflight(self) -> None: ...
+        def _on_nav_button_clicked(self, key: str) -> None: ...
+        def _queue_debounced_autosave(self, *_args: object) -> None: ...
+        def isVisible(self) -> bool: ...
+
     _PREFLIGHT_PRESETS_DIRNAME = "preflight-scripts"
     _PREFLIGHT_PRESET_SUFFIXES = {".sh", ".bash", ".zsh"}
 
@@ -134,6 +149,12 @@ class SettingsFormMixin:
                 key="storage",
                 title="Storage",
                 subtitle="Local task workspace storage and migration.",
+                section="General",
+            ),
+            _SettingsPaneSpec(
+                key="usage",
+                title="Usage",
+                subtitle="",
                 section="General",
             ),
             _SettingsPaneSpec(
@@ -335,11 +356,11 @@ class SettingsFormMixin:
         self._move_task_workspaces.setText("Move all tasks")
         self._move_task_workspaces.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
         self._move_task_workspaces.clicked.connect(self._on_move_task_workspaces)
-        self._move_task_workspaces.installEventFilter(self)
+        self._move_task_workspaces.installEventFilter(cast(QObject, self))
         self._task_workspace_migration_blocked = False
         self._move_task_workspaces_shift_pressed = False
         self._move_task_workspaces_shift_click_force = False
-        self._move_task_workspaces_shift_poll_timer = QTimer(self)
+        self._move_task_workspaces_shift_poll_timer = QTimer(cast(QObject, self))
         self._move_task_workspaces_shift_poll_timer.setInterval(50)
         self._move_task_workspaces_shift_poll_timer.timeout.connect(self._poll_move_task_workspaces_shift_state)
 
@@ -430,12 +451,63 @@ class SettingsFormMixin:
         self._github_polling_enabled.setToolTip(
             "When enabled, GitHub Issues/PRs poll in the background across enabled environments."
         )
-        self._github_poll_startup_delay_s = QLineEdit()
-        self._github_poll_startup_delay_s.setValidator(QIntValidator(0, 3600, self))
-        self._github_poll_startup_delay_s.setPlaceholderText("35")
-        self._github_poll_startup_delay_s.setMaximumWidth(120)
+        self._github_poll_inactive_filter_enabled = QCheckBox("Enabled")
+        self._github_poll_inactive_filter_enabled.setToolTip(
+            "Enabling it skips expensive thread/reaction scans for issues and PRs with no activity for the configured number of days."
+        )
+        self._github_poll_inactive_max_age_days = QSpinBox()
+        self._github_poll_inactive_max_age_days.setRange(1, 3650)
+        self._github_poll_inactive_max_age_days.setSuffix(" days")
+        self._github_poll_inactive_max_age_days.setValue(5)
+        self._github_poll_inactive_max_age_days.setToolTip(
+            "Items whose last activity (updatedAt) is older than this many days are skipped by the inactivity filter."
+        )
+        self._github_poll_startup_delay_s = QSpinBox()
+        self._github_poll_startup_delay_s.setRange(0, 3600)
+        self._github_poll_startup_delay_s.setSuffix(" seconds")
+        self._github_poll_startup_delay_s.setValue(35)
         self._github_poll_startup_delay_s.setToolTip(
             "Seconds to wait after app startup before beginning background GitHub polling."
+        )
+        self._github_poll_interval_s = QSpinBox()
+        self._github_poll_interval_s.setRange(5, 3600)
+        self._github_poll_interval_s.setSuffix(" seconds")
+        self._github_poll_interval_s.setValue(30)
+        self._github_poll_interval_s.setToolTip(
+            "Seconds between GitHub polling cycles across all enabled environments."
+        )
+        self._github_poll_rate_warning_label = QLabel()
+        self._github_poll_rate_warning_label.setStyleSheet("color: #ef4444; font-weight: 600;")
+        self._github_poll_rate_warning_label.setWordWrap(True)
+        self._github_poll_rate_warning_label.setVisible(False)
+        self._github_poll_rate_warning_label.setToolTip(
+            "Each poll cycle sends multiple API requests per environment capped by the max requests-per-second setting. "
+            "At this pace, the global account-wide rate limit (5,000 req/hr) could be exhausted. "
+            "Increase the polling interval, reduce the max requests-per-second, or reduce polling-enabled environments to stay within safe limits."
+        )
+        self._github_requests_per_second = QSpinBox()
+        self._github_requests_per_second.setRange(1, 10)
+        self._github_requests_per_second.setSuffix(" per second")
+        self._github_requests_per_second.setValue(2)
+        self._github_requests_per_second.setToolTip(
+            "Maximum GitHub API requests per second across all environments. "
+            "Lower values reduce rate-limit risk; higher values speed up polling and PR operations."
+        )
+        self._github_pr_retry_interval_minutes = QSpinBox()
+        self._github_pr_retry_interval_minutes.setRange(0, 60)
+        self._github_pr_retry_interval_minutes.setSuffix(" minutes")
+        self._github_pr_retry_interval_minutes.setValue(5)
+        self._github_pr_retry_interval_minutes.setToolTip(
+            "Minutes between retries when gh pr create is rate-limited after push. "
+            "Set to 0 to disable rate-limit retry loop."
+        )
+        self._github_pr_retry_max_minutes = QSpinBox()
+        self._github_pr_retry_max_minutes.setRange(0, 360)
+        self._github_pr_retry_max_minutes.setSuffix(" minutes")
+        self._github_pr_retry_max_minutes.setValue(60)
+        self._github_pr_retry_max_minutes.setToolTip(
+            "Maximum total minutes to keep retrying a rate-limited gh pr create before giving up. "
+            "Has no effect when PR retry interval is 0."
         )
         self._agentsnova_trusted_users_global = GitHubUsernameListWidget()
         self._agentsnova_trusted_users_global.setSizePolicy(
@@ -443,7 +515,7 @@ class SettingsFormMixin:
             QSizePolicy.Policy.Expanding,
         )
         self._agentsnova_trusted_users_global.set_add_button_visible(False)
-        self._add_trusted_user_global = self._agentsnova_trusted_users_global.create_add_button(self)
+        self._add_trusted_user_global = self._agentsnova_trusted_users_global.create_add_button(cast(QWidget, self))
         self._setup_github_defaults_global = QToolButton()
         self._setup_github_defaults_global.setText("Setup Defaults")
         self._setup_github_defaults_global.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
@@ -717,8 +789,45 @@ class SettingsFormMixin:
         add_grid_row(
             github_grid,
             6,
-            QLabel("Polling startup delay (s)"),
+            QLabel("Polling interval"),
+            self._github_poll_interval_s,
+        )
+        add_grid_row(
+            github_grid,
+            7,
+            QLabel("Skip inactive issue/PR scans"),
+            self._github_poll_inactive_filter_enabled,
+        )
+        add_grid_row(
+            github_grid,
+            8,
+            QLabel("Inactive maximum age"),
+            self._github_poll_inactive_max_age_days,
+        )
+        add_grid_row(
+            github_grid,
+            9,
+            QLabel("Polling startup delay"),
             self._github_poll_startup_delay_s,
+        )
+        github_grid.addWidget(self._github_poll_rate_warning_label, 10, 0, 1, 3)
+        add_grid_row(
+            github_grid,
+            11,
+            QLabel("Max requests"),
+            self._github_requests_per_second,
+        )
+        add_grid_row(
+            github_grid,
+            12,
+            QLabel("PR retry interval"),
+            self._github_pr_retry_interval_minutes,
+        )
+        add_grid_row(
+            github_grid,
+            13,
+            QLabel("PR retry max"),
+            self._github_pr_retry_max_minutes,
         )
         github_config_body.addLayout(github_grid)
         github_config_body.addStretch(1)
@@ -820,6 +929,12 @@ class SettingsFormMixin:
             radio_body.addLayout(radio_grid)
             radio_body.addStretch(1)
             self._register_page("radio", radio_page)
+
+        usage_page, usage_body = self._create_page(specs_by_key["usage"])
+        self._usage_pane = GhUsagePaneWidget(usage_page)
+        usage_body.addWidget(self._usage_pane)
+        usage_body.addStretch(1)
+        self._register_page("usage", usage_page)
 
     def _build_navigation(self, nav_layout: QVBoxLayout) -> None:
         sections: dict[str, list[_SettingsPaneSpec]] = {}
@@ -1004,7 +1119,7 @@ class SettingsFormMixin:
     def _on_agent_configs_add_clicked(self) -> None:
         overrides = get_opencode_cli_overrides()
         dialog = AgentConfigDialog(
-            self,
+            cast(QWidget, self),
             initial_agent=overrides.get("agent", ""),
             initial_model=overrides.get("model", ""),
             initial_variant=overrides.get("variant", ""),
@@ -1017,7 +1132,7 @@ class SettingsFormMixin:
         try:
             save_agent_config(self._resolve_state_path(), config)
         except Exception as exc:
-            QMessageBox.warning(self, "Save failed", str(exc))
+            QMessageBox.warning(cast(QWidget, self), "Save failed", str(exc))
             return
         self._refresh_agent_configs_list(select_config_id=str(config.config_id or ""))
 
@@ -1025,7 +1140,7 @@ class SettingsFormMixin:
         selected = self._selected_agent_config()
         if selected is None:
             return
-        dialog = AgentConfigDialog(self, config=selected)
+        dialog = AgentConfigDialog(cast(QWidget, self), config=selected)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         updated = dialog.agent_config()
@@ -1034,7 +1149,7 @@ class SettingsFormMixin:
         try:
             save_agent_config(self._resolve_state_path(), updated)
         except Exception as exc:
-            QMessageBox.warning(self, "Save failed", str(exc))
+            QMessageBox.warning(cast(QWidget, self), "Save failed", str(exc))
             return
         self._refresh_agent_configs_list(select_config_id=str(updated.config_id or ""))
 
@@ -1062,7 +1177,7 @@ class SettingsFormMixin:
                 "Deleting it will remove this config ID from those environments."
             )
             result = QMessageBox.warning(
-                self,
+                cast(QWidget, self),
                 "Delete agent config?",
                 prompt,
                 QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
@@ -1074,7 +1189,7 @@ class SettingsFormMixin:
         try:
             delete_agent_config(state_path, config_id)
         except Exception as exc:
-            QMessageBox.warning(self, "Delete failed", str(exc))
+            QMessageBox.warning(cast(QWidget, self), "Delete failed", str(exc))
             return
         self._refresh_agent_configs_list()
 
@@ -1202,7 +1317,7 @@ class SettingsFormMixin:
         dialog = ThemePreviewDialog(
             theme_name=normalized_theme,
             theme_label=self._format_theme_label(normalized_theme),
-            parent=self,
+            parent=cast(QWidget, self),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1347,11 +1462,54 @@ class SettingsFormMixin:
                 bool(settings.get("agentsnova_auto_reactions_enabled", True))
             )
             self._github_polling_enabled.setChecked(bool(settings.get("github_polling_enabled") or False))
-            try:
-                poll_startup_delay_s = max(0, int(settings.get("github_poll_startup_delay_s", 35)))
-            except Exception:
-                poll_startup_delay_s = 35
-            self._github_poll_startup_delay_s.setText(str(poll_startup_delay_s))
+            self._github_poll_inactive_filter_enabled.setChecked(
+                bool(settings.get("github_poll_inactive_filter_enabled", True))
+            )
+            self._github_poll_inactive_max_age_days.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_poll_inactive_max_age_days"), minimum=1, maximum=3650, default=5
+                )
+            )
+            self._github_poll_startup_delay_s.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_poll_startup_delay_s"),
+                    minimum=0,
+                    maximum=3600,
+                    default=35,
+                )
+            )
+            self._github_poll_interval_s.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_poll_interval_s"),
+                    minimum=5,
+                    maximum=3600,
+                    default=30,
+                )
+            )
+            self._github_requests_per_second.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_requests_per_second"),
+                    minimum=1,
+                    maximum=10,
+                    default=2,
+                )
+            )
+            self._github_pr_retry_interval_minutes.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_pr_retry_interval_minutes"),
+                    minimum=0,
+                    maximum=60,
+                    default=5,
+                )
+            )
+            self._github_pr_retry_max_minutes.setValue(
+                self._clamp_spin_value(
+                    settings.get("github_pr_retry_max_minutes"),
+                    minimum=0,
+                    maximum=360,
+                    default=60,
+                )
+            )
             trusted_users_raw = settings.get("agentsnova_trusted_users_global", [])
             trusted_users = trusted_users_raw if isinstance(trusted_users_raw, list) else []  # pyright: ignore[reportUnknownVariableType]
             self._agentsnova_trusted_users_global.set_usernames(trusted_users)
@@ -1530,11 +1688,11 @@ class SettingsFormMixin:
         self._reset_recommended_preflight_selection()
 
     def get_settings(self) -> dict[str, Any]:
-        poll_startup_delay_text = str(self._github_poll_startup_delay_s.text() or "35").strip()
-        try:
-            poll_startup_delay_s = max(0, int(poll_startup_delay_text or "35"))
-        except Exception:
-            poll_startup_delay_s = 35
+        poll_startup_delay_s = int(self._github_poll_startup_delay_s.value())
+        poll_interval_s = int(self._github_poll_interval_s.value())
+        requests_per_second = int(self._github_requests_per_second.value())
+        pr_retry_interval = int(self._github_pr_retry_interval_minutes.value())
+        pr_retry_max = int(self._github_pr_retry_max_minutes.value())
         return {
             "use": str(self._use.currentData() or get_default_agent_system_name()),
             "shell": str(self._shell.currentData() or "bash"),
@@ -1555,7 +1713,13 @@ class SettingsFormMixin:
             ),
             "agentsnova_auto_reactions_enabled": bool(self._agentsnova_auto_reactions_enabled.isChecked()),
             "github_polling_enabled": bool(self._github_polling_enabled.isChecked()),
+            "github_poll_inactive_filter_enabled": bool(self._github_poll_inactive_filter_enabled.isChecked()),
+            "github_poll_inactive_max_age_days": int(self._github_poll_inactive_max_age_days.value()),
             "github_poll_startup_delay_s": poll_startup_delay_s,
+            "github_poll_interval_s": poll_interval_s,
+            "github_requests_per_second": requests_per_second,
+            "github_pr_retry_interval_minutes": pr_retry_interval,
+            "github_pr_retry_max_minutes": pr_retry_max,
             "agentsnova_trusted_users_global": self._agentsnova_trusted_users_global.get_usernames(),
             "headless_desktop_enabled": bool(self._headless_desktop_enabled.isChecked()),
             "gpu_enabled": bool(self._gpu_enabled.isChecked()),
@@ -1756,7 +1920,7 @@ class SettingsFormMixin:
     def eventFilter(self, watched: QObject, event: QEvent, /) -> bool:
         if not self.isVisible():
             self._set_move_task_workspaces_shift_pressed(False)
-            return super().eventFilter(watched, event)  # pyright: ignore[reportUnknownVariableType]
+            return cast(Any, super()).eventFilter(watched, event)  # pyright: ignore[reportUnknownVariableType]
         if event.type() in {QEvent.Type.KeyPress, QEvent.Type.KeyRelease}:
             self._update_move_task_workspaces_shift_state(event)
         elif event.type() in {
@@ -1779,14 +1943,14 @@ class SettingsFormMixin:
                 QEvent.Type.MouseButtonRelease,
             }:
                 self._refresh_move_task_workspaces_button()
-        return super().eventFilter(watched, event)  # pyright: ignore[reportUnknownVariableType]
+        return cast(Any, super()).eventFilter(watched, event)  # pyright: ignore[reportUnknownVariableType]
 
     def keyPressEvent(self, event: QKeyEvent, /) -> None:
-        super().keyPressEvent(event)
+        cast(Any, super()).keyPressEvent(event)
         self._update_move_task_workspaces_shift_state(event)
 
     def keyReleaseEvent(self, event: QKeyEvent, /) -> None:
-        super().keyReleaseEvent(event)
+        cast(Any, super()).keyReleaseEvent(event)
         self._update_move_task_workspaces_shift_state(event)
 
     def _update_move_task_workspaces_shift_state(self, event: QEvent) -> None:
@@ -1834,6 +1998,24 @@ class SettingsFormMixin:
             self._queue_debounced_autosave()
         except Exception:
             pass
+
+    def _refresh_github_poll_rate_warning(self, *_args: object) -> None:
+        environments = load_environments().values()
+        count = 0
+        for env in environments:
+            if env.github_polling_enabled and resolve_environment_github_repo(env) is not None:
+                count += 1
+        try:
+            interval = int(self._github_poll_interval_s.value())
+        except Exception:
+            interval = 30
+        if count > 10 and interval < 120:
+            self._github_poll_rate_warning_label.setText(
+                f"Warning: {count} polling-enabled environments with interval <2 min may exceed GitHub rate limits at the current pace."
+            )
+            self._github_poll_rate_warning_label.setVisible(True)
+        else:
+            self._github_poll_rate_warning_label.setVisible(False)
 
     def _refresh_terminal_options(self, *, selected_terminal_id: str) -> None:
         selected_id = str(selected_terminal_id or "").strip()
